@@ -99,9 +99,9 @@
             height: calc(100vh - 56px);
         }
         
-        /* 左侧边栏 */
-        .sidebar {
-            width: 280px;
+        /* 分组面板 */
+        .group-panel {
+            width: 200px;
             background-color: #fafafa;
             border-right: 1px solid #e5e5e5;
             display: flex;
@@ -109,35 +109,166 @@
             flex-shrink: 0;
         }
         
-        .sidebar-header {
-            padding: 16px 20px;
+        .panel-header {
+            padding: 0 16px;
+            height: 52px;
             border-bottom: 1px solid #e5e5e5;
-        }
-        
-        .sidebar-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: #666;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
         
-        .sidebar-title-btn {
+        .panel-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+        
+        .panel-action-btn {
             background: none;
             border: none;
             color: #666;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 18px;
             padding: 2px 6px;
+            border-radius: 4px;
+            line-height: 1;
+        }
+        
+        .panel-action-btn:hover {
+            background-color: #e5e5e5;
+        }
+        
+        .group-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        .group-item {
+            padding: 10px 16px;
+            cursor: pointer;
+            transition: background-color 0.15s;
+            border-left: 3px solid transparent;
+        }
+        
+        .group-item:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .group-item.active {
+            background-color: #e8e8e8;
+            border-left-color: #1a1a1a;
+        }
+        
+        .group-row-1 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        
+        .group-color {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+        
+        .group-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #1a1a1a;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+        }
+        
+        .group-row-2 {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-left: 20px;
+        }
+        
+        .group-count {
+            font-size: 12px;
+            color: #999;
+            background-color: #f0f0f0;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        
+        .group-item.active .group-count {
+            background-color: #d8d8d8;
+        }
+        
+        .group-actions {
+            display: flex;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        
+        .group-item:hover .group-actions {
+            opacity: 1;
+        }
+        
+        .group-action-btn {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            padding: 2px 6px;
+            font-size: 12px;
             border-radius: 4px;
         }
         
-        .sidebar-title-btn:hover {
-            background-color: #e5e5e5;
+        .group-action-btn:hover {
+            background-color: #e0e0e0;
+            color: #666;
+        }
+        
+        /* 邮箱账号面板 */
+        .account-panel {
+            width: 260px;
+            background-color: #ffffff;
+            border-right: 1px solid #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+        
+        .account-panel-header {
+            padding: 0 16px;
+            height: 52px;
+            border-bottom: 1px solid #e5e5e5;
+            display: flex;
+            align-items: center;
+        }
+        
+        .account-panel-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1a1a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .account-panel-title .group-color {
+            width: 12px;
+            height: 12px;
+        }
+        
+        .account-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        .account-panel-footer {
+            padding: 16px;
+            border-top: 1px solid #e5e5e5;
         }
         
         .add-account-btn {
@@ -157,104 +288,12 @@
             background-color: #333;
         }
         
-        /* 分组列表 */
-        .group-list {
-            flex: 1;
-            overflow-y: auto;
-        }
-        
-        .group-item {
-            border-bottom: 1px solid #e5e5e5;
-        }
-        
-        .group-header {
-            padding: 12px 20px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            transition: background-color 0.15s;
-        }
-        
-        .group-header:hover {
-            background-color: #f0f0f0;
-        }
-        
-        .group-header.active {
-            background-color: #f0f0f0;
-        }
-        
-        .group-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex: 1;
-        }
-        
-        .group-color {
-            width: 12px;
-            height: 12px;
-            border-radius: 3px;
-        }
-        
-        .group-name {
-            font-size: 14px;
-            font-weight: 500;
-            color: #1a1a1a;
-        }
-        
-        .group-count {
-            font-size: 12px;
-            color: #999;
-            background-color: #f0f0f0;
-            padding: 2px 8px;
-            border-radius: 10px;
-        }
-        
-        .group-actions {
-            display: flex;
-            gap: 4px;
-            opacity: 0;
-            transition: opacity 0.15s;
-        }
-        
-        .group-header:hover .group-actions {
-            opacity: 1;
-        }
-        
-        .group-action-btn {
-            background: none;
-            border: none;
-            color: #999;
-            cursor: pointer;
-            padding: 4px;
-            font-size: 14px;
-            border-radius: 4px;
-        }
-        
-        .group-action-btn:hover {
-            background-color: #e5e5e5;
-            color: #666;
-        }
-        
-        /* 账号列表 */
-        .account-list {
-            display: none;
-            background-color: #ffffff;
-        }
-        
-        .account-list.show {
-            display: block;
-        }
-        
         .account-item {
-            padding: 10px 20px 10px 42px;
+            padding: 10px 16px;
             cursor: pointer;
             transition: background-color 0.15s;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
             border-left: 3px solid transparent;
+            border-bottom: 1px solid #f5f5f5;
         }
         
         .account-item:hover {
@@ -266,18 +305,36 @@
             border-left-color: #1a1a1a;
         }
         
+        .account-item.inactive {
+            opacity: 0.6;
+        }
+        
+        .account-item.inactive .account-email {
+            text-decoration: line-through;
+            color: #999;
+        }
+        
         .account-email {
             font-size: 13px;
             color: #1a1a1a;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            flex: 1;
+            margin-bottom: 6px;
+        }
+        
+        .account-status-tag {
+            font-size: 10px;
+            padding: 1px 6px;
+            border-radius: 3px;
+            margin-left: 8px;
+            background-color: #f0f0f0;
+            color: #999;
         }
         
         .account-actions {
             display: flex;
-            gap: 4px;
+            gap: 8px;
             opacity: 0;
             transition: opacity 0.15s;
         }
@@ -289,16 +346,22 @@
         .account-action-btn {
             background: none;
             border: none;
-            color: #999;
+            color: #666;
             cursor: pointer;
-            padding: 4px;
-            font-size: 12px;
+            padding: 2px 0;
+            font-size: 11px;
             border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 2px;
         }
         
         .account-action-btn:hover {
-            background-color: #e5e5e5;
-            color: #666;
+            color: #1a1a1a;
+        }
+        
+        .account-action-btn.delete:hover {
+            color: #dc3545;
         }
         
         /* 内容区域 */
@@ -323,7 +386,8 @@
         }
         
         .email-list-header {
-            padding: 16px 20px;
+            padding: 0 20px;
+            height: 52px;
             border-bottom: 1px solid #e5e5e5;
             display: flex;
             justify-content: space-between;
@@ -550,6 +614,7 @@
             align-items: center;
             justify-content: center;
             height: 100%;
+            padding: 40px;
         }
         
         .loading-spinner {
@@ -559,6 +624,15 @@
             border-top-color: #1a1a1a;
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
+        }
+        
+        .loading-small {
+            padding: 20px;
+        }
+        
+        .loading-small .loading-spinner {
+            width: 20px;
+            height: 20px;
         }
         
         @keyframes spin {
@@ -699,6 +773,7 @@
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
+            margin-bottom: 12px;
         }
         
         .color-option {
@@ -716,6 +791,36 @@
         
         .color-option.selected {
             border-color: #1a1a1a;
+        }
+        
+        .custom-color-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        
+        .custom-color-input {
+            width: 60px;
+            height: 36px;
+            padding: 2px;
+            border: 1px solid #e5e5e5;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        
+        .custom-color-label {
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .custom-color-hex {
+            width: 80px;
+            padding: 8px 10px;
+            border: 1px solid #e5e5e5;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: monospace;
         }
         
         .modal-footer {
@@ -809,9 +914,13 @@
         }
         
         /* 响应式 */
-        @media (max-width: 1024px) {
-            .sidebar {
-                width: 240px;
+        @media (max-width: 1200px) {
+            .group-panel {
+                width: 180px;
+            }
+            
+            .account-panel {
+                width: 220px;
             }
             
             .email-list-panel {
@@ -819,8 +928,23 @@
             }
         }
         
+        @media (max-width: 1024px) {
+            .group-panel {
+                width: 160px;
+            }
+            
+            .account-panel {
+                width: 200px;
+            }
+            
+            .email-list-panel {
+                width: 280px;
+            }
+        }
+        
         @media (max-width: 768px) {
-            .sidebar {
+            .group-panel,
+            .account-panel {
                 position: fixed;
                 left: -280px;
                 top: 56px;
@@ -829,7 +953,8 @@
                 transition: left 0.3s;
             }
             
-            .sidebar.show {
+            .group-panel.show,
+            .account-panel.show {
                 left: 0;
             }
             
@@ -870,17 +995,33 @@
     
     <!-- 主容器 -->
     <div class="main-container">
-        <!-- 左侧边栏 - 分组和账号列表 -->
-        <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <div class="sidebar-title">
-                    <span>分组管理</span>
-                    <button class="sidebar-title-btn" onclick="showAddGroupModal()" title="添加分组">+</button>
-                </div>
-                <button class="add-account-btn" onclick="showAddAccountModal()">+ 导入邮箱</button>
+        <!-- 分组面板 -->
+        <div class="group-panel" id="groupPanel">
+            <div class="panel-header">
+                <span class="panel-title">分组</span>
+                <button class="panel-action-btn" onclick="showAddGroupModal()" title="添加分组">+</button>
             </div>
             <div class="group-list" id="groupList">
                 <!-- 分组列表将通过 JS 动态加载 -->
+            </div>
+        </div>
+        
+        <!-- 邮箱账号面板 -->
+        <div class="account-panel" id="accountPanel">
+            <div class="account-panel-header">
+                <div class="account-panel-title" id="accountPanelTitle">
+                    <span class="group-color" id="currentGroupColor" style="background-color: #666"></span>
+                    <span id="currentGroupName">选择分组</span>
+                </div>
+            </div>
+            <div class="account-list" id="accountList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📁</div>
+                    <div class="empty-state-text">请从左侧选择一个分组</div>
+                </div>
+            </div>
+            <div class="account-panel-footer">
+                <button class="add-account-btn" onclick="showAddAccountModal()">+ 导入邮箱</button>
             </div>
         </div>
         
@@ -949,6 +1090,19 @@
                         <div class="color-option" style="background-color: #e81123" data-color="#e81123"></div>
                         <div class="color-option" style="background-color: #5c2d91" data-color="#5c2d91"></div>
                         <div class="color-option" style="background-color: #008272" data-color="#008272"></div>
+                        <div class="color-option" style="background-color: #00bcf2" data-color="#00bcf2"></div>
+                        <div class="color-option" style="background-color: #bad80a" data-color="#bad80a"></div>
+                        <div class="color-option" style="background-color: #ff6f61" data-color="#ff6f61"></div>
+                        <div class="color-option" style="background-color: #744da9" data-color="#744da9"></div>
+                        <div class="color-option" style="background-color: #f7630c" data-color="#f7630c"></div>
+                        <div class="color-option" style="background-color: #038387" data-color="#038387"></div>
+                        <div class="color-option" style="background-color: #c239b3" data-color="#c239b3"></div>
+                        <div class="color-option" style="background-color: #6b69d6" data-color="#6b69d6"></div>
+                    </div>
+                    <div class="custom-color-row">
+                        <input type="color" class="custom-color-input" id="customColorInput" value="#1a1a1a" onchange="selectCustomColor(this.value)">
+                        <span class="custom-color-label">自定义颜色</span>
+                        <input type="text" class="custom-color-hex" id="customColorHex" placeholder="#000000" maxlength="7" onchange="selectCustomColorHex(this.value)">
                     </div>
                 </div>
             </div>
@@ -1071,10 +1225,12 @@
     <script>
         // 全局状态
         let currentAccount = null;
+        let currentGroupId = null;
         let currentEmails = [];
         let currentMethod = 'graph';
         let isListVisible = true;
         let groups = [];
+        let accountsCache = {}; // 缓存各分组的邮箱列表
         let editingGroupId = null;
         let selectedColor = '#1a1a1a';
         
@@ -1091,8 +1247,33 @@
                     document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
                     this.classList.add('selected');
                     selectedColor = this.dataset.color;
+                    // 同步更新自定义颜色输入框
+                    document.getElementById('customColorInput').value = selectedColor;
+                    document.getElementById('customColorHex').value = selectedColor;
                 });
             });
+        }
+        
+        // 选择自定义颜色（颜色选择器）
+        function selectCustomColor(color) {
+            selectedColor = color;
+            document.getElementById('customColorHex').value = color;
+            // 取消预设颜色的选中状态
+            document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+        }
+        
+        // 选择自定义颜色（十六进制输入）
+        function selectCustomColorHex(value) {
+            // 验证十六进制颜色格式
+            const hexPattern = /^#[0-9A-Fa-f]{6}$/;
+            if (hexPattern.test(value)) {
+                selectedColor = value;
+                document.getElementById('customColorInput').value = value;
+                // 取消预设颜色的选中状态
+                document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+            } else {
+                showToast('请输入有效的十六进制颜色（如 #FF5500）', 'error');
+            }
         }
         
         // 显示消息提示
@@ -1109,6 +1290,9 @@
         
         // 加载分组列表
         async function loadGroups() {
+            const container = document.getElementById('groupList');
+            container.innerHTML = '<div class="loading loading-small"><div class="loading-spinner"></div></div>';
+            
             try {
                 const response = await fetch('/api/groups');
                 const data = await response.json();
@@ -1117,8 +1301,18 @@
                     groups = data.groups;
                     renderGroupList(data.groups);
                     updateGroupSelects();
+                    
+                    // 如果之前选中了分组，保持选中状态并刷新邮箱列表
+                    if (currentGroupId) {
+                        const group = groups.find(g => g.id === currentGroupId);
+                        if (group) {
+                            // 刷新当前分组的邮箱列表
+                            loadAccountsByGroup(currentGroupId, true);
+                        }
+                    }
                 }
             } catch (error) {
+                container.innerHTML = '<div class="empty-state"><div class="empty-state-text">加载失败</div></div>';
                 showToast('加载分组失败', 'error');
             }
         }
@@ -1137,75 +1331,105 @@
             }
             
             container.innerHTML = groups.map(group => `
-                <div class="group-item" data-group-id="${group.id}">
-                    <div class="group-header" onclick="toggleGroup(${group.id})">
-                        <div class="group-info">
-                            <div class="group-color" style="background-color: ${group.color || '#666'}"></div>
-                            <span class="group-name">${escapeHtml(group.name)}</span>
-                            <span class="group-count">${group.account_count || 0}</span>
-                        </div>
+                <div class="group-item ${currentGroupId === group.id ? 'active' : ''}"
+                     data-group-id="${group.id}"
+                     onclick="selectGroup(${group.id})">
+                    <div class="group-row-1">
+                        <div class="group-color" style="background-color: ${group.color || '#666'}"></div>
+                        <span class="group-name">${escapeHtml(group.name)}</span>
+                    </div>
+                    <div class="group-row-2">
+                        <span class="group-count">${group.account_count || 0} 个邮箱</span>
                         <div class="group-actions">
                             <button class="group-action-btn" onclick="event.stopPropagation(); editGroup(${group.id})" title="编辑">✏️</button>
                             ${group.id !== 1 ? `<button class="group-action-btn" onclick="event.stopPropagation(); deleteGroup(${group.id})" title="删除">🗑️</button>` : ''}
                         </div>
                     </div>
-                    <div class="account-list" id="accountList_${group.id}">
-                        <!-- 账号列表将通过 JS 动态加载 -->
-                    </div>
                 </div>
             `).join('');
         }
         
-        // 切换分组展开/收起
-        async function toggleGroup(groupId) {
-            const accountList = document.getElementById(`accountList_${groupId}`);
-            const groupHeader = accountList.previousElementSibling;
+        // 选择分组
+        async function selectGroup(groupId) {
+            currentGroupId = groupId;
             
-            if (accountList.classList.contains('show')) {
-                accountList.classList.remove('show');
-                groupHeader.classList.remove('active');
-            } else {
-                // 收起其他分组
-                document.querySelectorAll('.account-list.show').forEach(list => {
-                    list.classList.remove('show');
-                    list.previousElementSibling.classList.remove('active');
-                });
+            // 更新分组列表 UI
+            document.querySelectorAll('.group-item').forEach(item => {
+                item.classList.toggle('active', parseInt(item.dataset.groupId) === groupId);
+            });
+            
+            // 更新邮箱面板标题
+            const group = groups.find(g => g.id === groupId);
+            if (group) {
+                document.getElementById('currentGroupName').textContent = group.name;
+                document.getElementById('currentGroupColor').style.backgroundColor = group.color || '#666';
                 
-                // 加载该分组的账号
-                await loadAccountsByGroup(groupId);
-                accountList.classList.add('show');
-                groupHeader.classList.add('active');
+                // 更新导入邮箱时的默认分组
+                const importSelect = document.getElementById('importGroupSelect');
+                if (importSelect) {
+                    importSelect.value = groupId;
+                }
             }
+            
+            // 加载该分组的邮箱
+            await loadAccountsByGroup(groupId);
         }
         
         // 加载分组下的账号
-        async function loadAccountsByGroup(groupId) {
-            const container = document.getElementById(`accountList_${groupId}`);
-            container.innerHTML = '<div class="loading" style="padding: 20px;"><div class="loading-spinner"></div></div>';
+        async function loadAccountsByGroup(groupId, forceRefresh = false) {
+            const container = document.getElementById('accountList');
+            
+            // 如果有缓存且不强制刷新，直接使用缓存
+            if (!forceRefresh && accountsCache[groupId]) {
+                renderAccountList(accountsCache[groupId]);
+                return;
+            }
+            
+            container.innerHTML = '<div class="loading loading-small"><div class="loading-spinner"></div></div>';
             
             try {
                 const response = await fetch(`/api/accounts?group_id=${groupId}`);
                 const data = await response.json();
                 
                 if (data.success) {
-                    if (data.accounts.length === 0) {
-                        container.innerHTML = '<div style="padding: 15px 20px 15px 42px; color: #999; font-size: 13px;">暂无邮箱</div>';
-                    } else {
-                        container.innerHTML = data.accounts.map(acc => `
-                            <div class="account-item ${currentAccount === acc.email ? 'active' : ''}"
-                                 onclick="selectAccount('${acc.email}')">
-                                <span class="account-email">${acc.email}</span>
-                                <div class="account-actions">
-                                    <button class="account-action-btn" onclick="event.stopPropagation(); copyEmail('${acc.email}')" title="复制邮箱">📋</button>
-                                    <button class="account-action-btn" onclick="event.stopPropagation(); showEditAccountModal(${acc.id})" title="编辑">✏️</button>
-                                </div>
-                            </div>
-                        `).join('');
-                    }
+                    // 缓存数据
+                    accountsCache[groupId] = data.accounts;
+                    renderAccountList(data.accounts);
                 }
             } catch (error) {
-                container.innerHTML = '<div style="padding: 15px 20px 15px 42px; color: #dc3545; font-size: 13px;">加载失败</div>';
+                container.innerHTML = '<div class="empty-state"><div class="empty-state-text">加载失败</div></div>';
             }
+        }
+        
+        // 渲染邮箱列表
+        function renderAccountList(accounts) {
+            const container = document.getElementById('accountList');
+            
+            if (accounts.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <div class="empty-state-text">该分组暂无邮箱</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = accounts.map(acc => `
+                <div class="account-item ${currentAccount === acc.email ? 'active' : ''} ${acc.status === 'inactive' ? 'inactive' : ''}"
+                     onclick="selectAccount('${acc.email}')">
+                    <div class="account-email" title="${acc.email}">
+                        ${acc.email}
+                        ${acc.status === 'inactive' ? '<span class="account-status-tag">已停用</span>' : ''}
+                    </div>
+                    <div class="account-actions">
+                        <button class="account-action-btn" onclick="event.stopPropagation(); copyEmail('${acc.email}')" title="复制邮箱">复制</button>
+                        <button class="account-action-btn" onclick="event.stopPropagation(); toggleAccountStatus(${acc.id}, '${acc.status || 'active'}')" title="${acc.status === 'inactive' ? '启用' : '停用'}">${acc.status === 'inactive' ? '启用' : '停用'}</button>
+                        <button class="account-action-btn" onclick="event.stopPropagation(); showEditAccountModal(${acc.id})" title="编辑">编辑</button>
+                        <button class="account-action-btn delete" onclick="event.stopPropagation(); deleteAccount(${acc.id}, '${acc.email}')" title="删除">删除</button>
+                    </div>
+                </div>
+            `).join('');
         }
         
         // 更新分组下拉选择框
@@ -1214,9 +1438,16 @@
             selects.forEach(selectId => {
                 const select = document.getElementById(selectId);
                 if (select) {
+                    const currentValue = select.value;
                     select.innerHTML = groups.map(g => 
                         `<option value="${g.id}">${escapeHtml(g.name)}</option>`
                     ).join('');
+                    // 恢复之前的选择
+                    if (currentValue && groups.find(g => g.id === parseInt(currentValue))) {
+                        select.value = currentValue;
+                    } else if (currentGroupId) {
+                        select.value = currentGroupId;
+                    }
                 }
             });
         }
@@ -1231,6 +1462,8 @@
             document.querySelectorAll('.color-option').forEach(o => {
                 o.classList.toggle('selected', o.dataset.color === selectedColor);
             });
+            document.getElementById('customColorInput').value = selectedColor;
+            document.getElementById('customColorHex').value = selectedColor;
             document.getElementById('addGroupModal').classList.add('show');
         }
         
@@ -1251,9 +1484,22 @@
                     document.getElementById('groupName').value = data.group.name;
                     document.getElementById('groupDescription').value = data.group.description || '';
                     selectedColor = data.group.color || '#1a1a1a';
+                    
+                    // 检查是否是预设颜色
+                    let isPresetColor = false;
                     document.querySelectorAll('.color-option').forEach(o => {
-                        o.classList.toggle('selected', o.dataset.color === selectedColor);
+                        if (o.dataset.color === selectedColor) {
+                            o.classList.add('selected');
+                            isPresetColor = true;
+                        } else {
+                            o.classList.remove('selected');
+                        }
                     });
+                    
+                    // 更新自定义颜色输入框
+                    document.getElementById('customColorInput').value = selectedColor;
+                    document.getElementById('customColorHex').value = selectedColor;
+                    
                     document.getElementById('addGroupModal').classList.add('show');
                 }
             } catch (error) {
@@ -1307,6 +1553,12 @@
                 
                 if (data.success) {
                     showToast(data.message, 'success');
+                    // 清除缓存
+                    delete accountsCache[groupId];
+                    // 如果删除的是当前选中的分组，切换到默认分组
+                    if (currentGroupId === groupId) {
+                        currentGroupId = 1;
+                    }
                     loadGroups();
                 } else {
                     showToast(data.error, 'error');
@@ -1326,7 +1578,7 @@
             document.getElementById('currentAccount').classList.add('show');
             document.getElementById('currentAccountEmail').textContent = email;
             
-            // 更新 UI
+            // 更新邮箱列表 UI
             document.querySelectorAll('.account-item').forEach(item => {
                 item.classList.remove('active');
                 if (item.querySelector('.account-email').textContent === email) {
@@ -1357,6 +1609,10 @@
         // 显示添加账号模态框
         function showAddAccountModal() {
             document.getElementById('accountInput').value = '';
+            // 设置默认分组为当前选中的分组
+            if (currentGroupId) {
+                document.getElementById('importGroupSelect').value = currentGroupId;
+            }
             document.getElementById('addAccountModal').classList.add('show');
         }
         
@@ -1368,7 +1624,7 @@
         // 添加账号
         async function addAccount() {
             const input = document.getElementById('accountInput').value.trim();
-            const groupId = document.getElementById('importGroupSelect').value;
+            const groupId = parseInt(document.getElementById('importGroupSelect').value);
             
             if (!input) {
                 showToast('请输入账号信息', 'error');
@@ -1379,7 +1635,7 @@
                 const response = await fetch('/api/accounts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ account_string: input, group_id: parseInt(groupId) })
+                    body: JSON.stringify({ account_string: input, group_id: groupId })
                 });
                 
                 const data = await response.json();
@@ -1387,7 +1643,17 @@
                 if (data.success) {
                     showToast(data.message, 'success');
                     hideAddAccountModal();
+                    
+                    // 清除该分组的缓存
+                    delete accountsCache[groupId];
+                    
+                    // 刷新分组列表（更新数量）
                     loadGroups();
+                    
+                    // 如果当前选中的就是这个分组，刷新邮箱列表
+                    if (currentGroupId === groupId) {
+                        loadAccountsByGroup(groupId, true);
+                    }
                 } else {
                     showToast(data.error, 'error');
                 }
@@ -1427,12 +1693,15 @@
         // 更新账号
         async function updateAccount() {
             const accountId = document.getElementById('editAccountId').value;
+            const oldGroupId = currentGroupId;
+            const newGroupId = parseInt(document.getElementById('editGroupSelect').value);
+            
             const data = {
                 email: document.getElementById('editEmail').value.trim(),
                 password: document.getElementById('editPassword').value,
                 client_id: document.getElementById('editClientId').value.trim(),
                 refresh_token: document.getElementById('editRefreshToken').value.trim(),
-                group_id: parseInt(document.getElementById('editGroupSelect').value),
+                group_id: newGroupId,
                 remark: document.getElementById('editRemark').value.trim(),
                 status: document.getElementById('editStatus').value
             };
@@ -1454,7 +1723,20 @@
                 if (result.success) {
                     showToast(result.message, 'success');
                     hideEditAccountModal();
+                    
+                    // 清除相关分组的缓存
+                    delete accountsCache[oldGroupId];
+                    if (oldGroupId !== newGroupId) {
+                        delete accountsCache[newGroupId];
+                    }
+                    
+                    // 刷新分组列表
                     loadGroups();
+                    
+                    // 刷新当前分组的邮箱列表
+                    if (currentGroupId) {
+                        loadAccountsByGroup(currentGroupId, true);
+                    }
                 } else {
                     showToast(result.error, 'error');
                 }
@@ -1467,6 +1749,7 @@
         async function deleteCurrentAccount() {
             const accountId = document.getElementById('editAccountId').value;
             const email = document.getElementById('editEmail').value;
+            const groupId = parseInt(document.getElementById('editGroupSelect').value);
             
             if (!confirm(`确定要删除账号 ${email} 吗？`)) {
                 return;
@@ -1479,6 +1762,9 @@
                 if (data.success) {
                     showToast('删除成功', 'success');
                     hideEditAccountModal();
+                    
+                    // 清除缓存
+                    delete accountsCache[groupId];
                     
                     if (currentAccount === email) {
                         currentAccount = null;
@@ -1497,7 +1783,93 @@
                         `;
                     }
                     
+                    // 刷新分组列表
                     loadGroups();
+                    
+                    // 刷新当前分组的邮箱列表
+                    if (currentGroupId) {
+                        loadAccountsByGroup(currentGroupId, true);
+                    }
+                }
+            } catch (error) {
+                showToast('删除失败', 'error');
+            }
+        }
+        
+        // 切换账号状态（启用/停用）
+        async function toggleAccountStatus(accountId, currentStatus) {
+            const newStatus = currentStatus === 'inactive' ? 'active' : 'inactive';
+            const action = newStatus === 'inactive' ? '停用' : '启用';
+            
+            try {
+                const response = await fetch(`/api/accounts/${accountId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(`${action}成功`, 'success');
+                    
+                    // 清除当前分组的缓存
+                    if (currentGroupId) {
+                        delete accountsCache[currentGroupId];
+                        loadAccountsByGroup(currentGroupId, true);
+                    }
+                } else {
+                    showToast(data.error || `${action}失败`, 'error');
+                }
+            } catch (error) {
+                showToast(`${action}失败`, 'error');
+            }
+        }
+        
+        // 删除账号（快捷方式）
+        async function deleteAccount(accountId, email) {
+            if (!confirm(`确定要删除账号 ${email} 吗？`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/accounts/${accountId}`, { method: 'DELETE' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('删除成功', 'success');
+                    
+                    // 清除当前分组的缓存
+                    if (currentGroupId) {
+                        delete accountsCache[currentGroupId];
+                    }
+                    
+                    if (currentAccount === email) {
+                        currentAccount = null;
+                        document.getElementById('currentAccount').classList.remove('show');
+                        document.getElementById('emailList').innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📬</div>
+                                <div class="empty-state-text">请从左侧选择一个邮箱账号</div>
+                            </div>
+                        `;
+                        document.getElementById('emailDetail').innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📄</div>
+                                <div class="empty-state-text">选择一封邮件查看详情</div>
+                            </div>
+                        `;
+                    }
+                    
+                    // 刷新分组列表
+                    loadGroups();
+                    
+                    // 刷新当前分组的邮箱列表
+                    if (currentGroupId) {
+                        loadAccountsByGroup(currentGroupId, true);
+                    }
+                } else {
+                    showToast(data.error || '删除失败', 'error');
                 }
             } catch (error) {
                 showToast('删除失败', 'error');
@@ -1518,29 +1890,25 @@
         // 加载导出分组列表
         async function loadExportGroupList() {
             const container = document.getElementById('exportGroupList');
-            container.innerHTML = '<div class="loading" style="padding: 20px;"><div class="loading-spinner"></div></div>';
+            container.innerHTML = '<div class="loading loading-small"><div class="loading-spinner"></div></div>';
             
             try {
-                const response = await fetch('/api/groups');
-                const data = await response.json();
-                
-                if (data.success) {
-                    if (data.groups.length === 0) {
-                        container.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">暂无分组</div>';
-                    } else {
-                        container.innerHTML = data.groups.map(group => `
-                            <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background-color 0.15s;"
-                                   onmouseover="this.style.backgroundColor='#f5f5f5'"
-                                   onmouseout="this.style.backgroundColor='transparent'">
-                                <input type="checkbox" class="export-group-checkbox" value="${group.id}" style="width: 16px; height: 16px;">
-                                <span style="display: flex; align-items: center; gap: 8px; flex: 1;">
-                                    <span style="width: 12px; height: 12px; border-radius: 3px; background-color: ${group.color || '#666'}"></span>
-                                    <span style="font-size: 14px; color: #1a1a1a;">${escapeHtml(group.name)}</span>
-                                </span>
-                                <span style="font-size: 12px; color: #999; background-color: #f0f0f0; padding: 2px 8px; border-radius: 10px;">${group.account_count || 0}</span>
-                            </label>
-                        `).join('');
-                    }
+                // 使用已加载的分组数据
+                if (groups.length === 0) {
+                    container.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">暂无分组</div>';
+                } else {
+                    container.innerHTML = groups.map(group => `
+                        <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background-color 0.15s;"
+                               onmouseover="this.style.backgroundColor='#f5f5f5'"
+                               onmouseout="this.style.backgroundColor='transparent'">
+                            <input type="checkbox" class="export-group-checkbox" value="${group.id}" style="width: 16px; height: 16px;">
+                            <span style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                                <span style="width: 12px; height: 12px; border-radius: 3px; background-color: ${group.color || '#666'}"></span>
+                                <span style="font-size: 14px; color: #1a1a1a;">${escapeHtml(group.name)}</span>
+                            </span>
+                            <span style="font-size: 12px; color: #999; background-color: #f0f0f0; padding: 2px 8px; border-radius: 10px;">${group.account_count || 0}</span>
+                        </label>
+                    `).join('');
                 }
             } catch (error) {
                 container.innerHTML = '<div style="padding: 20px; text-align: center; color: #dc3545;">加载失败</div>';
