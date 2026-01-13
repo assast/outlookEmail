@@ -989,6 +989,7 @@
         </div>
         <div class="navbar-actions">
             <button class="navbar-btn" onclick="showExportModal()">导出邮箱</button>
+            <button class="navbar-btn" onclick="showSettingsModal()">⚙️ 设置</button>
             <button class="navbar-btn" onclick="logout()" style="color: #dc3545;">退出登录</button>
         </div>
     </nav>
@@ -1219,6 +1220,32 @@
         </div>
     </div>
     
+    <!-- 设置模态框 -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content" style="width: 480px;">
+            <div class="modal-header">
+                <h3>⚙️ 系统设置</h3>
+                <button class="modal-close" onclick="hideSettingsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">登录密码</label>
+                    <input type="password" class="form-input" id="settingsPassword" placeholder="输入新密码（留空则不修改）">
+                    <div class="form-hint">用于登录系统的密码</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">GPTMail API Key</label>
+                    <input type="text" class="form-input" id="settingsApiKey" placeholder="输入 GPTMail API Key">
+                    <div class="form-hint">用于临时邮箱功能，可从 <a href="https://mail.chatgpt.org.uk/api" target="_blank" style="color: #0078d4;">gptmail.io</a> 获取</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideSettingsModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
+            </div>
+        </div>
+    </div>
+    
     <!-- 消息提示 -->
     <div class="toast" id="toast"></div>
     
@@ -1233,6 +1260,8 @@
         let accountsCache = {}; // 缓存各分组的邮箱列表
         let editingGroupId = null;
         let selectedColor = '#1a1a1a';
+        let isTempEmailGroup = false; // 是否是临时邮箱分组
+        let tempEmailGroupId = null; // 临时邮箱分组 ID
         
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
@@ -1299,6 +1328,13 @@
                 
                 if (data.success) {
                     groups = data.groups;
+                    
+                    // 找到临时邮箱分组
+                    const tempGroup = groups.find(g => g.name === '临时邮箱');
+                    if (tempGroup) {
+                        tempEmailGroupId = tempGroup.id;
+                    }
+                    
                     renderGroupList(data.groups);
                     updateGroupSelects();
                     
@@ -1307,7 +1343,11 @@
                         const group = groups.find(g => g.id === currentGroupId);
                         if (group) {
                             // 刷新当前分组的邮箱列表
-                            loadAccountsByGroup(currentGroupId, true);
+                            if (currentGroupId === tempEmailGroupId) {
+                                loadTempEmails(true);
+                            } else {
+                                loadAccountsByGroup(currentGroupId, true);
+                            }
                         }
                     }
                 }
@@ -1330,28 +1370,38 @@
                 return;
             }
             
-            container.innerHTML = groups.map(group => `
-                <div class="group-item ${currentGroupId === group.id ? 'active' : ''}"
-                     data-group-id="${group.id}"
-                     onclick="selectGroup(${group.id})">
-                    <div class="group-row-1">
-                        <div class="group-color" style="background-color: ${group.color || '#666'}"></div>
-                        <span class="group-name">${escapeHtml(group.name)}</span>
-                    </div>
-                    <div class="group-row-2">
-                        <span class="group-count">${group.account_count || 0} 个邮箱</span>
-                        <div class="group-actions">
-                            <button class="group-action-btn" onclick="event.stopPropagation(); editGroup(${group.id})" title="编辑">✏️</button>
-                            ${group.id !== 1 ? `<button class="group-action-btn" onclick="event.stopPropagation(); deleteGroup(${group.id})" title="删除">🗑️</button>` : ''}
+            container.innerHTML = groups.map(group => {
+                const isSystem = group.is_system === 1 || group.name === '临时邮箱';
+                const isTempGroup = group.name === '临时邮箱';
+                const isDefault = group.id === 1;
+                
+                return `
+                    <div class="group-item ${currentGroupId === group.id ? 'active' : ''} ${isTempGroup ? 'temp-email-group' : ''}"
+                         data-group-id="${group.id}"
+                         onclick="selectGroup(${group.id})">
+                        <div class="group-row-1">
+                            <div class="group-color" style="background-color: ${group.color || '#666'}"></div>
+                            <span class="group-name">${escapeHtml(group.name)}${isTempGroup ? ' ⚡' : ''}</span>
+                        </div>
+                        <div class="group-row-2">
+                            <span class="group-count">${group.account_count || 0} 个邮箱</span>
+                            <div class="group-actions">
+                                ${!isSystem ? `<button class="group-action-btn" onclick="event.stopPropagation(); editGroup(${group.id})" title="编辑">✏️</button>` : ''}
+                                ${!isDefault && !isSystem ? `<button class="group-action-btn" onclick="event.stopPropagation(); deleteGroup(${group.id})" title="删除">🗑️</button>` : ''}
+                            </div>
                         </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
         
         // 选择分组
         async function selectGroup(groupId) {
             currentGroupId = groupId;
+            
+            // 检查是否是临时邮箱分组
+            const group = groups.find(g => g.id === groupId);
+            isTempEmailGroup = group && group.name === '临时邮箱';
             
             // 更新分组列表 UI
             document.querySelectorAll('.group-item').forEach(item => {
@@ -1359,7 +1409,6 @@
             });
             
             // 更新邮箱面板标题
-            const group = groups.find(g => g.id === groupId);
             if (group) {
                 document.getElementById('currentGroupName').textContent = group.name;
                 document.getElementById('currentGroupColor').style.backgroundColor = group.color || '#666';
@@ -1371,8 +1420,29 @@
                 }
             }
             
+            // 更新底部按钮
+            updateAccountPanelFooter();
+            
             // 加载该分组的邮箱
-            await loadAccountsByGroup(groupId);
+            if (isTempEmailGroup) {
+                await loadTempEmails();
+            } else {
+                await loadAccountsByGroup(groupId);
+            }
+        }
+        
+        // 更新账号面板底部按钮
+        function updateAccountPanelFooter() {
+            const footer = document.querySelector('.account-panel-footer');
+            if (isTempEmailGroup) {
+                footer.innerHTML = `
+                    <button class="add-account-btn" onclick="generateTempEmail()">+ 生成临时邮箱</button>
+                `;
+            } else {
+                footer.innerHTML = `
+                    <button class="add-account-btn" onclick="showAddAccountModal()">+ 导入邮箱</button>
+                `;
+            }
         }
         
         // 加载分组下的账号
@@ -1568,25 +1638,121 @@
             }
         }
         
-        // ==================== 账号相关 ====================
+        // ==================== 临时邮箱相关 ====================
         
-        // 选择账号
-        function selectAccount(email) {
+        // 加载临时邮箱列表
+        async function loadTempEmails(forceRefresh = false) {
+            const container = document.getElementById('accountList');
+            
+            if (!forceRefresh && accountsCache['temp']) {
+                renderTempEmailList(accountsCache['temp']);
+                return;
+            }
+            
+            container.innerHTML = '<div class="loading loading-small"><div class="loading-spinner"></div></div>';
+            
+            try {
+                const response = await fetch('/api/temp-emails');
+                const data = await response.json();
+                
+                if (data.success) {
+                    accountsCache['temp'] = data.emails;
+                    renderTempEmailList(data.emails);
+                    
+                    const group = groups.find(g => g.name === '临时邮箱');
+                    if (group) {
+                        group.account_count = data.emails.length;
+                        renderGroupList(groups);
+                    }
+                }
+            } catch (error) {
+                container.innerHTML = '<div class="empty-state"><div class="empty-state-text">加载失败</div></div>';
+            }
+        }
+        
+        // 渲染临时邮箱列表
+        function renderTempEmailList(emails) {
+            const container = document.getElementById('accountList');
+            
+            if (emails.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚡</div>
+                        <div class="empty-state-text">暂无临时邮箱<br>点击下方按钮生成</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = emails.map(email => `
+                <div class="account-item ${currentAccount === email.email ? 'active' : ''}"
+                     onclick="selectTempEmail('${email.email}')">
+                    <div class="account-email" title="${email.email}">
+                        ${email.email}
+                    </div>
+                    <div class="account-actions">
+                        <button class="account-action-btn" onclick="event.stopPropagation(); copyEmail('${email.email}')" title="复制邮箱">复制</button>
+                        <button class="account-action-btn" onclick="event.stopPropagation(); clearTempEmailMessages('${email.email}')" title="清空邮件">清空</button>
+                        <button class="account-action-btn delete" onclick="event.stopPropagation(); deleteTempEmail('${email.email}')" title="删除">删除</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // 生成临时邮箱
+        async function generateTempEmail() {
+            // 获取按钮并显示加载状态
+            const btn = document.querySelector('.account-panel-footer .add-account-btn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '⏳ 生成中...';
+            btn.style.opacity = '0.7';
+            btn.style.cursor = 'not-allowed';
+            
+            try {
+                const response = await fetch('/api/temp-emails/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(`临时邮箱已生成: ${data.email}`, 'success');
+                    delete accountsCache['temp'];
+                    loadTempEmails(true);
+                    loadGroups();
+                } else {
+                    showToast(data.error || '生成失败', 'error');
+                }
+            } catch (error) {
+                showToast('生成临时邮箱失败', 'error');
+            } finally {
+                // 恢复按钮状态
+                btn.disabled = false;
+                btn.textContent = originalText;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+            }
+        }
+        
+        // 选择临时邮箱
+        function selectTempEmail(email) {
             currentAccount = email;
+            isTempEmailGroup = true;
             
-            // 更新顶部当前账号显示
             document.getElementById('currentAccount').classList.add('show');
-            document.getElementById('currentAccountEmail').textContent = email;
+            document.getElementById('currentAccountEmail').textContent = email + ' (临时)';
             
-            // 更新邮箱列表 UI
             document.querySelectorAll('.account-item').forEach(item => {
                 item.classList.remove('active');
-                if (item.querySelector('.account-email').textContent === email) {
+                const emailEl = item.querySelector('.account-email');
+                if (emailEl && emailEl.textContent.includes(email)) {
                     item.classList.add('active');
                 }
             });
             
-            // 清空邮件列表，提示用户点击获取邮件
             document.getElementById('emailList').innerHTML = `
                 <div class="empty-state">
                     <div class="empty-state-icon">📬</div>
@@ -1594,7 +1760,203 @@
                 </div>
             `;
             
-            // 清空邮件详情
+            document.getElementById('emailDetail').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📄</div>
+                    <div class="empty-state-text">选择一封邮件查看详情</div>
+                </div>
+            `;
+            document.getElementById('emailDetailToolbar').style.display = 'none';
+            document.getElementById('emailCount').textContent = '';
+            document.getElementById('methodTag').style.display = 'none';
+        }
+        
+        // 清空临时邮箱的所有邮件
+        async function clearTempEmailMessages(email) {
+            if (!confirm(`确定要清空临时邮箱 ${email} 的所有邮件吗？`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/temp-emails/${encodeURIComponent(email)}/clear`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('邮件已清空', 'success');
+                    
+                    // 如果当前选中的就是这个邮箱，清空邮件列表
+                    if (currentAccount === email) {
+                        currentEmails = [];
+                        document.getElementById('emailCount').textContent = '(0)';
+                        document.getElementById('emailList').innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📭</div>
+                                <div class="empty-state-text">收件箱为空</div>
+                            </div>
+                        `;
+                        document.getElementById('emailDetail').innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📄</div>
+                                <div class="empty-state-text">选择一封邮件查看详情</div>
+                            </div>
+                        `;
+                        document.getElementById('emailDetailToolbar').style.display = 'none';
+                    }
+                } else {
+                    showToast(data.error || '清空失败', 'error');
+                }
+            } catch (error) {
+                showToast('清空失败', 'error');
+            }
+        }
+        
+        // 删除临时邮箱
+        async function deleteTempEmail(email) {
+            if (!confirm(`确定要删除临时邮箱 ${email} 吗？\n该邮箱的所有邮件也将被删除。`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/temp-emails/${encodeURIComponent(email)}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('临时邮箱已删除', 'success');
+                    delete accountsCache['temp'];
+                    
+                    if (currentAccount === email) {
+                        currentAccount = null;
+                        document.getElementById('currentAccount').classList.remove('show');
+                        document.getElementById('emailList').innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📬</div>
+                                <div class="empty-state-text">请从左侧选择一个邮箱账号</div>
+                            </div>
+                        `;
+                        document.getElementById('emailDetail').innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📄</div>
+                                <div class="empty-state-text">选择一封邮件查看详情</div>
+                            </div>
+                        `;
+                    }
+                    
+                    loadTempEmails(true);
+                    loadGroups();
+                } else {
+                    showToast(data.error || '删除失败', 'error');
+                }
+            } catch (error) {
+                showToast('删除失败', 'error');
+            }
+        }
+        
+        // 加载临时邮箱的邮件
+        async function loadTempEmailMessages(email) {
+            const container = document.getElementById('emailList');
+            container.innerHTML = '<div class="loading"><div class="loading-spinner"></div></div>';
+            
+            try {
+                const response = await fetch(`/api/temp-emails/${encodeURIComponent(email)}/messages`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentEmails = data.emails;
+                    currentMethod = 'gptmail';
+                    
+                    const methodTag = document.getElementById('methodTag');
+                    methodTag.textContent = 'GPTMail';
+                    methodTag.style.display = 'inline';
+                    methodTag.style.backgroundColor = '#00bcf2';
+                    methodTag.style.color = 'white';
+                    
+                    document.getElementById('emailCount').textContent = `(${data.count})`;
+                    
+                    renderEmailList(data.emails);
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">⚠️</div>
+                            <div class="empty-state-text">${data.error || '加载失败'}</div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <div class="empty-state-text">网络错误，请重试</div>
+                    </div>
+                `;
+            }
+        }
+        
+        // 获取临时邮件详情
+        async function getTempEmailDetail(messageId, index) {
+            document.querySelectorAll('.email-item').forEach((item, i) => {
+                item.classList.toggle('active', i === index);
+            });
+            
+            document.getElementById('emailDetailToolbar').style.display = 'flex';
+            
+            const container = document.getElementById('emailDetail');
+            container.innerHTML = '<div class="loading"><div class="loading-spinner"></div></div>';
+            
+            try {
+                const response = await fetch(`/api/temp-emails/${encodeURIComponent(currentAccount)}/messages/${encodeURIComponent(messageId)}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderEmailDetail(data.email);
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">⚠️</div>
+                            <div class="empty-state-text">${data.error || '加载失败'}</div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <div class="empty-state-text">网络错误，请重试</div>
+                    </div>
+                `;
+            }
+        }
+        
+        // ==================== 账号相关 ====================
+        
+        // 选择账号
+        function selectAccount(email) {
+            currentAccount = email;
+            isTempEmailGroup = false;
+            
+            document.getElementById('currentAccount').classList.add('show');
+            document.getElementById('currentAccountEmail').textContent = email;
+            
+            document.querySelectorAll('.account-item').forEach(item => {
+                item.classList.remove('active');
+                const emailEl = item.querySelector('.account-email');
+                if (emailEl && emailEl.textContent.includes(email)) {
+                    item.classList.add('active');
+                }
+            });
+            
+            document.getElementById('emailList').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📬</div>
+                    <div class="empty-state-text">点击"获取邮件"按钮获取邮件</div>
+                </div>
+            `;
+            
             document.getElementById('emailDetail').innerHTML = `
                 <div class="empty-state">
                     <div class="empty-state-icon">📄</div>
@@ -2031,9 +2393,12 @@
                 return;
             }
             
+            // 根据是否是临时邮箱选择不同的点击处理函数
+            const clickHandler = isTempEmailGroup ? 'getTempEmailDetail' : 'selectEmail';
+            
             container.innerHTML = emails.map((email, index) => `
-                <div class="email-item ${email.is_read === false ? 'unread' : ''}" 
-                     onclick="selectEmail('${email.id}', ${index})">
+                <div class="email-item ${email.is_read === false ? 'unread' : ''}"
+                     onclick="${clickHandler}('${email.id}', ${index})">
                     <div class="email-from">${escapeHtml(email.from)}</div>
                     <div class="email-subject">${escapeHtml(email.subject || '无主题')}</div>
                     <div class="email-preview">${escapeHtml(email.body_preview || '')}</div>
@@ -2203,7 +2568,11 @@
         // 刷新邮件
         function refreshEmails() {
             if (currentAccount) {
-                loadEmails(currentAccount);
+                if (isTempEmailGroup) {
+                    loadTempEmailMessages(currentAccount);
+                } else {
+                    loadEmails(currentAccount);
+                }
             } else {
                 showToast('请先选择一个邮箱账号', 'error');
             }
@@ -2263,6 +2632,73 @@
             }
         }
         
+        // ==================== 设置相关 ====================
+        
+        // 显示设置模态框
+        async function showSettingsModal() {
+            document.getElementById('settingsModal').classList.add('show');
+            await loadSettings();
+        }
+        
+        // 隐藏设置模态框
+        function hideSettingsModal() {
+            document.getElementById('settingsModal').classList.remove('show');
+            // 清空密码输入框
+            document.getElementById('settingsPassword').value = '';
+        }
+        
+        // 加载设置
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 密码不显示，只显示 API Key
+                    document.getElementById('settingsApiKey').value = data.settings.gptmail_api_key || '';
+                    // 密码框留空
+                    document.getElementById('settingsPassword').value = '';
+                }
+            } catch (error) {
+                showToast('加载设置失败', 'error');
+            }
+        }
+        
+        // 保存设置
+        async function saveSettings() {
+            const password = document.getElementById('settingsPassword').value;
+            const apiKey = document.getElementById('settingsApiKey').value.trim();
+            
+            const settings = {};
+            
+            // 只有输入了密码才更新密码
+            if (password) {
+                settings.login_password = password;
+            }
+            
+            // API Key 可以为空（清除）
+            settings.gptmail_api_key = apiKey;
+            
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('设置已保存', 'success');
+                    hideSettingsModal();
+                } else {
+                    showToast(data.error || '保存失败', 'error');
+                }
+            } catch (error) {
+                showToast('保存设置失败', 'error');
+            }
+        }
+        
         // 键盘快捷键
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
@@ -2270,6 +2706,7 @@
                 hideAddAccountModal();
                 hideEditAccountModal();
                 hideExportModal();
+                hideSettingsModal();
             }
         });
     </script>

@@ -4,6 +4,7 @@
 Outlook 邮件 Web 应用
 基于 Flask 的 Web 界面，支持多邮箱管理和邮件查看
 使用 SQLite 数据库存储邮箱信息，支持分组管理
+支持 GPTMail 临时邮箱服务
 """
 
 import email
@@ -40,6 +41,13 @@ IMAP_PORT = 993
 # 数据库文件
 DATABASE = "outlook_accounts.db"
 
+# GPTMail API 配置
+GPTMAIL_BASE_URL = "https://mail.chatgpt.org.uk"
+GPTMAIL_API_KEY = "gpt-test"  # 测试 API Key，可以修改为正式 Key
+
+# 临时邮箱分组 ID（系统保留）
+TEMP_EMAIL_GROUP_ID = -1
+
 
 # ==================== 数据库操作 ====================
 
@@ -65,6 +73,15 @@ def init_db():
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     
+    # 创建设置表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
     # 创建分组表
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS groups (
@@ -72,6 +89,7 @@ def init_db():
             name TEXT UNIQUE NOT NULL,
             description TEXT,
             color TEXT DEFAULT '#1a1a1a',
+            is_system INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -93,6 +111,35 @@ def init_db():
         )
     ''')
     
+    # 创建临时邮箱表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS temp_emails (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            status TEXT DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # 创建临时邮件表（存储从 GPTMail 获取的邮件）
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS temp_email_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id TEXT UNIQUE NOT NULL,
+            email_address TEXT NOT NULL,
+            from_address TEXT,
+            subject TEXT,
+            content TEXT,
+            html_content TEXT,
+            has_html INTEGER DEFAULT 0,
+            timestamp INTEGER,
+            raw_content TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (email_address) REFERENCES temp_emails (email)
+        )
+    ''')
+    
     # 检查并添加缺失的列（数据库迁移）
     cursor.execute("PRAGMA table_info(accounts)")
     columns = [col[1] for col in cursor.fetchall()]
@@ -106,22 +153,95 @@ def init_db():
     if 'updated_at' not in columns:
         cursor.execute('ALTER TABLE accounts ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
     
+    # 检查 groups 表是否有 is_system 列
+    cursor.execute("PRAGMA table_info(groups)")
+    group_columns = [col[1] for col in cursor.fetchall()]
+    if 'is_system' not in group_columns:
+        cursor.execute('ALTER TABLE groups ADD COLUMN is_system INTEGER DEFAULT 0')
+    
     # 创建默认分组
     cursor.execute('''
         INSERT OR IGNORE INTO groups (name, description, color)
         VALUES ('默认分组', '未分组的邮箱', '#666666')
     ''')
     
+    # 创建临时邮箱分组（系统分组）
+    cursor.execute('''
+        INSERT OR IGNORE INTO groups (name, description, color, is_system)
+        VALUES ('临时邮箱', 'GPTMail 临时邮箱服务', '#00bcf2', 1)
+    ''')
+    
+    # 初始化默认设置
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('login_password', ?)
+    ''', (LOGIN_PASSWORD,))
+    
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('gptmail_api_key', ?)
+    ''', (GPTMAIL_API_KEY,))
+    
     conn.commit()
     conn.close()
+
+
+# ==================== 设置操作 ====================
+
+def get_setting(key: str, default: str = '') -> str:
+    """获取设置值"""
+    db = get_db()
+    cursor = db.execute('SELECT value FROM settings WHERE key = ?', (key,))
+    row = cursor.fetchone()
+    return row['value'] if row else default
+
+
+def set_setting(key: str, value: str) -> bool:
+    """设置值"""
+    db = get_db()
+    try:
+        db.execute('''
+            INSERT OR REPLACE INTO settings (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+        ''', (key, value))
+        db.commit()
+        return True
+    except Exception:
+        return False
+
+
+def get_all_settings() -> Dict[str, str]:
+    """获取所有设置"""
+    db = get_db()
+    cursor = db.execute('SELECT key, value FROM settings')
+    rows = cursor.fetchall()
+    return {row['key']: row['value'] for row in rows}
+
+
+def get_login_password() -> str:
+    """获取登录密码（优先从数据库读取）"""
+    password = get_setting('login_password')
+    return password if password else LOGIN_PASSWORD
+
+
+def get_gptmail_api_key() -> str:
+    """获取 GPTMail API Key（优先从数据库读取）"""
+    api_key = get_setting('gptmail_api_key')
+    return api_key if api_key else GPTMAIL_API_KEY
 
 
 # ==================== 分组操作 ====================
 
 def load_groups() -> List[Dict]:
-    """加载所有分组"""
+    """加载所有分组（临时邮箱分组排在最前面）"""
     db = get_db()
-    cursor = db.execute('SELECT * FROM groups ORDER BY id')
+    # 使用 CASE 语句让临时邮箱分组排在最前面
+    cursor = db.execute('''
+        SELECT * FROM groups
+        ORDER BY
+            CASE WHEN name = '临时邮箱' THEN 0 ELSE 1 END,
+            id
+    ''')
     rows = cursor.fetchall()
     return [dict(row) for row in rows]
 
@@ -569,7 +689,10 @@ def login():
         data = request.json if request.is_json else request.form
         password = data.get('password', '')
         
-        if password == LOGIN_PASSWORD:
+        # 从数据库获取密码，如果没有则使用默认密码
+        correct_password = get_login_password()
+        
+        if password == correct_password:
             session['logged_in'] = True
             session.permanent = True
             return jsonify({'success': True, 'message': '登录成功'})
@@ -603,7 +726,11 @@ def api_get_groups():
     groups = load_groups()
     # 添加每个分组的邮箱数量
     for group in groups:
-        group['account_count'] = get_group_account_count(group['id'])
+        if group['name'] == '临时邮箱':
+            # 临时邮箱分组从 temp_emails 表获取数量
+            group['account_count'] = get_temp_email_count()
+        else:
+            group['account_count'] = get_group_account_count(group['id'])
     return jsonify({'success': True, 'groups': groups})
 
 
@@ -1018,6 +1145,411 @@ def api_get_email_detail(email_addr, message_id):
     return jsonify({'success': False, 'error': '获取邮件详情失败'})
 
 
+# ==================== GPTMail 临时邮箱 API ====================
+
+def gptmail_request(method: str, endpoint: str, params: dict = None, json_data: dict = None) -> Optional[Dict]:
+    """发送 GPTMail API 请求"""
+    try:
+        url = f"{GPTMAIL_BASE_URL}{endpoint}"
+        # 从数据库获取 API Key
+        api_key = get_gptmail_api_key()
+        headers = {
+            "X-API-Key": api_key,
+            "Content-Type": "application/json"
+        }
+        
+        if method.upper() == 'GET':
+            response = requests.get(url, headers=headers, params=params, timeout=30)
+        elif method.upper() == 'POST':
+            response = requests.post(url, headers=headers, json=json_data, timeout=30)
+        elif method.upper() == 'DELETE':
+            response = requests.delete(url, headers=headers, params=params, timeout=30)
+        else:
+            return None
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {'success': False, 'error': f'API 请求失败: {response.status_code}'}
+    except Exception as e:
+        return {'success': False, 'error': f'请求异常: {str(e)}'}
+
+
+def generate_temp_email(prefix: str = None, domain: str = None) -> Optional[str]:
+    """生成临时邮箱地址"""
+    json_data = {}
+    if prefix:
+        json_data['prefix'] = prefix
+    if domain:
+        json_data['domain'] = domain
+    
+    if json_data:
+        result = gptmail_request('POST', '/api/generate-email', json_data=json_data)
+    else:
+        result = gptmail_request('GET', '/api/generate-email')
+    
+    if result and result.get('success'):
+        return result.get('data', {}).get('email')
+    return None
+
+
+def get_temp_emails_from_api(email_addr: str) -> Optional[List[Dict]]:
+    """从 GPTMail API 获取邮件列表"""
+    result = gptmail_request('GET', '/api/emails', params={'email': email_addr})
+    
+    if result and result.get('success'):
+        return result.get('data', {}).get('emails', [])
+    return None
+
+
+def get_temp_email_detail_from_api(message_id: str) -> Optional[Dict]:
+    """从 GPTMail API 获取邮件详情"""
+    result = gptmail_request('GET', f'/api/email/{message_id}')
+    
+    if result and result.get('success'):
+        return result.get('data')
+    return None
+
+
+def delete_temp_email_from_api(message_id: str) -> bool:
+    """从 GPTMail API 删除邮件"""
+    result = gptmail_request('DELETE', f'/api/email/{message_id}')
+    return result and result.get('success', False)
+
+
+def clear_temp_emails_from_api(email_addr: str) -> bool:
+    """清空 GPTMail 邮箱的所有邮件"""
+    result = gptmail_request('DELETE', '/api/emails/clear', params={'email': email_addr})
+    return result and result.get('success', False)
+
+
+# ==================== 临时邮箱数据库操作 ====================
+
+def get_temp_email_group_id() -> int:
+    """获取临时邮箱分组的 ID"""
+    db = get_db()
+    cursor = db.execute("SELECT id FROM groups WHERE name = '临时邮箱'")
+    row = cursor.fetchone()
+    return row['id'] if row else 2
+
+
+def load_temp_emails() -> List[Dict]:
+    """加载所有临时邮箱"""
+    db = get_db()
+    cursor = db.execute('SELECT * FROM temp_emails ORDER BY created_at DESC')
+    rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_temp_email_by_address(email_addr: str) -> Optional[Dict]:
+    """根据邮箱地址获取临时邮箱"""
+    db = get_db()
+    cursor = db.execute('SELECT * FROM temp_emails WHERE email = ?', (email_addr,))
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def add_temp_email(email_addr: str) -> bool:
+    """添加临时邮箱"""
+    db = get_db()
+    try:
+        db.execute('INSERT INTO temp_emails (email) VALUES (?)', (email_addr,))
+        db.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+def delete_temp_email(email_addr: str) -> bool:
+    """删除临时邮箱及其所有邮件"""
+    db = get_db()
+    try:
+        db.execute('DELETE FROM temp_email_messages WHERE email_address = ?', (email_addr,))
+        db.execute('DELETE FROM temp_emails WHERE email = ?', (email_addr,))
+        db.commit()
+        return True
+    except Exception:
+        return False
+
+
+def save_temp_email_messages(email_addr: str, messages: List[Dict]) -> int:
+    """保存临时邮件到数据库"""
+    db = get_db()
+    saved = 0
+    for msg in messages:
+        try:
+            db.execute('''
+                INSERT OR REPLACE INTO temp_email_messages
+                (message_id, email_address, from_address, subject, content, html_content, has_html, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                msg.get('id'),
+                email_addr,
+                msg.get('from_address', ''),
+                msg.get('subject', ''),
+                msg.get('content', ''),
+                msg.get('html_content', ''),
+                1 if msg.get('has_html') else 0,
+                msg.get('timestamp', 0)
+            ))
+            saved += 1
+        except Exception:
+            continue
+    db.commit()
+    return saved
+
+
+def get_temp_email_messages(email_addr: str) -> List[Dict]:
+    """获取临时邮箱的所有邮件（从数据库）"""
+    db = get_db()
+    cursor = db.execute('''
+        SELECT * FROM temp_email_messages
+        WHERE email_address = ?
+        ORDER BY timestamp DESC
+    ''', (email_addr,))
+    rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_temp_email_message_by_id(message_id: str) -> Optional[Dict]:
+    """根据 ID 获取临时邮件"""
+    db = get_db()
+    cursor = db.execute('SELECT * FROM temp_email_messages WHERE message_id = ?', (message_id,))
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def delete_temp_email_message(message_id: str) -> bool:
+    """删除临时邮件"""
+    db = get_db()
+    try:
+        db.execute('DELETE FROM temp_email_messages WHERE message_id = ?', (message_id,))
+        db.commit()
+        return True
+    except Exception:
+        return False
+
+
+def get_temp_email_count() -> int:
+    """获取临时邮箱数量"""
+    db = get_db()
+    cursor = db.execute('SELECT COUNT(*) as count FROM temp_emails')
+    row = cursor.fetchone()
+    return row['count'] if row else 0
+
+
+# ==================== 临时邮箱 API 路由 ====================
+
+@app.route('/api/temp-emails', methods=['GET'])
+@login_required
+def api_get_temp_emails():
+    """获取所有临时邮箱"""
+    emails = load_temp_emails()
+    return jsonify({'success': True, 'emails': emails})
+
+
+@app.route('/api/temp-emails/generate', methods=['POST'])
+@login_required
+def api_generate_temp_email():
+    """生成新的临时邮箱"""
+    data = request.json or {}
+    prefix = data.get('prefix')
+    domain = data.get('domain')
+    
+    email_addr = generate_temp_email(prefix, domain)
+    
+    if email_addr:
+        if add_temp_email(email_addr):
+            return jsonify({'success': True, 'email': email_addr, 'message': '临时邮箱创建成功'})
+        else:
+            return jsonify({'success': False, 'error': '邮箱已存在'})
+    else:
+        return jsonify({'success': False, 'error': '生成临时邮箱失败，请稍后重试'})
+
+
+@app.route('/api/temp-emails/<path:email_addr>', methods=['DELETE'])
+@login_required
+def api_delete_temp_email(email_addr):
+    """删除临时邮箱"""
+    if delete_temp_email(email_addr):
+        return jsonify({'success': True, 'message': '临时邮箱已删除'})
+    else:
+        return jsonify({'success': False, 'error': '删除失败'})
+
+
+@app.route('/api/temp-emails/<path:email_addr>/messages', methods=['GET'])
+@login_required
+def api_get_temp_email_messages(email_addr):
+    """获取临时邮箱的邮件列表"""
+    api_messages = get_temp_emails_from_api(email_addr)
+    
+    if api_messages:
+        save_temp_email_messages(email_addr, api_messages)
+    
+    messages = get_temp_email_messages(email_addr)
+    
+    formatted = []
+    for msg in messages:
+        formatted.append({
+            'id': msg.get('message_id'),
+            'from': msg.get('from_address', '未知'),
+            'subject': msg.get('subject', '无主题'),
+            'body_preview': (msg.get('content', '') or '')[:200],
+            'date': msg.get('created_at', ''),
+            'timestamp': msg.get('timestamp', 0),
+            'has_html': msg.get('has_html', 0)
+        })
+    
+    return jsonify({
+        'success': True,
+        'emails': formatted,
+        'count': len(formatted),
+        'method': 'GPTMail'
+    })
+
+
+@app.route('/api/temp-emails/<path:email_addr>/messages/<path:message_id>', methods=['GET'])
+@login_required
+def api_get_temp_email_message_detail(email_addr, message_id):
+    """获取临时邮件详情"""
+    msg = get_temp_email_message_by_id(message_id)
+    
+    if not msg:
+        api_msg = get_temp_email_detail_from_api(message_id)
+        if api_msg:
+            save_temp_email_messages(email_addr, [api_msg])
+            msg = get_temp_email_message_by_id(message_id)
+    
+    if msg:
+        return jsonify({
+            'success': True,
+            'email': {
+                'id': msg.get('message_id'),
+                'from': msg.get('from_address', '未知'),
+                'to': email_addr,
+                'subject': msg.get('subject', '无主题'),
+                'body': msg.get('html_content') if msg.get('has_html') else msg.get('content', ''),
+                'body_type': 'html' if msg.get('has_html') else 'text',
+                'date': msg.get('created_at', ''),
+                'timestamp': msg.get('timestamp', 0)
+            }
+        })
+    else:
+        return jsonify({'success': False, 'error': '邮件不存在'})
+
+
+@app.route('/api/temp-emails/<path:email_addr>/messages/<path:message_id>', methods=['DELETE'])
+@login_required
+def api_delete_temp_email_message(email_addr, message_id):
+    """删除临时邮件"""
+    delete_temp_email_from_api(message_id)
+    if delete_temp_email_message(message_id):
+        return jsonify({'success': True, 'message': '邮件已删除'})
+    else:
+        return jsonify({'success': False, 'error': '删除失败'})
+
+
+@app.route('/api/temp-emails/<path:email_addr>/clear', methods=['DELETE'])
+@login_required
+def api_clear_temp_email_messages(email_addr):
+    """清空临时邮箱的所有邮件"""
+    clear_temp_emails_from_api(email_addr)
+    db = get_db()
+    try:
+        db.execute('DELETE FROM temp_email_messages WHERE email_address = ?', (email_addr,))
+        db.commit()
+        return jsonify({'success': True, 'message': '邮件已清空'})
+    except Exception:
+        return jsonify({'success': False, 'error': '清空失败'})
+
+
+@app.route('/api/temp-emails/<path:email_addr>/refresh', methods=['POST'])
+@login_required
+def api_refresh_temp_email_messages(email_addr):
+    """刷新临时邮箱的邮件"""
+    api_messages = get_temp_emails_from_api(email_addr)
+    
+    if api_messages is not None:
+        saved = save_temp_email_messages(email_addr, api_messages)
+        messages = get_temp_email_messages(email_addr)
+        
+        formatted = []
+        for msg in messages:
+            formatted.append({
+                'id': msg.get('message_id'),
+                'from': msg.get('from_address', '未知'),
+                'subject': msg.get('subject', '无主题'),
+                'body_preview': (msg.get('content', '') or '')[:200],
+                'date': msg.get('created_at', ''),
+                'timestamp': msg.get('timestamp', 0),
+                'has_html': msg.get('has_html', 0)
+            })
+        
+        return jsonify({
+            'success': True,
+            'emails': formatted,
+            'count': len(formatted),
+            'new_count': saved,
+            'method': 'GPTMail'
+        })
+    else:
+        return jsonify({'success': False, 'error': '获取邮件失败'})
+
+
+# ==================== 设置 API ====================
+
+@app.route('/api/settings', methods=['GET'])
+@login_required
+def api_get_settings():
+    """获取所有设置"""
+    settings = get_all_settings()
+    # 隐藏密码的部分字符
+    if 'login_password' in settings:
+        pwd = settings['login_password']
+        if len(pwd) > 2:
+            settings['login_password_masked'] = pwd[0] + '*' * (len(pwd) - 2) + pwd[-1]
+        else:
+            settings['login_password_masked'] = '*' * len(pwd)
+    return jsonify({'success': True, 'settings': settings})
+
+
+@app.route('/api/settings', methods=['PUT'])
+@login_required
+def api_update_settings():
+    """更新设置"""
+    data = request.json
+    updated = []
+    errors = []
+    
+    # 更新登录密码
+    if 'login_password' in data:
+        new_password = data['login_password'].strip()
+        if new_password:
+            if len(new_password) < 4:
+                errors.append('密码长度至少为 4 位')
+            elif set_setting('login_password', new_password):
+                updated.append('登录密码')
+            else:
+                errors.append('更新登录密码失败')
+    
+    # 更新 GPTMail API Key
+    if 'gptmail_api_key' in data:
+        new_api_key = data['gptmail_api_key'].strip()
+        if new_api_key:
+            if set_setting('gptmail_api_key', new_api_key):
+                updated.append('GPTMail API Key')
+            else:
+                errors.append('更新 GPTMail API Key 失败')
+    
+    if errors:
+        return jsonify({'success': False, 'error': '；'.join(errors)})
+    
+    if updated:
+        return jsonify({'success': True, 'message': f'已更新：{", ".join(updated)}'})
+    else:
+        return jsonify({'success': False, 'error': '没有需要更新的设置'})
+
+
 # ==================== 主程序 ====================
 
 if __name__ == '__main__':
@@ -1033,6 +1565,7 @@ if __name__ == '__main__':
     print("=" * 60)
     print(f"访问地址: http://127.0.0.1:{port}")
     print(f"数据库文件: {DATABASE}")
+    print(f"GPTMail API: {GPTMAIL_BASE_URL}")
     print("=" * 60)
     
     app.run(debug=True, host='127.0.0.1', port=port)

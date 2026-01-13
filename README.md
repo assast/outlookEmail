@@ -19,6 +19,8 @@
 - 📤 **导出功能** - 支持按分组导出邮箱账号信息
 - 🎨 **现代化 UI** - 简洁美观的四栏式界面布局
 - ⚡ **性能优化** - 邮箱列表缓存，快速切换分组
+- 🔥 **临时邮箱** - 集成 GPTMail API，一键生成临时邮箱
+- ⚙️ **系统设置** - 支持在线修改登录密码和 API Key
 
 ### 界面布局
 Web 应用采用四栏式布局设计：
@@ -48,7 +50,7 @@ python web_outlook_app.py
 
 启动后访问：http://127.0.0.1:5001
 
-默认登录密码：`admin123`（可在 [`web_outlook_app.py`](web_outlook_app.py:27) 中修改 `LOGIN_PASSWORD` 变量）
+默认登录密码：`admin123`（可在 Web 界面的「设置」中修改）
 
 ### 3. 运行命令行测试工具
 
@@ -112,16 +114,50 @@ Web 应用提供以下 API 端点：
 | `/api/email/<email>/<message_id>` | GET | 获取邮件详情 |
 | `/api/groups/<id>/export` | GET | 导出分组邮箱 |
 | `/api/accounts/export` | GET | 导出所有邮箱 |
+| `/api/temp-emails` | GET | 获取所有临时邮箱 |
+| `/api/temp-emails/generate` | POST | 生成新的临时邮箱 |
+| `/api/temp-emails/<email>` | DELETE | 删除临时邮箱 |
+| `/api/temp-emails/<email>/messages` | GET | 获取临时邮箱邮件列表 |
+| `/api/temp-emails/<email>/messages/<id>` | GET | 获取临时邮件详情 |
+| `/api/temp-emails/<email>/clear` | DELETE | 清空临时邮箱所有邮件 |
+| `/api/settings` | GET | 获取系统设置 |
+| `/api/settings` | PUT | 更新系统设置 |
+
+### 临时邮箱功能
+
+系统集成了 GPTMail API 提供临时邮箱服务：
+
+1. **生成临时邮箱** - 点击「临时邮箱」分组，然后点击「生成临时邮箱」按钮
+2. **查看邮件** - 选择临时邮箱后点击「获取邮件」按钮
+3. **清空邮件** - 点击临时邮箱旁的「清空」按钮，清空该邮箱的所有邮件
+4. **删除邮箱** - 点击临时邮箱旁的「删除」按钮，删除邮箱及其所有邮件
+
+临时邮箱数据会存储在本地数据库中，方便后续查看。
+
+### 系统设置
+
+点击导航栏的「⚙️ 设置」按钮，可以修改以下配置：
+
+1. **登录密码** - 修改 Web 界面的登录密码
+2. **GPTMail API Key** - 设置临时邮箱功能所需的 API Key
+
+设置会保存在数据库中，重启应用后仍然有效。
 
 ## ⚙️ 配置说明
 
 ### Web 应用配置
 
-在 [`web_outlook_app.py`](web_outlook_app.py) 中可以修改以下配置：
+以下配置可以在 Web 界面的「设置」中修改：
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `LOGIN_PASSWORD` | `admin123` | 登录密码 |
+| 登录密码 | `admin123` | Web 界面登录密码 |
+| GPTMail API Key | 空 | 临时邮箱功能的 API Key |
+
+以下配置需要在 [`web_outlook_app.py`](web_outlook_app.py) 中修改：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
 | `DATABASE` | `outlook_accounts.db` | SQLite 数据库文件 |
 | `IMAP_SERVER_OLD` | `outlook.office365.com` | 旧版 IMAP 服务器 |
 | `IMAP_SERVER_NEW` | `outlook.live.com` | 新版 IMAP 服务器 |
