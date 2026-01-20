@@ -49,32 +49,6 @@ GPTMAIL_API_KEY = os.getenv("GPTMAIL_API_KEY", "gpt-test")  # 测试 API Key，�
 TEMP_EMAIL_GROUP_ID = -1
 
 
-# ==================== 应用初始化 ====================
-
-def init_app():
-    """初始化应用（确保目录和数据库存在）"""
-    # 确保 templates 目录存在
-    os.makedirs('templates', exist_ok=True)
-    
-    # 确保数据目录存在
-    data_dir = os.path.dirname(DATABASE)
-    if data_dir:
-        os.makedirs(data_dir, exist_ok=True)
-    
-    # 初始化数据库
-    init_db()
-    
-    print("=" * 60)
-    print("Outlook 邮件 Web 应用已初始化")
-    print(f"数据库文件: {DATABASE}")
-    print(f"GPTMail API: {GPTMAIL_BASE_URL}")
-    print("=" * 60)
-
-
-# 在模块加载时初始化应用
-init_app()
-
-
 # ==================== 数据库操作 ====================
 
 def get_db():
@@ -210,6 +184,32 @@ def init_db():
     
     conn.commit()
     conn.close()
+
+
+# ==================== 应用初始化 ====================
+
+def init_app():
+    """初始化应用（确保目录和数据库存在）"""
+    # 确保 templates 目录存在
+    os.makedirs('templates', exist_ok=True)
+    
+    # 确保数据目录存在
+    data_dir = os.path.dirname(DATABASE)
+    if data_dir:
+        os.makedirs(data_dir, exist_ok=True)
+    
+    # 初始化数据库
+    init_db()
+    
+    print("=" * 60)
+    print("Outlook 邮件 Web 应用已初始化")
+    print(f"数据库文件: {DATABASE}")
+    print(f"GPTMail API: {GPTMAIL_BASE_URL}")
+    print("=" * 60)
+
+
+# 在模块加载时初始化应用
+init_app()
 
 
 # ==================== 设置操作 ====================
