@@ -22,7 +22,11 @@ from functools import wraps
 import requests
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+# 使用固定的 secret_key（从环境变量获取，或使用默认值）
+# 这样可以确保重启后 session 不会失效
+app.secret_key = os.getenv("SECRET_KEY", "outlook-mail-reader-secret-key-change-in-production")
+# 设置 session 过期时间（默认 7 天）
+app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 24 * 7  # 7 天
 
 # 登录密码配置（可以修改为你想要的密码）
 LOGIN_PASSWORD = os.getenv("LOGIN_PASSWORD", "admin123")

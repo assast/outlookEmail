@@ -74,10 +74,12 @@ docker-compose down
 
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
+| `SECRET_KEY` | Session 密钥（建议修改） | `outlook-mail-reader-secret-key-change-in-production` |
 | `LOGIN_PASSWORD` | 登录密码 | `admin123` |
 | `FLASK_ENV` | 运行环境 | `production` |
 | `DATABASE_PATH` | 数据库路径 | `data/outlook_accounts.db` |
 | `GPTMAIL_BASE_URL` | GPTMail API 地址 | `https://mail.chatgpt.org.uk` |
+| `GPTMAIL_API_KEY` | GPTMail API Key | `gpt-test` |
 | `GPTMAIL_API_KEY` | GPTMail API Key | `gpt-test` |
 
 ### 数据持久化

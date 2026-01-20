@@ -13,6 +13,8 @@ services:
     environment:
       # Flask 配置
       - FLASK_APP=web_outlook_app.py
+      # Session 密钥（建议修改为随机字符串，重启后保持不变）
+      - SECRET_KEY=outlook-mail-reader-secret-key-please-change-me
       # 应用配置
       - PORT=5000
       - HOST=0.0.0.0
