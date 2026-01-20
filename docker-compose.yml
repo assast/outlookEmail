@@ -23,16 +23,3 @@ services:
       # GPTMail 配置
       - GPTMAIL_BASE_URL=https://mail.chatgpt.org.uk
       # - GPTMAIL_API_KEY=
-
-    networks:
-      - outlook-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/login || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-networks:
-  outlook-network:
-    driver: bridge
