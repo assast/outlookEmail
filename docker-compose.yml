@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   outlook-mail-reader:
-    images: ghcr.io/assast/outlookemail:latest
+    image: ghcr.io/assast/outlookemail:latest
     container_name: outlook-mail-reader
     restart: unless-stopped
     ports:
