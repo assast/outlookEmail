@@ -1247,9 +1247,9 @@ def api_refresh_all_accounts():
         conn.row_factory = sqlite3.Row
 
         try:
-            # 清除之前的全量刷新记录（只保留最近一次）
+            # 清除之前的所有刷新记录（只保留最近一次全量刷新）
             try:
-                conn.execute("DELETE FROM account_refresh_logs WHERE refresh_type = 'manual'")
+                conn.execute("DELETE FROM account_refresh_logs")
                 conn.commit()
             except Exception as e:
                 print(f"清除旧记录失败: {str(e)}")
@@ -1477,10 +1477,10 @@ def api_get_failed_refresh_logs():
 @app.route('/api/accounts/refresh-stats', methods=['GET'])
 @login_required
 def api_get_refresh_stats():
-    """获取刷新统计信息（统计所有 manual 和 retry 刷新记录）"""
+    """获取刷新统计信息（统计所有类型的刷新记录）"""
     db = get_db()
 
-    # 统计 manual 和 retry 类型的记录，这样重试成功的记录也会被统计
+    # 统计所有类型的刷新记录，不限制 refresh_type
     cursor = db.execute('''
         SELECT
             COUNT(*) as total,
@@ -1488,7 +1488,6 @@ def api_get_refresh_stats():
             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
             MAX(created_at) as last_refresh_time
         FROM account_refresh_logs
-        WHERE refresh_type IN ('manual', 'retry')
     ''')
 
     stats = cursor.fetchone()

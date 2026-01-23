@@ -748,6 +748,8 @@
             max-height: 90vh;
             overflow-y: auto;
             box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            position: relative;
+            z-index: 1001;
         }
         
         .modal-header {
@@ -1211,7 +1213,7 @@
     </div>
     
     <!-- 添加分组模态框 -->
-    <div class="modal" id="addGroupModal">
+    <div class="modal" id="addGroupModal" onclick="if(event.target === this) hideAddGroupModal()">
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="groupModalTitle">添加分组</h3>
@@ -1261,7 +1263,7 @@
     </div>
     
     <!-- 添加账号模态框 -->
-    <div class="modal" id="addAccountModal">
+    <div class="modal" id="addAccountModal" onclick="if(event.target === this) hideAddAccountModal()">
         <div class="modal-content">
             <div class="modal-header">
                 <h3>导入邮箱账号</h3>
@@ -1288,7 +1290,7 @@
     </div>
     
     <!-- 编辑账号模态框 -->
-    <div class="modal" id="editAccountModal">
+    <div class="modal" id="editAccountModal" onclick="if(event.target === this) hideEditAccountModal()">
         <div class="modal-content">
             <div class="modal-header">
                 <h3>编辑邮箱账号</h3>
@@ -1339,7 +1341,7 @@
     </div>
     
     <!-- 导出邮箱模态框 -->
-    <div class="modal" id="exportModal">
+    <div class="modal" id="exportModal" onclick="if(event.target === this) hideExportModal()">
         <div class="modal-content" style="width: 500px;">
             <div class="modal-header">
                 <h3>导出邮箱</h3>
@@ -1367,7 +1369,7 @@
     </div>
     
     <!-- 设置模态框 -->
-    <div class="modal" id="settingsModal">
+    <div class="modal" id="settingsModal" onclick="if(event.target === this) hideSettingsModal()">
         <div class="modal-content" style="width: 480px;">
             <div class="modal-header">
                 <h3>⚙️ 系统设置</h3>
@@ -1393,7 +1395,7 @@
     </div>
 
     <!-- Token 刷新管理模态框 -->
-    <div class="modal" id="refreshModal">
+    <div class="modal" id="refreshModal" onclick="if(event.target === this) hideRefreshModal()">
         <div class="modal-content" style="width: 800px; max-width: 90vw;">
             <div class="modal-header">
                 <h3>🔄 Token 刷新管理</h3>
@@ -1485,7 +1487,7 @@
     </div>
 
     <!-- 获取 Refresh Token 模态框 -->
-    <div class="modal" id="getRefreshTokenModal">
+    <div class="modal" id="getRefreshTokenModal" onclick="if(event.target === this) hideGetRefreshTokenModal()">
         <div class="modal-content" style="width: 600px;">
             <div class="modal-header">
                 <h3>🔑 获取 Refresh Token</h3>
@@ -3411,8 +3413,27 @@
 
         // 隐藏刷新模态框
         function hideRefreshModal() {
-            document.getElementById('refreshModal').classList.remove('show');
-            // 不隐藏列表，保留上次的数据
+            const modal = document.getElementById('refreshModal');
+            modal.classList.remove('show');
+
+            // 确保进度条被隐藏
+            const progress = document.getElementById('refreshProgress');
+            if (progress) {
+                progress.style.display = 'none';
+            }
+
+            // 重置按钮状态
+            const refreshAllBtn = document.getElementById('refreshAllBtn');
+            if (refreshAllBtn) {
+                refreshAllBtn.disabled = false;
+                refreshAllBtn.textContent = '🔄 全量刷新';
+            }
+
+            const retryFailedBtn = document.getElementById('retryFailedBtn');
+            if (retryFailedBtn) {
+                retryFailedBtn.disabled = false;
+                retryFailedBtn.textContent = '🔁 重试失败';
+            }
         }
 
         // 加载刷新统计
