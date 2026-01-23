@@ -584,7 +584,91 @@
             line-height: 1.7;
             color: #333;
         }
-        
+
+        /* 全屏查看邮件 */
+        .fullscreen-email-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.95);
+            z-index: 2000;
+            overflow: hidden;
+        }
+
+        .fullscreen-email-modal.show {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .fullscreen-email-header {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333;
+            flex-shrink: 0;
+        }
+
+        .fullscreen-email-title {
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .fullscreen-close-btn {
+            background: none;
+            border: none;
+            color: #ffffff;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 4px 12px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .fullscreen-close-btn:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .fullscreen-email-content {
+            flex: 1;
+            overflow-y: auto;
+            background-color: #ffffff;
+            padding: 32px;
+        }
+
+        .fullscreen-email-content iframe {
+            width: 100%;
+            border: none;
+            background-color: #ffffff;
+            display: block;
+        }
+
+        .fullscreen-email-content .email-body-text {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .fullscreen-btn {
+            background: none;
+            border: 1px solid #e5e5e5;
+            color: #666;
+            cursor: pointer;
+            font-size: 13px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.15s;
+            margin-left: auto;
+        }
+
+        .fullscreen-btn:hover {
+            background-color: #f0f0f0;
+        }
+
         /* 空状态 */
         .empty-state {
             display: flex;
@@ -1114,6 +1198,7 @@
                     <button class="toggle-list-btn" onclick="toggleEmailList()">
                         <span id="toggleListText">隐藏列表</span>
                     </button>
+                    <button class="fullscreen-btn" onclick="openFullscreenEmail()">🔍 全屏查看</button>
                 </div>
                 <div id="emailDetail">
                     <div class="empty-state">
@@ -2902,9 +2987,9 @@
         function toggleEmailList() {
             const panel = document.getElementById('emailListPanel');
             const toggleText = document.getElementById('toggleListText');
-            
+
             isListVisible = !isListVisible;
-            
+
             if (isListVisible) {
                 panel.classList.remove('hidden');
                 toggleText.textContent = '隐藏列表';
@@ -2913,7 +2998,129 @@
                 toggleText.textContent = '显示列表';
             }
         }
-        
+
+        // 全屏查看邮件
+        let currentFullscreenEmail = null;
+
+        function openFullscreenEmail() {
+            const emailDetail = document.getElementById('emailDetail');
+            const modal = document.getElementById('fullscreenEmailModal');
+            const content = document.getElementById('fullscreenEmailContent');
+            const title = document.getElementById('fullscreenEmailTitle');
+
+            // 获取当前邮件的标题
+            const subjectElement = emailDetail.querySelector('.email-detail-subject');
+            if (subjectElement) {
+                title.textContent = subjectElement.textContent;
+            }
+
+            // 克隆邮件内容
+            const emailHeader = emailDetail.querySelector('.email-detail-header');
+            const emailBody = emailDetail.querySelector('.email-detail-body');
+
+            if (emailHeader && emailBody) {
+                // 清空内容
+                content.innerHTML = '';
+
+                // 克隆头部信息
+                const headerClone = emailHeader.cloneNode(true);
+                content.appendChild(headerClone);
+
+                // 处理邮件正文
+                const iframe = emailBody.querySelector('iframe');
+                const textContent = emailBody.querySelector('.email-body-text');
+
+                if (iframe) {
+                    // 如果是 HTML 邮件，创建新的 iframe
+                    const newIframe = document.createElement('iframe');
+                    newIframe.id = 'fullscreenEmailBodyFrame';
+                    newIframe.style.width = '100%';
+                    newIframe.style.border = 'none';
+                    newIframe.style.backgroundColor = '#ffffff';
+
+                    // 复制原 iframe 的内容
+                    if (iframe.contentDocument) {
+                        const htmlContent = iframe.contentDocument.documentElement.outerHTML;
+                        newIframe.srcdoc = htmlContent;
+                    }
+
+                    content.appendChild(newIframe);
+
+                    // 调整 iframe 高度
+                    newIframe.onload = function() {
+                        adjustFullscreenIframeHeight(newIframe);
+                    };
+                } else if (textContent) {
+                    // 如果是纯文本邮件，直接克隆
+                    const textClone = textContent.cloneNode(true);
+                    content.appendChild(textClone);
+                }
+
+                // 显示模态框
+                modal.classList.add('show');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function closeFullscreenEmail() {
+            const modal = document.getElementById('fullscreenEmailModal');
+            modal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        function closeFullscreenEmailOnBackdrop(event) {
+            // 只有点击背景时才关闭，点击内容区域不关闭
+            if (event.target.id === 'fullscreenEmailModal') {
+                closeFullscreenEmail();
+            }
+        }
+
+        function adjustFullscreenIframeHeight(iframe) {
+            try {
+                const adjustHeight = () => {
+                    if (iframe.contentDocument && iframe.contentDocument.body) {
+                        const body = iframe.contentDocument.body;
+                        const html = iframe.contentDocument.documentElement;
+                        const height = Math.max(
+                            body.scrollHeight,
+                            body.offsetHeight,
+                            html.clientHeight,
+                            html.scrollHeight,
+                            html.offsetHeight
+                        );
+                        // 全屏模式下设置实际高度，添加余量
+                        iframe.style.height = (height + 100) + 'px';
+                    }
+                };
+
+                // 多次调整高度
+                adjustHeight();
+                setTimeout(adjustHeight, 100);
+                setTimeout(adjustHeight, 300);
+                setTimeout(adjustHeight, 500);
+                setTimeout(adjustHeight, 1000);
+
+                // 监听内容变化
+                if (iframe.contentDocument) {
+                    const observer = new MutationObserver(adjustHeight);
+                    observer.observe(iframe.contentDocument.body, {
+                        childList: true,
+                        subtree: true,
+                        attributes: true
+                    });
+
+                    // 监听图片加载
+                    const images = iframe.contentDocument.querySelectorAll('img');
+                    images.forEach(img => {
+                        img.addEventListener('load', adjustHeight);
+                        img.addEventListener('error', adjustHeight);
+                    });
+                }
+            } catch (e) {
+                console.log('Cannot adjust fullscreen iframe height:', e);
+            }
+        }
+
         // 显示邮件列表（移动端）
         function showEmailList() {
             document.getElementById('emailListPanel').classList.remove('hidden');
@@ -3607,8 +3814,20 @@
                 hideExportModal();
                 hideSettingsModal();
                 hideRefreshModal();
+                closeFullscreenEmail();
             }
         });
     </script>
+
+    <!-- 全屏查看邮件模态框 -->
+    <div id="fullscreenEmailModal" class="fullscreen-email-modal" onclick="closeFullscreenEmailOnBackdrop(event)">
+        <div class="fullscreen-email-header">
+            <div class="fullscreen-email-title" id="fullscreenEmailTitle">邮件详情</div>
+            <button class="fullscreen-close-btn" onclick="closeFullscreenEmail()">×</button>
+        </div>
+        <div class="fullscreen-email-content" id="fullscreenEmailContent">
+            <!-- 邮件内容将在这里显示 -->
+        </div>
+    </div>
 </body>
 </html>
