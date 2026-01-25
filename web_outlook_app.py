@@ -13,6 +13,7 @@ import sqlite3
 import os
 import hashlib
 import secrets
+import time
 from datetime import datetime
 from email.header import decode_header
 from typing import Optional, List, Dict, Any
@@ -207,12 +208,54 @@ def init_db():
         INSERT OR IGNORE INTO settings (key, value)
         VALUES ('login_password', ?)
     ''', (LOGIN_PASSWORD,))
-    
+
     cursor.execute('''
         INSERT OR IGNORE INTO settings (key, value)
         VALUES ('gptmail_api_key', ?)
     ''', (GPTMAIL_API_KEY,))
-    
+
+    # 初始化刷新配置
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('refresh_interval_days', '30')
+    ''')
+
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('refresh_delay_seconds', '5')
+    ''')
+
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('refresh_cron', '0 2 * * *')
+    ''')
+
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('use_cron_schedule', 'false')
+    ''')
+
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('enable_scheduled_refresh', 'true')
+    ''')
+
+    # 创建索引以优化查询性能
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_accounts_last_refresh_at
+        ON accounts(last_refresh_at)
+    ''')
+
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_accounts_status
+        ON accounts(status)
+    ''')
+
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_account_refresh_logs_account_id
+        ON account_refresh_logs(account_id)
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -1015,10 +1058,23 @@ def api_get_accounts():
     """获取所有账号"""
     group_id = request.args.get('group_id', type=int)
     accounts = load_accounts(group_id)
-    
+
+    # 获取每个账号的最后刷新状态
+    db = get_db()
+
     # 返回时隐藏敏感信息
     safe_accounts = []
     for acc in accounts:
+        # 查询该账号最后一次刷新记录
+        cursor = db.execute('''
+            SELECT status, error_message, created_at
+            FROM account_refresh_logs
+            WHERE account_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+        ''', (acc['id'],))
+        last_refresh_log = cursor.fetchone()
+
         safe_accounts.append({
             'id': acc['id'],
             'email': acc['email'],
@@ -1028,6 +1084,9 @@ def api_get_accounts():
             'group_color': acc.get('group_color', '#666666'),
             'remark': acc.get('remark', ''),
             'status': acc.get('status', 'active'),
+            'last_refresh_at': acc.get('last_refresh_at', ''),
+            'last_refresh_status': last_refresh_log['status'] if last_refresh_log else None,
+            'last_refresh_error': last_refresh_log['error_message'] if last_refresh_log else None,
             'created_at': acc.get('created_at', ''),
             'updated_at': acc.get('updated_at', '')
         })
@@ -1276,6 +1335,7 @@ def api_refresh_account(account_id):
 def api_refresh_all_accounts():
     """刷新所有账号的 token（流式响应，实时返回进度）"""
     import json
+    import time
 
     def generate():
         # 在生成器内部直接创建数据库连接
@@ -1283,12 +1343,17 @@ def api_refresh_all_accounts():
         conn.row_factory = sqlite3.Row
 
         try:
-            # 清除之前的所有刷新记录（只保留最近一次全量刷新）
+            # 获取刷新间隔配置
+            cursor_settings = conn.execute("SELECT value FROM settings WHERE key = 'refresh_delay_seconds'")
+            delay_row = cursor_settings.fetchone()
+            delay_seconds = int(delay_row['value']) if delay_row else 5
+
+            # 清理超过半年的刷新记录
             try:
-                conn.execute("DELETE FROM account_refresh_logs")
+                conn.execute("DELETE FROM account_refresh_logs WHERE created_at < datetime('now', '-6 months')")
                 conn.commit()
             except Exception as e:
-                print(f"清除旧记录失败: {str(e)}")
+                print(f"清理旧记录失败: {str(e)}")
 
             cursor = conn.execute("SELECT id, email, client_id, refresh_token FROM accounts WHERE status = 'active'")
             accounts = cursor.fetchall()
@@ -1299,7 +1364,7 @@ def api_refresh_all_accounts():
             failed_list = []
 
             # 发送开始信息
-            yield f"data: {json.dumps({'type': 'start', 'total': total})}\n\n"
+            yield f"data: {json.dumps({'type': 'start', 'total': total, 'delay_seconds': delay_seconds})}\n\n"
 
             for index, account in enumerate(accounts, 1):
                 account_id = account['id']
@@ -1341,6 +1406,11 @@ def api_refresh_all_accounts():
                         'email': account_email,
                         'error': error_msg
                     })
+
+                # 间隔控制（最后一个账号不需要延迟）
+                if index < total and delay_seconds > 0:
+                    yield f"data: {json.dumps({'type': 'delay', 'seconds': delay_seconds})}\n\n"
+                    time.sleep(delay_seconds)
 
             # 发送完成信息
             yield f"data: {json.dumps({'type': 'complete', 'total': total, 'success_count': success_count, 'failed_count': failed_count, 'failed_list': failed_list})}\n\n"
@@ -1413,18 +1483,131 @@ def api_refresh_failed_accounts():
     })
 
 
+@app.route('/api/accounts/trigger-scheduled-refresh', methods=['GET'])
+@login_required
+def api_trigger_scheduled_refresh():
+    """手动触发定时刷新（支持强制刷新）"""
+    import json
+    from datetime import datetime, timedelta
+
+    force = request.args.get('force', 'false').lower() == 'true'
+
+    # 获取配置
+    refresh_interval_days = int(get_setting('refresh_interval_days', '30'))
+
+    # 检查上次刷新时间
+    db = get_db()
+    cursor = db.execute('''
+        SELECT MAX(created_at) as last_refresh
+        FROM account_refresh_logs
+        WHERE refresh_type = 'scheduled'
+    ''')
+    row = cursor.fetchone()
+    last_refresh = row['last_refresh'] if row and row['last_refresh'] else None
+
+    # 判断是否需要刷新（force=true 时跳过检查）
+    if not force and last_refresh:
+        last_refresh_time = datetime.fromisoformat(last_refresh)
+        next_refresh_time = last_refresh_time + timedelta(days=refresh_interval_days)
+        if datetime.now() < next_refresh_time:
+            return jsonify({
+                'success': False,
+                'message': f'距离上次刷新未满 {refresh_interval_days} 天，下次刷新时间：{next_refresh_time.strftime("%Y-%m-%d %H:%M:%S")}',
+                'last_refresh': last_refresh,
+                'next_refresh': next_refresh_time.isoformat()
+            })
+
+    # 执行刷新（使用流式响应）
+    def generate():
+        conn = sqlite3.connect(DATABASE)
+        conn.row_factory = sqlite3.Row
+
+        try:
+            # 获取刷新间隔配置
+            cursor_settings = conn.execute("SELECT value FROM settings WHERE key = 'refresh_delay_seconds'")
+            delay_row = cursor_settings.fetchone()
+            delay_seconds = int(delay_row['value']) if delay_row else 5
+
+            # 清理超过半年的刷新记录
+            try:
+                conn.execute("DELETE FROM account_refresh_logs WHERE created_at < datetime('now', '-6 months')")
+                conn.commit()
+            except Exception as e:
+                print(f"清理旧记录失败: {str(e)}")
+
+            cursor = conn.execute("SELECT id, email, client_id, refresh_token FROM accounts WHERE status = 'active'")
+            accounts = cursor.fetchall()
+
+            total = len(accounts)
+            success_count = 0
+            failed_count = 0
+            failed_list = []
+
+            yield f"data: {json.dumps({'type': 'start', 'total': total, 'delay_seconds': delay_seconds, 'refresh_type': 'scheduled'})}\n\n"
+
+            for index, account in enumerate(accounts, 1):
+                account_id = account['id']
+                account_email = account['email']
+                client_id = account['client_id']
+                refresh_token = account['refresh_token']
+
+                yield f"data: {json.dumps({'type': 'progress', 'current': index, 'total': total, 'email': account_email, 'success_count': success_count, 'failed_count': failed_count})}\n\n"
+
+                success, error_msg = test_refresh_token(client_id, refresh_token)
+
+                try:
+                    conn.execute('''
+                        INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (account_id, account_email, 'scheduled', 'success' if success else 'failed', error_msg))
+
+                    if success:
+                        conn.execute('''
+                            UPDATE accounts
+                            SET last_refresh_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                            WHERE id = ?
+                        ''', (account_id,))
+
+                    conn.commit()
+                except Exception as e:
+                    print(f"记录刷新结果失败: {str(e)}")
+
+                if success:
+                    success_count += 1
+                else:
+                    failed_count += 1
+                    failed_list.append({
+                        'id': account_id,
+                        'email': account_email,
+                        'error': error_msg
+                    })
+
+                if index < total and delay_seconds > 0:
+                    yield f"data: {json.dumps({'type': 'delay', 'seconds': delay_seconds})}\n\n"
+                    time.sleep(delay_seconds)
+
+            yield f"data: {json.dumps({'type': 'complete', 'total': total, 'success_count': success_count, 'failed_count': failed_count, 'failed_list': failed_list})}\n\n"
+
+        finally:
+            conn.close()
+
+    return Response(generate(), mimetype='text/event-stream')
+
+
 @app.route('/api/accounts/refresh-logs', methods=['GET'])
 @login_required
 def api_get_refresh_logs():
-    """获取所有账号的刷新历史"""
+    """获取所有账号的刷新历史（只返回全量刷新：manual 和 scheduled，近半年）"""
     db = get_db()
-    limit = int(request.args.get('limit', 100))
+    limit = int(request.args.get('limit', 1000))
     offset = int(request.args.get('offset', 0))
 
     cursor = db.execute('''
         SELECT l.*, a.email as account_email
         FROM account_refresh_logs l
         LEFT JOIN accounts a ON l.account_id = a.id
+        WHERE l.refresh_type IN ('manual', 'scheduled')
+        AND l.created_at >= datetime('now', '-6 months')
         ORDER BY l.created_at DESC
         LIMIT ? OFFSET ?
     ''', (limit, offset))
@@ -1513,28 +1696,44 @@ def api_get_failed_refresh_logs():
 @app.route('/api/accounts/refresh-stats', methods=['GET'])
 @login_required
 def api_get_refresh_stats():
-    """获取刷新统计信息（统计所有类型的刷新记录）"""
+    """获取刷新统计信息（统计当前失败状态的邮箱数量）"""
     db = get_db()
 
-    # 统计所有类型的刷新记录，不限制 refresh_type
     cursor = db.execute('''
-        SELECT
-            COUNT(*) as total,
-            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
-            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
-            MAX(created_at) as last_refresh_time
+        SELECT MAX(created_at) as last_refresh_time
         FROM account_refresh_logs
+        WHERE refresh_type IN ('manual', 'scheduled')
     ''')
+    row = cursor.fetchone()
+    last_refresh_time = row['last_refresh_time'] if row else None
 
-    stats = cursor.fetchone()
+    cursor = db.execute('''
+        SELECT COUNT(*) as total_accounts
+        FROM accounts
+        WHERE status = 'active'
+    ''')
+    total_accounts = cursor.fetchone()['total_accounts']
+
+    cursor = db.execute('''
+        SELECT COUNT(DISTINCT l.account_id) as failed_count
+        FROM account_refresh_logs l
+        INNER JOIN (
+            SELECT account_id, MAX(created_at) as last_refresh
+            FROM account_refresh_logs
+            GROUP BY account_id
+        ) latest ON l.account_id = latest.account_id AND l.created_at = latest.last_refresh
+        INNER JOIN accounts a ON l.account_id = a.id
+        WHERE l.status = 'failed' AND a.status = 'active'
+    ''')
+    failed_count = cursor.fetchone()['failed_count']
 
     return jsonify({
         'success': True,
         'stats': {
-            'total': stats['total'] or 0,
-            'success_count': stats['success_count'] or 0,
-            'failed_count': stats['failed_count'] or 0,
-            'last_refresh_time': stats['last_refresh_time']
+            'total': total_accounts,
+            'success_count': total_accounts - failed_count,
+            'failed_count': failed_count,
+            'last_refresh_time': last_refresh_time
         }
     })
 
@@ -1559,6 +1758,15 @@ def api_get_emails(email_addr):
         # 每次只查询20封邮件
         emails = get_emails_graph(account['client_id'], account['refresh_token'], folder, skip, top)
         if emails is not None:
+            # 更新刷新时间
+            db = get_db()
+            db.execute('''
+                UPDATE accounts
+                SET last_refresh_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                WHERE email = ?
+            ''', (email_addr,))
+            db.commit()
+
             # 格式化 Graph API 返回的数据
             formatted = []
             for e in emails:
@@ -1571,17 +1779,26 @@ def api_get_emails(email_addr):
                     'has_attachments': e.get('hasAttachments', False),
                     'body_preview': e.get('bodyPreview', '')
                 })
-            
+
             return jsonify({
                 'success': True,
                 'emails': formatted,
                 'method': 'Graph API',
                 'has_more': len(formatted) >= top
             })
-    
+
     # 如果 Graph API 失败，尝试 IMAP
     emails = get_emails_imap(account['email'], account['client_id'], account['refresh_token'], folder, skip, top)
     if emails is not None:
+        # 更新刷新时间
+        db = get_db()
+        db.execute('''
+            UPDATE accounts
+            SET last_refresh_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE email = ?
+        ''', (email_addr,))
+        db.commit()
+
         return jsonify({
             'success': True,
             'emails': emails,
@@ -2064,6 +2281,47 @@ def api_exchange_oauth_token():
 
 # ==================== 设置 API ====================
 
+@app.route('/api/settings/validate-cron', methods=['POST'])
+@login_required
+def api_validate_cron():
+    """验证 Cron 表达式"""
+    try:
+        from croniter import croniter
+        from datetime import datetime
+    except ImportError:
+        return jsonify({'success': False, 'error': 'croniter 库未安装，请运行: pip install croniter'})
+
+    data = request.json
+    cron_expr = data.get('cron_expression', '').strip()
+
+    if not cron_expr:
+        return jsonify({'success': False, 'error': 'Cron 表达式不能为空'})
+
+    try:
+        base_time = datetime.now()
+        cron = croniter(cron_expr, base_time)
+
+        next_run = cron.get_next(datetime)
+
+        future_runs = []
+        temp_cron = croniter(cron_expr, base_time)
+        for _ in range(5):
+            future_runs.append(temp_cron.get_next(datetime).isoformat())
+
+        return jsonify({
+            'success': True,
+            'valid': True,
+            'next_run': next_run.isoformat(),
+            'future_runs': future_runs
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'valid': False,
+            'error': f'Cron 表达式无效: {str(e)}'
+        })
+
+
 @app.route('/api/settings', methods=['GET'])
 @login_required
 def api_get_settings():
@@ -2086,7 +2344,7 @@ def api_update_settings():
     data = request.json
     updated = []
     errors = []
-    
+
     # 更新登录密码
     if 'login_password' in data:
         new_password = data['login_password'].strip()
@@ -2097,7 +2355,7 @@ def api_update_settings():
                 updated.append('登录密码')
             else:
                 errors.append('更新登录密码失败')
-    
+
     # 更新 GPTMail API Key
     if 'gptmail_api_key' in data:
         new_api_key = data['gptmail_api_key'].strip()
@@ -2106,14 +2364,261 @@ def api_update_settings():
                 updated.append('GPTMail API Key')
             else:
                 errors.append('更新 GPTMail API Key 失败')
-    
+
+    # 更新刷新周期
+    if 'refresh_interval_days' in data:
+        try:
+            days = int(data['refresh_interval_days'])
+            if days < 1 or days > 90:
+                errors.append('刷新周期必须在 1-90 天之间')
+            elif set_setting('refresh_interval_days', str(days)):
+                updated.append('刷新周期')
+            else:
+                errors.append('更新刷新周期失败')
+        except ValueError:
+            errors.append('刷新周期必须是数字')
+
+    # 更新刷新间隔
+    if 'refresh_delay_seconds' in data:
+        try:
+            seconds = int(data['refresh_delay_seconds'])
+            if seconds < 0 or seconds > 60:
+                errors.append('刷新间隔必须在 0-60 秒之间')
+            elif set_setting('refresh_delay_seconds', str(seconds)):
+                updated.append('刷新间隔')
+            else:
+                errors.append('更新刷新间隔失败')
+        except ValueError:
+            errors.append('刷新间隔必须是数字')
+
+    # 更新 Cron 表达式
+    if 'refresh_cron' in data:
+        cron_expr = data['refresh_cron'].strip()
+        if cron_expr:
+            try:
+                from croniter import croniter
+                from datetime import datetime
+                croniter(cron_expr, datetime.now())
+                if set_setting('refresh_cron', cron_expr):
+                    updated.append('Cron 表达式')
+                else:
+                    errors.append('更新 Cron 表达式失败')
+            except ImportError:
+                errors.append('croniter 库未安装')
+            except Exception as e:
+                errors.append(f'Cron 表达式无效: {str(e)}')
+
+    # 更新刷新策略
+    if 'use_cron_schedule' in data:
+        use_cron = str(data['use_cron_schedule']).lower()
+        if use_cron in ('true', 'false'):
+            if set_setting('use_cron_schedule', use_cron):
+                updated.append('刷新策略')
+            else:
+                errors.append('更新刷新策略失败')
+        else:
+            errors.append('刷新策略必须是 true 或 false')
+
+    # 更新定时刷新开关
+    if 'enable_scheduled_refresh' in data:
+        enable = str(data['enable_scheduled_refresh']).lower()
+        if enable in ('true', 'false'):
+            if set_setting('enable_scheduled_refresh', enable):
+                updated.append('定时刷新开关')
+            else:
+                errors.append('更新定时刷新开关失败')
+        else:
+            errors.append('定时刷新开关必须是 true 或 false')
+
     if errors:
         return jsonify({'success': False, 'error': '；'.join(errors)})
-    
+
     if updated:
         return jsonify({'success': True, 'message': f'已更新：{", ".join(updated)}'})
     else:
         return jsonify({'success': False, 'error': '没有需要更新的设置'})
+
+
+# ==================== 定时任务调度器 ====================
+
+def init_scheduler():
+    """初始化定时任务调度器"""
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        import atexit
+
+        scheduler = BackgroundScheduler()
+
+        with app.app_context():
+            enable_scheduled = get_setting('enable_scheduled_refresh', 'true').lower() == 'true'
+
+            if not enable_scheduled:
+                print("✓ 定时刷新已禁用")
+                return None
+
+            use_cron = get_setting('use_cron_schedule', 'false').lower() == 'true'
+
+            if use_cron:
+                cron_expr = get_setting('refresh_cron', '0 2 * * *')
+                try:
+                    from croniter import croniter
+                    from datetime import datetime
+                    croniter(cron_expr, datetime.now())
+
+                    parts = cron_expr.split()
+                    if len(parts) == 5:
+                        minute, hour, day, month, day_of_week = parts
+                        trigger = CronTrigger(
+                            minute=minute,
+                            hour=hour,
+                            day=day,
+                            month=month,
+                            day_of_week=day_of_week
+                        )
+                        scheduler.add_job(
+                            func=scheduled_refresh_task,
+                            trigger=trigger,
+                            id='token_refresh',
+                            name='Token 定时刷新',
+                            replace_existing=True
+                        )
+                        scheduler.start()
+                        print(f"✓ 定时任务已启动：Cron 表达式 '{cron_expr}'")
+                        atexit.register(lambda: scheduler.shutdown())
+                        return scheduler
+                    else:
+                        print(f"⚠ Cron 表达式格式错误，回退到默认配置")
+                except Exception as e:
+                    print(f"⚠ Cron 表达式解析失败: {str(e)}，回退到默认配置")
+
+            refresh_interval_days = int(get_setting('refresh_interval_days', '30'))
+            scheduler.add_job(
+                func=scheduled_refresh_task,
+                trigger=CronTrigger(hour=2, minute=0),
+                id='token_refresh',
+                name='Token 定时刷新',
+                replace_existing=True
+            )
+
+            scheduler.start()
+            print(f"✓ 定时任务已启动：每天凌晨 2:00 检查刷新（周期：{refresh_interval_days} 天）")
+
+        atexit.register(lambda: scheduler.shutdown())
+
+        return scheduler
+    except ImportError:
+        print("⚠ APScheduler 未安装，定时任务功能不可用")
+        print("  安装命令：pip install APScheduler>=3.10.0")
+        return None
+    except Exception as e:
+        print(f"⚠ 定时任务初始化失败：{str(e)}")
+        return None
+
+
+def scheduled_refresh_task():
+    """定时刷新任务（由调度器调用）"""
+    from datetime import datetime, timedelta
+
+    try:
+        with app.app_context():
+            enable_scheduled = get_setting('enable_scheduled_refresh', 'true').lower() == 'true'
+
+            if not enable_scheduled:
+                print(f"[定时任务] 定时刷新已禁用，跳过执行")
+                return
+
+            use_cron = get_setting('use_cron_schedule', 'false').lower() == 'true'
+
+            if use_cron:
+                print(f"[定时任务] 使用 Cron 调度，直接执行刷新...")
+                trigger_refresh_internal()
+                print(f"[定时任务] Token 刷新完成")
+                return
+
+            refresh_interval_days = int(get_setting('refresh_interval_days', '30'))
+
+        conn = sqlite3.connect(DATABASE)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute('''
+            SELECT MAX(created_at) as last_refresh
+            FROM account_refresh_logs
+            WHERE refresh_type = 'scheduled'
+        ''')
+        row = cursor.fetchone()
+        conn.close()
+
+        last_refresh = row['last_refresh'] if row and row['last_refresh'] else None
+
+        if last_refresh:
+            last_refresh_time = datetime.fromisoformat(last_refresh)
+            next_refresh_time = last_refresh_time + timedelta(days=refresh_interval_days)
+            if datetime.now() < next_refresh_time:
+                print(f"[定时任务] 距离上次刷新未满 {refresh_interval_days} 天，跳过本次刷新")
+                return
+
+        print(f"[定时任务] 开始执行 Token 刷新...")
+        trigger_refresh_internal()
+        print(f"[定时任务] Token 刷新完成")
+
+    except Exception as e:
+        print(f"[定时任务] 执行失败：{str(e)}")
+
+
+def trigger_refresh_internal():
+    """内部触发刷新（不通过 HTTP）"""
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+
+    try:
+        # 获取刷新间隔配置
+        cursor_settings = conn.execute("SELECT value FROM settings WHERE key = 'refresh_delay_seconds'")
+        delay_row = cursor_settings.fetchone()
+        delay_seconds = int(delay_row['value']) if delay_row else 5
+
+        # 清理超过半年的刷新记录
+        conn.execute("DELETE FROM account_refresh_logs WHERE created_at < datetime('now', '-6 months')")
+        conn.commit()
+
+        cursor = conn.execute("SELECT id, email, client_id, refresh_token FROM accounts WHERE status = 'active'")
+        accounts = cursor.fetchall()
+
+        total = len(accounts)
+        success_count = 0
+        failed_count = 0
+
+        for index, account in enumerate(accounts, 1):
+            account_id = account['id']
+            account_email = account['email']
+            client_id = account['client_id']
+            refresh_token = account['refresh_token']
+
+            success, error_msg = test_refresh_token(client_id, refresh_token)
+
+            conn.execute('''
+                INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (account_id, account_email, 'scheduled', 'success' if success else 'failed', error_msg))
+
+            if success:
+                conn.execute('''
+                    UPDATE accounts
+                    SET last_refresh_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (account_id,))
+                success_count += 1
+            else:
+                failed_count += 1
+
+            conn.commit()
+
+            if index < total and delay_seconds > 0:
+                time.sleep(delay_seconds)
+
+        print(f"[定时任务] 刷新结果：总计 {total}，成功 {success_count}，失败 {failed_count}")
+
+    finally:
+        conn.close()
 
 
 # ==================== 主程序 ====================
@@ -2123,12 +2628,15 @@ if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     host = os.getenv('HOST', '0.0.0.0')
     debug = os.getenv('FLASK_ENV', 'production') != 'production'
-    
+
     print("=" * 60)
     print("Outlook 邮件 Web 应用")
     print("=" * 60)
     print(f"访问地址: http://{host}:{port}")
     print(f"运行模式: {'开发' if debug else '生产'}")
     print("=" * 60)
-    
+
+    # 初始化定时任务
+    scheduler = init_scheduler()
+
     app.run(debug=debug, host=host, port=port)

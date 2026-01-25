@@ -291,6 +291,17 @@
             font-weight: 500;
             margin-right: 4px;
         }
+
+        .sort-btn:hover {
+            background-color: #f5f5f5 !important;
+            border-color: #ccc !important;
+        }
+
+        .sort-btn.active {
+            background-color: #1a1a1a !important;
+            color: #ffffff !important;
+            border-color: #1a1a1a !important;
+        }
         
         .account-list {
             flex: 1;
@@ -782,6 +793,62 @@
             position: relative;
             z-index: 1001;
         }
+
+        #refreshErrorModal .modal-content {
+            width: 640px;
+        }
+
+        .error-card {
+            background-color: #fafafa;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .error-card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #dc3545;
+            margin-bottom: 12px;
+        }
+
+        .error-message-box {
+            background-color: #ffffff;
+            border: 1px solid #e5e5e5;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 13px;
+            color: #333;
+            max-height: 150px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .solution-list {
+            list-style-type: none;
+            padding-left: 0;
+            margin-top: 16px;
+        }
+
+        .solution-list li {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .solution-list li::before {
+            content: '✓';
+            color: #28a745;
+            font-weight: 600;
+            margin-right: 10px;
+            margin-top: 2px;
+        }
+
         
         .modal-header {
             padding: 20px 24px;
@@ -1188,6 +1255,19 @@
                        placeholder="搜索邮箱地址..."
                        autocomplete="off">
             </div>
+            <div class="sort-control" style="padding: 8px 16px; border-bottom: 1px solid #e5e5e5; display: flex; align-items: center; gap: 8px; background-color: #fafafa;">
+                <label style="font-size: 12px; color: #666; font-weight: 500;">排序：</label>
+                <div style="display: flex; gap: 4px;">
+                    <button class="sort-btn active" data-sort="refresh_time" onclick="sortAccounts('refresh_time')"
+                            style="padding: 4px 10px; font-size: 12px; background-color: #1a1a1a; border: 1px solid #1a1a1a; border-radius: 4px; color: #ffffff; cursor: pointer; transition: all 0.15s;">
+                        🕐 刷新时间
+                    </button>
+                    <button class="sort-btn" data-sort="email" onclick="sortAccounts('email')"
+                            style="padding: 4px 10px; font-size: 12px; background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 4px; color: #666; cursor: pointer; transition: all 0.15s;">
+                        📧 邮箱名
+                    </button>
+                </div>
+            </div>
             <div class="account-list" id="accountList">
                 <div class="empty-state">
                     <div class="empty-state-icon">📁</div>
@@ -1424,6 +1504,86 @@
                     <input type="text" class="form-input" id="settingsApiKey" placeholder="输入 GPTMail API Key">
                     <div class="form-hint">用于临时邮箱功能，可从 <a href="https://mail.chatgpt.org.uk/api" target="_blank" style="color: #0078d4;">gptmail.io</a> 获取</div>
                 </div>
+
+                <div style="border-top: 1px solid #e5e5e5; margin: 24px 0; padding-top: 24px;">
+                    <h4 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">🔄 Token 刷新设置</h4>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="enableScheduledRefresh" checked>
+                            <span class="form-label" style="margin: 0;">启用定时刷新</span>
+                        </label>
+                        <div class="form-hint">关闭后将不会自动执行定时刷新任务</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">刷新策略</label>
+                        <div style="display: flex; gap: 16px; margin-bottom: 12px;">
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                <input type="radio" name="refreshStrategy" value="days" checked onchange="toggleRefreshStrategy()">
+                                <span>按天数</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                <input type="radio" name="refreshStrategy" value="cron" onchange="toggleRefreshStrategy()">
+                                <span>Cron 表达式</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="daysStrategyContainer">
+                        <div class="form-group">
+                            <label class="form-label">
+                                定时刷新周期
+                                <span style="font-size: 12px; color: #999; font-weight: 400;">（每隔 X 天自动刷新所有账号）</span>
+                            </label>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="number" class="form-input" id="refreshIntervalDays"
+                                       min="1" max="90" value="30" placeholder="30"
+                                       style="max-width: 120px;">
+                                <span style="font-size: 14px; color: #666; font-weight: 500;">天</span>
+                            </div>
+                            <div class="form-hint">建议设置为 30 天，防止 Token 因 90 天不使用而过期</div>
+                        </div>
+                    </div>
+
+                    <div id="cronStrategyContainer" style="display: none;">
+                        <div class="form-group">
+                            <label class="form-label">Cron 表达式</label>
+                            <input type="text" class="form-input" id="refreshCron" placeholder="0 2 * * *" value="0 2 * * *">
+                            <div class="form-hint">格式：分 时 日 月 星期（例如：0 2 * * * 表示每天凌晨 2:00）</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">常用样例</label>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;">
+                                <button class="btn btn-sm btn-secondary" onclick="selectCronExample('0 2 * * *')">每天凌晨 2:00</button>
+                                <button class="btn btn-sm btn-secondary" onclick="selectCronExample('0 2 * * 1')">每周一凌晨 2:00</button>
+                                <button class="btn btn-sm btn-secondary" onclick="selectCronExample('0 2 1 * *')">每月 1 号凌晨 2:00</button>
+                                <button class="btn btn-sm btn-secondary" onclick="selectCronExample('0 2 */3 * *')">每 3 天凌晨 2:00</button>
+                                <button class="btn btn-sm btn-secondary" onclick="selectCronExample('0 */12 * * *')">每 12 小时</button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <button class="btn btn-secondary" onclick="validateCronExpression()">验证表达式</button>
+                            <div id="cronValidationResult" style="margin-top: 8px; font-size: 13px;"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            邮箱间刷新间隔
+                            <span style="font-size: 12px; color: #999; font-weight: 400;">（每个邮箱刷新之间的等待时间）</span>
+                        </label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" class="form-input" id="refreshDelaySeconds"
+                                   min="0" max="60" value="5" placeholder="5"
+                                   style="max-width: 120px;">
+                            <span style="font-size: 14px; color: #666; font-weight: 500;">秒</span>
+                        </div>
+                        <div class="form-hint">建议设置为 5-10 秒，避免频繁请求触发 API 限流</div>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="hideSettingsModal()">取消</button>
@@ -1441,41 +1601,56 @@
             </div>
             <div class="modal-body">
                 <!-- 刷新统计 -->
-                <div style="background-color: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #333;">本次刷新结果</div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px;">
-                        <div>
-                            <div style="font-size: 12px; color: #666; margin-bottom: 4px;">上次刷新时间</div>
-                            <div style="font-size: 14px; font-weight: 600;" id="lastRefreshTime">-</div>
+                <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                    <div style="font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #333; display: flex; align-items: center; gap: 8px;">
+                        <span>📊</span>
+                        <span>刷新统计</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;">
+                        <div style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+                                <span>🕐</span>
+                                <span>上次全量刷新</span>
+                            </div>
+                            <div style="font-size: 13px; font-weight: 600; color: #333;" id="lastRefreshTime">-</div>
                         </div>
-                        <div>
-                            <div style="font-size: 12px; color: #666; margin-bottom: 4px;">总计</div>
-                            <div style="font-size: 14px; font-weight: 600;" id="totalRefreshCount">0</div>
+                        <div style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+                                <span>📝</span>
+                                <span>总邮箱数</span>
+                            </div>
+                            <div style="font-size: 18px; font-weight: 700; color: #333;" id="totalRefreshCount">0</div>
                         </div>
-                        <div>
-                            <div style="font-size: 12px; color: #666; margin-bottom: 4px;">成功</div>
-                            <div style="font-size: 14px; font-weight: 600; color: #28a745;" id="successRefreshCount">0</div>
+                        <div style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+                                <span>✅</span>
+                                <span>成功邮箱</span>
+                            </div>
+                            <div style="font-size: 18px; font-weight: 700; color: #28a745;" id="successRefreshCount">0</div>
                         </div>
-                        <div>
-                            <div style="font-size: 12px; color: #666; margin-bottom: 4px;">失败</div>
-                            <div style="font-size: 14px; font-weight: 600; color: #dc3545;" id="failedRefreshCount">0</div>
+                        <div style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+                                <span>❌</span>
+                                <span>失败邮箱</span>
+                            </div>
+                            <div style="font-size: 18px; font-weight: 700; color: #dc3545;" id="failedRefreshCount">0</div>
                         </div>
                     </div>
                 </div>
 
                 <!-- 操作按钮 -->
-                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 16px;">
                     <button class="btn btn-primary" onclick="refreshAllAccounts()" id="refreshAllBtn">
                         🔄 全量刷新
                     </button>
                     <button class="btn btn-warning" onclick="retryFailedAccounts()" id="retryFailedBtn">
                         🔁 重试失败
                     </button>
-                    <button class="btn btn-secondary" onclick="loadSuccessLogs()">
-                        ✅ 成功列表
-                    </button>
                     <button class="btn btn-secondary" onclick="loadFailedLogs()">
-                        ❌ 失败列表
+                        ❌ 失败邮箱
+                    </button>
+                    <button class="btn btn-secondary" onclick="loadRefreshLogs()">
+                        📋 刷新历史
                     </button>
                 </div>
 
@@ -1485,10 +1660,10 @@
                     <div style="font-size: 13px; line-height: 1.8;" id="refreshProgressText">请稍候</div>
                 </div>
 
-                <!-- 失败列表 -->
+                <!-- 失败邮箱列表 -->
                 <div id="failedListContainer" style="display: none;">
                     <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-                        <span>失败列表</span>
+                        <span>当前失败状态的邮箱</span>
                         <button class="btn btn-sm btn-secondary" onclick="hideFailedList()">隐藏</button>
                     </div>
                     <div id="failedList" style="max-height: 300px; overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 6px;">
@@ -1496,30 +1671,51 @@
                     </div>
                 </div>
 
-                <!-- 成功列表 -->
-                <div id="successListContainer" style="display: none;">
-                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-                        <span>成功列表</span>
-                        <button class="btn btn-sm btn-secondary" onclick="hideSuccessList()">隐藏</button>
-                    </div>
-                    <div id="successList" style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 6px;">
-                        <!-- 成功列表将通过 JS 动态加载 -->
-                    </div>
-                </div>
-
                 <!-- 刷新历史 -->
                 <div id="refreshLogsContainer" style="display: none;">
-                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-                        <span>刷新历史</span>
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; padding: 10px; background-color: #f8f9fa; border-radius: 6px;">
+                        <span style="display: flex; align-items: center; gap: 6px;">
+                            <span>📋</span>
+                            <span>全量刷新历史</span>
+                        </span>
                         <button class="btn btn-sm btn-secondary" onclick="hideRefreshLogs()">隐藏</button>
                     </div>
-                    <div id="refreshLogsList" style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 6px;">
+                    <div id="refreshLogsList" style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 6px; background-color: white;">
                         <!-- 刷新历史将通过 JS 动态加载 -->
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="hideRefreshModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 刷新失败提示模态框 -->
+    <div class="modal" id="refreshErrorModal" onclick="if(event.target === this) hideRefreshErrorModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⚠️ 刷新失败</h3>
+                <button class="modal-close" onclick="hideRefreshErrorModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="error-card">
+                    <div class="error-card-title" id="refreshErrorEmail"></div>
+                    <div class="error-message-box" id="refreshErrorMessage"></div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">💡 解决建议</label>
+                    <ul class="solution-list">
+                        <li>检查账号信息中的 <strong>Client ID</strong> 和 <strong>Refresh Token</strong> 是否填写正确且没有多余的空格。</li>
+                        <li>尝试使用"获取 Refresh Token"功能，重新为该账号生成一个新的 Token。</li>
+                        <li>检查账号是否在 Microsoft 365 管理中心被禁用或相关权限是否被撤销。</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideRefreshErrorModal()">关闭</button>
+                <button class="btn btn-primary" id="editAccountFromErrorBtn">编辑账号</button>
             </div>
         </div>
     </div>
@@ -1738,6 +1934,27 @@
                 toast.className = 'toast';
             }, 3000);
         }
+
+        // 显示刷新错误信息
+        function showRefreshError(accountId, errorMessage, accountEmail) {
+            document.getElementById('refreshErrorModal').classList.add('show');
+            document.getElementById('refreshErrorEmail').textContent = `账号：${accountEmail || '未知'}`;
+            document.getElementById('refreshErrorMessage').textContent = errorMessage;
+            document.getElementById('editAccountFromErrorBtn').onclick = function() {
+                hideRefreshErrorModal();
+                showEditAccountModal(accountId);
+            };
+        }
+
+        // 隐藏刷新错误模态框
+        function hideRefreshErrorModal() {
+            document.getElementById('refreshErrorModal').classList.remove('show');
+        }
+
+        function escapeJs(str) {
+            if (!str) return '';
+            return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+        }
         
         // ==================== 分组相关 ====================
         
@@ -1905,7 +2122,7 @@
         // 渲染邮箱列表
         function renderAccountList(accounts) {
             const container = document.getElementById('accountList');
-            
+
             if (accounts.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
@@ -1915,13 +2132,17 @@
                 `;
                 return;
             }
-            
+
             container.innerHTML = accounts.map((acc, index) => `
                 <div class="account-item ${currentAccount === acc.email ? 'active' : ''} ${acc.status === 'inactive' ? 'inactive' : ''}"
                      onclick="selectAccount('${acc.email}')">
-                    <div class="account-email" title="${acc.email}">
+                    <div class="account-email" title="${acc.email}" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; ${acc.last_refresh_status === 'failed' ? 'color: #dc3545; font-weight: 700;' : ''}">
                         <span class="account-number">${index + 1}.</span> ${acc.email}
                         ${acc.status === 'inactive' ? '<span class="account-status-tag">已停用</span>' : ''}
+                    </div>
+                    <div class="account-refresh-time" style="font-size: 11px; color: ${acc.last_refresh_status === 'failed' ? '#dc3545' : '#999'}; margin-top: 4px; padding-left: 20px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span>🕐 ${formatRelativeTime(acc.last_refresh_at)}</span>
+                        ${acc.last_refresh_status === 'failed' ? '<button class="account-action-btn" onclick="event.stopPropagation(); showRefreshError(' + acc.id + ', \'' + escapeJs(acc.last_refresh_error || '未知错误') + '\', \'' + escapeJs(acc.email) + '\')" style="padding: 2px 6px; font-size: 10px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">查看错误</button>' : ''}
                     </div>
                     <div class="account-actions">
                         <button class="account-action-btn" onclick="event.stopPropagation(); copyEmail('${acc.email}')" title="复制邮箱">复制</button>
@@ -1931,6 +2152,60 @@
                     </div>
                 </div>
             `).join('');
+        }
+
+        // 排序相关变量
+        let currentSortBy = 'refresh_time';
+        let currentSortOrder = 'asc';
+
+        // 排序账号列表
+        function sortAccounts(sortBy) {
+            // 如果点击同一个排序按钮，切换排序顺序
+            if (currentSortBy === sortBy) {
+                currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSortBy = sortBy;
+                currentSortOrder = sortBy === 'refresh_time' ? 'asc' : 'asc';
+            }
+
+            // 更新按钮状态
+            document.querySelectorAll('.sort-btn').forEach(btn => {
+                btn.classList.remove('active');
+                btn.style.backgroundColor = '#ffffff';
+                btn.style.color = '#666';
+                btn.style.borderColor = '#e5e5e5';
+            });
+
+            const activeBtn = document.querySelector(`[data-sort="${sortBy}"]`);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+                activeBtn.style.backgroundColor = '#1a1a1a';
+                activeBtn.style.color = '#ffffff';
+                activeBtn.style.borderColor = '#1a1a1a';
+            }
+
+            // 重新加载并排序账号列表
+            if (accountsCache[currentGroupId]) {
+                const sortedAccounts = applySorting([...accountsCache[currentGroupId]]);
+                renderAccountList(sortedAccounts);
+            }
+        }
+
+        // 应用排序
+        function applySorting(accounts) {
+            return accounts.sort((a, b) => {
+                if (currentSortBy === 'refresh_time') {
+                    const timeA = a.last_refresh_at ? new Date(a.last_refresh_at) : new Date(0);
+                    const timeB = b.last_refresh_at ? new Date(b.last_refresh_at) : new Date(0);
+                    return currentSortOrder === 'asc' ? timeA - timeB : timeB - timeA;
+                } else {
+                    const emailA = a.email.toLowerCase();
+                    const emailB = b.email.toLowerCase();
+                    return currentSortOrder === 'asc'
+                        ? emailA.localeCompare(emailB)
+                        : emailB.localeCompare(emailA);
+                }
+            });
         }
 
         // 防抖函数
@@ -3433,15 +3708,85 @@
             try {
                 const response = await fetch('/api/settings');
                 const data = await response.json();
-                
+
                 if (data.success) {
                     // 密码不显示，只显示 API Key
                     document.getElementById('settingsApiKey').value = data.settings.gptmail_api_key || '';
                     // 密码框留空
                     document.getElementById('settingsPassword').value = '';
+
+                    // 加载刷新配置
+                    document.getElementById('refreshIntervalDays').value = data.settings.refresh_interval_days || '30';
+                    document.getElementById('refreshDelaySeconds').value = data.settings.refresh_delay_seconds || '5';
+                    document.getElementById('refreshCron').value = data.settings.refresh_cron || '0 2 * * *';
+
+                    // 设置定时刷新开关
+                    const enableScheduled = data.settings.enable_scheduled_refresh !== 'false';
+                    document.getElementById('enableScheduledRefresh').checked = enableScheduled;
+
+                    // 设置刷新策略单选框
+                    const useCron = data.settings.use_cron_schedule === 'true';
+                    document.querySelector('input[name="refreshStrategy"][value="' + (useCron ? 'cron' : 'days') + '"]').checked = true;
+                    toggleRefreshStrategy();
                 }
             } catch (error) {
                 showToast('加载设置失败', 'error');
+            }
+        }
+
+        // 切换刷新策略
+        function toggleRefreshStrategy() {
+            const strategy = document.querySelector('input[name="refreshStrategy"]:checked').value;
+            document.getElementById('daysStrategyContainer').style.display = strategy === 'days' ? 'block' : 'none';
+            document.getElementById('cronStrategyContainer').style.display = strategy === 'cron' ? 'block' : 'none';
+        }
+
+        // 选择 Cron 样例
+        async function selectCronExample(cronExpr) {
+            document.getElementById('refreshCron').value = cronExpr;
+            await validateCronExpression();
+        }
+
+        // 验证 Cron 表达式
+        async function validateCronExpression() {
+            const cronExpr = document.getElementById('refreshCron').value.trim();
+            const resultEl = document.getElementById('cronValidationResult');
+
+            if (!cronExpr) {
+                resultEl.innerHTML = '';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/settings/validate-cron', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cron_expression: cronExpr })
+                });
+
+                const data = await response.json();
+
+                if (data.success && data.valid) {
+                    const nextRun = new Date(data.next_run).toLocaleString('zh-CN');
+                    resultEl.innerHTML = `
+                        <div style="color: #28a745;">
+                            ✓ 表达式有效<br>
+                            下次执行: ${nextRun}
+                        </div>
+                    `;
+                } else {
+                    resultEl.innerHTML = `
+                        <div style="color: #dc3545;">
+                            ✗ ${data.error || '表达式无效'}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultEl.innerHTML = `
+                    <div style="color: #dc3545;">
+                        ✗ 验证失败: ${error.message}
+                    </div>
+                `;
             }
         }
         
@@ -3449,28 +3794,60 @@
         async function saveSettings() {
             const password = document.getElementById('settingsPassword').value;
             const apiKey = document.getElementById('settingsApiKey').value.trim();
-            
+            const refreshDays = document.getElementById('refreshIntervalDays').value;
+            const refreshDelay = document.getElementById('refreshDelaySeconds').value;
+            const refreshCron = document.getElementById('refreshCron').value.trim();
+            const strategy = document.querySelector('input[name="refreshStrategy"]:checked').value;
+            const enableScheduled = document.getElementById('enableScheduledRefresh').checked;
+
             const settings = {};
-            
+
             // 只有输入了密码才更新密码
             if (password) {
                 settings.login_password = password;
             }
-            
+
             // API Key 可以为空（清除）
             settings.gptmail_api_key = apiKey;
-            
+
+            // 刷新配置
+            const days = parseInt(refreshDays);
+            const delay = parseInt(refreshDelay);
+
+            if (isNaN(days) || days < 1 || days > 90) {
+                showToast('刷新周期必须在 1-90 天之间', 'error');
+                return;
+            }
+
+            if (isNaN(delay) || delay < 0 || delay > 60) {
+                showToast('刷新间隔必须在 0-60 秒之间', 'error');
+                return;
+            }
+
+            settings.refresh_interval_days = days;
+            settings.refresh_delay_seconds = delay;
+            settings.use_cron_schedule = strategy === 'cron';
+            settings.enable_scheduled_refresh = enableScheduled;
+
+            if (strategy === 'cron') {
+                if (!refreshCron) {
+                    showToast('请输入 Cron 表达式', 'error');
+                    return;
+                }
+                settings.refresh_cron = refreshCron;
+            }
+
             try {
                 const response = await fetch('/api/settings', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(settings)
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
-                    showToast('设置已保存', 'success');
+                    showToast('设置已保存，重启应用后生效', 'success');
                     hideSettingsModal();
                 } else {
                     showToast(data.error || '保存失败', 'error');
@@ -3478,6 +3855,31 @@
             } catch (error) {
                 showToast('保存设置失败', 'error');
             }
+        }
+
+        // ==================== 工具函数 ====================
+
+        // 相对时间格式化
+        function formatRelativeTime(timestamp) {
+            if (!timestamp) return '从未刷新';
+
+            const now = new Date();
+            // 如果时间戳不包含时区信息，假定为 UTC 时间并添加 Z
+            let dateStr = timestamp;
+            if (typeof dateStr === 'string' && !dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
+                dateStr = dateStr + 'Z';
+            }
+            const past = new Date(dateStr);
+            const diffMs = now - past;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+
+            if (diffMins < 1) return '刚刚';
+            if (diffMins < 60) return `${diffMins} 分钟前`;
+            if (diffHours < 24) return `${diffHours} 小时前`;
+            if (diffDays < 30) return `${diffDays} 天前`;
+            return `${Math.floor(diffDays / 30)} 月前`;
         }
 
         // ==================== Token 刷新管理 ====================
@@ -3584,7 +3986,7 @@
             progressText.innerHTML = '正在初始化...';
 
             try {
-                const eventSource = new EventSource('/api/accounts/refresh-all');
+                const eventSource = new EventSource('/api/accounts/trigger-scheduled-refresh?force=true');
                 let totalCount = 0;
                 let successCount = 0;
                 let failedCount = 0;
@@ -3595,7 +3997,8 @@
 
                         if (data.type === 'start') {
                             totalCount = data.total;
-                            progressText.innerHTML = `总共 <strong>${totalCount}</strong> 个账号，准备开始刷新...`;
+                            const delayInfo = data.delay_seconds > 0 ? `（间隔 ${data.delay_seconds} 秒）` : '';
+                            progressText.innerHTML = `总共 <strong>${totalCount}</strong> 个账号${delayInfo}，准备开始刷新...`;
                             // 初始化统计
                             document.getElementById('totalRefreshCount').textContent = totalCount;
                             document.getElementById('successRefreshCount').textContent = '0';
@@ -3612,6 +4015,8 @@
                                 成功: <strong style="color: #28a745;">${successCount}</strong> |
                                 失败: <strong style="color: #dc3545;">${failedCount}</strong>
                             `;
+                        } else if (data.type === 'delay') {
+                            progressText.innerHTML += `<br><span style="color: #999;">等待 ${data.seconds} 秒后继续...</span>`;
                         } else if (data.type === 'complete') {
                             eventSource.close();
                             progress.style.display = 'none';
@@ -3629,15 +4034,14 @@
                             showToast(`刷新完成！成功: ${data.success_count}, 失败: ${data.failed_count}`,
                                 data.failed_count > 0 ? 'warning' : 'success');
 
-                            // 如果成功列表是打开的，刷新成功列表
-                            const successContainer = document.getElementById('successListContainer');
-                            if (successContainer.style.display === 'block') {
-                                loadSuccessLogs();
-                            }
-
                             // 如果有失败的，显示失败列表
                             if (data.failed_count > 0) {
                                 showFailedListFromData(data.failed_list);
+                            }
+
+                            // 刷新账号列表以更新刷新时间
+                            if (currentGroupId) {
+                                loadAccountsByGroup(currentGroupId, true);
                             }
                         }
                     } catch (e) {
@@ -3695,12 +4099,6 @@
                         // 刷新统计
                         loadRefreshStats();
 
-                        // 如果成功列表是打开的，刷新成功列表
-                        const successContainer = document.getElementById('successListContainer');
-                        if (successContainer.style.display === 'block') {
-                            loadSuccessLogs();
-                        }
-
                         // 如果还有失败的，显示失败列表
                         if (data.failed_count > 0) {
                             showFailedListFromData(data.failed_list);
@@ -3730,12 +4128,6 @@
                 if (data.success) {
                     showToast(`${accountEmail} 刷新成功`, 'success');
                     loadRefreshStats();
-
-                    // 如果成功列表是打开的，刷新成功列表
-                    const successContainer = document.getElementById('successListContainer');
-                    if (successContainer.style.display === 'block') {
-                        loadSuccessLogs();
-                    }
 
                     // 刷新失败列表
                     loadFailedLogs();
@@ -3787,56 +4179,31 @@
 
         // 加载失败日志
         async function loadFailedLogs() {
+            const container = document.getElementById('failedListContainer');
+            const listEl = document.getElementById('failedList');
+
+            hideRefreshLogs();
+
             try {
                 const response = await fetch('/api/accounts/refresh-logs/failed');
                 const data = await response.json();
 
                 if (data.success) {
-                    showFailedListFromData(data.logs.map(log => ({
-                        id: log.account_id,
-                        email: log.account_email,
-                        error: log.error_message
-                    })));
-                }
-            } catch (error) {
-                showToast('加载失败列表失败', 'error');
-            }
-        }
-
-        // 加载成功列表
-        async function loadSuccessLogs() {
-            const container = document.getElementById('successListContainer');
-            const listEl = document.getElementById('successList');
-
-            // 隐藏其他列表
-            hideFailedList();
-            hideRefreshLogs();
-
-            try {
-                const response = await fetch('/api/accounts/refresh-logs?limit=100');
-                const data = await response.json();
-
-                if (data.success) {
-                    const successLogs = data.logs.filter(log => log.status === 'success');
-
-                    if (successLogs.length === 0) {
-                        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">暂无成功记录</div>';
+                    if (data.logs.length === 0) {
+                        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">暂无失败状态的邮箱</div>';
                     } else {
                         let html = '';
-                        successLogs.forEach(log => {
-                            const typeText = log.refresh_type === 'manual' ? '手动' :
-                                           log.refresh_type === 'retry' ? '重试' : '自动';
-
+                        data.logs.forEach(log => {
                             html += `
-                                <div style="padding: 12px; border-bottom: 1px solid #e5e5e5;">
-                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
-                                        <div style="font-weight: 600;">${escapeHtml(log.account_email)}</div>
-                                        <div style="display: flex; gap: 8px; align-items: center;">
-                                            <span style="font-size: 11px; padding: 2px 6px; background-color: #f0f0f0; border-radius: 3px;">${typeText}</span>
-                                            <span style="font-size: 12px; color: #28a745; font-weight: 600;">成功</span>
-                                        </div>
+                                <div style="padding: 12px; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: center;">
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; margin-bottom: 4px;">${escapeHtml(log.account_email)}</div>
+                                        <div style="font-size: 12px; color: #dc3545;">${escapeHtml(log.error_message || '未知错误')}</div>
+                                        <div style="font-size: 11px; color: #999; margin-top: 4px;">最后刷新: ${formatDateTime(log.created_at)}</div>
                                     </div>
-                                    <div style="font-size: 12px; color: #666;">${formatDateTime(log.created_at)}</div>
+                                    <button class="btn btn-sm btn-primary" onclick="retrySingleAccount(${log.account_id}, '${escapeJs(log.account_email)}')">
+                                        重试
+                                    </button>
                                 </div>
                             `;
                         });
@@ -3845,13 +4212,8 @@
                     container.style.display = 'block';
                 }
             } catch (error) {
-                showToast('加载成功列表失败', 'error');
+                showToast('加载失败邮箱列表失败', 'error');
             }
-        }
-
-        // 隐藏成功列表
-        function hideSuccessList() {
-            document.getElementById('successListContainer').style.display = 'none';
         }
 
         // 加载刷新历史
@@ -3860,35 +4222,39 @@
             const listEl = document.getElementById('refreshLogsList');
 
             try {
-                const response = await fetch('/api/accounts/refresh-logs?limit=50');
+                const response = await fetch('/api/accounts/refresh-logs?limit=1000');
                 const data = await response.json();
 
                 if (data.success) {
                     if (data.logs.length === 0) {
-                        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">暂无刷新历史</div>';
+                        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">暂无全量刷新历史</div>';
                     } else {
+                        listEl.innerHTML = `<div style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e5e5e5; font-size: 13px; color: #666;">近半年刷新历史（共 ${data.logs.length} 条）</div>`;
                         let html = '';
                         data.logs.forEach(log => {
                             const statusColor = log.status === 'success' ? '#28a745' : '#dc3545';
                             const statusText = log.status === 'success' ? '成功' : '失败';
-                            const typeText = log.refresh_type === 'manual' ? '手动' :
-                                           log.refresh_type === 'retry' ? '重试' : '自动';
+                            const typeText = log.refresh_type === 'manual' ? '手动' : '自动';
+                            const typeColor = log.refresh_type === 'manual' ? '#007bff' : '#28a745';
+                            const typeBgColor = log.refresh_type === 'manual' ? '#e7f3ff' : '#e8f5e9';
 
                             html += `
-                                <div style="padding: 12px; border-bottom: 1px solid #e5e5e5;">
-                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
-                                        <div style="font-weight: 600;">${escapeHtml(log.account_email)}</div>
+                                <div style="padding: 14px; border-bottom: 1px solid #e5e5e5; transition: background-color 0.2s;"
+                                     onmouseover="this.style.backgroundColor='#f8f9fa'"
+                                     onmouseout="this.style.backgroundColor='transparent'">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
+                                        <div style="font-weight: 600; font-size: 14px;">${escapeHtml(log.account_email)}</div>
                                         <div style="display: flex; gap: 8px; align-items: center;">
-                                            <span style="font-size: 11px; padding: 2px 6px; background-color: #f0f0f0; border-radius: 3px;">${typeText}</span>
-                                            <span style="font-size: 12px; color: ${statusColor}; font-weight: 600;">${statusText}</span>
+                                            <span style="font-size: 11px; padding: 3px 8px; background-color: ${typeBgColor}; color: ${typeColor}; border-radius: 4px; font-weight: 500;">${typeText}</span>
+                                            <span style="font-size: 13px; color: ${statusColor}; font-weight: 600;">${statusText}</span>
                                         </div>
                                     </div>
-                                    <div style="font-size: 12px; color: #666;">${formatDateTime(log.created_at)}</div>
-                                    ${log.error_message ? `<div style="font-size: 12px; color: #dc3545; margin-top: 4px;">${escapeHtml(log.error_message)}</div>` : ''}
+                                    <div style="font-size: 12px; color: #888;">${formatDateTime(log.created_at)}</div>
+                                    ${log.error_message ? `<div style="font-size: 12px; color: #dc3545; margin-top: 6px; padding: 6px; background-color: #fff5f5; border-radius: 4px;">${escapeHtml(log.error_message)}</div>` : ''}
                                 </div>
                             `;
                         });
-                        listEl.innerHTML = html;
+                        listEl.innerHTML += html;
                     }
                     container.style.display = 'block';
                 }
