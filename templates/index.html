@@ -1705,6 +1705,49 @@
         </div>
     </div>
 
+    <!-- Error 详情模态框 -->
+    <div class="modal" id="errorDetailModal" onclick="if(event.target === this) hideErrorDetailModal()">
+        <div class="modal-content" style="width: 700px; max-width: 90vw;">
+            <div class="modal-header" style="background-color: #fef0f0; border-bottom-color: #dc3545;">
+                <h3 style="color: #dc3545;">❌ 错误详情</h3>
+                <button class="modal-close" onclick="hideErrorDetailModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding-top: 16px;">
+                <div style="font-size: 14px; color: #dc3545; font-weight: 600; margin-bottom: 8px;">错误信息 (用户友好)</div>
+                <div class="error-message-box" id="errorModalUserMessage" style="background-color: #fff0f0; border: 1px solid #dc3545; color: #333; font-weight: 500;"></div>
+
+                <div style="margin-top: 20px;">
+                    <div style="font-size: 14px; color: #333; font-weight: 600; margin-bottom: 8px;">
+                        技术详情
+                        <button class="btn btn-sm btn-secondary" id="toggleTraceBtn" onclick="toggleStackTrace()" style="margin-left: 10px;">
+                            显示堆栈/细节
+                        </button>
+                        <button class="btn btn-sm btn-secondary" onclick="copyErrorDetails()" style="margin-left: 8px;">
+                            📋 复制全部
+                        </button>
+                    </div>
+
+                    <div class="error-message-box" id="errorModalDetailsContainer" style="height: 150px; display: none; padding: 0;">
+                        <pre id="errorModalDetails" style="margin: 0; padding: 12px; white-space: pre-wrap; word-break: break-all; font-size: 12px; color: #666;"></pre>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <div style="font-size: 14px; color: #333; font-weight: 600; margin-bottom: 8px;">错误代码/类型</div>
+                    <div style="display: flex; gap: 16px; font-size: 13px; color: #666;">
+                        <div><strong>Code:</strong> <span id="errorModalCode"></span></div>
+                        <div><strong>Type:</strong> <span id="errorModalType"></span></div>
+                        <div><strong>Status:</strong> <span id="errorModalStatus"></span></div>
+                        <div><strong>Trace ID:</strong> <span id="errorModalTraceId"></span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideErrorDetailModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 刷新失败提示模态框 -->
     <div class="modal" id="refreshErrorModal" onclick="if(event.target === this) hideRefreshErrorModal()">
         <div class="modal-content">
@@ -1954,13 +1997,40 @@
         }
         
         // 显示消息提示
-        function showToast(message, type = 'info') {
+        function showToast(message, type = 'info', errorDetail = null) {
             const toast = document.getElementById('toast');
-            toast.textContent = message;
+            toast.innerHTML = '';
+
+            // Message span
+            const messageSpan = document.createElement('span');
+            messageSpan.textContent = message;
+            toast.appendChild(messageSpan);
+
+            if (errorDetail && type === 'error') {
+                const detailLink = document.createElement('a');
+                detailLink.href = 'javascript:void(0)';
+                detailLink.textContent = ' [详情]';
+                detailLink.style.color = '#ffdddd';
+                detailLink.style.textDecoration = 'underline';
+                detailLink.style.marginLeft = '8px';
+                detailLink.onclick = function(e) {
+                    e.stopPropagation();
+                    showErrorDetailModal(errorDetail);
+                };
+                toast.appendChild(detailLink);
+
+                // Ensure the toast remains visible long enough for the user to click the link
+                clearTimeout(toast.timer);
+                toast.timer = setTimeout(() => {
+                    toast.className = 'toast';
+                }, 8000); // 8 seconds for errors with details
+            } else {
+                clearTimeout(toast.timer);
+                toast.timer = setTimeout(() => {
+                    toast.className = 'toast';
+                }, 3000); // 3 seconds for regular messages
+            }
             toast.className = 'toast show ' + type;
-            setTimeout(() => {
-                toast.className = 'toast';
-            }, 3000);
         }
 
         // 显示刷新错误信息
@@ -1977,6 +2047,105 @@
         // 隐藏刷新错误模态框
         function hideRefreshErrorModal() {
             document.getElementById('refreshErrorModal').classList.remove('show');
+        }
+
+        // ==================== 统一错误处理相关 ====================
+
+        // 显示统一错误详情模态框
+        function showErrorDetailModal(error) {
+            document.getElementById('errorDetailModal').classList.add('show');
+            document.getElementById('errorModalUserMessage').textContent = error.message || '发生未知错误';
+            document.getElementById('errorModalCode').textContent = error.code || '-';
+            document.getElementById('errorModalType').textContent = error.type || '-';
+            document.getElementById('errorModalStatus').textContent = error.status || '-';
+            document.getElementById('errorModalTraceId').textContent = error.trace_id || '-';
+
+            const detailsEl = document.getElementById('errorModalDetails');
+            const detailsContainer = document.getElementById('errorModalDetailsContainer');
+            const toggleBtn = document.getElementById('toggleTraceBtn');
+
+            detailsEl.textContent = error.details || '暂无详细技术堆栈信息';
+
+            // 重置堆栈显示状态
+            detailsContainer.style.display = 'none';
+            toggleBtn.textContent = '显示堆栈/细节';
+        }
+
+        // 隐藏统一错误详情模态框
+        function hideErrorDetailModal() {
+            document.getElementById('errorDetailModal').classList.remove('show');
+        }
+
+        // 切换堆栈信息的显示/隐藏
+        function toggleStackTrace() {
+            const container = document.getElementById('errorModalDetailsContainer');
+            const btn = document.getElementById('toggleTraceBtn');
+
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                btn.textContent = '隐藏堆栈/细节';
+            } else {
+                container.style.display = 'none';
+                btn.textContent = '显示堆栈/细节';
+            }
+        }
+
+        // 复制错误详情到剪贴板
+        function copyErrorDetails() {
+            const userMessage = document.getElementById('errorModalUserMessage').textContent;
+            const details = document.getElementById('errorModalDetails').textContent;
+            const code = document.getElementById('errorModalCode').textContent;
+            const type = document.getElementById('errorModalType').textContent;
+            const status = document.getElementById('errorModalStatus').textContent;
+            const traceId = document.getElementById('errorModalTraceId').textContent;
+
+            const fullErrorText = `
+【用户错误信息】
+${userMessage}
+
+【错误详情】
+Code: ${code}
+Type: ${type}
+Status: ${status}
+Trace ID: ${traceId}
+
+【技术堆栈/细节】
+${details}
+            `.trim();
+
+            navigator.clipboard.writeText(fullErrorText).then(() => {
+                showToast('错误详情已复制', 'success');
+            }).catch(() => {
+                // 降级方案
+                const textarea = document.createElement('textarea');
+                textarea.value = fullErrorText;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                showToast('错误详情已复制', 'success');
+            });
+        }
+
+        // 统一处理 API 响应错误
+        function handleApiError(data, defaultMessage = '请求失败') {
+            if (!data.success) {
+                // 检查是否是统一错误格式
+                if (data.error && data.error.message) {
+                    const error = data.error;
+                    // 使用后端提供的 message 作为用户友好信息
+                    const userMessage = error.message;
+
+                    // 调用 showToast 携带完整的错误对象
+                    showToast(userMessage, 'error', error);
+                } else {
+                    // 兼容旧的或非标准错误格式
+                    const errorMessage = data.error || defaultMessage;
+                    showToast(errorMessage, 'error');
+                }
+                return true;
+            }
+            return false;
         }
 
         function escapeJs(str) {
@@ -2381,7 +2550,7 @@
                     hideAddGroupModal();
                     loadGroups();
                 } else {
-                    showToast(data.error, 'error');
+                    handleApiError(data, '保存分组失败');
                 }
             } catch (error) {
                 showToast('保存失败', 'error');
@@ -2408,7 +2577,7 @@
                     }
                     loadGroups();
                 } else {
-                    showToast(data.error, 'error');
+                    handleApiError(data, '删除分组失败');
                 }
             } catch (error) {
                 showToast('删除失败', 'error');
@@ -2501,7 +2670,7 @@
                     loadTempEmails(true);
                     loadGroups();
                 } else {
-                    showToast(data.error || '生成失败', 'error');
+                    handleApiError(data, '生成临时邮箱失败');
                 }
             } catch (error) {
                 showToast('生成临时邮箱失败', 'error');
@@ -2589,7 +2758,7 @@
                         document.getElementById('emailDetailToolbar').style.display = 'none';
                     }
                 } else {
-                    showToast(data.error || '清空失败', 'error');
+                    handleApiError(data, '清空临时邮箱失败');
                 }
             } catch (error) {
                 showToast('清空失败', 'error');
@@ -2633,7 +2802,7 @@
                     loadTempEmails(true);
                     loadGroups();
                 } else {
-                    showToast(data.error || '删除失败', 'error');
+                    handleApiError(data, '删除临时邮箱失败');
                 }
             } catch (error) {
                 showToast('删除失败', 'error');
@@ -2670,10 +2839,11 @@
                     
                     renderEmailList(data.emails);
                 } else {
+                    handleApiError(data, '加载临时邮件失败');
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon">⚠️</div>
-                            <div class="empty-state-text">${data.error || '加载失败'}</div>
+                            <div class="empty-state-text">${data.error && data.error.message ? data.error.message : '加载失败'}</div>
                         </div>
                     `;
                 }
@@ -2711,10 +2881,11 @@
                 if (data.success) {
                     renderEmailDetail(data.email);
                 } else {
+                    handleApiError(data, '加载邮件详情失败');
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon">⚠️</div>
-                            <div class="empty-state-text">${data.error || '加载失败'}</div>
+                            <div class="empty-state-text">${data.error && data.error.message ? data.error.message : '加载失败'}</div>
                         </div>
                     `;
                 }
@@ -2824,7 +2995,7 @@
                         loadAccountsByGroup(groupId, true);
                     }
                 } else {
-                    showToast(data.error, 'error');
+                    handleApiError(data, '导入邮箱失败');
                 }
             } catch (error) {
                 showToast('添加失败', 'error');
@@ -2988,7 +3159,7 @@
                         loadAccountsByGroup(currentGroupId, true);
                     }
                 } else {
-                    showToast(data.error || `${action}失败`, 'error');
+                    handleApiError(data, `${action}账号失败`);
                 }
             } catch (error) {
                 showToast(`${action}失败`, 'error');
@@ -3038,7 +3209,7 @@
                         loadAccountsByGroup(currentGroupId, true);
                     }
                 } else {
-                    showToast(data.error || '删除失败', 'error');
+                    handleApiError(data, '删除账号失败');
                 }
             } catch (error) {
                 showToast('删除失败', 'error');
@@ -3138,7 +3309,7 @@
                     hideExportModal();
                 } else {
                     const data = await response.json();
-                    showToast(data.error || '导出失败', 'error');
+                    handleApiError(data, '导出失败');
                 }
             } catch (error) {
                 showToast('导出失败', 'error');
@@ -3177,20 +3348,22 @@
                     currentEmails = data.emails;
                     currentMethod = data.method === 'Graph API' ? 'graph' : 'imap';
                     hasMoreEmails = data.has_more;
-                    
+
                     // 显示使用的方法和邮件数量
                     const methodTag = document.getElementById('methodTag');
                     methodTag.textContent = data.method;
                     methodTag.style.display = 'inline';
-                    
+
                     document.getElementById('emailCount').textContent = `(${data.emails.length})`;
-                    
+
                     renderEmailList(data.emails);
                 } else {
+                    // 使用 handleApiError 处理错误
+                    handleApiError(data, '获取邮件失败');
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon">⚠️</div>
-                            <div class="empty-state-text">${data.error || '加载失败'}</div>
+                            <div class="empty-state-text">${data.error && data.error.message ? data.error.message : '加载失败'}</div>
                         </div>
                     `;
                 }
@@ -3260,10 +3433,11 @@
                 if (data.success) {
                     renderEmailDetail(data.email);
                 } else {
+                    handleApiError(data, '加载邮件详情失败');
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon">⚠️</div>
-                            <div class="empty-state-text">${data.error || '加载失败'}</div>
+                            <div class="empty-state-text">${data.error && data.error.message ? data.error.message : '加载失败'}</div>
                         </div>
                     `;
                 }
@@ -3735,7 +3909,7 @@
                     btn.disabled = false;
                     btn.textContent = '换取 Token';
                 } else {
-                    showToast(data.error || '换取 Token 失败', 'error');
+                    handleApiError(data, '换取 Token 失败');
                     btn.disabled = false;
                     btn.textContent = '换取 Token';
                 }
@@ -3835,7 +4009,7 @@
                 } else {
                     resultEl.innerHTML = `
                         <div style="color: #dc3545;">
-                            ✗ ${data.error || '表达式无效'}
+                            ✗ ${data.error && data.error.message ? data.error.message : (data.error || '表达式无效')}
                         </div>
                     `;
                 }
@@ -3908,7 +4082,7 @@
                     showToast('设置已保存，重启应用后生效', 'success');
                     hideSettingsModal();
                 } else {
-                    showToast(data.error || '保存失败', 'error');
+                    handleApiError(data, '保存设置失败');
                 }
             } catch (error) {
                 showToast('保存设置失败', 'error');
@@ -4173,7 +4347,7 @@
                         }
                     }
                 } else {
-                    showToast(data.error || '重试失败', 'error');
+                    handleApiError(data, '重试失败');
                 }
             } catch (error) {
                 progress.style.display = 'none';
@@ -4198,10 +4372,10 @@
                     // 刷新失败列表
                     loadFailedLogs();
                 } else {
-                    showToast(`${accountEmail} 刷新失败: ${data.error}`, 'error');
+                    handleApiError(data, `${accountEmail} 刷新失败`);
                 }
             } catch (error) {
-                showToast('刷新请求失败', 'error');
+                handleApiError({ success: false, error: { message: '刷新请求失败', details: error.message, code: 'NETWORK_ERROR', type: 'Frontend' }});
             }
         }
 
@@ -4378,6 +4552,7 @@
             hideSettingsModal();
             hideRefreshModal();
             hideRefreshErrorModal();
+            hideErrorDetailModal();
             hideGetRefreshTokenModal();
             closeFullscreenEmail();
         }
@@ -4398,8 +4573,9 @@
                 hideExportModal();
                 hideSettingsModal();
                 hideRefreshModal();
-                hideRefreshErrorModal(); // 修复：确保刷新失败提示模态框也能被 Escape 键关闭
-                hideGetRefreshTokenModal(); // 修复：确保获取 Refresh Token 模态框也能被 Escape 键关闭
+                hideRefreshErrorModal();
+                hideErrorDetailModal();
+                hideGetRefreshTokenModal();
                 closeFullscreenEmail();
             }
         });

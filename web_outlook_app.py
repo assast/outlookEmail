@@ -14,6 +14,9 @@ import os
 import hashlib
 import secrets
 import time
+import json
+import re
+import uuid
 from datetime import datetime
 from email.header import decode_header
 from typing import Optional, List, Dict, Any
@@ -62,6 +65,73 @@ OAUTH_SCOPES = [
     "https://graph.microsoft.com/Mail.ReadWrite",
     "https://graph.microsoft.com/User.Read"
 ]
+
+
+# ==================== 错误处理工具 ====================
+
+def generate_trace_id() -> str:
+    return uuid.uuid4().hex
+
+
+def sanitize_error_details(details: Optional[str]) -> str:
+    if not details:
+        return ""
+    sanitized = details
+    patterns = [
+        (r'(?i)(bearer\s+)[A-Za-z0-9\-._~\+/]+=*', r'\1***'),
+        (r'(?i)(refresh_token|access_token|token|password|passwd|secret)\s*[:=]\s*\"?[A-Za-z0-9\-._~\+/]+=*\"?', r'\1=***'),
+        (r'(?i)(\"refresh_token\"\s*:\s*\")[^\"]+(\"?)', r'\1***\2'),
+        (r'(?i)(\"access_token\"\s*:\s*\")[^\"]+(\"?)', r'\1***\2'),
+        (r'(?i)(\"password\"\s*:\s*\")[^\"]+(\"?)', r'\1***\2'),
+        (r'(?i)(client_secret|refresh_token|access_token)=[^&\s]+', r'\1=***')
+    ]
+    for pattern, repl in patterns:
+        sanitized = re.sub(pattern, repl, sanitized)
+    return sanitized
+
+
+def build_error_payload(
+    code: str,
+    message: str,
+    err_type: str = "Error",
+    status: int = 500,
+    details: Any = None,
+    trace_id: Optional[str] = None
+) -> Dict[str, Any]:
+    if details is not None and not isinstance(details, str):
+        try:
+            details = json.dumps(details, ensure_ascii=True)
+        except Exception:
+            details = str(details)
+    sanitized_details = sanitize_error_details(details) if details else ""
+    trace_id_value = trace_id or generate_trace_id()
+    payload = {
+        "code": code,
+        "message": message,
+        "type": err_type,
+        "status": status,
+        "details": sanitized_details,
+        "trace_id": trace_id_value
+    }
+    try:
+        app.logger.error(
+            "trace_id=%s code=%s status=%s type=%s details=%s",
+            trace_id_value,
+            code,
+            status,
+            err_type,
+            sanitized_details
+        )
+    except Exception:
+        pass
+    return payload
+
+
+def get_response_details(response: requests.Response) -> Any:
+    try:
+        return response.json()
+    except Exception:
+        return response.text or response.reason
 
 
 # ==================== 数据库操作 ====================
@@ -578,8 +648,8 @@ def parse_account_string(account_str: str) -> Optional[Dict]:
 
 # ==================== Graph API 方式 ====================
 
-def get_access_token_graph(client_id: str, refresh_token: str) -> Optional[str]:
-    """获取 Graph API access_token"""
+def get_access_token_graph_result(client_id: str, refresh_token: str) -> Dict[str, Any]:
+    """获取 Graph API access_token（包含错误详情）"""
     try:
         res = requests.post(
             TOKEN_URL_GRAPH,
@@ -591,21 +661,64 @@ def get_access_token_graph(client_id: str, refresh_token: str) -> Optional[str]:
             },
             timeout=30
         )
-        
+
         if res.status_code != 200:
-            return None
-        
-        return res.json().get("access_token")
-    except Exception:
-        return None
+            details = get_response_details(res)
+            return {
+                "success": False,
+                "error": build_error_payload(
+                    "GRAPH_TOKEN_FAILED",
+                    "获取访问令牌失败",
+                    "GraphAPIError",
+                    res.status_code,
+                    details
+                )
+            }
+
+        payload = res.json()
+        access_token = payload.get("access_token")
+        if not access_token:
+            return {
+                "success": False,
+                "error": build_error_payload(
+                    "GRAPH_TOKEN_MISSING",
+                    "获取访问令牌失败",
+                    "GraphAPIError",
+                    res.status_code,
+                    payload
+                )
+            }
+
+        return {"success": True, "access_token": access_token}
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": build_error_payload(
+                "GRAPH_TOKEN_EXCEPTION",
+                "获取访问令牌失败",
+                type(exc).__name__,
+                500,
+                str(exc)
+            )
+        }
 
 
-def get_emails_graph(client_id: str, refresh_token: str, folder: str = 'inbox', skip: int = 0, top: int = 20) -> Optional[List[Dict]]:
+def get_access_token_graph(client_id: str, refresh_token: str) -> Optional[str]:
+    """获取 Graph API access_token"""
+    result = get_access_token_graph_result(client_id, refresh_token)
+    if result.get("success"):
+        return result.get("access_token")
+    return None
+
+
+def get_emails_graph(client_id: str, refresh_token: str, folder: str = 'inbox', skip: int = 0, top: int = 20) -> Dict[str, Any]:
     """使用 Graph API 获取邮件列表（支持分页和文件夹选择）"""
-    access_token = get_access_token_graph(client_id, refresh_token)
-    if not access_token:
-        return None
-    
+    token_result = get_access_token_graph_result(client_id, refresh_token)
+    if not token_result.get("success"):
+        return {"success": False, "error": token_result.get("error")}
+
+    access_token = token_result.get("access_token")
+
     try:
         # 根据文件夹类型选择 API 端点
         folder_map = {
@@ -615,7 +728,7 @@ def get_emails_graph(client_id: str, refresh_token: str, folder: str = 'inbox', 
             'trash': 'deleteditems'  # 垃圾箱的别名
         }
         folder_name = folder_map.get(folder.lower(), 'inbox')
-        
+
         url = f"https://graph.microsoft.com/v1.0/me/mailFolders/{folder_name}/messages"
         params = {
             "$top": top,
@@ -627,15 +740,34 @@ def get_emails_graph(client_id: str, refresh_token: str, folder: str = 'inbox', 
             "Authorization": f"Bearer {access_token}",
             "Prefer": "outlook.body-content-type='text'"
         }
-        
+
         res = requests.get(url, headers=headers, params=params, timeout=30)
-        
+
         if res.status_code != 200:
-            return None
-        
-        return res.json().get("value", [])
-    except Exception:
-        return None
+            details = get_response_details(res)
+            return {
+                "success": False,
+                "error": build_error_payload(
+                    "EMAIL_FETCH_FAILED",
+                    "获取邮件失败，请检查账号配置",
+                    "GraphAPIError",
+                    res.status_code,
+                    details
+                )
+            }
+
+        return {"success": True, "emails": res.json().get("value", [])}
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": build_error_payload(
+                "EMAIL_FETCH_FAILED",
+                "获取邮件失败，请检查账号配置",
+                type(exc).__name__,
+                500,
+                str(exc)
+            )
+        }
 
 
 def get_email_detail_graph(client_id: str, refresh_token: str, message_id: str) -> Optional[Dict]:
@@ -666,8 +798,8 @@ def get_email_detail_graph(client_id: str, refresh_token: str, message_id: str) 
 
 # ==================== IMAP 方式 ====================
 
-def get_access_token_imap(client_id: str, refresh_token: str) -> Optional[str]:
-    """获取 IMAP access_token"""
+def get_access_token_imap_result(client_id: str, refresh_token: str) -> Dict[str, Any]:
+    """获取 IMAP access_token（包含错误详情）"""
     try:
         res = requests.post(
             TOKEN_URL_IMAP,
@@ -679,27 +811,70 @@ def get_access_token_imap(client_id: str, refresh_token: str) -> Optional[str]:
             },
             timeout=30
         )
-        
+
         if res.status_code != 200:
-            return None
-        
-        return res.json().get("access_token")
-    except Exception:
-        return None
+            details = get_response_details(res)
+            return {
+                "success": False,
+                "error": build_error_payload(
+                    "IMAP_TOKEN_FAILED",
+                    "获取访问令牌失败",
+                    "IMAPError",
+                    res.status_code,
+                    details
+                )
+            }
+
+        payload = res.json()
+        access_token = payload.get("access_token")
+        if not access_token:
+            return {
+                "success": False,
+                "error": build_error_payload(
+                    "IMAP_TOKEN_MISSING",
+                    "获取访问令牌失败",
+                    "IMAPError",
+                    res.status_code,
+                    payload
+                )
+            }
+
+        return {"success": True, "access_token": access_token}
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": build_error_payload(
+                "IMAP_TOKEN_EXCEPTION",
+                "获取访问令牌失败",
+                type(exc).__name__,
+                500,
+                str(exc)
+            )
+        }
 
 
-def get_emails_imap(account: str, client_id: str, refresh_token: str, folder: str = 'inbox', skip: int = 0, top: int = 20) -> Optional[List[Dict]]:
+def get_access_token_imap(client_id: str, refresh_token: str) -> Optional[str]:
+    """获取 IMAP access_token"""
+    result = get_access_token_imap_result(client_id, refresh_token)
+    if result.get("success"):
+        return result.get("access_token")
+    return None
+
+
+def get_emails_imap(account: str, client_id: str, refresh_token: str, folder: str = 'inbox', skip: int = 0, top: int = 20) -> Dict[str, Any]:
     """使用 IMAP 获取邮件列表（支持分页和文件夹选择）"""
-    access_token = get_access_token_imap(client_id, refresh_token)
-    if not access_token:
-        return None
-    
+    token_result = get_access_token_imap_result(client_id, refresh_token)
+    if not token_result.get("success"):
+        return {"success": False, "error": token_result.get("error")}
+
+    access_token = token_result.get("access_token")
+
     connection = None
     try:
         connection = imaplib.IMAP4_SSL(IMAP_SERVER_NEW, IMAP_PORT)
         auth_string = f"user={account}\1auth=Bearer {access_token}\1\1".encode('utf-8')
         connection.authenticate('XOAUTH2', lambda x: auth_string)
-        
+
         # 根据文件夹类型选择 IMAP 文件夹
         folder_map = {
             'inbox': '"INBOX"',
@@ -708,24 +883,46 @@ def get_emails_imap(account: str, client_id: str, refresh_token: str, folder: st
             'trash': '"Deleted Items"'  # 垃圾箱的别名
         }
         imap_folder = folder_map.get(folder.lower(), '"INBOX"')
-        
-        connection.select(imap_folder)
-        
+
+        status, _ = connection.select(imap_folder)
+        if status != 'OK':
+            return {
+                "success": False,
+                "error": build_error_payload(
+                    "EMAIL_FETCH_FAILED",
+                    "获取邮件失败，请检查账号配置",
+                    "IMAPSelectError",
+                    500,
+                    f"select status={status}"
+                )
+            }
+
         status, messages = connection.search(None, 'ALL')
-        if status != 'OK' or not messages or not messages[0]:
-            return []
-        
+        if status != 'OK':
+            return {
+                "success": False,
+                "error": build_error_payload(
+                    "EMAIL_FETCH_FAILED",
+                    "获取邮件失败，请检查账号配置",
+                    "IMAPSearchError",
+                    500,
+                    f"search status={status}"
+                )
+            }
+        if not messages or not messages[0]:
+            return {"success": True, "emails": []}
+
         message_ids = messages[0].split()
         # 计算分页范围
         total = len(message_ids)
         start_idx = max(0, total - skip - top)
         end_idx = total - skip
-        
+
         if start_idx >= end_idx:
-            return []
-        
+            return {"success": True, "emails": []}
+
         paged_ids = message_ids[start_idx:end_idx][::-1]  # 倒序，最新的在前
-        
+
         emails = []
         for msg_id in paged_ids:
             try:
@@ -733,7 +930,7 @@ def get_emails_imap(account: str, client_id: str, refresh_token: str, folder: st
                 if status == 'OK' and msg_data and msg_data[0]:
                     raw_email = msg_data[0][1]
                     msg = email.message_from_bytes(raw_email)
-                    
+
                     emails.append({
                         'id': msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id),
                         'subject': decode_header_value(msg.get("Subject", "无主题")),
@@ -743,10 +940,19 @@ def get_emails_imap(account: str, client_id: str, refresh_token: str, folder: st
                     })
             except Exception:
                 continue
-        
-        return emails
-    except Exception:
-        return None
+
+        return {"success": True, "emails": emails}
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": build_error_payload(
+                "EMAIL_FETCH_FAILED",
+                "获取邮件失败，请检查账号配置",
+                type(exc).__name__,
+                500,
+                str(exc)
+            )
+        }
     finally:
         if connection:
             try:
@@ -1311,7 +1517,14 @@ def api_refresh_account(account_id):
     account = cursor.fetchone()
 
     if not account:
-        return jsonify({'success': False, 'error': '账号不存在'})
+        error_payload = build_error_payload(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            "NotFoundError",
+            404,
+            f"account_id={account_id}"
+        )
+        return jsonify({'success': False, 'error': error_payload})
 
     account_id = account['id']
     account_email = account['email']
@@ -1326,8 +1539,15 @@ def api_refresh_account(account_id):
 
     if success:
         return jsonify({'success': True, 'message': 'Token 刷新成功'})
-    else:
-        return jsonify({'success': False, 'error': error_msg or 'Token 刷新失败'})
+
+    error_payload = build_error_payload(
+        "TOKEN_REFRESH_FAILED",
+        "Token 刷新失败",
+        "RefreshTokenError",
+        400,
+        error_msg or "未知错误"
+    )
+    return jsonify({'success': False, 'error': error_payload})
 
 
 @app.route('/api/accounts/refresh-all', methods=['GET'])
@@ -1745,19 +1965,28 @@ def api_get_refresh_stats():
 def api_get_emails(email_addr):
     """获取邮件列表（支持分页，不使用缓存）"""
     account = get_account_by_email(email_addr)
-    
+
     if not account:
-        return jsonify({'success': False, 'error': '账号不存在'})
-    
+        error_payload = build_error_payload(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            "NotFoundError",
+            404,
+            f"email={email_addr}"
+        )
+        return jsonify({'success': False, 'error': error_payload})
+
     method = request.args.get('method', 'graph')
     folder = request.args.get('folder', 'inbox')  # inbox, junkemail, deleteditems
     skip = int(request.args.get('skip', 0))
     top = int(request.args.get('top', 20))
-    
+
+    graph_error = None
     if method == 'graph':
         # 每次只查询20封邮件
-        emails = get_emails_graph(account['client_id'], account['refresh_token'], folder, skip, top)
-        if emails is not None:
+        graph_result = get_emails_graph(account['client_id'], account['refresh_token'], folder, skip, top)
+        if graph_result.get("success"):
+            emails = graph_result.get("emails", [])
             # 更新刷新时间
             db = get_db()
             db.execute('''
@@ -1787,9 +2016,12 @@ def api_get_emails(email_addr):
                 'has_more': len(formatted) >= top
             })
 
+        graph_error = graph_result.get("error")
+
     # 如果 Graph API 失败，尝试 IMAP
-    emails = get_emails_imap(account['email'], account['client_id'], account['refresh_token'], folder, skip, top)
-    if emails is not None:
+    imap_result = get_emails_imap(account['email'], account['client_id'], account['refresh_token'], folder, skip, top)
+    if imap_result.get("success"):
+        emails = imap_result.get("emails", [])
         # 更新刷新时间
         db = get_db()
         db.execute('''
@@ -1805,8 +2037,22 @@ def api_get_emails(email_addr):
             'method': 'IMAP',
             'has_more': len(emails) >= top
         })
-    
-    return jsonify({'success': False, 'error': '获取邮件失败，请检查账号配置'})
+
+    imap_error = imap_result.get("error")
+    combined_details = {}
+    if graph_error:
+        combined_details["graph"] = graph_error
+    if imap_error:
+        combined_details["imap"] = imap_error
+    details = combined_details or imap_error or graph_error or "未知错误"
+    error_payload = build_error_payload(
+        "EMAIL_FETCH_FAILED",
+        "获取邮件失败，请检查账号配置",
+        "EmailFetchError",
+        502,
+        details
+    )
+    return jsonify({'success': False, 'error': error_payload})
 
 
 @app.route('/api/email/<email_addr>/<path:message_id>')
