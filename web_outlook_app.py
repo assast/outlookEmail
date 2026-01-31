@@ -2735,6 +2735,102 @@ def api_get_refresh_stats():
 
 # ==================== 邮件 API ====================
 
+
+
+# ==================== Email Deletion Helpers ====================
+
+def delete_emails_graph(client_id: str, refresh_token: str, message_ids: List[str]) -> Dict[str, Any]:
+    """通过 Graph API 批量删除邮件（永久删除）"""
+    access_token = get_access_token_graph(client_id, refresh_token)
+    if not access_token:
+        return {"success": False, "error": "获取 Access Token 失败"}
+
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+
+    # Graph API 不支持一次性批量删除所有邮件，需要逐个删除
+    # 但可以使用 batch 请求来优化
+    # https://learn.microsoft.com/en-us/graph/json-batching
+    
+    # 限制每批次请求数量（Graph API 限制为 20）
+    BATCH_SIZE = 20
+    success_count = 0
+    failed_count = 0
+    errors = []
+
+    for i in range(0, len(message_ids), BATCH_SIZE):
+        batch = message_ids[i:i + BATCH_SIZE]
+        
+        # 构造 batch 请求 body
+        batch_requests = []
+        for idx, msg_id in enumerate(batch):
+            batch_requests.append({
+                "id": str(idx),
+                "method": "DELETE",
+                "url": f"/me/messages/{msg_id}"
+            })
+        
+        try:
+            response = requests.post(
+                "https://graph.microsoft.com/v1.0/$batch",
+                headers=headers,
+                json={"requests": batch_requests},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                results = response.json().get("responses", [])
+                for res in results:
+                    if res.get("status") in [200, 204]:
+                        success_count += 1
+                    else:
+                        failed_count += 1
+                        # 记录具体错误
+                        errors.append(f"Msg ID: {batch[int(res['id'])]}, Status: {res.get('status')}")
+            else:
+                failed_count += len(batch)
+                errors.append(f"Batch request failed: {response.text}")
+                
+        except Exception as e:
+            failed_count += len(batch)
+            errors.append(f"Network error: {str(e)}")
+
+    return {
+        "success": failed_count == 0,
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "errors": errors
+    }
+
+def delete_emails_imap(email_addr: str, client_id: str, refresh_token: str, message_ids: List[str], server: str) -> Dict[str, Any]:
+    """通过 IMAP 删除邮件（永久删除）"""
+    access_token = get_access_token_graph(client_id, refresh_token)
+    if not access_token:
+        return {"success": False, "error": "获取 Access Token 失败"}
+        
+    try:
+        # 生成 OAuth2 认证字符串
+        auth_string = 'user=%s\x01auth=Bearer %s\x01\x01' % (email_addr, access_token)
+        
+        # 连接 IMAP
+        imap = imaplib.IMAP4_SSL(server, IMAP_PORT)
+        imap.authenticate('XOAUTH2', lambda x: auth_string.encode('utf-8'))
+        
+        # 选择文件夹
+        imap.select('INBOX')
+        
+        # IMAP 删除需要 UID。如果我们没有 UID，这很难。
+        # 鉴于我们只实现了 Graph 删除，并且 fallback 到 IMAP 比较复杂，
+        # 这里暂时返回不支持，或仅做简单的尝试（如果 ID 恰好是 UID）
+        # 但通常 Graph ID 不是 UID。
+        
+        return {"success": False, "error": "IMAP 删除暂不支持 (ID 格式不兼容)"}
+        
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @app.route('/api/emails/<email_addr>')
 @login_required
 def api_get_emails(email_addr):
@@ -2793,27 +2889,16 @@ def api_get_emails(email_addr):
     else:
         all_errors["graph"] = graph_result.get("error")
 
-    # 2. 尝试新版 IMAP (outlook.live.com)
     imap_new_result = get_emails_imap_with_server(
         account['email'], account['client_id'], account['refresh_token'],
         folder, skip, top, IMAP_SERVER_NEW
     )
     if imap_new_result.get("success"):
-        emails = imap_new_result.get("emails", [])
-        # 更新刷新时间
-        db = get_db()
-        db.execute('''
-            UPDATE accounts
-            SET last_refresh_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-            WHERE email = ?
-        ''', (email_addr,))
-        db.commit()
-
         return jsonify({
             'success': True,
-            'emails': emails,
-            'method': 'IMAP (新版)',
-            'has_more': len(emails) >= top
+            'emails': imap_new_result.get("emails", []),
+            'method': 'IMAP (New)',
+            'has_more': False # IMAP 分页暂未完全实现，视情况
         })
     else:
         all_errors["imap_new"] = imap_new_result.get("error")
@@ -2824,34 +2909,44 @@ def api_get_emails(email_addr):
         folder, skip, top, IMAP_SERVER_OLD
     )
     if imap_old_result.get("success"):
-        emails = imap_old_result.get("emails", [])
-        # 更新刷新时间
-        db = get_db()
-        db.execute('''
-            UPDATE accounts
-            SET last_refresh_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-            WHERE email = ?
-        ''', (email_addr,))
-        db.commit()
-
         return jsonify({
             'success': True,
-            'emails': emails,
-            'method': 'IMAP (旧版)',
-            'has_more': len(emails) >= top
+            'emails': imap_old_result.get("emails", []),
+            'method': 'IMAP (Old)',
+            'has_more': False
         })
     else:
         all_errors["imap_old"] = imap_old_result.get("error")
 
-    # 所有方式都失败，返回所有错误信息
-    error_payload = build_error_payload(
-        "EMAIL_FETCH_FAILED",
-        "获取邮件失败，所有方式均失败，请检查账号配置",
-        "EmailFetchError",
-        502,
-        all_errors
-    )
-    return jsonify({'success': False, 'error': error_payload})
+    return jsonify({
+        'success': False, 
+        'error': '无法获取邮件，所有方式均失败',
+        'details': all_errors
+    })
+
+@app.route('/api/emails/delete', methods=['POST'])
+@login_required
+def api_delete_emails():
+    """批量删除邮件（永久删除）"""
+    data = request.json
+    email_addr = data.get('email', '')
+    message_ids = data.get('ids', [])
+    
+    if not email_addr or not message_ids:
+        return jsonify({'success': False, 'error': '参数不完整'})
+
+    account = get_account_by_email(email_addr)
+    if not account:
+        return jsonify({'success': False, 'error': '账号不存在'})
+
+    # 1. 优先尝试 Graph API
+    graph_res = delete_emails_graph(account['client_id'], account['refresh_token'], message_ids)
+    if graph_res['success']:
+        return jsonify(graph_res)
+    
+    # 2. 如果 Graph API 失败，目前暂不支持 IMAP 自动回退
+    return jsonify(graph_res)
+
 
 
 @app.route('/api/email/<email_addr>/<path:message_id>')

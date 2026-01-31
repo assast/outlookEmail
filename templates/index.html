@@ -464,8 +464,24 @@
             color: #1a1a1a;
         }
 
+
         .account-action-btn.delete:hover {
             color: #dc3545;
+        }
+
+        .batch-btn.danger {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            transition: background-color 0.15s;
+        }
+
+        .batch-btn.danger:hover {
+            background-color: #c82333;
         }
 
         /* 内容区域 */
@@ -535,6 +551,21 @@
             border-bottom: 1px solid #f0f0f0;
             cursor: pointer;
             transition: background-color 0.15s;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .email-checkbox-wrapper {
+            padding-right: 12px;
+            padding-top: 2px;
+            display: flex;
+            align-items: center;
+        }
+
+        .email-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
         }
 
         .email-item:hover {
@@ -1408,6 +1439,15 @@
                         <div class="empty-state-text">请从左侧选择一个邮箱账号</div>
                     </div>
                 </div>
+                <!-- Email Batch Action Bar -->
+                <div id="emailBatchActionBar"
+                    style="display: none; padding: 8px 16px; border-top: 1px solid #e5e5e5; background: #f8f9fa; gap: 8px; align-items: center;">
+                    <span id="emailSelectedCount" style="font-size: 12px; color: #666;">已选 0 项</span>
+                    <div style="flex: 1;"></div>
+                    <button class="batch-btn danger" onclick="confirmBatchDeleteEmails()">
+                        🗑️ 删除
+                    </button>
+                </div>
             </div>
 
             <!-- 邮件详情面板 -->
@@ -1423,6 +1463,11 @@
                         <input type="checkbox" id="trustEmailCheckbox" onchange="toggleTrustMode(this)">
                         <span style="user-select: none;">信任此邮件</span>
                     </label>
+                    <div style="flex: 1;"></div>
+                    <button class="batch-btn danger" onclick="confirmDeleteCurrentEmail()"
+                        style="padding: 4px 8px; font-size: 12px;">
+                        🗑️ 删除
+                    </button>
                 </div>
                 <div id="emailDetail">
                     <div class="empty-state">
@@ -3712,6 +3757,10 @@ ${details}
         async function loadEmails(email, forceRefresh = false) {
             const container = document.getElementById('emailList');
 
+            // 切换账号/刷新时清除选中状态
+            selectedEmailIds.clear();
+            updateEmailBatchActionBar();
+
             // 检查缓存
             const cacheKey = `${email}_${currentFolder}`;
             if (!forceRefresh && emailListCache[cacheKey]) {
@@ -3802,8 +3851,13 @@ ${details}
         }
 
         // 渲染邮件列表
+        // Selected email IDs
+        let selectedEmailIds = new Set();
+        let isBatchSelectMode = false;
+
         function renderEmailList(emails) {
             const container = document.getElementById('emailList');
+            const actionBar = document.getElementById('emailBatchActionBar');
 
             if (emails.length === 0) {
                 container.innerHTML = `
@@ -3812,21 +3866,126 @@ ${details}
                         <div class="empty-state-text">收件箱为空</div>
                     </div>
                 `;
+                // Reset selection
+                selectedEmailIds.clear();
+                updateEmailBatchActionBar();
                 return;
             }
 
             // 根据是否是临时邮箱选择不同的点击处理函数
             const clickHandler = isTempEmailGroup ? 'getTempEmailDetail' : 'selectEmail';
 
-            container.innerHTML = emails.map((email, index) => `
+            container.innerHTML = emails.map((email, index) => {
+                const isChecked = selectedEmailIds.has(email.id);
+                return `
                 <div class="email-item ${email.is_read === false ? 'unread' : ''}"
                      onclick="${clickHandler}('${email.id}', ${index})">
-                    <div class="email-from">${escapeHtml(email.from)}</div>
-                    <div class="email-subject">${escapeHtml(email.subject || '无主题')}</div>
-                    <div class="email-preview">${escapeHtml(email.body_preview || '')}</div>
-                    <div class="email-date">${formatDate(email.date)}</div>
+                    <div class="email-checkbox-wrapper" onclick="event.stopPropagation(); toggleEmailSelection('${email.id}')">
+                        <input type="checkbox" class="email-checkbox" ${isChecked ? 'checked' : ''} style="pointer-events: none;">
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div class="email-from">${escapeHtml(email.from)}</div>
+                        <div class="email-subject">${escapeHtml(email.subject || '无主题')}</div>
+                        <div class="email-preview">${escapeHtml(email.body_preview || '')}</div>
+                        <div class="email-date">${formatDate(email.date)}</div>
+                    </div>
                 </div>
-            `).join('');
+            `}).join('');
+
+            updateEmailBatchActionBar();
+        }
+
+        function toggleEmailSelection(emailId) {
+            if (selectedEmailIds.has(emailId)) {
+                selectedEmailIds.delete(emailId);
+            } else {
+                selectedEmailIds.add(emailId);
+            }
+
+            // Re-render to update checkbox UI (or efficiently update DOM)
+            // For simplicity, we just find the checkbox and update it
+            // implementation below is cheap
+            renderEmailList(currentEmails);
+        }
+
+        function updateEmailBatchActionBar() {
+            const bar = document.getElementById('emailBatchActionBar');
+            if (selectedEmailIds.size > 0) {
+                bar.style.display = 'flex';
+                document.getElementById('emailSelectedCount').textContent = `已选 ${selectedEmailIds.size} 项`;
+            } else {
+                bar.style.display = 'none';
+            }
+        }
+
+        async function confirmBatchDeleteEmails() {
+            if (selectedEmailIds.size === 0) return;
+
+            if (!confirm(`确定要永久删除选中的 ${selectedEmailIds.size} 封邮件吗？此操作不可恢复！`)) {
+                return;
+            }
+
+            await deleteEmails(Array.from(selectedEmailIds));
+        }
+
+        async function confirmDeleteCurrentEmail() {
+            if (!currentEmailDetail || !currentEmailDetail.id) return;
+
+            if (!confirm('确定要永久删除这封邮件吗？此操作不可恢复！')) {
+                return;
+            }
+
+            await deleteEmails([currentEmailDetail.id]);
+        }
+
+        async function deleteEmails(ids) {
+            showToast('正在删除...', 'info');
+
+            try {
+                const response = await fetch('/api/emails/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: currentAccount,
+                        ids: ids
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`成功删除 ${result.success_count} 封邮件`);
+
+                    // Remove deleted emails from currentEmails
+                    const deletedIds = new Set(ids); // Ideally result should return what was deleted
+                    currentEmails = currentEmails.filter(e => !deletedIds.has(e.id));
+                    selectedEmailIds.clear();
+
+                    renderEmailList(currentEmails);
+
+                    // If current viewed email was deleted, clear view
+                    if (currentEmailDetail && deletedIds.has(currentEmailDetail.id)) {
+                        document.getElementById('emailDetail').innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">🗑️</div>
+                                <div class="empty-state-text">邮件已删除</div>
+                            </div>
+                        `;
+                        document.getElementById('emailDetailToolbar').style.display = 'none';
+                    }
+
+                    // If errors
+                    if (result.failed_count > 0) {
+                        console.warn('Deletion errors:', result.errors);
+                        showToast(`部分删除失败 (${result.failed_count} 封)`, 'warning');
+                    }
+                } else {
+                    showToast('删除失败: ' + (result.error || '未知错误'), 'error');
+                }
+            } catch (e) {
+                showToast('网络错误', 'error');
+                console.error(e);
+            }
         }
 
         // 选择邮件
