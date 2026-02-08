@@ -51,6 +51,18 @@ app.secret_key = secret_key
 # 设置 session 过期时间（默认 7 天）
 app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 24 * 7  # 7 天
 
+# Session Cookie 配置（适用于 HTTPS 代理环境）
+# 如果运行在 HTTPS 代理后面，需要正确配置这些选项
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = os.getenv('SESSION_COOKIE_SAMESITE', 'Lax')
+
+# 信任代理头（适用于反向代理环境）
+# 这确保 Flask 正确识别 HTTPS 请求
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+
 # 初始化 CSRF 保护（如果可用）
 if CSRF_AVAILABLE:
     csrf = CSRFProtect(app)
