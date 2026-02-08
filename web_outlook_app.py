@@ -1803,7 +1803,10 @@ def api_export_selected_accounts():
     verify_token = data.get('verify_token')
 
     # 检查二次验证token
-    if not verify_token or not session.get('export_verify_token') or verify_token != session.get('export_verify_token'):
+    session_token = session.get('export_verify_token')
+    print(f"[DEBUG] 导出验证 - 请求token: {verify_token[:20] if verify_token else 'None'}..., session_token: {session_token[:20] if session_token else 'None'}...")
+    if not verify_token or not session_token or verify_token != session_token:
+        print(f"[DEBUG] 验证失败! verify_token存在: {bool(verify_token)}, session_token存在: {bool(session_token)}, 匹配: {verify_token == session_token if verify_token and session_token else False}")
         return jsonify({'success': False, 'error': '需要二次验证', 'need_verify': True}), 401
 
     # 清除验证token（一次性使用）
@@ -1868,6 +1871,8 @@ def api_generate_export_verify_token():
     # 生成一次性验证token
     verify_token = secrets.token_urlsafe(32)
     session['export_verify_token'] = verify_token
+    session.modified = True  # 确保 session 被标记为已修改
+    print(f"[DEBUG] 生成验证token: {verify_token[:20]}..., session_id: {session.get('_id', 'N/A')}")
 
     return jsonify({'success': True, 'verify_token': verify_token})
 
