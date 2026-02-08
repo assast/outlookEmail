@@ -51,6 +51,10 @@ app.secret_key = secret_key
 # 设置 session 过期时间（默认 7 天）
 app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 24 * 7  # 7 天
 
+# Session Cookie 配置
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
 # Flask-Session 配置（适用于 Gunicorn 多 worker 模式）
 # 使用文件系统存储 session，确保多个 worker 共享 session 数据
 try:
@@ -1614,6 +1618,7 @@ def login():
                 reset_login_attempts(client_ip)
                 session['logged_in'] = True
                 session.permanent = True
+                session.modified = True  # 确保 Flask-Session 保存 session
                 return jsonify({'success': True, 'message': '登录成功'})
             else:
                 # 登录失败，记录失败次数
