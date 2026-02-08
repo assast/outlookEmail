@@ -1711,7 +1711,7 @@ def api_export_group(group_id):
     # 检查二次验证token
     verify_token = request.args.get('verify_token')
     if not verify_token or not session.get('export_verify_token') or verify_token != session.get('export_verify_token'):
-        return jsonify({'success': False, 'error': '需要二次验证', 'need_verify': True})
+        return jsonify({'success': False, 'error': '需要二次验证', 'need_verify': True}), 401
 
     # 清除验证token（一次性使用）
     session.pop('export_verify_token', None)
@@ -1758,7 +1758,7 @@ def api_export_all_accounts():
     # 检查二次验证token
     verify_token = request.args.get('verify_token')
     if not verify_token or not session.get('export_verify_token') or verify_token != session.get('export_verify_token'):
-        return jsonify({'success': False, 'error': '需要二次验证', 'need_verify': True})
+        return jsonify({'success': False, 'error': '需要二次验证', 'need_verify': True}), 401
 
     # 清除验证token（一次性使用）
     session.pop('export_verify_token', None)
@@ -1804,7 +1804,7 @@ def api_export_selected_accounts():
 
     # 检查二次验证token
     if not verify_token or not session.get('export_verify_token') or verify_token != session.get('export_verify_token'):
-        return jsonify({'success': False, 'error': '需要二次验证', 'need_verify': True})
+        return jsonify({'success': False, 'error': '需要二次验证', 'need_verify': True}), 401
 
     # 清除验证token（一次性使用）
     session.pop('export_verify_token', None)
@@ -1975,6 +1975,46 @@ def api_batch_manage_tags():
                 count += 1
 
     return jsonify({'success': True, 'message': f'成功处理 {count} 个账号'})
+
+
+@app.route('/api/accounts/batch-update-group', methods=['POST'])
+@login_required
+def api_batch_update_account_group():
+    """批量更新账号分组"""
+    data = request.json
+    account_ids = data.get('account_ids', [])
+    group_id = data.get('group_id')
+
+    if not account_ids:
+        return jsonify({'success': False, 'error': '请选择要修改的账号'})
+
+    if not group_id:
+        return jsonify({'success': False, 'error': '请选择目标分组'})
+
+    # 验证分组存在
+    group = get_group_by_id(group_id)
+    if not group:
+        return jsonify({'success': False, 'error': '目标分组不存在'})
+
+    # 检查是否是临时邮箱分组（系统保留分组）
+    if group.get('is_system'):
+        return jsonify({'success': False, 'error': '不能移动到系统分组'})
+
+    # 批量更新
+    db = get_db()
+    try:
+        placeholders = ','.join('?' * len(account_ids))
+        db.execute(f'''
+            UPDATE accounts SET group_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+        ''', [group_id] + account_ids)
+        db.commit()
+        return jsonify({
+            'success': True,
+            'message': f'已将 {len(account_ids)} 个账号移动到「{group["name"]}」分组'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 
 

@@ -1402,6 +1402,7 @@
                 <div style="flex: 1;"></div>
                 <button class="btn btn-sm btn-secondary" onclick="showBatchTagModal('add')">打标签</button>
                 <button class="btn btn-sm btn-secondary" onclick="showBatchTagModal('remove')">去标签</button>
+                <button class="btn btn-sm btn-secondary" onclick="showBatchMoveGroupModal()">移动分组</button>
             </div>
             <div class="account-panel-footer">
                 <button class="add-account-btn" onclick="showAddAccountModal()">+ 导入邮箱</button>
@@ -1940,6 +1941,28 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="hideBatchTagModal()">取消</button>
                 <button class="btn btn-primary" onclick="confirmBatchTag()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 批量移动分组模态框 -->
+    <div class="modal" id="batchMoveGroupModal" onclick="if(event.target === this) hideBatchMoveGroupModal()">
+        <div class="modal-content" style="width: 400px;">
+            <div class="modal-header">
+                <h3>移动到分组</h3>
+                <button class="modal-close" onclick="hideBatchMoveGroupModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">选择目标分组</label>
+                    <select class="form-select" id="batchMoveGroupSelect">
+                        <option value="">请选择分组...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideBatchMoveGroupModal()">取消</button>
+                <button class="btn btn-primary" onclick="confirmBatchMoveGroup()">确认移动</button>
             </div>
         </div>
     </div>
@@ -5420,6 +5443,83 @@ ${details}
                         loadAccountsByGroup(currentGroupId, true);
                     }
                     // 隐藏操作栏
+                    document.querySelectorAll('.account-select-checkbox').forEach(cb => cb.checked = false);
+                    updateBatchActionBar();
+                } else {
+                    showToast(data.error || '操作失败', 'error');
+                }
+            } catch (error) {
+                showToast('请求失败', 'error');
+            }
+        }
+
+        // ==================== 批量移动分组 ====================
+
+        // 显示批量移动分组模态框
+        async function showBatchMoveGroupModal() {
+            document.getElementById('batchMoveGroupModal').classList.add('show');
+            await loadGroupsForBatchMove();
+        }
+
+        function hideBatchMoveGroupModal() {
+            document.getElementById('batchMoveGroupModal').classList.remove('show');
+        }
+
+        // 加载分组到下拉框
+        async function loadGroupsForBatchMove() {
+            const select = document.getElementById('batchMoveGroupSelect');
+            select.innerHTML = '<option value="">加载中...</option>';
+
+            try {
+                const response = await fetch('/api/groups');
+                const data = await response.json();
+                if (data.success) {
+                    let html = '<option value="">请选择分组...</option>';
+                    data.groups.filter(g => !g.is_system).forEach(group => {
+                        html += `<option value="${group.id}">${escapeHtml(group.name)}</option>`;
+                    });
+                    select.innerHTML = html;
+                }
+            } catch (error) {
+                select.innerHTML = '<option value="">加载失败</option>';
+            }
+        }
+
+        // 确认批量移动分组
+        async function confirmBatchMoveGroup() {
+            const groupId = document.getElementById('batchMoveGroupSelect').value;
+            if (!groupId) {
+                showToast('请选择目标分组', 'error');
+                return;
+            }
+
+            const checked = document.querySelectorAll('.account-select-checkbox:checked');
+            const accountIds = Array.from(checked).map(cb => parseInt(cb.value));
+
+            if (accountIds.length === 0) return;
+
+            try {
+                const response = await fetch('/api/accounts/batch-update-group', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        account_ids: accountIds,
+                        group_id: parseInt(groupId)
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    hideBatchMoveGroupModal();
+                    // 刷新分组列表
+                    loadGroups();
+                    // 刷新当前分组的邮箱列表
+                    if (currentGroupId) {
+                        delete accountsCache[currentGroupId];
+                        loadAccountsByGroup(currentGroupId, true);
+                    }
+                    // 清除选择
                     document.querySelectorAll('.account-select-checkbox').forEach(cb => cb.checked = false);
                     updateBatchActionBar();
                 } else {
