@@ -31,5 +31,5 @@ RUN mkdir -p /app/data
 # 暴露端口
 EXPOSE 5000
 
-# 启动应用（使用 Gunicorn）
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5000", "--timeout", "120", "--access-logfile", "-", "web_outlook_app:app"]
+# 启动应用（使用 Gunicorn，单 worker 避免 session 共享问题）
+CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:5000", "--timeout", "120", "--access-logfile", "-", "--preload", "web_outlook_app:app"]

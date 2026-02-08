@@ -51,30 +51,9 @@ app.secret_key = secret_key
 # 设置 session 过期时间（默认 7 天）
 app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 24 * 7  # 7 天
 
-# Session Cookie 配置
+# Session Cookie 配置（适用于 HTTPS 代理环境）
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-
-# Flask-Session 配置（适用于 Gunicorn 多 worker 模式）
-# 使用文件系统存储 session，确保多个 worker 共享 session 数据
-try:
-    from flask_session import Session
-    # 使用文件系统存储 session
-    app.config['SESSION_TYPE'] = 'filesystem'
-    app.config['SESSION_FILE_DIR'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'flask_session')
-    app.config['SESSION_PERMANENT'] = True
-    app.config['SESSION_USE_SIGNER'] = True  # 使用签名保护 session ID
-    app.config['SESSION_FILE_THRESHOLD'] = 500  # 最大 session 文件数
-    
-    # 确保 session 目录存在
-    os.makedirs(app.config['SESSION_FILE_DIR'], exist_ok=True)
-    
-    # 初始化 Flask-Session
-    Session(app)
-    print("Flask-Session enabled (filesystem storage)")
-except ImportError:
-    print("Warning: flask-session not installed. Using default client-side sessions.")
-    print("For Gunicorn multi-worker support, install with: pip install flask-session")
 
 # 信任代理头（适用于反向代理环境）
 # 这确保 Flask 正确识别 HTTPS 请求
