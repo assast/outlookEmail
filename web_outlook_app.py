@@ -51,16 +51,32 @@ app.secret_key = secret_key
 # 设置 session 过期时间（默认 7 天）
 app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 24 * 7  # 7 天
 
-# Session Cookie 配置（适用于 HTTPS 代理环境）
-# 如果运行在 HTTPS 代理后面，需要正确配置这些选项
-app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = os.getenv('SESSION_COOKIE_SAMESITE', 'Lax')
+# Flask-Session 配置（适用于 Gunicorn 多 worker 模式）
+# 使用文件系统存储 session，确保多个 worker 共享 session 数据
+try:
+    from flask_session import Session
+    # 使用文件系统存储 session
+    app.config['SESSION_TYPE'] = 'filesystem'
+    app.config['SESSION_FILE_DIR'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'flask_session')
+    app.config['SESSION_PERMANENT'] = True
+    app.config['SESSION_USE_SIGNER'] = True  # 使用签名保护 session ID
+    app.config['SESSION_FILE_THRESHOLD'] = 500  # 最大 session 文件数
+    
+    # 确保 session 目录存在
+    os.makedirs(app.config['SESSION_FILE_DIR'], exist_ok=True)
+    
+    # 初始化 Flask-Session
+    Session(app)
+    print("Flask-Session enabled (filesystem storage)")
+except ImportError:
+    print("Warning: flask-session not installed. Using default client-side sessions.")
+    print("For Gunicorn multi-worker support, install with: pip install flask-session")
 
 # 信任代理头（适用于反向代理环境）
 # 这确保 Flask 正确识别 HTTPS 请求
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 
 
 # 初始化 CSRF 保护（如果可用）
@@ -1816,9 +1832,7 @@ def api_export_selected_accounts():
 
     # 检查二次验证token
     session_token = session.get('export_verify_token')
-    print(f"[DEBUG] 导出验证 - 请求token: {verify_token[:20] if verify_token else 'None'}..., session_token: {session_token[:20] if session_token else 'None'}...")
     if not verify_token or not session_token or verify_token != session_token:
-        print(f"[DEBUG] 验证失败! verify_token存在: {bool(verify_token)}, session_token存在: {bool(session_token)}, 匹配: {verify_token == session_token if verify_token and session_token else False}")
         return jsonify({'success': False, 'error': '需要二次验证', 'need_verify': True}), 401
 
     # 清除验证token（一次性使用）
@@ -1884,7 +1898,6 @@ def api_generate_export_verify_token():
     verify_token = secrets.token_urlsafe(32)
     session['export_verify_token'] = verify_token
     session.modified = True  # 确保 session 被标记为已修改
-    print(f"[DEBUG] 生成验证token: {verify_token[:20]}..., session_id: {session.get('_id', 'N/A')}")
 
     return jsonify({'success': True, 'verify_token': verify_token})
 
