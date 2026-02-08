@@ -108,6 +108,10 @@ GPTMAIL_API_KEY = os.getenv("GPTMAIL_API_KEY", "gpt-test")  # 测试 API Key，�
 # 临时邮箱分组 ID（系统保留）
 TEMP_EMAIL_GROUP_ID = -1
 
+# 导出验证 Token 存储（内存存储，单 worker 模式下使用）
+# 格式: {user_session_id: {'token': verify_token, 'expires': timestamp}}
+export_verify_tokens = {}
+
 # OAuth 配置
 OAUTH_CLIENT_ID = os.getenv("OAUTH_CLIENT_ID", "24d9a0ed-8787-4584-883c-2fd79308940a")
 OAUTH_REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI", "http://localhost:8080")
@@ -1720,13 +1724,19 @@ def api_delete_group(group_id):
 @login_required
 def api_export_group(group_id):
     """导出分组下的所有邮箱账号为 TXT 文件（需要二次验证）"""
-    # 检查二次验证token
+    # 检查二次验证token（使用内存存储）
     verify_token = request.args.get('verify_token')
-    if not verify_token or not session.get('export_verify_token') or verify_token != session.get('export_verify_token'):
+    import time
+    if not verify_token or verify_token not in export_verify_tokens:
         return jsonify({'success': False, 'error': '需要二次验证', 'need_verify': True}), 401
-
+    
+    token_data = export_verify_tokens[verify_token]
+    if token_data['expires'] < time.time():
+        del export_verify_tokens[verify_token]
+        return jsonify({'success': False, 'error': '验证已过期，请重新验证', 'need_verify': True}), 401
+    
     # 清除验证token（一次性使用）
-    session.pop('export_verify_token', None)
+    del export_verify_tokens[verify_token]
 
     group = get_group_by_id(group_id)
     if not group:
@@ -1767,13 +1777,20 @@ def api_export_group(group_id):
 @login_required
 def api_export_all_accounts():
     """导出所有邮箱账号为 TXT 文件（需要二次验证）"""
-    # 检查二次验证token
+    # 检查二次验证token（使用内存存储）
     verify_token = request.args.get('verify_token')
-    if not verify_token or not session.get('export_verify_token') or verify_token != session.get('export_verify_token'):
+    import time
+    if not verify_token or verify_token not in export_verify_tokens:
         return jsonify({'success': False, 'error': '需要二次验证', 'need_verify': True}), 401
-
+    
+    token_data = export_verify_tokens[verify_token]
+    if token_data['expires'] < time.time():
+        del export_verify_tokens[verify_token]
+        return jsonify({'success': False, 'error': '验证已过期，请重新验证', 'need_verify': True}), 401
+    
     # 清除验证token（一次性使用）
-    session.pop('export_verify_token', None)
+    del export_verify_tokens[verify_token]
+
 
     # 使用 load_accounts 获取所有账号（自动解密）
     accounts = load_accounts()
@@ -1814,13 +1831,28 @@ def api_export_selected_accounts():
     group_ids = data.get('group_ids', [])
     verify_token = data.get('verify_token')
 
-    # 检查二次验证token
-    session_token = session.get('export_verify_token')
-    if not verify_token or not session_token or verify_token != session_token:
+    # 检查二次验证token（使用内存存储）
+    import time
+    if not verify_token or verify_token not in export_verify_tokens:
         return jsonify({'success': False, 'error': '需要二次验证', 'need_verify': True}), 401
-
+    
+    token_data = export_verify_tokens[verify_token]
+    
+    # 检查是否过期
+    if token_data['expires'] < time.time():
+        del export_verify_tokens[verify_token]
+        return jsonify({'success': False, 'error': '验证已过期，请重新验证', 'need_verify': True}), 401
+    
+    # 可选：验证 IP 一致性（增强安全性）
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip:
+        client_ip = client_ip.split(',')[0].strip()
+    # 注意：由于 Cloudflare 可能使用不同边缘节点，IP 可能变化，暂不强制验证
+    # if token_data['ip'] != client_ip:
+    #     return jsonify({'success': False, 'error': 'IP 不匹配', 'need_verify': True}), 401
+    
     # 清除验证token（一次性使用）
-    session.pop('export_verify_token', None)
+    del export_verify_tokens[verify_token]
 
     if not group_ids:
         return jsonify({'success': False, 'error': '请选择要导出的分组'})
@@ -1880,8 +1912,24 @@ def api_generate_export_verify_token():
 
     # 生成一次性验证token
     verify_token = secrets.token_urlsafe(32)
-    session['export_verify_token'] = verify_token
-    session.modified = True  # 确保 session 被标记为已修改
+    
+    # 使用 IP + 时间戳 作为用户标识（因为 session cookie 可能不可靠）
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip:
+        client_ip = client_ip.split(',')[0].strip()
+    
+    # 存储到内存字典（设置5分钟过期）
+    import time
+    export_verify_tokens[verify_token] = {
+        'ip': client_ip,
+        'expires': time.time() + 300  # 5分钟有效期
+    }
+    
+    # 清理过期的 token
+    current_time = time.time()
+    expired_tokens = [k for k, v in export_verify_tokens.items() if v['expires'] < current_time]
+    for token in expired_tokens:
+        del export_verify_tokens[token]
 
     return jsonify({'success': True, 'verify_token': verify_token})
 
