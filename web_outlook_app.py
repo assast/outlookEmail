@@ -11,6 +11,7 @@ import email
 import imaplib
 import sqlite3
 import os
+import sys
 import hashlib
 import secrets
 import time
@@ -40,6 +41,18 @@ except ImportError:
     print("Warning: flask-wtf not installed. CSRF protection is disabled. Install with: pip install flask-wtf")
 
 app = Flask(__name__)
+# ==================== PyInstaller 路径适配 ====================
+# 打包后 sys.frozen=True, sys._MEIPASS=临时解压目录
+# 模板从 _MEIPASS 加载；数据库存放在 exe 所在真实目录
+if getattr(sys, 'frozen', False):
+    # PyInstaller 打包环境
+    _resource_dir = sys._MEIPASS                        # 模板/静态资源
+    _base_dir = os.path.dirname(sys.executable)         # exe 所在目录（数据持久化）
+    app.template_folder = os.path.join(_resource_dir, 'templates')
+else:
+    # 开发环境
+    _base_dir = os.path.dirname(os.path.abspath(__file__))
+
 # 强制从环境变量读取 secret_key，不提供默认值以防止安全漏洞
 secret_key = os.getenv("SECRET_KEY")
 if not secret_key:
@@ -98,8 +111,8 @@ IMAP_SERVER_OLD = "outlook.office365.com"
 IMAP_SERVER_NEW = "outlook.live.com"
 IMAP_PORT = 993
 
-# 数据库文件
-DATABASE = os.getenv("DATABASE_PATH", "data/outlook_accounts.db")
+# 数据库文件 — 打包后存放在 exe 同目录的 data/ 下，开发环境存放在项目根目录的 data/ 下
+DATABASE = os.getenv("DATABASE_PATH", os.path.join(_base_dir, "data", "outlook_accounts.db"))
 
 # GPTMail API 配置
 GPTMAIL_BASE_URL = os.getenv("GPTMAIL_BASE_URL", "https://mail.chatgpt.org.uk")
@@ -658,10 +671,7 @@ def migrate_sensitive_data(conn):
 
 def init_app():
     """初始化应用（确保目录和数据库存在）"""
-    # 确保 templates 目录存在
-    os.makedirs('templates', exist_ok=True)
-    
-    # 确保数据目录存在
+    # 确保数据目录存在（打包后在 exe 同目录的 data/）
     data_dir = os.path.dirname(DATABASE)
     if data_dir:
         os.makedirs(data_dir, exist_ok=True)

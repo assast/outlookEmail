@@ -47,69 +47,11 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
-      - name: Build onedir version
+      - name: Build single exe (--onefile)
         shell: pwsh
         run: |
           pyinstaller --noconfirm --clean `
             --name OutlookEmail `
-            --console `
-            --add-data "templates;templates" `
-            --add-data "web_outlook_app.py;." `
-            --hidden-import waitress `
-            --hidden-import waitress.server `
-            --hidden-import waitress.task `
-            --hidden-import waitress.channel `
-            --hidden-import waitress.receiver `
-            --hidden-import waitress.buffers `
-            --hidden-import waitress.parser `
-            --hidden-import waitress.utilities `
-            --hidden-import webview `
-            --hidden-import flask `
-            --hidden-import flask.json `
-            --hidden-import flask_wtf `
-            --hidden-import flask_wtf.csrf `
-            --hidden-import werkzeug `
-            --hidden-import werkzeug.middleware.proxy_fix `
-            --hidden-import jinja2 `
-            --hidden-import markupsafe `
-            --hidden-import requests `
-            --hidden-import requests.adapters `
-            --hidden-import urllib3 `
-            --hidden-import socks `
-            --hidden-import sockshandler `
-            --hidden-import bcrypt `
-            --hidden-import cryptography `
-            --hidden-import cryptography.fernet `
-            --hidden-import cryptography.hazmat.primitives `
-            --hidden-import cryptography.hazmat.primitives.hashes `
-            --hidden-import cryptography.hazmat.primitives.kdf.pbkdf2 `
-            --hidden-import cryptography.hazmat.backends `
-            --hidden-import apscheduler `
-            --hidden-import apscheduler.schedulers.background `
-            --hidden-import apscheduler.triggers.interval `
-            --hidden-import apscheduler.triggers.cron `
-            --hidden-import croniter `
-            --hidden-import sqlite3 `
-            --hidden-import email `
-            --hidden-import imaplib `
-            --exclude-module tkinter `
-            --exclude-module _tkinter `
-            --exclude-module matplotlib `
-            --exclude-module numpy `
-            --exclude-module pandas `
-            --exclude-module scipy `
-            --exclude-module PIL `
-            --exclude-module cv2 `
-            --exclude-module unittest `
-            --exclude-module pydoc `
-            --exclude-module xmlrpc `
-            run_windows.py
-
-      - name: Build onefile portable version
-        shell: pwsh
-        run: |
-          pyinstaller --noconfirm --clean `
-            --name OutlookEmail_portable `
             --onefile `
             --console `
             --add-data "templates;templates" `
@@ -164,34 +106,23 @@ jobs:
             --exclude-module xmlrpc `
             run_windows.py
 
-      - name: Package onedir as zip
+      - name: Rename exe with version
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist\OutlookEmail\*" -DestinationPath "dist\OutlookEmail-${{ steps.version.outputs.version }}-windows-x64.zip"
+          Move-Item "dist\OutlookEmail.exe" "dist\OutlookEmail-${{ steps.version.outputs.version }}.exe"
 
-      - name: Rename onefile exe
+      - name: Verify build artifact
         shell: pwsh
         run: |
-          Move-Item "dist\OutlookEmail_portable.exe" "dist\OutlookEmail-${{ steps.version.outputs.version }}-portable.exe"
+          $file = Get-Item "dist\OutlookEmail-${{ steps.version.outputs.version }}.exe"
+          Write-Host "File: $($file.Name)"
+          Write-Host "Size: $([math]::Round($file.Length / 1MB, 1)) MB"
 
-      - name: Verify build artifacts
-        shell: pwsh
-        run: |
-          Write-Host "=== Build Artifacts ==="
-          Get-ChildItem dist\*.zip, dist\*.exe | Format-Table Name, @{N='Size(MB)';E={[math]::Round($_.Length / 1MB, 1)}} -AutoSize
-          Write-Host ""
-          Write-Host "=== onedir folder size ==="
-          $items = Get-ChildItem dist\OutlookEmail\ -Recurse
-          $total = ($items | Measure-Object -Property Length -Sum).Sum
-          Write-Host "Total files: $($items.Count), Total size: $([math]::Round($total / 1MB, 1)) MB"
-
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OutlookEmail-${{ steps.version.outputs.version }}-windows
-          path: |
-            dist/OutlookEmail-*.zip
-            dist/OutlookEmail-*-portable.exe
+          name: OutlookEmail-${{ steps.version.outputs.version }}
+          path: dist/OutlookEmail-*.exe
           retention-days: 30
 
       - name: Create GitHub Release
@@ -202,28 +133,20 @@ jobs:
           body: |
             ## Outlook 邮件 Web 应用 ${{ steps.version.outputs.version }}
 
-            ### 下载说明
-            | 文件 | 说明 |
-            |------|------|
-            | `OutlookEmail-*-windows-x64.zip` | **推荐** - 解压即用，启动快，原生桌面窗口 |
-            | `OutlookEmail-*-portable.exe` | 单文件便携版，首次启动需解压约 5 秒 |
-
             ### 使用方法
-            1. 下载并解压（或直接运行 portable 版）
-            2. 双击 `OutlookEmail.exe` 启动
-            3. 自动弹出桌面窗口，无需手动打开浏览器
-            4. 默认密码: `admin123`（请在设置中修改）
-            5. 关闭窗口即可退出程序
+            1. 下载 `OutlookEmail-${{ steps.version.outputs.version }}.exe`
+            2. 双击运行，自动弹出桌面窗口
+            3. 默认密码: `admin123`（请在设置中修改）
+            4. 关闭窗口即可退出程序
 
             ### 数据存储
-            - 数据库保存在 exe 同目录下的 `data/` 文件夹
+            - 数据库保存在 exe 同目录下的 `data/` 文件夹，自动创建
+            - SECRET_KEY 自动生成并持久化到 `data/.secret_key`
             - 升级时只需替换 exe 文件，`data/` 文件夹保持不变
-            - SECRET_KEY 自动生成并持久化，无需手动配置
 
             ### 系统要求
             - Windows 10 / 11（需要 WebView2 运行时，Win10 2004+ 和 Win11 已内置）
-          files: |
-            dist/OutlookEmail-*.zip
-            dist/OutlookEmail-*-portable.exe
+            - 如果 WebView2 不可用，会自动回退到浏览器模式
+          files: dist/OutlookEmail-*.exe
           draft: false
           prerelease: false
