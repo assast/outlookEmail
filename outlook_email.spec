@@ -1,75 +1,62 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
 PyInstaller 打包配置文件
-用于将 Outlook 邮件 Web 应用打包为 Windows exe
+用于将 Outlook 邮件 Web 应用打包为 Windows exe（桌面窗口版）
 
 使用方法:
     pyinstaller outlook_email.spec
-
-生成两个版本:
-    - dist/OutlookEmail/OutlookEmail.exe  (目录模式，启动快)
-    - dist/OutlookEmail.exe               (单文件模式，便于分发)
 """
 
 import os
 
 block_cipher = None
 
-# 应用基本信息
 APP_NAME = 'OutlookEmail'
 ENTRY_SCRIPT = 'run_windows.py'
 
-# 需要打包的数据文件
 datas = [
-    ('templates', 'templates'),       # HTML 模板
-    ('web_outlook_app.py', '.'),      # 主应用（作为模块导入）
+    ('templates', 'templates'),
+    ('web_outlook_app.py', '.'),
 ]
 
-# 如果有 img 目录也打包进去
 if os.path.exists('img'):
     datas.append(('img', 'img'))
 
-# 隐式导入（PyInstaller 可能扫描不到的模块）
 hiddenimports = [
-    'waitress',
-    'waitress.server',
-    'waitress.task',
-    'waitress.channel',
-    'waitress.receiver',
-    'waitress.buffers',
-    'waitress.parser',
-    'waitress.utilities',
-    'flask',
-    'flask.json',
-    'flask_wtf',
-    'flask_wtf.csrf',
-    'werkzeug',
-    'werkzeug.middleware.proxy_fix',
-    'jinja2',
-    'markupsafe',
-    'requests',
-    'requests.adapters',
-    'urllib3',
-    'socks',            # PySocks
-    'sockshandler',
+    # WSGI 服务器
+    'waitress', 'waitress.server', 'waitress.task',
+    'waitress.channel', 'waitress.receiver', 'waitress.buffers',
+    'waitress.parser', 'waitress.utilities',
+    # 桌面窗口
+    'webview',
+    # Flask 及相关
+    'flask', 'flask.json', 'flask_wtf', 'flask_wtf.csrf',
+    'werkzeug', 'werkzeug.middleware.proxy_fix',
+    'jinja2', 'markupsafe',
+    # HTTP 及代理
+    'requests', 'requests.adapters', 'urllib3',
+    'socks', 'sockshandler',
+    # 加密
     'bcrypt',
-    'cryptography',
-    'cryptography.fernet',
+    'cryptography', 'cryptography.fernet',
     'cryptography.hazmat.primitives',
     'cryptography.hazmat.primitives.hashes',
     'cryptography.hazmat.primitives.kdf.pbkdf2',
     'cryptography.hazmat.backends',
-    'apscheduler',
-    'apscheduler.schedulers.background',
-    'apscheduler.triggers.interval',
-    'apscheduler.triggers.cron',
+    # 定时任务
+    'apscheduler', 'apscheduler.schedulers.background',
+    'apscheduler.triggers.interval', 'apscheduler.triggers.cron',
     'croniter',
-    'sqlite3',
-    'email',
-    'imaplib',
+    # 标准库
+    'sqlite3', 'email', 'imaplib',
 ]
 
-# Analysis 配置
+excludes = [
+    'tkinter', '_tkinter', 'matplotlib', 'numpy', 'pandas',
+    'scipy', 'PIL', 'cv2', 'torch', 'tensorflow',
+    'unittest', 'test', 'xmlrpc', 'pydoc',
+]
+
 a = Analysis(
     [ENTRY_SCRIPT],
     pathex=[],
@@ -79,22 +66,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        'tkinter',        # 不需要 GUI 框架
-        'matplotlib',
-        'numpy',
-        'pandas',
-        'scipy',
-        'PIL',
-        'cv2',
-        'torch',
-        'tensorflow',
-        '_tkinter',
-        'unittest',
-        'test',
-        'xmlrpc',
-        'pydoc',
-    ],
+    excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -114,13 +86,13 @@ exe_onedir = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,          # 保留控制台窗口显示日志
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,             # 可替换为 .ico 图标文件路径
+    icon=None,
 )
 
 coll = COLLECT(
@@ -149,11 +121,11 @@ exe_onefile = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,          # 保留控制台窗口显示日志
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,             # 可替换为 .ico 图标文件路径
+    icon=None,
 )

@@ -3,8 +3,8 @@ name: Build Windows EXE
 on:
   push:
     tags:
-      - 'v*'          # 推送 v 开头的 tag 时触发（如 v1.0.0）
-  workflow_dispatch:   # 支持手动触发
+      - 'v*'
+  workflow_dispatch:
     inputs:
       version:
         description: '版本号（如 1.0.0）'
@@ -15,7 +15,7 @@ jobs:
   build-exe:
     runs-on: windows-latest
     permissions:
-      contents: write  # 需要写权限来创建 Release
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -31,7 +31,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install waitress pyinstaller
+          pip install waitress pywebview pyinstaller
 
       - name: Determine version
         id: version
@@ -47,7 +47,8 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
-      - name: Build with PyInstaller (onedir)
+      - name: Build onedir version
+        shell: pwsh
         run: |
           pyinstaller --noconfirm --clean `
             --name OutlookEmail `
@@ -62,29 +63,50 @@ jobs:
             --hidden-import waitress.buffers `
             --hidden-import waitress.parser `
             --hidden-import waitress.utilities `
+            --hidden-import webview `
+            --hidden-import flask `
+            --hidden-import flask.json `
             --hidden-import flask_wtf `
             --hidden-import flask_wtf.csrf `
+            --hidden-import werkzeug `
+            --hidden-import werkzeug.middleware.proxy_fix `
+            --hidden-import jinja2 `
+            --hidden-import markupsafe `
+            --hidden-import requests `
+            --hidden-import requests.adapters `
+            --hidden-import urllib3 `
+            --hidden-import socks `
+            --hidden-import sockshandler `
+            --hidden-import bcrypt `
+            --hidden-import cryptography `
+            --hidden-import cryptography.fernet `
+            --hidden-import cryptography.hazmat.primitives `
+            --hidden-import cryptography.hazmat.primitives.hashes `
+            --hidden-import cryptography.hazmat.primitives.kdf.pbkdf2 `
+            --hidden-import cryptography.hazmat.backends `
             --hidden-import apscheduler `
             --hidden-import apscheduler.schedulers.background `
             --hidden-import apscheduler.triggers.interval `
             --hidden-import apscheduler.triggers.cron `
             --hidden-import croniter `
-            --hidden-import socks `
-            --hidden-import sockshandler `
-            --hidden-import bcrypt `
-            --hidden-import cryptography.fernet `
-            --hidden-import cryptography.hazmat.primitives.hashes `
-            --hidden-import cryptography.hazmat.primitives.kdf.pbkdf2 `
+            --hidden-import sqlite3 `
+            --hidden-import email `
+            --hidden-import imaplib `
             --exclude-module tkinter `
+            --exclude-module _tkinter `
             --exclude-module matplotlib `
             --exclude-module numpy `
             --exclude-module pandas `
+            --exclude-module scipy `
             --exclude-module PIL `
+            --exclude-module cv2 `
             --exclude-module unittest `
             --exclude-module pydoc `
+            --exclude-module xmlrpc `
             run_windows.py
 
-      - name: Build with PyInstaller (onefile)
+      - name: Build onefile portable version
+        shell: pwsh
         run: |
           pyinstaller --noconfirm --clean `
             --name OutlookEmail_portable `
@@ -100,48 +122,68 @@ jobs:
             --hidden-import waitress.buffers `
             --hidden-import waitress.parser `
             --hidden-import waitress.utilities `
+            --hidden-import webview `
+            --hidden-import flask `
+            --hidden-import flask.json `
             --hidden-import flask_wtf `
             --hidden-import flask_wtf.csrf `
+            --hidden-import werkzeug `
+            --hidden-import werkzeug.middleware.proxy_fix `
+            --hidden-import jinja2 `
+            --hidden-import markupsafe `
+            --hidden-import requests `
+            --hidden-import requests.adapters `
+            --hidden-import urllib3 `
+            --hidden-import socks `
+            --hidden-import sockshandler `
+            --hidden-import bcrypt `
+            --hidden-import cryptography `
+            --hidden-import cryptography.fernet `
+            --hidden-import cryptography.hazmat.primitives `
+            --hidden-import cryptography.hazmat.primitives.hashes `
+            --hidden-import cryptography.hazmat.primitives.kdf.pbkdf2 `
+            --hidden-import cryptography.hazmat.backends `
             --hidden-import apscheduler `
             --hidden-import apscheduler.schedulers.background `
             --hidden-import apscheduler.triggers.interval `
             --hidden-import apscheduler.triggers.cron `
             --hidden-import croniter `
-            --hidden-import socks `
-            --hidden-import sockshandler `
-            --hidden-import bcrypt `
-            --hidden-import cryptography.fernet `
-            --hidden-import cryptography.hazmat.primitives.hashes `
-            --hidden-import cryptography.hazmat.primitives.kdf.pbkdf2 `
+            --hidden-import sqlite3 `
+            --hidden-import email `
+            --hidden-import imaplib `
             --exclude-module tkinter `
+            --exclude-module _tkinter `
             --exclude-module matplotlib `
             --exclude-module numpy `
             --exclude-module pandas `
+            --exclude-module scipy `
             --exclude-module PIL `
+            --exclude-module cv2 `
             --exclude-module unittest `
             --exclude-module pydoc `
+            --exclude-module xmlrpc `
             run_windows.py
 
       - name: Package onedir as zip
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist/OutlookEmail/*" -DestinationPath "dist/OutlookEmail-${{ steps.version.outputs.version }}-windows-x64.zip"
+          Compress-Archive -Path "dist\OutlookEmail\*" -DestinationPath "dist\OutlookEmail-${{ steps.version.outputs.version }}-windows-x64.zip"
 
       - name: Rename onefile exe
         shell: pwsh
         run: |
-          Move-Item "dist/OutlookEmail_portable.exe" "dist/OutlookEmail-${{ steps.version.outputs.version }}-portable.exe"
+          Move-Item "dist\OutlookEmail_portable.exe" "dist\OutlookEmail-${{ steps.version.outputs.version }}-portable.exe"
 
       - name: Verify build artifacts
         shell: pwsh
         run: |
           Write-Host "=== Build Artifacts ==="
-          Get-ChildItem dist/*.zip, dist/*.exe | Format-Table Name, Length -AutoSize
+          Get-ChildItem dist\*.zip, dist\*.exe | Format-Table Name, @{N='Size(MB)';E={[math]::Round($_.Length / 1MB, 1)}} -AutoSize
           Write-Host ""
-          Write-Host "=== onedir contents ==="
-          Get-ChildItem dist/OutlookEmail/ | Measure-Object -Property Length -Sum | ForEach-Object {
-            Write-Host "Total files: $($_.Count), Total size: $([math]::Round($_.Sum / 1MB, 1)) MB"
-          }
+          Write-Host "=== onedir folder size ==="
+          $items = Get-ChildItem dist\OutlookEmail\ -Recurse
+          $total = ($items | Measure-Object -Property Length -Sum).Sum
+          Write-Host "Total files: $($items.Count), Total size: $([math]::Round($total / 1MB, 1)) MB"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -163,19 +205,23 @@ jobs:
             ### 下载说明
             | 文件 | 说明 |
             |------|------|
-            | `OutlookEmail-*-windows-x64.zip` | **推荐** - 解压即用，启动快 |
-            | `OutlookEmail-*-portable.exe` | 单文件便携版，首次启动较慢 |
+            | `OutlookEmail-*-windows-x64.zip` | **推荐** - 解压即用，启动快，原生桌面窗口 |
+            | `OutlookEmail-*-portable.exe` | 单文件便携版，首次启动需解压约 5 秒 |
 
             ### 使用方法
             1. 下载并解压（或直接运行 portable 版）
             2. 双击 `OutlookEmail.exe` 启动
-            3. 浏览器会自动打开 `http://127.0.0.1:5000`
+            3. 自动弹出桌面窗口，无需手动打开浏览器
             4. 默认密码: `admin123`（请在设置中修改）
-            5. 关闭命令行窗口即可停止服务
+            5. 关闭窗口即可退出程序
 
             ### 数据存储
             - 数据库保存在 exe 同目录下的 `data/` 文件夹
-            - 升级时只需替换 exe，`data/` 文件夹保持不变
+            - 升级时只需替换 exe 文件，`data/` 文件夹保持不变
+            - SECRET_KEY 自动生成并持久化，无需手动配置
+
+            ### 系统要求
+            - Windows 10 / 11（需要 WebView2 运行时，Win10 2004+ 和 Win11 已内置）
           files: |
             dist/OutlookEmail-*.zip
             dist/OutlookEmail-*-portable.exe
