@@ -1776,7 +1776,7 @@
     <div class="modal" id="exportVerifyModal" onclick="if(event.target === this) hideExportVerifyModal()">
         <div class="modal-content" style="width: 400px;">
             <div class="modal-header">
-                <h3>🔐 安全验证</h3>
+                <h3><i data-lucide="lock"></i> 安全验证</h3>
                 <button class="modal-close" onclick="hideExportVerifyModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -1814,7 +1814,7 @@
                 </div>
 
                 <div style="border-top: 1px solid rgba(0,0,0,0.06); margin: 24px 0; padding-top: 24px;">
-                    <h4 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">🔄 Token 刷新设置</h4>
+                    <h4 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;"><i data-lucide="refresh-cw"></i> Token 刷新设置</h4>
 
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
@@ -1912,7 +1912,7 @@
     <div class="modal" id="refreshModal" onclick="if(event.target === this) hideRefreshModal()">
         <div class="modal-content" style="width: 800px; max-width: 90vw;">
             <div class="modal-header">
-                <h3>🔄 Token 刷新管理</h3>
+                <h3><i data-lucide="refresh-cw"></i> Token 刷新管理</h3>
                 <button class="modal-close" onclick="hideRefreshModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -1947,7 +1947,7 @@
                             style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
                             <div
                                 style="font-size: 12px; color: #86868b; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-                                <span>✅</span>
+                                <span><i data-lucide="check-circle"></i></span>
                                 <span>成功邮箱</span>
                             </div>
                             <div style="font-size: 18px; font-weight: 700; color: #34C759;" id="successRefreshCount">0
@@ -1970,10 +1970,10 @@
                 <div
                     style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 16px;">
                     <button class="btn btn-primary" onclick="refreshAllAccounts()" id="refreshAllBtn">
-                        🔄 全量刷新
+                        <i data-lucide="refresh-cw"></i> 全量刷新
                     </button>
                     <button class="btn btn-warning" onclick="retryFailedAccounts()" id="retryFailedBtn">
-                        🔁 重试失败
+                        <i data-lucide="repeat"></i> 重试失败
                     </button>
                     <button class="btn btn-secondary" onclick="loadFailedLogs()">
                         <i data-lucide="x-circle"></i> 失败邮箱
@@ -2195,7 +2195,7 @@
     <div class="modal" id="getRefreshTokenModal" onclick="if(event.target === this) hideGetRefreshTokenModal()">
         <div class="modal-content" style="width: 600px;">
             <div class="modal-header">
-                <h3>🔑 获取 Refresh Token</h3>
+                <h3><i data-lucide="key-round"></i> 获取 Refresh Token</h3>
                 <button class="modal-close" onclick="hideGetRefreshTokenModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -2221,7 +2221,7 @@
                 </div>
 
                 <div class="form-group" id="refreshTokenResult" style="display: none;">
-                    <label class="form-label">✅ 账号信息（已获取成功）</label>
+                    <label class="form-label"><i data-lucide="check-circle"></i> 账号信息（已获取成功）</label>
                     <textarea class="form-textarea" id="refreshTokenOutput" readonly
                         style="height: 100px; font-size: 12px; font-family: monospace; background-color: #f0f9ff; border-color: #0078d4;"></textarea>
                     <div class="form-hint" style="color: #0078d4;">
@@ -2849,7 +2849,7 @@ ${details}
                 `;
             } else {
                 footer.innerHTML = `
-                    <button class="add-account-btn" onclick="showGetRefreshTokenModal()" style="background-color: #0078d4; margin-bottom: 8px;">🔑 获取 Refresh Token</button>
+                    <button class="add-account-btn" onclick="showGetRefreshTokenModal()" style="background-color: #0078d4; margin-bottom: 8px;"><i data-lucide="key-round"></i> 获取 Refresh Token</button>
                     <button class="add-account-btn" onclick="showAddAccountModal()">+ 导入邮箱</button>
                 `;
             }
@@ -2888,7 +2888,7 @@ ${details}
             if (accounts.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">📭</div>
+                        <div class="empty-state-icon"><i data-lucide="inbox"></i></div>
                         <div class="empty-state-text">该分组暂无邮箱</div>
                     </div>
                 `;
@@ -3361,7 +3361,7 @@ ${details}
                         document.getElementById('emailCount').textContent = '(0)';
                         document.getElementById('emailList').innerHTML = `
                             <div class="empty-state">
-                                <div class="empty-state-icon">📭</div>
+                                <div class="empty-state-icon"><i data-lucide="inbox"></i></div>
                                 <div class="empty-state-text">收件箱为空</div>
                             </div>
                         `;
@@ -4121,7 +4121,7 @@ ${details}
             if (emails.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">📭</div>
+                        <div class="empty-state-icon"><i data-lucide="inbox"></i></div>
                         <div class="empty-state-text">收件箱为空</div>
                     </div>
                 `;
@@ -4781,7 +4781,7 @@ ${details}
                     document.getElementById('refreshTokenOutput').value = importFormat;
                     document.getElementById('refreshTokenResult').style.display = 'block';
 
-                    showToast('✅ Refresh Token 获取成功！', 'success');
+                    showToast('Refresh Token 获取成功！', 'success');
 
                     // 重置按钮状态（不隐藏，允许重复使用）
                     btn.disabled = false;
@@ -5045,14 +5045,15 @@ ${details}
             const refreshAllBtn = document.getElementById('refreshAllBtn');
             if (refreshAllBtn) {
                 refreshAllBtn.disabled = false;
-                refreshAllBtn.textContent = '🔄 全量刷新';
+                refreshAllBtn.innerHTML = '<i data-lucide="refresh-cw"></i> 全量刷新';
             }
 
             const retryFailedBtn = document.getElementById('retryFailedBtn');
             if (retryFailedBtn) {
                 retryFailedBtn.disabled = false;
-                retryFailedBtn.textContent = '🔁 重试失败';
+                retryFailedBtn.innerHTML = '<i data-lucide="repeat"></i> 重试失败';
             }
+            refreshIcons();
         }
 
         // 加载刷新统计
@@ -5139,7 +5140,8 @@ ${details}
                             eventSource.close();
                             progress.style.display = 'none';
                             btn.disabled = false;
-                            btn.textContent = '🔄 全量刷新';
+                            btn.innerHTML = '<i data-lucide="refresh-cw"></i> 全量刷新';
+                            refreshIcons();
 
                             // 直接更新统计数据，使用本地时间
                             const now = new Date();
@@ -5172,14 +5174,16 @@ ${details}
                     eventSource.close();
                     progress.style.display = 'none';
                     btn.disabled = false;
-                    btn.textContent = '🔄 全量刷新';
+                    btn.innerHTML = '<i data-lucide="refresh-cw"></i> 全量刷新';
+                    refreshIcons();
                     showToast('刷新过程中出现错误', 'error');
                 };
 
             } catch (error) {
                 progress.style.display = 'none';
                 btn.disabled = false;
-                btn.textContent = '🔄 全量刷新';
+                btn.innerHTML = '<i data-lucide="refresh-cw"></i> 全量刷新';
+                refreshIcons();
                 showToast('刷新请求失败', 'error');
             }
         }
@@ -5205,7 +5209,8 @@ ${details}
 
                 progress.style.display = 'none';
                 btn.disabled = false;
-                btn.textContent = '🔁 重试失败';
+                btn.innerHTML = '<i data-lucide="repeat"></i> 重试失败';
+                refreshIcons();
 
                 if (data.success) {
                     if (data.total === 0) {
@@ -5230,7 +5235,8 @@ ${details}
             } catch (error) {
                 progress.style.display = 'none';
                 btn.disabled = false;
-                btn.textContent = '🔁 重试失败';
+                btn.innerHTML = '<i data-lucide="repeat"></i> 重试失败';
+                refreshIcons();
                 showToast('重试请求失败', 'error');
             }
         }
