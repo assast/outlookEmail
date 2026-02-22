@@ -7,7 +7,7 @@
     <title>Outlook 邮件管理</title>
     <!-- DOMPurify for XSS protection -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.469.0"></script>
     <style>
         :root {
             --mac-blue: #007AFF;
@@ -181,6 +181,7 @@
             padding: 2px 6px;
             border-radius: 4px;
             line-height: 1;
+            transition: background-color 0.15s;
         }
 
         .panel-action-btn:hover {
@@ -200,16 +201,10 @@
 
         .group-item:hover {
             background-color: rgba(0,0,0,0.04);
+            border-radius: 6px;
         }
 
         .group-item.active {
-            background-color: var(--mac-blue) !important;
-            border-radius: 6px;
-            color: #ffffff;
-        }
-
-        .group-item:hover {
-            border-radius: 6px;
         }
 
         .group-row-1 {
@@ -279,6 +274,7 @@
             padding: 2px 6px;
             font-size: 12px;
             border-radius: 4px;
+            transition: background-color 0.15s, color 0.15s;
         }
 
         .group-action-btn:hover {
@@ -471,6 +467,7 @@
             display: flex;
             align-items: center;
             gap: 2px;
+            transition: color 0.15s;
         }
 
         .account-action-btn:hover {
@@ -479,11 +476,11 @@
 
 
         .account-action-btn.delete:hover {
-            color: #FF3B30;
+            color: var(--mac-red);
         }
 
         .batch-btn.danger {
-            background-color: #FF3B30;
+            background-color: var(--mac-red);
             color: white;
             border: none;
             cursor: pointer;
@@ -1054,6 +1051,7 @@
             font-size: 14px;
             background-color: #ffffff;
             cursor: pointer;
+            transition: border-color 0.15s;
         }
 
         .form-select:focus {
@@ -1221,6 +1219,10 @@
 
         .toast.error {
             background-color: rgba(255,59,48,0.92);
+        }
+
+        .toast.warning {
+            background-color: rgba(255,149,0,0.92);
         }
 
         /* 方法标签 */
@@ -1700,7 +1702,7 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">密码</label>
-                    <input type="text" class="form-input" id="editPassword" placeholder="可选">
+                    <input type="password" class="form-input" id="editPassword" placeholder="可选">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Client ID</label>
@@ -2045,6 +2047,9 @@
                     </div>
                 </div>
             </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideTagManagementModal()">关闭</button>
+            </div>
         </div>
     </div>
 
@@ -2233,6 +2238,15 @@
     <!-- 消息提示 -->
     <div class="toast" id="toast"></div>
 
+    <!-- 全屏邮件查看 -->
+    <div class="fullscreen-email-modal" id="fullscreenEmailModal" onclick="closeFullscreenEmailOnBackdrop(event)">
+        <div class="fullscreen-email-header">
+            <div class="fullscreen-email-title" id="fullscreenEmailTitle">邮件详情</div>
+            <button class="fullscreen-close-btn" onclick="closeFullscreenEmail()">&times;</button>
+        </div>
+        <div class="fullscreen-email-content" id="fullscreenEmailContent"></div>
+    </div>
+
     <script>
         // 全局状态
         let csrfToken = null;
@@ -2298,7 +2312,6 @@
             if (typeof loadTags === 'function') {
                 loadTags();
             }
-            initColorPicker();
             initColorPicker();
             initEmailListScroll();
 
@@ -2947,17 +2960,17 @@ ${details}
             // 更新按钮状态
             document.querySelectorAll('.sort-btn').forEach(btn => {
                 btn.classList.remove('active');
-                btn.style.backgroundColor = '#ffffff';
-                btn.style.color = '#86868b';
-                btn.style.borderColor = 'rgba(0,0,0,0.06)';
+                btn.style.backgroundColor = '';
+                btn.style.color = '';
+                btn.style.borderColor = '';
             });
 
             const activeBtn = document.querySelector(`[data-sort="${sortBy}"]`);
             if (activeBtn) {
                 activeBtn.classList.add('active');
-                activeBtn.style.backgroundColor = '#007AFF';
-                activeBtn.style.color = '#ffffff';
-                activeBtn.style.borderColor = '#007AFF';
+                activeBtn.style.backgroundColor = '';
+                activeBtn.style.color = '';
+                activeBtn.style.borderColor = '';
             }
 
             // 重新加载并排序账号列表
@@ -3459,7 +3472,7 @@ ${details}
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon"><i data-lucide="alert-triangle"></i></div>
-                            <div class="empty-state-text">${data.error && data.error.message ? data.error.message : '加载失败'}</div>
+                            <div class="empty-state-text">${escapeHtml(data.error && data.error.message ? data.error.message : '加载失败')}</div>
                         </div>
                     `;
                     refreshIcons();
@@ -3503,7 +3516,7 @@ ${details}
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon"><i data-lucide="alert-triangle"></i></div>
-                            <div class="empty-state-text">${data.error && data.error.message ? data.error.message : '加载失败'}</div>
+                            <div class="empty-state-text">${escapeHtml(data.error && data.error.message ? data.error.message : '加载失败')}</div>
                         </div>
                     `;
                     refreshIcons();
@@ -4121,7 +4134,6 @@ ${details}
         // 渲染邮件列表
         // Selected email IDs
         let selectedEmailIds = new Set();
-        let isBatchSelectMode = false;
 
         function renderEmailList(emails) {
             const container = document.getElementById('emailList');
@@ -4290,7 +4302,7 @@ ${details}
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon"><i data-lucide="alert-triangle"></i></div>
-                            <div class="empty-state-text">${data.error && data.error.message ? data.error.message : '加载失败'}</div>
+                            <div class="empty-state-text">${escapeHtml(data.error && data.error.message ? data.error.message : '加载失败')}</div>
                         </div>
                     `;
                     refreshIcons();
@@ -4468,7 +4480,6 @@ ${details}
         }
 
         // 全屏查看邮件
-        let currentFullscreenEmail = null;
 
         function openFullscreenEmail() {
             const emailDetail = document.getElementById('emailDetail');
@@ -4551,7 +4562,7 @@ ${details}
 
         function closeFullscreenEmail() {
             const modal = document.getElementById('fullscreenEmailModal');
-            modal.classList.remove('show');
+            if (modal) modal.classList.remove('show');
             document.body.style.overflow = '';
         }
 
@@ -4664,14 +4675,6 @@ ${details}
         }
 
         // ==================== 工具函数 ====================
-
-        // HTML 转义
-        function escapeHtml(text) {
-            if (!text) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
 
         // 格式化日期
         function formatDate(dateStr) {
@@ -4899,15 +4902,15 @@ ${details}
                     `;
                 } else {
                     resultEl.innerHTML = `
-                        <div style="color: #FF3B30;">
-                            ✗ ${data.error && data.error.message ? data.error.message : (data.error || '表达式无效')}
+                        <div style="color: var(--mac-red);">
+                            ✗ ${escapeHtml(data.error && data.error.message ? data.error.message : (data.error || '表达式无效'))}
                         </div>
                     `;
                 }
             } catch (error) {
                 resultEl.innerHTML = `
-                    <div style="color: #FF3B30;">
-                        ✗ 验证失败: ${error.message}
+                    <div style="color: var(--mac-red);">
+                        ✗ 验证失败: ${escapeHtml(error.message)}
                     </div>
                 `;
             }
@@ -5040,6 +5043,12 @@ ${details}
             const modal = document.getElementById('refreshModal');
             modal.classList.remove('show');
 
+            // 关闭 EventSource 连接，防止泄漏
+            if (_currentEventSource) {
+                _currentEventSource.close();
+                _currentEventSource = null;
+            }
+
             // 确保所有内容都被隐藏，防止残留
             const progress = document.getElementById('refreshProgress');
             if (progress) {
@@ -5101,6 +5110,7 @@ ${details}
         }
 
         // 全量刷新所有账号
+        let _currentEventSource = null;
         async function refreshAllAccounts() {
             const btn = document.getElementById('refreshAllBtn');
             const progress = document.getElementById('refreshProgress');
@@ -5119,6 +5129,7 @@ ${details}
 
             try {
                 const eventSource = new EventSource('/api/accounts/trigger-scheduled-refresh?force=true');
+                _currentEventSource = eventSource;
                 let totalCount = 0;
                 let successCount = 0;
                 let failedCount = 0;
@@ -5297,7 +5308,7 @@ ${details}
                             <div style="font-weight: 600; margin-bottom: 4px;">${escapeHtml(item.email)}</div>
                             <div style="font-size: 12px; color: #FF3B30;">${escapeHtml(item.error || '未知错误')}</div>
                         </div>
-                        <button class="btn btn-sm btn-primary" onclick="retrySingleAccount(${item.id}, '${escapeHtml(item.email)}')">
+                        <button class="btn btn-sm btn-primary" onclick="retrySingleAccount(${item.id}, '${escapeJs(item.email)}')">
                             重试
                         </button>
                     </div>
@@ -5446,16 +5457,22 @@ ${details}
             hideAddAccountModal();
             hideEditAccountModal();
             hideExportModal();
+            hideExportVerifyModal();
             hideSettingsModal();
             hideRefreshModal();
             hideRefreshErrorModal();
             hideErrorDetailModal();
             hideGetRefreshTokenModal();
+            hideEmailFetchErrorModal();
+            hideTagManagementModal();
+            hideBatchTagModal();
+            hideBatchMoveGroupModal();
             closeFullscreenEmail();
         }
 
         // HTML 转义
         function escapeHtml(text) {
+            if (!text) return '';
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
@@ -5468,11 +5485,16 @@ ${details}
                 hideAddAccountModal();
                 hideEditAccountModal();
                 hideExportModal();
+                hideExportVerifyModal();
                 hideSettingsModal();
                 hideRefreshModal();
                 hideRefreshErrorModal();
                 hideErrorDetailModal();
                 hideGetRefreshTokenModal();
+                hideEmailFetchErrorModal();
+                hideTagManagementModal();
+                hideBatchTagModal();
+                hideBatchMoveGroupModal();
                 closeFullscreenEmail();
             }
         });
