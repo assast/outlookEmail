@@ -16,16 +16,19 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: #ffffff;
-            color: #1a1a1a;
+            background-color: #f5f5f7;
+            color: #1d1d1f;
             line-height: 1.5;
         }
 
         /* 顶部导航栏 */
         .navbar {
             height: 56px;
-            background-color: #ffffff;
-            border-bottom: 1px solid #e5e5e5;
+            background: rgba(255,255,255,0.72);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+            box-shadow: 0 0.5px 0 rgba(0,0,0,0.04);
             display: flex;
             align-items: center;
             padding: 0 24px;
@@ -39,7 +42,7 @@
         .navbar-brand {
             font-size: 18px;
             font-weight: 600;
-            color: #1a1a1a;
+            color: #1d1d1f;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -58,8 +61,8 @@
 
         .current-account {
             font-size: 14px;
-            color: #666;
-            background-color: #f5f5f5;
+            color: #86868b;
+            background-color: rgba(0,0,0,0.04);
             padding: 6px 16px;
             border-radius: 20px;
             display: none;
@@ -68,7 +71,7 @@
         }
 
         .current-account:hover {
-            background-color: #e8e8e8;
+            background-color: rgba(0,0,0,0.06);
         }
 
         .current-account.show {
@@ -76,7 +79,7 @@
         }
 
         .current-account strong {
-            color: #1a1a1a;
+            color: #1d1d1f;
             font-weight: 500;
         }
 
@@ -87,18 +90,18 @@
 
         .navbar-btn {
             background: none;
-            border: 1px solid #e5e5e5;
-            color: #666;
+            border: 1px solid rgba(0,0,0,0.08);
+            color: #86868b;
             cursor: pointer;
             font-size: 13px;
             padding: 6px 12px;
-            border-radius: 6px;
+            border-radius: 8px;
             transition: all 0.15s;
         }
 
         .navbar-btn:hover {
-            background-color: #f5f5f5;
-            border-color: #ccc;
+            background-color: rgba(0,0,0,0.04);
+            border-color: rgba(0,0,0,0.12);
         }
 
         /* GitHub Star 按钮 */
@@ -140,8 +143,10 @@
         /* 分组面板 */
         .group-panel {
             width: 200px;
-            background-color: #fafafa;
-            border-right: 1px solid #e5e5e5;
+            background: rgba(246,246,246,0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(0,0,0,0.06);
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
@@ -150,7 +155,7 @@
         .panel-header {
             padding: 0 16px;
             height: 52px;
-            border-bottom: 1px solid #e5e5e5;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -159,13 +164,13 @@
         .panel-title {
             font-size: 14px;
             font-weight: 600;
-            color: #1a1a1a;
+            color: #1d1d1f;
         }
 
         .panel-action-btn {
             background: none;
             border: none;
-            color: #666;
+            color: #86868b;
             cursor: pointer;
             font-size: 18px;
             padding: 2px 6px;
@@ -174,7 +179,7 @@
         }
 
         .panel-action-btn:hover {
-            background-color: #e5e5e5;
+            background-color: rgba(0,0,0,0.06);
         }
 
         .group-list {
@@ -186,16 +191,23 @@
             padding: 10px 16px;
             cursor: pointer;
             transition: background-color 0.15s;
-            border-left: 3px solid transparent;
+            border-left: none;
         }
 
         .group-item:hover {
-            background-color: #f0f0f0;
+            background-color: rgba(0,0,0,0.04);
+            border-radius: 6px;
+            margin: 2px 8px;
+            padding: 8px 12px;
+            border-left: none;
         }
 
         .group-item.active {
-            background-color: #e8e8e8;
-            border-left-color: #1a1a1a;
+            background-color: #007AFF;
+            border-left-color: transparent;
+            border-radius: 6px;
+            margin: 2px 8px;
+            padding: 8px 12px;
         }
 
         .group-row-1 {
@@ -215,7 +227,7 @@
         .group-name {
             font-size: 14px;
             font-weight: 500;
-            color: #1a1a1a;
+            color: #1d1d1f;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -231,14 +243,19 @@
 
         .group-count {
             font-size: 12px;
-            color: #999;
-            background-color: #f0f0f0;
+            color: #aeaeb2;
+            background-color: rgba(0,0,0,0.05);
             padding: 2px 8px;
             border-radius: 10px;
         }
 
+        .group-item.active .group-name {
+            color: #ffffff;
+        }
+
         .group-item.active .group-count {
-            background-color: #d8d8d8;
+            background-color: rgba(255,255,255,0.25);
+            color: #ffffff;
         }
 
         .group-actions {
@@ -255,7 +272,7 @@
         .group-action-btn {
             background: none;
             border: none;
-            color: #999;
+            color: #aeaeb2;
             cursor: pointer;
             padding: 2px 6px;
             font-size: 12px;
@@ -263,15 +280,15 @@
         }
 
         .group-action-btn:hover {
-            background-color: #e0e0e0;
-            color: #666;
+            background-color: rgba(0,0,0,0.08);
+            color: #86868b;
         }
 
         /* 邮箱账号面板 */
         .account-panel {
             width: 260px;
             background-color: #ffffff;
-            border-right: 1px solid #e5e5e5;
+            border-right: 1px solid rgba(0,0,0,0.06);
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
@@ -280,7 +297,7 @@
         .account-panel-header {
             padding: 0 16px;
             height: 52px;
-            border-bottom: 1px solid #e5e5e5;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
             display: flex;
             align-items: center;
         }
@@ -288,7 +305,7 @@
         .account-panel-title {
             font-size: 14px;
             font-weight: 600;
-            color: #1a1a1a;
+            color: #1d1d1f;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -301,13 +318,13 @@
 
         .search-container {
             padding: 8px 16px;
-            border-bottom: 1px solid #e5e5e5;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
         }
 
         .search-input {
             width: 100%;
             padding: 8px 12px;
-            border: 1px solid #e5e5e5;
+            border: 1px solid rgba(0,0,0,0.06);
             border-radius: 6px;
             font-size: 13px;
             outline: none;
@@ -315,24 +332,24 @@
         }
 
         .search-input:focus {
-            border-color: #1a1a1a;
+            border-color: #007AFF;
         }
 
         .account-number {
-            color: #666;
+            color: #86868b;
             font-weight: 500;
             margin-right: 4px;
         }
 
         .sort-btn:hover {
-            background-color: #f5f5f5 !important;
-            border-color: #ccc !important;
+            background-color: rgba(0,0,0,0.04) !important;
+            border-color: rgba(0,0,0,0.12) !important;
         }
 
         .sort-btn.active {
-            background-color: #1a1a1a !important;
+            background-color: #007AFF !important;
             color: #ffffff !important;
-            border-color: #1a1a1a !important;
+            border-color: #007AFF !important;
         }
 
         .account-list {
@@ -342,13 +359,13 @@
 
         .account-panel-footer {
             padding: 16px;
-            border-top: 1px solid #e5e5e5;
+            border-top: 1px solid rgba(0,0,0,0.06);
         }
 
         .add-account-btn {
             width: 100%;
             padding: 10px 16px;
-            background-color: #1a1a1a;
+            background-color: #007AFF;
             color: #ffffff;
             border: none;
             border-radius: 6px;
@@ -359,7 +376,7 @@
         }
 
         .add-account-btn:hover {
-            background-color: #333;
+            background-color: #0056CC;
         }
 
         .account-item {
@@ -367,16 +384,16 @@
             cursor: pointer;
             transition: background-color 0.15s;
             border-left: 3px solid transparent;
-            border-bottom: 1px solid #f5f5f5;
+            border-bottom: 1px solid rgba(0,0,0,0.04);
         }
 
         .account-item:hover {
-            background-color: #f5f5f5;
+            background-color: rgba(0,0,0,0.04);
         }
 
         .account-item.active {
-            background-color: #f0f0f0;
-            border-left-color: #1a1a1a;
+            background-color: rgba(0,122,255,0.08);
+            border-left-color: #007AFF;
         }
 
         .account-item.inactive {
@@ -385,12 +402,12 @@
 
         .account-item.inactive .account-email {
             text-decoration: line-through;
-            color: #999;
+            color: #aeaeb2;
         }
 
         .account-remark {
             font-size: 12px;
-            color: #666;
+            color: #86868b;
             padding-left: 0;
             margin-top: 4px;
             white-space: pre-wrap;
@@ -400,7 +417,7 @@
 
         .account-email {
             font-size: 13px;
-            color: #1a1a1a;
+            color: #1d1d1f;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -412,8 +429,8 @@
             padding: 1px 6px;
             border-radius: 3px;
             margin-left: 8px;
-            background-color: #f0f0f0;
-            color: #999;
+            background-color: rgba(0,0,0,0.05);
+            color: #aeaeb2;
         }
 
         .tag-badge {
@@ -450,7 +467,7 @@
         .account-action-btn {
             background: none;
             border: none;
-            color: #666;
+            color: #86868b;
             cursor: pointer;
             padding: 2px 0;
             font-size: 11px;
@@ -461,16 +478,16 @@
         }
 
         .account-action-btn:hover {
-            color: #1a1a1a;
+            color: #1d1d1f;
         }
 
 
         .account-action-btn.delete:hover {
-            color: #dc3545;
+            color: #FF3B30;
         }
 
         .batch-btn.danger {
-            background-color: #dc3545;
+            background-color: #FF3B30;
             color: white;
             border: none;
             cursor: pointer;
@@ -481,7 +498,7 @@
         }
 
         .batch-btn.danger:hover {
-            background-color: #c82333;
+            background-color: #D62C23;
         }
 
         /* 内容区域 */
@@ -495,7 +512,7 @@
         .email-list-panel {
             width: 380px;
             background-color: #ffffff;
-            border-right: 1px solid #e5e5e5;
+            border-right: 1px solid rgba(0,0,0,0.06);
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
@@ -508,27 +525,27 @@
         /* 邮件列表头部 */
         .email-list-header {
             padding: 16px 20px;
-            border-bottom: 1px solid #e5e5e5;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
             background-color: #ffffff;
         }
 
         .email-list-header h2 {
             font-size: 16px;
             font-weight: 600;
-            color: #1a1a1a;
+            color: #1d1d1f;
         }
 
         .email-count {
             font-size: 13px;
-            color: #999;
+            color: #aeaeb2;
             font-weight: 400;
             margin-left: 8px;
         }
 
         .refresh-btn {
             background: none;
-            border: 1px solid #e5e5e5;
-            color: #666;
+            border: 1px solid rgba(0,0,0,0.06);
+            color: #86868b;
             cursor: pointer;
             font-size: 13px;
             padding: 6px 12px;
@@ -537,8 +554,8 @@
         }
 
         .refresh-btn:hover {
-            background-color: #f5f5f5;
-            border-color: #ccc;
+            background-color: rgba(0,0,0,0.04);
+            border-color: rgba(0,0,0,0.12);
         }
 
         .email-list {
@@ -548,7 +565,7 @@
 
         .email-item {
             padding: 16px 20px;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
             cursor: pointer;
             transition: background-color 0.15s;
             display: flex;
@@ -569,11 +586,11 @@
         }
 
         .email-item:hover {
-            background-color: #fafafa;
+            background-color: rgba(0,0,0,0.02);
         }
 
         .email-item.active {
-            background-color: #f5f5f5;
+            background-color: rgba(0,122,255,0.06);
         }
 
         .email-item.unread .email-subject {
@@ -583,7 +600,7 @@
         .email-from {
             font-size: 14px;
             font-weight: 500;
-            color: #1a1a1a;
+            color: #1d1d1f;
             margin-bottom: 4px;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -592,7 +609,7 @@
 
         .email-subject {
             font-size: 14px;
-            color: #1a1a1a;
+            color: #1d1d1f;
             margin-bottom: 4px;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -601,7 +618,7 @@
 
         .email-preview {
             font-size: 13px;
-            color: #999;
+            color: #aeaeb2;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -609,7 +626,7 @@
 
         .email-date {
             font-size: 12px;
-            color: #999;
+            color: #aeaeb2;
             margin-top: 8px;
         }
 
@@ -624,18 +641,20 @@
 
         .email-detail-toolbar {
             padding: 12px 24px;
-            border-bottom: 1px solid #e5e5e5;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
             display: flex;
             align-items: center;
             gap: 12px;
-            background-color: #fafafa;
+            background-color: rgba(249,249,249,0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
         }
 
         .back-btn {
             display: none;
             background: none;
-            border: 1px solid #e5e5e5;
-            color: #666;
+            border: 1px solid rgba(0,0,0,0.06);
+            color: #86868b;
             cursor: pointer;
             font-size: 13px;
             padding: 6px 12px;
@@ -644,13 +663,13 @@
         }
 
         .back-btn:hover {
-            background-color: #f0f0f0;
+            background-color: rgba(0,0,0,0.05);
         }
 
         .toggle-list-btn {
             background: none;
-            border: 1px solid #e5e5e5;
-            color: #666;
+            border: 1px solid rgba(0,0,0,0.06);
+            color: #86868b;
             cursor: pointer;
             font-size: 13px;
             padding: 6px 12px;
@@ -659,25 +678,25 @@
         }
 
         .toggle-list-btn:hover {
-            background-color: #f0f0f0;
+            background-color: rgba(0,0,0,0.05);
         }
 
         .email-detail-header {
             padding: 24px 32px;
-            border-bottom: 1px solid #e5e5e5;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
         }
 
         .email-detail-subject {
             font-size: 24px;
             font-weight: 600;
-            color: #1a1a1a;
+            color: #1d1d1f;
             margin-bottom: 16px;
             line-height: 1.3;
         }
 
         .email-detail-meta {
             font-size: 14px;
-            color: #666;
+            color: #86868b;
             line-height: 1.8;
         }
 
@@ -687,13 +706,13 @@
         }
 
         .email-detail-meta-label {
-            color: #999;
+            color: #aeaeb2;
             width: 60px;
             flex-shrink: 0;
         }
 
         .email-detail-meta-value {
-            color: #1a1a1a;
+            color: #1d1d1f;
         }
 
         .email-detail-body {
@@ -717,7 +736,7 @@
             white-space: pre-wrap;
             font-size: 15px;
             line-height: 1.7;
-            color: #333;
+            color: #1d1d1f;
         }
 
         /* 全屏查看邮件 */
@@ -728,7 +747,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.95);
+            background-color: rgba(0, 0, 0, 0.92);
             z-index: 2000;
             overflow: hidden;
         }
@@ -739,13 +758,15 @@
         }
 
         .fullscreen-email-header {
-            background-color: #1a1a1a;
+            background-color: rgba(30,30,30,0.95);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             color: #ffffff;
             padding: 16px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
             flex-shrink: 0;
         }
 
@@ -790,8 +811,8 @@
 
         .fullscreen-btn {
             background: none;
-            border: 1px solid #e5e5e5;
-            color: #666;
+            border: 1px solid rgba(0,0,0,0.06);
+            color: #86868b;
             cursor: pointer;
             font-size: 13px;
             padding: 6px 12px;
@@ -801,7 +822,7 @@
         }
 
         .fullscreen-btn:hover {
-            background-color: #f0f0f0;
+            background-color: rgba(0,0,0,0.05);
         }
 
         /* 空状态 */
@@ -811,7 +832,7 @@
             align-items: center;
             justify-content: center;
             height: 100%;
-            color: #999;
+            color: #aeaeb2;
             padding: 40px;
         }
 
@@ -838,8 +859,8 @@
         .loading-spinner {
             width: 32px;
             height: 32px;
-            border: 2px solid #e5e5e5;
-            border-top-color: #1a1a1a;
+            border: 2px solid rgba(0,0,0,0.06);
+            border-top-color: #007AFF;
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
         }
@@ -867,7 +888,9 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.4);
+            background-color: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
             z-index: 1000;
             align-items: center;
             justify-content: center;
@@ -879,12 +902,12 @@
 
         .modal-content {
             background-color: #ffffff;
-            border-radius: 12px;
+            border-radius: 14px;
             width: 520px;
             max-width: 90%;
             max-height: 90vh;
             overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18), 0 0 1px rgba(0, 0, 0, 0.1);
             position: relative;
             z-index: 1001;
         }
@@ -895,7 +918,7 @@
 
         .error-card {
             background-color: #fafafa;
-            border: 1px solid #e5e5e5;
+            border: 1px solid rgba(0,0,0,0.06);
             border-radius: 8px;
             padding: 16px;
             margin-bottom: 20px;
@@ -904,18 +927,18 @@
         .error-card-title {
             font-size: 14px;
             font-weight: 600;
-            color: #dc3545;
+            color: #FF3B30;
             margin-bottom: 12px;
         }
 
         .error-message-box {
             background-color: #ffffff;
-            border: 1px solid #e5e5e5;
+            border: 1px solid rgba(0,0,0,0.06);
             padding: 12px;
             border-radius: 6px;
             font-family: 'SF Mono', Monaco, 'Courier New', monospace;
             font-size: 13px;
-            color: #333;
+            color: #1d1d1f;
             max-height: 150px;
             overflow-y: auto;
             white-space: pre-wrap;
@@ -930,7 +953,7 @@
 
         .solution-list li {
             font-size: 14px;
-            color: #333;
+            color: #1d1d1f;
             margin-bottom: 10px;
             display: flex;
             align-items: flex-start;
@@ -938,7 +961,7 @@
 
         .solution-list li::before {
             content: '✓';
-            color: #28a745;
+            color: #34C759;
             font-weight: 600;
             margin-right: 10px;
             margin-top: 2px;
@@ -947,7 +970,7 @@
 
         .modal-header {
             padding: 20px 24px;
-            border-bottom: 1px solid #e5e5e5;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -959,7 +982,7 @@
         .modal-header h3 {
             font-size: 18px;
             font-weight: 600;
-            color: #1a1a1a;
+            color: #1d1d1f;
         }
 
         .modal-close {
@@ -967,7 +990,7 @@
             border: none;
             font-size: 24px;
             cursor: pointer;
-            color: #999;
+            color: #aeaeb2;
             padding: 4px;
             line-height: 1;
             border-radius: 4px;
@@ -975,8 +998,8 @@
         }
 
         .modal-close:hover {
-            background-color: #f0f0f0;
-            color: #666;
+            background-color: rgba(0,0,0,0.05);
+            color: #86868b;
         }
 
         .modal-body {
@@ -991,14 +1014,14 @@
             display: block;
             font-size: 14px;
             font-weight: 500;
-            color: #333;
+            color: #1d1d1f;
             margin-bottom: 8px;
         }
 
         .form-input {
             width: 100%;
             padding: 10px 14px;
-            border: 1px solid #e5e5e5;
+            border: 1px solid rgba(0,0,0,0.06);
             border-radius: 6px;
             font-size: 14px;
             transition: border-color 0.15s;
@@ -1006,14 +1029,15 @@
 
         .form-input:focus {
             outline: none;
-            border-color: #1a1a1a;
+            border-color: #007AFF;
+            box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
         }
 
         .form-textarea {
             width: 100%;
             height: 120px;
             padding: 12px 14px;
-            border: 1px solid #e5e5e5;
+            border: 1px solid rgba(0,0,0,0.06);
             border-radius: 6px;
             font-size: 13px;
             font-family: 'SF Mono', Monaco, 'Courier New', monospace;
@@ -1023,13 +1047,14 @@
 
         .form-textarea:focus {
             outline: none;
-            border-color: #1a1a1a;
+            border-color: #007AFF;
+            box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
         }
 
         .form-select {
             width: 100%;
             padding: 10px 14px;
-            border: 1px solid #e5e5e5;
+            border: 1px solid rgba(0,0,0,0.06);
             border-radius: 6px;
             font-size: 14px;
             background-color: #ffffff;
@@ -1038,12 +1063,13 @@
 
         .form-select:focus {
             outline: none;
-            border-color: #1a1a1a;
+            border-color: #007AFF;
+            box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
         }
 
         .form-hint {
             font-size: 12px;
-            color: #999;
+            color: #aeaeb2;
             margin-top: 6px;
         }
 
@@ -1068,7 +1094,7 @@
         }
 
         .color-option.selected {
-            border-color: #1a1a1a;
+            border-color: #007AFF;
         }
 
         .custom-color-row {
@@ -1082,20 +1108,20 @@
             width: 60px;
             height: 36px;
             padding: 2px;
-            border: 1px solid #e5e5e5;
+            border: 1px solid rgba(0,0,0,0.06);
             border-radius: 6px;
             cursor: pointer;
         }
 
         .custom-color-label {
             font-size: 13px;
-            color: #666;
+            color: #86868b;
         }
 
         .custom-color-hex {
             width: 80px;
             padding: 8px 10px;
-            border: 1px solid #e5e5e5;
+            border: 1px solid rgba(0,0,0,0.06);
             border-radius: 6px;
             font-size: 13px;
             font-family: monospace;
@@ -1103,7 +1129,7 @@
 
         .modal-footer {
             padding: 16px 24px;
-            border-top: 1px solid #e5e5e5;
+            border-top: 1px solid rgba(0,0,0,0.06);
             display: flex;
             justify-content: flex-end;
             gap: 12px;
@@ -1115,7 +1141,7 @@
         .btn {
             padding: 10px 20px;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
             font-weight: 500;
@@ -1123,40 +1149,40 @@
         }
 
         .btn-primary {
-            background-color: #1a1a1a;
+            background-color: #007AFF;
             color: #ffffff;
         }
 
         .btn-primary:hover {
-            background-color: #333;
+            background-color: #0056CC;
         }
 
         .btn-secondary {
-            background-color: #f5f5f5;
-            color: #1a1a1a;
-            border: 1px solid #e5e5e5;
+            background-color: rgba(0,0,0,0.05);
+            color: #1d1d1f;
+            border: 1px solid rgba(0,0,0,0.08);
         }
 
         .btn-secondary:hover {
-            background-color: #e5e5e5;
+            background-color: rgba(0,0,0,0.08);
         }
 
         .btn-danger {
-            background-color: #dc3545;
+            background-color: #FF3B30;
             color: #ffffff;
         }
 
         .btn-danger:hover {
-            background-color: #c82333;
+            background-color: #D62C23;
         }
 
         .btn-warning {
-            background-color: #ffc107;
-            color: #1a1a1a;
+            background-color: #FF9500;
+            color: #fff;
         }
 
         .btn-warning:hover {
-            background-color: #e0a800;
+            background-color: #E08600;
         }
 
         .btn-sm {
@@ -1171,14 +1197,16 @@
             left: 50%;
             transform: translateX(-50%) translateY(-20px);
             padding: 14px 24px;
-            background-color: #1a1a1a;
+            background-color: rgba(40,40,40,0.88);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             color: #ffffff;
-            border-radius: 8px;
+            border-radius: 14px;
             font-size: 14px;
             z-index: 2000;
             opacity: 0;
             transition: all 0.3s;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
             min-width: 300px;
             text-align: center;
             pointer-events: none;
@@ -1191,19 +1219,19 @@
         }
 
         .toast.success {
-            background-color: #1a1a1a;
+            background-color: rgba(40,40,40,0.88);
         }
 
         .toast.error {
-            background-color: #dc3545;
+            background-color: rgba(255,59,48,0.92);
         }
 
         /* 方法标签 */
         .method-tag {
             font-size: 11px;
             padding: 3px 8px;
-            background-color: #f5f5f5;
-            color: #666;
+            background-color: rgba(0,0,0,0.04);
+            color: #86868b;
             border-radius: 4px;
             margin-left: 8px;
             font-weight: 500;
@@ -1213,17 +1241,17 @@
         .folder-tabs {
             display: inline-flex;
             gap: 8px;
-            background-color: #f5f5f5;
+            background-color: rgba(0,0,0,0.04);
             padding: 4px;
-            border-radius: 8px;
+            border-radius: 10px;
         }
 
         .folder-tab {
             padding: 8px 16px;
             border: none;
             background: transparent;
-            color: #666;
-            border-radius: 6px;
+            color: #86868b;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 13px;
             transition: all 0.2s;
@@ -1232,14 +1260,14 @@
         }
 
         .folder-tab:hover {
-            background-color: #e5e5e5;
-            color: #333;
+            background-color: rgba(0,0,0,0.06);
+            color: #1d1d1f;
         }
 
         .folder-tab.active {
-            background-color: #1a1a1a;
+            background-color: #007AFF;
             color: white;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 8px rgba(0,122,255,0.3);
         }
 
         /* 响应式 */
@@ -1330,7 +1358,7 @@
             <button class="navbar-btn" onclick="showRefreshModal()">全量刷新Token</button>
             <button class="navbar-btn" onclick="showExportModal()">导出邮箱</button>
             <button class="navbar-btn" onclick="showSettingsModal()">⚙️ 设置</button>
-            <button class="navbar-btn" onclick="logout()" style="color: #dc3545;">退出登录</button>
+            <button class="navbar-btn" onclick="logout()" style="color: #FF3B30;">退出登录</button>
         </div>
     </nav>
 
@@ -1351,7 +1379,7 @@
         <div class="account-panel" id="accountPanel">
             <div class="account-panel-header">
                 <div class="account-panel-title" id="accountPanelTitle">
-                    <span class="group-color" id="currentGroupColor" style="background-color: #666"></span>
+                    <span class="group-color" id="currentGroupColor" style="background-color: #86868b"></span>
                     <span id="currentGroupName">选择分组</span>
                 </div>
                 <div style="margin-left: auto;">
@@ -1370,15 +1398,15 @@
                 <input type="text" id="globalSearch" class="search-input" placeholder="搜索邮箱地址..." autocomplete="off">
             </div>
             <div class="sort-control"
-                style="padding: 8px 16px; border-bottom: 1px solid #e5e5e5; display: flex; align-items: center; gap: 8px; background-color: #fafafa;">
-                <label style="font-size: 12px; color: #666; font-weight: 500;">排序：</label>
+                style="padding: 8px 16px; border-bottom: 1px solid rgba(0,0,0,0.06); display: flex; align-items: center; gap: 8px; background-color: rgba(0,0,0,0.03);">
+                <label style="font-size: 12px; color: #86868b; font-weight: 500;">排序：</label>
                 <div style="display: flex; gap: 4px;">
                     <button class="sort-btn active" data-sort="refresh_time" onclick="sortAccounts('refresh_time')"
-                        style="padding: 4px 10px; font-size: 12px; background-color: #1a1a1a; border: 1px solid #1a1a1a; border-radius: 4px; color: #ffffff; cursor: pointer; transition: all 0.15s;">
+                        style="padding: 4px 10px; font-size: 12px; background-color: #007AFF; border: 1px solid #007AFF; border-radius: 4px; color: #ffffff; cursor: pointer; transition: all 0.15s;">
                         🕐 刷新时间
                     </button>
                     <button class="sort-btn" data-sort="email" onclick="sortAccounts('email')"
-                        style="padding: 4px 10px; font-size: 12px; background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 4px; color: #666; cursor: pointer; transition: all 0.15s;">
+                        style="padding: 4px 10px; font-size: 12px; background-color: #ffffff; border: 1px solid rgba(0,0,0,0.06); border-radius: 4px; color: #86868b; cursor: pointer; transition: all 0.15s;">
                         📧 邮箱名
                     </button>
                     <!-- Tag Filter moved to new row -->
@@ -1386,7 +1414,7 @@
             </div>
             <!-- Tag Filter Row -->
             <div id="tagFilterContainer"
-                style="padding: 8px 16px; border-bottom: 1px solid #e5e5e5; display: flex; flex-wrap: wrap; gap: 8px; background-color: #fafafa; display: none;">
+                style="padding: 8px 16px; border-bottom: 1px solid rgba(0,0,0,0.06); display: flex; flex-wrap: wrap; gap: 8px; background-color: rgba(0,0,0,0.03); display: none;">
                 <!-- Tags checkboxes will be rendered here -->
             </div>
             <div class="account-list" id="accountList">
@@ -1397,8 +1425,8 @@
             </div>
             <!-- 批量操作栏 -->
             <div id="batchActionBar"
-                style="display: none; padding: 8px 16px; border-top: 1px solid #e5e5e5; background: #f8f9fa; gap: 8px; align-items: center;">
-                <span id="selectedCount" style="font-size: 12px; color: #666;">已选 0 项</span>
+                style="display: none; padding: 8px 16px; border-top: 1px solid rgba(0,0,0,0.06); background: rgba(0,0,0,0.03); gap: 8px; align-items: center;">
+                <span id="selectedCount" style="font-size: 12px; color: #86868b;">已选 0 项</span>
                 <div style="flex: 1;"></div>
                 <button class="btn btn-sm btn-secondary" onclick="showBatchTagModal('add')">打标签</button>
                 <button class="btn btn-sm btn-secondary" onclick="showBatchTagModal('remove')">去标签</button>
@@ -1442,8 +1470,8 @@
                 </div>
                 <!-- Email Batch Action Bar -->
                 <div id="emailBatchActionBar"
-                    style="display: none; padding: 8px 16px; border-top: 1px solid #e5e5e5; background: #f8f9fa; gap: 8px; align-items: center;">
-                    <span id="emailSelectedCount" style="font-size: 12px; color: #666;">已选 0 项</span>
+                    style="display: none; padding: 8px 16px; border-top: 1px solid rgba(0,0,0,0.06); background: rgba(0,0,0,0.03); gap: 8px; align-items: center;">
+                    <span id="emailSelectedCount" style="font-size: 12px; color: #86868b;">已选 0 项</span>
                     <div style="flex: 1;"></div>
                     <button class="batch-btn danger" onclick="confirmBatchDeleteEmails()">
                         🗑️ 删除
@@ -1628,7 +1656,7 @@
                 <div class="form-group">
                     <label class="form-label">选择要导出的分组</label>
                     <div id="exportGroupList"
-                        style="max-height: 300px; overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 6px; padding: 8px;">
+                        style="max-height: 300px; overflow-y: auto; border: 1px solid rgba(0,0,0,0.06); border-radius: 6px; padding: 8px;">
                         <!-- 分组列表将通过 JS 动态加载 -->
                     </div>
                     <div class="form-hint" style="margin-top: 8px;">
@@ -1657,7 +1685,7 @@
                 <div class="form-group">
                     <label class="form-label">请输入登录密码以确认导出操作</label>
                     <input type="password" class="form-input" id="exportVerifyPassword" placeholder="输入登录密码">
-                    <div class="form-hint" style="color: #dc3545;">导出文件包含敏感信息（Refresh Token），请妥善保管</div>
+                    <div class="form-hint" style="color: #FF3B30;">导出文件包含敏感信息（Refresh Token），请妥善保管</div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -1687,7 +1715,7 @@
                             style="color: #0078d4;">gptmail.io</a> 获取</div>
                 </div>
 
-                <div style="border-top: 1px solid #e5e5e5; margin: 24px 0; padding-top: 24px;">
+                <div style="border-top: 1px solid rgba(0,0,0,0.06); margin: 24px 0; padding-top: 24px;">
                     <h4 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">🔄 Token 刷新设置</h4>
 
                     <div class="form-group">
@@ -1718,12 +1746,12 @@
                         <div class="form-group">
                             <label class="form-label">
                                 定时刷新周期
-                                <span style="font-size: 12px; color: #999; font-weight: 400;">（每隔 X 天自动刷新所有账号）</span>
+                                <span style="font-size: 12px; color: #aeaeb2; font-weight: 400;">（每隔 X 天自动刷新所有账号）</span>
                             </label>
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <input type="number" class="form-input" id="refreshIntervalDays" min="1" max="90"
                                     value="30" placeholder="30" style="max-width: 120px;">
-                                <span style="font-size: 14px; color: #666; font-weight: 500;">天</span>
+                                <span style="font-size: 14px; color: #86868b; font-weight: 500;">天</span>
                             </div>
                             <div class="form-hint">建议设置为 30 天，防止 Token 因 90 天不使用而过期</div>
                         </div>
@@ -1764,12 +1792,12 @@
                     <div class="form-group">
                         <label class="form-label">
                             邮箱间刷新间隔
-                            <span style="font-size: 12px; color: #999; font-weight: 400;">（每个邮箱刷新之间的等待时间）</span>
+                            <span style="font-size: 12px; color: #aeaeb2; font-weight: 400;">（每个邮箱刷新之间的等待时间）</span>
                         </label>
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <input type="number" class="form-input" id="refreshDelaySeconds" min="0" max="60" value="5"
                                 placeholder="5" style="max-width: 120px;">
-                            <span style="font-size: 14px; color: #666; font-weight: 500;">秒</span>
+                            <span style="font-size: 14px; color: #86868b; font-weight: 500;">秒</span>
                         </div>
                         <div class="form-hint">建议设置为 5-10 秒，避免频繁请求触发 API 限流</div>
                     </div>
@@ -1792,9 +1820,9 @@
             <div class="modal-body">
                 <!-- 刷新统计 -->
                 <div
-                    style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                    style="background: linear-gradient(135deg, rgba(0,0,0,0.03) 0%, rgba(0,0,0,0.04) 100%); padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                     <div
-                        style="font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #333; display: flex; align-items: center; gap: 8px;">
+                        style="font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #1d1d1f; display: flex; align-items: center; gap: 8px;">
                         <span>📊</span>
                         <span>刷新统计</span>
                     </div>
@@ -1802,39 +1830,39 @@
                         <div
                             style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
                             <div
-                                style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+                                style="font-size: 12px; color: #86868b; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
                                 <span>🕐</span>
                                 <span>上次全量刷新</span>
                             </div>
-                            <div style="font-size: 13px; font-weight: 600; color: #333;" id="lastRefreshTime">-</div>
+                            <div style="font-size: 13px; font-weight: 600; color: #1d1d1f;" id="lastRefreshTime">-</div>
                         </div>
                         <div
                             style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
                             <div
-                                style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+                                style="font-size: 12px; color: #86868b; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
                                 <span>📝</span>
                                 <span>总邮箱数</span>
                             </div>
-                            <div style="font-size: 18px; font-weight: 700; color: #333;" id="totalRefreshCount">0</div>
+                            <div style="font-size: 18px; font-weight: 700; color: #1d1d1f;" id="totalRefreshCount">0</div>
                         </div>
                         <div
                             style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
                             <div
-                                style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+                                style="font-size: 12px; color: #86868b; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
                                 <span>✅</span>
                                 <span>成功邮箱</span>
                             </div>
-                            <div style="font-size: 18px; font-weight: 700; color: #28a745;" id="successRefreshCount">0
+                            <div style="font-size: 18px; font-weight: 700; color: #34C759;" id="successRefreshCount">0
                             </div>
                         </div>
                         <div
                             style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
                             <div
-                                style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+                                style="font-size: 12px; color: #86868b; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
                                 <span>❌</span>
                                 <span>失败邮箱</span>
                             </div>
-                            <div style="font-size: 18px; font-weight: 700; color: #dc3545;" id="failedRefreshCount">0
+                            <div style="font-size: 18px; font-weight: 700; color: #FF3B30;" id="failedRefreshCount">0
                             </div>
                         </div>
                     </div>
@@ -1859,8 +1887,8 @@
 
                 <!-- 刷新进度 -->
                 <div id="refreshProgress"
-                    style="display: none; background-color: #e3f2fd; padding: 16px; border-radius: 6px; margin-bottom: 16px; border-left: 4px solid #2196f3;">
-                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #1976d2;">正在刷新...</div>
+                    style="display: none; background-color: rgba(0,122,255,0.06); padding: 16px; border-radius: 6px; margin-bottom: 16px; border-left: 4px solid #007AFF;">
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #007AFF;">正在刷新...</div>
                     <div style="font-size: 13px; line-height: 1.8;" id="refreshProgressText">请稍候</div>
                 </div>
 
@@ -1872,7 +1900,7 @@
                         <button class="btn btn-sm btn-secondary" onclick="hideFailedList()">隐藏</button>
                     </div>
                     <div id="failedList"
-                        style="max-height: 300px; overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 6px;">
+                        style="max-height: 300px; overflow-y: auto; border: 1px solid rgba(0,0,0,0.06); border-radius: 6px;">
                         <!-- 失败列表将通过 JS 动态加载 -->
                     </div>
                 </div>
@@ -1880,7 +1908,7 @@
                 <!-- 刷新历史 -->
                 <div id="refreshLogsContainer" style="display: none;">
                     <div
-                        style="font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; padding: 10px; background-color: #f8f9fa; border-radius: 6px;">
+                        style="font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; padding: 10px; background-color: rgba(0,0,0,0.03); border-radius: 6px;">
                         <span style="display: flex; align-items: center; gap: 6px;">
                             <span>📋</span>
                             <span>全量刷新历史</span>
@@ -1888,7 +1916,7 @@
                         <button class="btn btn-sm btn-secondary" onclick="hideRefreshLogs()">隐藏</button>
                     </div>
                     <div id="refreshLogsList"
-                        style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 6px; background-color: white;">
+                        style="max-height: 400px; overflow-y: auto; border: 1px solid rgba(0,0,0,0.06); border-radius: 6px; background-color: white;">
                         <!-- 刷新历史将通过 JS 动态加载 -->
                     </div>
                 </div>
@@ -1922,7 +1950,7 @@
                     <div id="tagList"
                         style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">
                         <!-- 标签列表动态加载 -->
-                        <div style="text-align: center; color: #999; padding: 20px;">加载中...</div>
+                        <div style="text-align: center; color: #aeaeb2; padding: 20px;">加载中...</div>
                     </div>
                 </div>
             </div>
@@ -1975,17 +2003,17 @@
     <!-- Error 详情模态框 -->
     <div class="modal" id="errorDetailModal" onclick="if(event.target === this) hideErrorDetailModal()">
         <div class="modal-content" style="width: 700px; max-width: 90vw;">
-            <div class="modal-header" style="background-color: #fef0f0; border-bottom-color: #dc3545;">
-                <h3 style="color: #dc3545;">❌ 错误详情</h3>
+            <div class="modal-header" style="background-color: #fef0f0; border-bottom-color: #FF3B30;">
+                <h3 style="color: #FF3B30;">❌ 错误详情</h3>
                 <button class="modal-close" onclick="hideErrorDetailModal()">&times;</button>
             </div>
             <div class="modal-body" style="padding-top: 16px;">
-                <div style="font-size: 14px; color: #dc3545; font-weight: 600; margin-bottom: 8px;">错误信息 (用户友好)</div>
+                <div style="font-size: 14px; color: #FF3B30; font-weight: 600; margin-bottom: 8px;">错误信息 (用户友好)</div>
                 <div class="error-message-box" id="errorModalUserMessage"
-                    style="background-color: #fff0f0; border: 1px solid #dc3545; color: #333; font-weight: 500;"></div>
+                    style="background-color: #fff0f0; border: 1px solid #FF3B30; color: #1d1d1f; font-weight: 500;"></div>
 
                 <div style="margin-top: 20px;">
-                    <div style="font-size: 14px; color: #333; font-weight: 600; margin-bottom: 8px;">
+                    <div style="font-size: 14px; color: #1d1d1f; font-weight: 600; margin-bottom: 8px;">
                         技术详情
                         <button class="btn btn-sm btn-secondary" id="toggleTraceBtn" onclick="toggleStackTrace()"
                             style="margin-left: 10px;">
@@ -1999,13 +2027,13 @@
                     <div class="error-message-box" id="errorModalDetailsContainer"
                         style="height: 150px; display: none; padding: 0;">
                         <pre id="errorModalDetails"
-                            style="margin: 0; padding: 12px; white-space: pre-wrap; word-break: break-all; font-size: 12px; color: #666;"></pre>
+                            style="margin: 0; padding: 12px; white-space: pre-wrap; word-break: break-all; font-size: 12px; color: #86868b;"></pre>
                     </div>
                 </div>
 
                 <div style="margin-top: 20px;">
-                    <div style="font-size: 14px; color: #333; font-weight: 600; margin-bottom: 8px;">错误代码/类型</div>
-                    <div style="display: flex; gap: 16px; font-size: 13px; color: #666;">
+                    <div style="font-size: 14px; color: #1d1d1f; font-weight: 600; margin-bottom: 8px;">错误代码/类型</div>
+                    <div style="display: flex; gap: 16px; font-size: 13px; color: #86868b;">
                         <div><strong>Code:</strong> <span id="errorModalCode"></span></div>
                         <div><strong>Type:</strong> <span id="errorModalType"></span></div>
                         <div><strong>Status:</strong> <span id="errorModalStatus"></span></div>
@@ -2022,12 +2050,12 @@
     <!-- 邮件获取失败详情模态框 -->
     <div class="modal" id="emailFetchErrorModal" onclick="if(event.target === this) hideEmailFetchErrorModal()">
         <div class="modal-content" style="width: 700px; max-width: 90vw;">
-            <div class="modal-header" style="background-color: #fef0f0; border-bottom-color: #dc3545;">
-                <h3 style="color: #dc3545;">❌ 获取邮件失败</h3>
+            <div class="modal-header" style="background-color: #fef0f0; border-bottom-color: #FF3B30;">
+                <h3 style="color: #FF3B30;">❌ 获取邮件失败</h3>
                 <button class="modal-close" onclick="hideEmailFetchErrorModal()">&times;</button>
             </div>
             <div class="modal-body" style="padding-top: 16px;">
-                <div style="color: #666; margin-bottom: 16px;">所有获取方式均失败，以下是各方式的失败原因：</div>
+                <div style="color: #86868b; margin-bottom: 16px;">所有获取方式均失败，以下是各方式的失败原因：</div>
                 <div id="emailFetchErrorContent"></div>
             </div>
             <div class="modal-footer">
@@ -2278,7 +2306,7 @@
                     // 显示"没有更多邮件"
                     const loadingEl = document.getElementById('loadingMore');
                     if (loadingEl) {
-                        loadingEl.innerHTML = '<div style="text-align:center;padding:20px;color:#999;font-size:13px;">没有更多邮件了</div>';
+                        loadingEl.innerHTML = '<div style="text-align:center;padding:20px;color:#aeaeb2;font-size:13px;">没有更多邮件了</div>';
                     }
                 }
             } catch (error) {
@@ -2494,16 +2522,16 @@
                     const codeText = (err && typeof err === 'object') ? (err.code || '-') : '-';
                     html += `
                         <div style="background: #fff5f5; border: 1px solid #fde2e2; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px;">
-                            <div style="font-weight: 600; color: #dc3545; margin-bottom: 6px; font-size: 14px;">${name}</div>
-                            <div style="color: #333; font-size: 13px; line-height: 1.6;">${reason}</div>
-                            <div style="color: #999; font-size: 12px; margin-top: 4px;">错误代码: ${codeText}</div>
+                            <div style="font-weight: 600; color: #FF3B30; margin-bottom: 6px; font-size: 14px;">${name}</div>
+                            <div style="color: #1d1d1f; font-size: 13px; line-height: 1.6;">${reason}</div>
+                            <div style="color: #aeaeb2; font-size: 12px; margin-top: 4px;">错误代码: ${codeText}</div>
                         </div>
                     `;
                 }
             });
 
             if (!html) {
-                html = '<div style="color:#666;">无详细错误信息</div>';
+                html = '<div style="color:#86868b;">无详细错误信息</div>';
             }
 
             document.getElementById('emailFetchErrorContent').innerHTML = html;
@@ -2656,7 +2684,7 @@ ${details}
                          data-group-id="${group.id}"
                          onclick="selectGroup(${group.id})">
                         <div class="group-row-1">
-                            <div class="group-color" style="background-color: ${group.color || '#666'}"></div>
+                            <div class="group-color" style="background-color: ${group.color || '#86868b'}"></div>
                             <span class="group-name">${escapeHtml(group.name)}${isTempGroup ? ' ⚡' : ''}</span>
                         </div>
                         <div class="group-row-2">
@@ -2693,7 +2721,7 @@ ${details}
             // 更新邮箱面板标题
             if (group) {
                 document.getElementById('currentGroupName').textContent = group.name;
-                document.getElementById('currentGroupColor').style.backgroundColor = group.color || '#666';
+                document.getElementById('currentGroupColor').style.backgroundColor = group.color || '#86868b';
 
                 // 更新导入邮箱时的默认分组
                 const importSelect = document.getElementById('importGroupSelect');
@@ -2776,7 +2804,7 @@ ${details}
                                onclick="event.stopPropagation(); updateBatchActionBar()"
                                style="margin-top: 6px; cursor: pointer;">
                         <div style="flex: 1; min-width: 0;">
-                            <div class="account-email" title="${escapeHtml(acc.email)}" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; ${acc.last_refresh_status === 'failed' ? 'color: #dc3545; font-weight: 700;' : ''}">
+                            <div class="account-email" title="${escapeHtml(acc.email)}" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; ${acc.last_refresh_status === 'failed' ? 'color: #FF3B30; font-weight: 700;' : ''}">
                                 <span class="account-number">${index + 1}.</span> ${escapeHtml(acc.email)}
                                 ${acc.status === 'inactive' ? '<span class="account-status-tag">已停用</span>' : ''}
                             </div>
@@ -2790,9 +2818,9 @@ ${details}
                                 `).join('')}
                             </div>
                             
-                            <div class="account-refresh-time" style="font-size: 11px; color: ${acc.last_refresh_status === 'failed' ? '#dc3545' : '#999'}; margin-top: 4px; padding-left: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <div class="account-refresh-time" style="font-size: 11px; color: ${acc.last_refresh_status === 'failed' ? '#FF3B30' : '#aeaeb2'}; margin-top: 4px; padding-left: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                                 <span>🕐 ${formatRelativeTime(acc.last_refresh_at)}</span>
-                                ${acc.last_refresh_status === 'failed' ? '<button class="account-action-btn" onclick="event.stopPropagation(); showRefreshError(' + acc.id + ', \'' + escapeJs(acc.last_refresh_error || '未知错误') + '\', \'' + escapeJs(acc.email) + '\')" style="padding: 2px 6px; font-size: 10px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">查看错误</button>' : ''}
+                                ${acc.last_refresh_status === 'failed' ? '<button class="account-action-btn" onclick="event.stopPropagation(); showRefreshError(' + acc.id + ', \'' + escapeJs(acc.last_refresh_error || '未知错误') + '\', \'' + escapeJs(acc.email) + '\')" style="padding: 2px 6px; font-size: 10px; background-color: #FF3B30; color: white; border: none; border-radius: 3px; cursor: pointer;">查看错误</button>' : ''}
                             </div>
                         </div>
                     </div>
@@ -2824,16 +2852,16 @@ ${details}
             document.querySelectorAll('.sort-btn').forEach(btn => {
                 btn.classList.remove('active');
                 btn.style.backgroundColor = '#ffffff';
-                btn.style.color = '#666';
-                btn.style.borderColor = '#e5e5e5';
+                btn.style.color = '#86868b';
+                btn.style.borderColor = 'rgba(0,0,0,0.06)';
             });
 
             const activeBtn = document.querySelector(`[data-sort="${sortBy}"]`);
             if (activeBtn) {
                 activeBtn.classList.add('active');
-                activeBtn.style.backgroundColor = '#1a1a1a';
+                activeBtn.style.backgroundColor = '#007AFF';
                 activeBtn.style.color = '#ffffff';
-                activeBtn.style.borderColor = '#1a1a1a';
+                activeBtn.style.borderColor = '#007AFF';
             }
 
             // 重新加载并排序账号列表
@@ -3743,23 +3771,23 @@ ${details}
             try {
                 // 使用已加载的分组数据
                 if (groups.length === 0) {
-                    container.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">暂无分组</div>';
+                    container.innerHTML = '<div style="padding: 20px; text-align: center; color: #aeaeb2;">暂无分组</div>';
                 } else {
                     container.innerHTML = groups.map(group => `
                         <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background-color 0.15s;"
-                               onmouseover="this.style.backgroundColor='#f5f5f5'"
+                               onmouseover="this.style.backgroundColor='rgba(0,0,0,0.04)'"
                                onmouseout="this.style.backgroundColor='transparent'">
                             <input type="checkbox" class="export-group-checkbox" value="${group.id}" style="width: 16px; height: 16px;">
                             <span style="display: flex; align-items: center; gap: 8px; flex: 1;">
-                                <span style="width: 12px; height: 12px; border-radius: 3px; background-color: ${group.color || '#666'}"></span>
-                                <span style="font-size: 14px; color: #1a1a1a;">${escapeHtml(group.name)}</span>
+                                <span style="width: 12px; height: 12px; border-radius: 3px; background-color: ${group.color || '#86868b'}"></span>
+                                <span style="font-size: 14px; color: #1d1d1f;">${escapeHtml(group.name)}</span>
                             </span>
-                            <span style="font-size: 12px; color: #999; background-color: #f0f0f0; padding: 2px 8px; border-radius: 10px;">${group.account_count || 0}</span>
+                            <span style="font-size: 12px; color: #aeaeb2; background-color: rgba(0,0,0,0.05); padding: 2px 8px; border-radius: 10px;">${group.account_count || 0}</span>
                         </label>
                     `).join('');
                 }
             } catch (error) {
-                container.innerHTML = '<div style="padding: 20px; text-align: center; color: #dc3545;">加载失败</div>';
+                container.innerHTML = '<div style="padding: 20px; text-align: center; color: #FF3B30;">加载失败</div>';
             }
 
             // 重置全选复选框
@@ -4233,7 +4261,7 @@ ${details}
                                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
                                     font-size: 15px;
                                     line-height: 1.6;
-                                    color: #333;
+                                    color: #1d1d1f;
                                     margin: 0;
                                     padding: 0;
                                     background-color: #ffffff;
@@ -4751,21 +4779,21 @@ ${details}
                 if (data.success && data.valid) {
                     const nextRun = new Date(data.next_run).toLocaleString('zh-CN');
                     resultEl.innerHTML = `
-                        <div style="color: #28a745;">
+                        <div style="color: #34C759;">
                             ✓ 表达式有效<br>
                             下次执行: ${nextRun}
                         </div>
                     `;
                 } else {
                     resultEl.innerHTML = `
-                        <div style="color: #dc3545;">
+                        <div style="color: #FF3B30;">
                             ✗ ${data.error && data.error.message ? data.error.message : (data.error || '表达式无效')}
                         </div>
                     `;
                 }
             } catch (error) {
                 resultEl.innerHTML = `
-                    <div style="color: #dc3545;">
+                    <div style="color: #FF3B30;">
                         ✗ 验证失败: ${error.message}
                     </div>
                 `;
@@ -5002,11 +5030,11 @@ ${details}
                             progressText.innerHTML = `
                                 正在处理: <strong>${data.email}</strong><br>
                                 进度: <strong>${data.current}/${data.total}</strong> |
-                                成功: <strong style="color: #28a745;">${successCount}</strong> |
-                                失败: <strong style="color: #dc3545;">${failedCount}</strong>
+                                成功: <strong style="color: #34C759;">${successCount}</strong> |
+                                失败: <strong style="color: #FF3B30;">${failedCount}</strong>
                             `;
                         } else if (data.type === 'delay') {
-                            progressText.innerHTML += `<br><span style="color: #999;">等待 ${data.seconds} 秒后继续...</span>`;
+                            progressText.innerHTML += `<br><span style="color: #aeaeb2;">等待 ${data.seconds} 秒后继续...</span>`;
                         } else if (data.type === 'complete') {
                             eventSource.close();
                             progress.style.display = 'none';
@@ -5145,10 +5173,10 @@ ${details}
             let html = '';
             failedList.forEach(item => {
                 html += `
-                    <div style="padding: 12px; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: start;">
+                    <div style="padding: 12px; border-bottom: 1px solid rgba(0,0,0,0.06); display: flex; justify-content: space-between; align-items: start;">
                         <div style="flex: 1;">
                             <div style="font-weight: 600; margin-bottom: 4px;">${escapeHtml(item.email)}</div>
-                            <div style="font-size: 12px; color: #dc3545;">${escapeHtml(item.error || '未知错误')}</div>
+                            <div style="font-size: 12px; color: #FF3B30;">${escapeHtml(item.error || '未知错误')}</div>
                         </div>
                         <button class="btn btn-sm btn-primary" onclick="retrySingleAccount(${item.id}, '${escapeHtml(item.email)}')">
                             重试
@@ -5179,16 +5207,16 @@ ${details}
 
                 if (data.success) {
                     if (data.logs.length === 0) {
-                        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">暂无失败状态的邮箱</div>';
+                        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #86868b;">暂无失败状态的邮箱</div>';
                     } else {
                         let html = '';
                         data.logs.forEach(log => {
                             html += `
-                                <div style="padding: 12px; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: center;">
+                                <div style="padding: 12px; border-bottom: 1px solid rgba(0,0,0,0.06); display: flex; justify-content: space-between; align-items: center;">
                                     <div style="flex: 1;">
                                         <div style="font-weight: 600; margin-bottom: 4px;">${escapeHtml(log.account_email)}</div>
-                                        <div style="font-size: 12px; color: #dc3545;">${escapeHtml(log.error_message || '未知错误')}</div>
-                                        <div style="font-size: 11px; color: #999; margin-top: 4px;">最后刷新: ${formatDateTime(log.created_at)}</div>
+                                        <div style="font-size: 12px; color: #FF3B30;">${escapeHtml(log.error_message || '未知错误')}</div>
+                                        <div style="font-size: 11px; color: #aeaeb2; margin-top: 4px;">最后刷新: ${formatDateTime(log.created_at)}</div>
                                     </div>
                                     <button class="btn btn-sm btn-primary" onclick="retrySingleAccount(${log.account_id}, '${escapeJs(log.account_email)}')">
                                         重试
@@ -5216,20 +5244,20 @@ ${details}
 
                 if (data.success) {
                     if (data.logs.length === 0) {
-                        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">暂无全量刷新历史</div>';
+                        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #86868b;">暂无全量刷新历史</div>';
                     } else {
-                        listEl.innerHTML = `<div style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e5e5e5; font-size: 13px; color: #666;">近半年刷新历史（共 ${data.logs.length} 条）</div>`;
+                        listEl.innerHTML = `<div style="padding: 12px; background-color: rgba(0,0,0,0.03); border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 13px; color: #86868b;">近半年刷新历史（共 ${data.logs.length} 条）</div>`;
                         let html = '';
                         data.logs.forEach(log => {
-                            const statusColor = log.status === 'success' ? '#28a745' : '#dc3545';
+                            const statusColor = log.status === 'success' ? '#34C759' : '#FF3B30';
                             const statusText = log.status === 'success' ? '成功' : '失败';
                             const typeText = log.refresh_type === 'manual' ? '手动' : '自动';
-                            const typeColor = log.refresh_type === 'manual' ? '#007bff' : '#28a745';
+                            const typeColor = log.refresh_type === 'manual' ? '#007AFF' : '#34C759';
                             const typeBgColor = log.refresh_type === 'manual' ? '#e7f3ff' : '#e8f5e9';
 
                             html += `
-                                <div style="padding: 14px; border-bottom: 1px solid #e5e5e5; transition: background-color 0.2s;"
-                                     onmouseover="this.style.backgroundColor='#f8f9fa'"
+                                <div style="padding: 14px; border-bottom: 1px solid rgba(0,0,0,0.06); transition: background-color 0.2s;"
+                                     onmouseover="this.style.backgroundColor='rgba(0,0,0,0.03)'"
                                      onmouseout="this.style.backgroundColor='transparent'">
                                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
                                         <div style="font-weight: 600; font-size: 14px;">${escapeHtml(log.account_email)}</div>
@@ -5239,7 +5267,7 @@ ${details}
                                         </div>
                                     </div>
                                     <div style="font-size: 12px; color: #888;">${formatDateTime(log.created_at)}</div>
-                                    ${log.error_message ? `<div style="font-size: 12px; color: #dc3545; margin-top: 6px; padding: 6px; background-color: #fff5f5; border-radius: 4px;">${escapeHtml(log.error_message)}</div>` : ''}
+                                    ${log.error_message ? `<div style="font-size: 12px; color: #FF3B30; margin-top: 6px; padding: 6px; background-color: #fff5f5; border-radius: 4px;">${escapeHtml(log.error_message)}</div>` : ''}
                                 </div>
                             `;
                         });
@@ -5374,7 +5402,7 @@ ${details}
             let html = '';
             allTags.forEach(tag => {
                 html += `
-                    <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer; padding: 2px 6px; border: 1px solid #e5e5e5; border-radius: 12px; background: white; user-select: none;">
+                    <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer; padding: 2px 6px; border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; background: white; user-select: none;">
                         <input type="checkbox" class="tag-filter-checkbox" value="${tag.id}" onchange="handleTagFilterChange()" style="margin: 0;">
                         <span style="width: 8px; height: 8px; border-radius: 50%; background-color: ${tag.color}; display: inline-block;"></span>
                         ${escapeHtml(tag.name)}
@@ -5391,14 +5419,14 @@ ${details}
         function renderTagList() {
             const listEl = document.getElementById('tagList');
             if (!allTags.length) {
-                listEl.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">暂无标签</div>';
+                listEl.innerHTML = '<div style="text-align: center; color: #aeaeb2; padding: 20px;">暂无标签</div>';
                 return;
             }
 
             let html = '';
             allTags.forEach(tag => {
                 html += `
-                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px; border-bottom: 1px solid #f0f0f0;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px; border-bottom: 1px solid rgba(0,0,0,0.05);">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <span class="tag-badge" style="background-color: ${tag.color};">${escapeHtml(tag.name)}</span>
                         </div>
