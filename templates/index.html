@@ -32,9 +32,9 @@
         /* 顶部导航栏 */
         .navbar {
             height: 56px;
-            background: rgba(255,255,255,0.72);
-            backdrop-filter: saturate(180%) blur(20px);
-            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            background: rgba(255,255,255,0.85);
+            backdrop-filter: saturate(150%) blur(10px);
+            -webkit-backdrop-filter: saturate(150%) blur(10px);
             border-bottom: 1px solid rgba(0,0,0,0.06);
             box-shadow: 0 0.5px 0 rgba(0,0,0,0.04);
             display: flex;
@@ -45,6 +45,7 @@
             left: 0;
             right: 0;
             z-index: 100;
+            will-change: transform;
         }
 
         .navbar-brand {
@@ -75,7 +76,7 @@
             border-radius: 20px;
             display: none;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: background-color 0.2s;
         }
 
         .current-account:hover {
@@ -104,7 +105,7 @@
             font-size: 13px;
             padding: 6px 12px;
             border-radius: 8px;
-            transition: all 0.15s;
+            transition: background-color 0.15s, border-color 0.15s;
         }
 
         .navbar-btn:hover {
@@ -125,7 +126,7 @@
             font-weight: 500;
             padding: 5px 12px;
             border-radius: 6px;
-            transition: all 0.15s;
+            transition: background-color 0.15s, border-color 0.15s;
             text-decoration: none;
         }
 
@@ -149,9 +150,7 @@
         /* 分组面板 */
         .group-panel {
             width: 200px;
-            background: rgba(246,246,246,0.8);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            background: #f6f6f6;
             border-right: 1px solid rgba(0,0,0,0.06);
             display: flex;
             flex-direction: column;
@@ -562,7 +561,7 @@
             font-size: 13px;
             padding: 6px 12px;
             border-radius: 6px;
-            transition: all 0.15s;
+            transition: background-color 0.15s, border-color 0.15s;
         }
 
         .refresh-btn:hover {
@@ -662,9 +661,7 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            background-color: rgba(249,249,249,0.8);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            background-color: #f9f9f9;
         }
 
         .back-btn {
@@ -676,7 +673,7 @@
             font-size: 13px;
             padding: 6px 12px;
             border-radius: 6px;
-            transition: all 0.15s;
+            transition: background-color 0.15s;
         }
 
         .back-btn:hover {
@@ -691,7 +688,7 @@
             font-size: 13px;
             padding: 6px 12px;
             border-radius: 6px;
-            transition: all 0.15s;
+            transition: background-color 0.15s;
         }
 
         .toggle-list-btn:hover {
@@ -776,8 +773,6 @@
 
         .fullscreen-email-header {
             background-color: rgba(30,30,30,0.95);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             color: #ffffff;
             padding: 16px 24px;
             display: flex;
@@ -834,7 +829,7 @@
             font-size: 13px;
             padding: 6px 12px;
             border-radius: 6px;
-            transition: all 0.15s;
+            transition: background-color 0.15s;
             margin-left: auto;
         }
 
@@ -906,8 +901,6 @@
             width: 100%;
             height: 100%;
             background-color: rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
             z-index: 1000;
             align-items: center;
             justify-content: center;
@@ -1011,7 +1004,7 @@
             padding: 4px;
             line-height: 1;
             border-radius: 4px;
-            transition: all 0.15s;
+            transition: background-color 0.15s, color 0.15s;
         }
 
         .modal-close:hover {
@@ -1103,7 +1096,7 @@
             border-radius: 6px;
             cursor: pointer;
             border: 2px solid transparent;
-            transition: all 0.15s;
+            transition: border-color 0.15s, transform 0.15s;
         }
 
         .color-option:hover {
@@ -1162,7 +1155,7 @@
             cursor: pointer;
             font-size: 14px;
             font-weight: 500;
-            transition: all 0.15s;
+            transition: background-color 0.15s;
         }
 
         .btn-primary {
@@ -1218,15 +1211,13 @@
             left: 50%;
             transform: translateX(-50%) translateY(-20px);
             padding: 14px 24px;
-            background-color: rgba(40,40,40,0.88);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            background-color: rgba(40,40,40,0.92);
             color: #ffffff;
             border-radius: 14px;
             font-size: 14px;
             z-index: 2000;
             opacity: 0;
-            transition: all 0.3s;
+            transition: opacity 0.3s, transform 0.3s;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
             min-width: 300px;
             text-align: center;
@@ -1275,7 +1266,7 @@
             border-radius: 8px;
             cursor: pointer;
             font-size: 13px;
-            transition: all 0.2s;
+            transition: background-color 0.2s, color 0.2s;
             font-weight: 500;
             white-space: nowrap;
         }
@@ -1372,7 +1363,7 @@
             font-size: 12px; 
             border-radius: 4px; 
             cursor: pointer; 
-            transition: all 0.15s;
+            transition: background-color 0.15s, color 0.15s;
             display: inline-flex;
             align-items: center;
             gap: 4px;
@@ -2781,6 +2772,7 @@ ${details}
                     </div>
                 `;
             }).join('');
+            refreshIcons();
         }
 
         // 选择分组
@@ -2916,6 +2908,7 @@ ${details}
                     </div>
                 </div>
             `).join('');
+            refreshIcons();
         }
 
         // 排序相关变量
@@ -4380,7 +4373,7 @@ ${details}
             font-size: 12px; 
             border-radius: 4px; 
             cursor: pointer; 
-            transition: all 0.15s;
+            transition: background-color 0.15s, color 0.15s;
             display: inline-flex;
             align-items: center;
             gap: 4px;
@@ -5819,6 +5812,16 @@ ${details}
             }
         }
         
+        // Debounced Lucide icon renderer — prevents repeated full-DOM scans
+        let _lucideTimer = null;
+        function refreshIcons() {
+            if (_lucideTimer) clearTimeout(_lucideTimer);
+            _lucideTimer = setTimeout(() => {
+                lucide.createIcons();
+                _lucideTimer = null;
+            }, 16); // ~1 frame at 60fps
+        }
+
         // Initialize Lucide icons
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
