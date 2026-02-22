@@ -1512,10 +1512,10 @@
             <div class="sort-control sort-bar">
                 <label>排序：</label>
                 <div class="sort-buttons">
-                    <button class="sort-btn sort-btn-custom active" data-sort="refresh_time" onclick="sortAccounts(\'refresh_time\')">
+                    <button class="sort-btn sort-btn-custom active" data-sort="refresh_time" onclick="sortAccounts('refresh_time')">
                         <i data-lucide="clock"></i> 刷新时间
                     </button>
-                    <button class="sort-btn sort-btn-custom" data-sort="email" onclick="sortAccounts(\'email\')">
+                    <button class="sort-btn sort-btn-custom" data-sort="email" onclick="sortAccounts('email')">
                         <i data-lucide="mail"></i> 邮箱名
                     </button>
                     <!-- Tag Filter moved to new row -->
@@ -4381,107 +4381,7 @@ ${details}
                                 a {
                                     color: #0078d4;
                                 }
-                            
-        /* Extracted inline styles */
-        .sort-bar {
-            padding: 8px 16px; 
-            border-bottom: 1px solid rgba(0,0,0,0.06); 
-            display: flex; 
-            align-items: center; 
-            gap: 8px; 
-            background-color: rgba(0,0,0,0.03);
-        }
-        .sort-bar label {
-            font-size: 12px; 
-            color: #86868b; 
-            font-weight: 500;
-        }
-        .sort-bar .sort-buttons {
-            display: flex; gap: 4px;
-        }
-        .sort-btn-custom {
-            padding: 4px 10px; 
-            font-size: 12px; 
-            border-radius: 4px; 
-            cursor: pointer; 
-            transition: background-color 0.15s, color 0.15s;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .sort-btn-custom.active {
-            background-color: #007AFF; 
-            border: 1px solid #007AFF; 
-            color: #ffffff;
-        }
-        .sort-btn-custom:not(.active) {
-            background-color: #ffffff; 
-            border: 1px solid rgba(0,0,0,0.06); 
-            color: #86868b;
-        }
-        .tag-filter-bar {
-            padding: 8px 16px; 
-            border-bottom: 1px solid rgba(0,0,0,0.06); 
-            display: flex; 
-            flex-wrap: wrap; 
-            gap: 8px; 
-            background-color: rgba(0,0,0,0.03);
-        }
-        .batch-action-bar {
-            display: flex;
-            padding: 8px 16px; 
-            border-top: 1px solid rgba(0,0,0,0.06); 
-            background: rgba(0,0,0,0.03); 
-            gap: 8px; 
-            align-items: center;
-        }
-        .batch-action-bar span {
-            font-size: 12px; color: #86868b;
-        }
-    
-    
-        /* Ensure Lucide icons inherit text color and have reasonable default sizes */
-        i[data-lucide] {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-        svg.lucide {
-            width: 1em;
-            height: 1em;
-            vertical-align: -0.125em;
-        }
-        /* Specific sizing for panel buttons where 1em might be too small */
-        .panel-action-btn svg.lucide, .account-action-btn svg.lucide, .group-action-btn svg.lucide {
-            width: 1.2em;
-            height: 1.2em;
-        }
-        /* Empty state icons should be larger */
-        .empty-state-icon svg.lucide {
-            width: 48px;
-            height: 48px;
-        }
-
-        .group-item.active .group-name,
-        .account-item.active .account-email,
-        .account-item.active .account-remark,
-        .account-item.active .account-number,
-        .account-item.active .account-refresh-time,
-        .account-item.active .account-action-btn,
-        .email-item.active .email-subject,
-        .email-item.active .email-from,
-        .email-item.active .email-date,
-        .email-item.active .email-preview {
-            color: #ffffff !important;
-        }
-
-        .group-item.active svg.lucide,
-        .account-item.active svg.lucide,
-        .email-item.active svg.lucide {
-            stroke: #ffffff !important;
-        }
-    
-    </style>
+                            </style>
                         </head>
                         <body>${sanitizedBody}</body>
                         </html>
