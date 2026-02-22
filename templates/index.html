@@ -117,7 +117,7 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            background: linear-gradient(180deg, #fafbfc 0%, #eff3f6 90%);
+            background: transparent;
             border: 1px solid rgba(27, 31, 35, 0.15);
             color: #24292e;
             cursor: pointer;
@@ -127,13 +127,11 @@
             border-radius: 6px;
             transition: all 0.15s;
             text-decoration: none;
-            box-shadow: 0 1px 0 rgba(27, 31, 35, 0.04);
         }
 
         .github-star-btn:hover {
-            background: linear-gradient(180deg, #f3f4f6 0%, #e9ecef 90%);
+            background-color: rgba(0,0,0,0.04);
             border-color: rgba(27, 31, 35, 0.25);
-            box-shadow: 0 1px 0 rgba(27, 31, 35, 0.1);
         }
 
         .github-star-btn svg {
@@ -211,11 +209,12 @@
         }
 
         .group-item.active {
-            background-color: #007AFF;
+            background-color: var(--mac-blue) !important;
             border-left-color: transparent;
             border-radius: 6px;
             margin: 2px 8px;
             padding: 8px 12px;
+            color: #ffffff;
         }
 
         .group-row-1 {
@@ -340,7 +339,8 @@
         }
 
         .search-input:focus {
-            border-color: #007AFF;
+            border-color: var(--mac-blue);
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.25);
         }
 
         .account-number {
@@ -400,8 +400,12 @@
         }
 
         .account-item.active {
-            background-color: rgba(0,122,255,0.08);
-            border-left-color: #007AFF;
+            background-color: var(--mac-blue) !important;
+            color: #ffffff;
+        }
+
+        .account-item.active .account-email {
+            color: #ffffff;
         }
 
         .account-item.inactive {
@@ -598,7 +602,12 @@
         }
 
         .email-item.active {
-            background-color: rgba(0,122,255,0.06);
+            background-color: var(--mac-blue) !important;
+            color: #ffffff;
+        }
+
+        .email-item.active .email-subject {
+            color: #ffffff;
         }
 
         .email-item.unread .email-subject {
@@ -1037,8 +1046,8 @@
 
         .form-input:focus {
             outline: none;
-            border-color: #007AFF;
-            box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+            border-color: var(--mac-blue);
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.25);
         }
 
         .form-textarea {
@@ -1055,8 +1064,8 @@
 
         .form-textarea:focus {
             outline: none;
-            border-color: #007AFF;
-            box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+            border-color: var(--mac-blue);
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.25);
         }
 
         .form-select {
@@ -1071,8 +1080,8 @@
 
         .form-select:focus {
             outline: none;
-            border-color: #007AFF;
-            box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+            border-color: var(--mac-blue);
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.25);
         }
 
         .form-hint {
@@ -1196,6 +1205,10 @@
         .btn-sm {
             padding: 4px 12px;
             font-size: 12px;
+        }
+
+        .btn:active, .navbar-btn:active, .folder-tab:active, .panel-action-btn:active, .account-action-btn:active, .group-action-btn:active {
+            transform: scale(0.98);
         }
 
         /* 消息提示 */
