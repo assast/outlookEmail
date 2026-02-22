@@ -1,0 +1,183 @@
+name: Build Windows EXE
+
+on:
+  push:
+    tags:
+      - 'v*'          # 推送 v 开头的 tag 时触发（如 v1.0.0）
+  workflow_dispatch:   # 支持手动触发
+    inputs:
+      version:
+        description: '版本号（如 1.0.0）'
+        required: false
+        default: 'dev'
+
+jobs:
+  build-exe:
+    runs-on: windows-latest
+    permissions:
+      contents: write  # 需要写权限来创建 Release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install waitress pyinstaller
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          elif [[ "${{ github.event.inputs.version }}" != "" && "${{ github.event.inputs.version }}" != "dev" ]]; then
+            VERSION="v${{ github.event.inputs.version }}"
+          else
+            VERSION="dev-$(echo ${{ github.sha }} | cut -c1-7)"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Build with PyInstaller (onedir)
+        run: |
+          pyinstaller --noconfirm --clean `
+            --name OutlookEmail `
+            --console `
+            --add-data "templates;templates" `
+            --add-data "web_outlook_app.py;." `
+            --hidden-import waitress `
+            --hidden-import waitress.server `
+            --hidden-import waitress.task `
+            --hidden-import waitress.channel `
+            --hidden-import waitress.receiver `
+            --hidden-import waitress.buffers `
+            --hidden-import waitress.parser `
+            --hidden-import waitress.utilities `
+            --hidden-import flask_wtf `
+            --hidden-import flask_wtf.csrf `
+            --hidden-import apscheduler `
+            --hidden-import apscheduler.schedulers.background `
+            --hidden-import apscheduler.triggers.interval `
+            --hidden-import apscheduler.triggers.cron `
+            --hidden-import croniter `
+            --hidden-import socks `
+            --hidden-import sockshandler `
+            --hidden-import bcrypt `
+            --hidden-import cryptography.fernet `
+            --hidden-import cryptography.hazmat.primitives.hashes `
+            --hidden-import cryptography.hazmat.primitives.kdf.pbkdf2 `
+            --exclude-module tkinter `
+            --exclude-module matplotlib `
+            --exclude-module numpy `
+            --exclude-module pandas `
+            --exclude-module PIL `
+            --exclude-module unittest `
+            --exclude-module pydoc `
+            run_windows.py
+
+      - name: Build with PyInstaller (onefile)
+        run: |
+          pyinstaller --noconfirm --clean `
+            --name OutlookEmail_portable `
+            --onefile `
+            --console `
+            --add-data "templates;templates" `
+            --add-data "web_outlook_app.py;." `
+            --hidden-import waitress `
+            --hidden-import waitress.server `
+            --hidden-import waitress.task `
+            --hidden-import waitress.channel `
+            --hidden-import waitress.receiver `
+            --hidden-import waitress.buffers `
+            --hidden-import waitress.parser `
+            --hidden-import waitress.utilities `
+            --hidden-import flask_wtf `
+            --hidden-import flask_wtf.csrf `
+            --hidden-import apscheduler `
+            --hidden-import apscheduler.schedulers.background `
+            --hidden-import apscheduler.triggers.interval `
+            --hidden-import apscheduler.triggers.cron `
+            --hidden-import croniter `
+            --hidden-import socks `
+            --hidden-import sockshandler `
+            --hidden-import bcrypt `
+            --hidden-import cryptography.fernet `
+            --hidden-import cryptography.hazmat.primitives.hashes `
+            --hidden-import cryptography.hazmat.primitives.kdf.pbkdf2 `
+            --exclude-module tkinter `
+            --exclude-module matplotlib `
+            --exclude-module numpy `
+            --exclude-module pandas `
+            --exclude-module PIL `
+            --exclude-module unittest `
+            --exclude-module pydoc `
+            run_windows.py
+
+      - name: Package onedir as zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/OutlookEmail/*" -DestinationPath "dist/OutlookEmail-${{ steps.version.outputs.version }}-windows-x64.zip"
+
+      - name: Rename onefile exe
+        shell: pwsh
+        run: |
+          Move-Item "dist/OutlookEmail_portable.exe" "dist/OutlookEmail-${{ steps.version.outputs.version }}-portable.exe"
+
+      - name: Verify build artifacts
+        shell: pwsh
+        run: |
+          Write-Host "=== Build Artifacts ==="
+          Get-ChildItem dist/*.zip, dist/*.exe | Format-Table Name, Length -AutoSize
+          Write-Host ""
+          Write-Host "=== onedir contents ==="
+          Get-ChildItem dist/OutlookEmail/ | Measure-Object -Property Length -Sum | ForEach-Object {
+            Write-Host "Total files: $($_.Count), Total size: $([math]::Round($_.Sum / 1MB, 1)) MB"
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OutlookEmail-${{ steps.version.outputs.version }}-windows
+          path: |
+            dist/OutlookEmail-*.zip
+            dist/OutlookEmail-*-portable.exe
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: OutlookEmail ${{ steps.version.outputs.version }}
+          body: |
+            ## Outlook 邮件 Web 应用 ${{ steps.version.outputs.version }}
+
+            ### 下载说明
+            | 文件 | 说明 |
+            |------|------|
+            | `OutlookEmail-*-windows-x64.zip` | **推荐** - 解压即用，启动快 |
+            | `OutlookEmail-*-portable.exe` | 单文件便携版，首次启动较慢 |
+
+            ### 使用方法
+            1. 下载并解压（或直接运行 portable 版）
+            2. 双击 `OutlookEmail.exe` 启动
+            3. 浏览器会自动打开 `http://127.0.0.1:5000`
+            4. 默认密码: `admin123`（请在设置中修改）
+            5. 关闭命令行窗口即可停止服务
+
+            ### 数据存储
+            - 数据库保存在 exe 同目录下的 `data/` 文件夹
+            - 升级时只需替换 exe，`data/` 文件夹保持不变
+          files: |
+            dist/OutlookEmail-*.zip
+            dist/OutlookEmail-*-portable.exe
+          draft: false
+          prerelease: false
