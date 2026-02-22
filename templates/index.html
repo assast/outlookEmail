@@ -1387,6 +1387,7 @@
             background-color: rgba(0,0,0,0.03);
         }
         .batch-action-bar {
+            display: flex;
             padding: 8px 16px; 
             border-top: 1px solid rgba(0,0,0,0.06); 
             background: rgba(0,0,0,0.03); 
@@ -1398,15 +1399,45 @@
         }
     
     
+        /* Ensure Lucide icons inherit text color and have reasonable default sizes */
         i[data-lucide] {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        svg.lucide {
             width: 1em;
             height: 1em;
-            display: inline-block;
             vertical-align: -0.125em;
         }
-        .empty-state-icon i[data-lucide] {
+        /* Specific sizing for panel buttons where 1em might be too small */
+        .panel-action-btn svg.lucide, .account-action-btn svg.lucide, .group-action-btn svg.lucide {
+            width: 1.2em;
+            height: 1.2em;
+        }
+        /* Empty state icons should be larger */
+        .empty-state-icon svg.lucide {
             width: 48px;
             height: 48px;
+        }
+
+        .group-item.active .group-name,
+        .account-item.active .account-email,
+        .account-item.active .account-remark,
+        .account-item.active .account-number,
+        .account-item.active .account-refresh-time,
+        .account-item.active .account-action-btn,
+        .email-item.active .email-subject,
+        .email-item.active .email-from,
+        .email-item.active .email-date,
+        .email-item.active .email-preview {
+            color: #ffffff !important;
+        }
+
+        .group-item.active svg.lucide,
+        .account-item.active svg.lucide,
+        .email-item.active svg.lucide {
+            stroke: #ffffff !important;
         }
     
     </style>
@@ -4397,6 +4428,7 @@ ${details}
             background-color: rgba(0,0,0,0.03);
         }
         .batch-action-bar {
+            display: flex;
             padding: 8px 16px; 
             border-top: 1px solid rgba(0,0,0,0.06); 
             background: rgba(0,0,0,0.03); 
@@ -4408,15 +4440,45 @@ ${details}
         }
     
     
+        /* Ensure Lucide icons inherit text color and have reasonable default sizes */
         i[data-lucide] {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        svg.lucide {
             width: 1em;
             height: 1em;
-            display: inline-block;
             vertical-align: -0.125em;
         }
-        .empty-state-icon i[data-lucide] {
+        /* Specific sizing for panel buttons where 1em might be too small */
+        .panel-action-btn svg.lucide, .account-action-btn svg.lucide, .group-action-btn svg.lucide {
+            width: 1.2em;
+            height: 1.2em;
+        }
+        /* Empty state icons should be larger */
+        .empty-state-icon svg.lucide {
             width: 48px;
             height: 48px;
+        }
+
+        .group-item.active .group-name,
+        .account-item.active .account-email,
+        .account-item.active .account-remark,
+        .account-item.active .account-number,
+        .account-item.active .account-refresh-time,
+        .account-item.active .account-action-btn,
+        .email-item.active .email-subject,
+        .email-item.active .email-from,
+        .email-item.active .email-date,
+        .email-item.active .email-preview {
+            color: #ffffff !important;
+        }
+
+        .group-item.active svg.lucide,
+        .account-item.active svg.lucide,
+        .email-item.active svg.lucide {
+            stroke: #ffffff !important;
         }
     
     </style>
