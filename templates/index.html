@@ -243,7 +243,7 @@
 
         .group-count {
             font-size: 12px;
-            color: #aeaeb2;
+            color: #86868b;
             background-color: rgba(0,0,0,0.05);
             padding: 2px 8px;
             border-radius: 10px;
@@ -272,7 +272,7 @@
         .group-action-btn {
             background: none;
             border: none;
-            color: #aeaeb2;
+            color: #86868b;
             cursor: pointer;
             padding: 2px 6px;
             font-size: 12px;
@@ -397,7 +397,7 @@
 
         .account-item.inactive .account-email {
             text-decoration: line-through;
-            color: #aeaeb2;
+            color: #86868b;
         }
 
         .account-remark {
@@ -425,7 +425,7 @@
             border-radius: 3px;
             margin-left: 8px;
             background-color: rgba(0,0,0,0.05);
-            color: #aeaeb2;
+            color: #86868b;
         }
 
         .tag-badge {
@@ -533,7 +533,7 @@
 
         .email-count {
             font-size: 13px;
-            color: #aeaeb2;
+            color: #86868b;
             font-weight: 400;
             margin-left: 8px;
         }
@@ -619,7 +619,7 @@
 
         .email-preview {
             font-size: 13px;
-            color: #aeaeb2;
+            color: #86868b;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -627,7 +627,7 @@
 
         .email-date {
             font-size: 12px;
-            color: #aeaeb2;
+            color: #86868b;
             margin-top: 8px;
         }
 
@@ -705,7 +705,7 @@
         }
 
         .email-detail-meta-label {
-            color: #aeaeb2;
+            color: #86868b;
             width: 60px;
             flex-shrink: 0;
         }
@@ -829,7 +829,7 @@
             align-items: center;
             justify-content: center;
             height: 100%;
-            color: #aeaeb2;
+            color: #86868b;
             padding: 40px;
         }
 
@@ -956,7 +956,7 @@
 
         .solution-list li::before {
             content: '✓';
-            color: #34C759;
+            color: var(--mac-green);
             font-weight: 600;
             margin-right: 10px;
             margin-top: 2px;
@@ -985,7 +985,7 @@
             border: none;
             font-size: 24px;
             cursor: pointer;
-            color: #aeaeb2;
+            color: #86868b;
             padding: 4px;
             line-height: 1;
             border-radius: 4px;
@@ -1065,7 +1065,7 @@
 
         .form-hint {
             font-size: 12px;
-            color: #aeaeb2;
+            color: #86868b;
             margin-top: 6px;
         }
 
@@ -1173,7 +1173,7 @@
         }
 
         .btn-warning {
-            background-color: #FF9500;
+            background-color: var(--mac-orange);
             color: #fff;
         }
 
@@ -1613,32 +1613,32 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">分组名称</label>
+                    <label class="form-label" for="groupName">分组名称</label>
                     <input type="text" class="form-input" id="groupName" placeholder="输入分组名称">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">分组描述</label>
+                    <label class="form-label" for="groupDescription">分组描述</label>
                     <input type="text" class="form-input" id="groupDescription" placeholder="可选">
                 </div>
                 <div class="form-group">
                     <label class="form-label">分组颜色</label>
                     <div class="color-picker-group" id="colorPicker">
-                        <div class="color-option selected" style="background-color: #1a1a1a" data-color="#1a1a1a"></div>
-                        <div class="color-option" style="background-color: #666666" data-color="#666666"></div>
-                        <div class="color-option" style="background-color: #0078d4" data-color="#0078d4"></div>
-                        <div class="color-option" style="background-color: #107c10" data-color="#107c10"></div>
-                        <div class="color-option" style="background-color: #ff8c00" data-color="#ff8c00"></div>
-                        <div class="color-option" style="background-color: #e81123" data-color="#e81123"></div>
-                        <div class="color-option" style="background-color: #5c2d91" data-color="#5c2d91"></div>
-                        <div class="color-option" style="background-color: #008272" data-color="#008272"></div>
-                        <div class="color-option" style="background-color: #00bcf2" data-color="#00bcf2"></div>
-                        <div class="color-option" style="background-color: #bad80a" data-color="#bad80a"></div>
-                        <div class="color-option" style="background-color: #ff6f61" data-color="#ff6f61"></div>
-                        <div class="color-option" style="background-color: #744da9" data-color="#744da9"></div>
-                        <div class="color-option" style="background-color: #f7630c" data-color="#f7630c"></div>
-                        <div class="color-option" style="background-color: #038387" data-color="#038387"></div>
-                        <div class="color-option" style="background-color: #c239b3" data-color="#c239b3"></div>
-                        <div class="color-option" style="background-color: #6b69d6" data-color="#6b69d6"></div>
+                        <div class="color-option selected" style="background-color: #1a1a1a" data-color="#1a1a1a" role="button" tabindex="0" aria-label="黑色"></div>
+                        <div class="color-option" style="background-color: #666666" data-color="#666666" role="button" tabindex="0" aria-label="灰色"></div>
+                        <div class="color-option" style="background-color: #0078d4" data-color="#0078d4" role="button" tabindex="0" aria-label="蓝色"></div>
+                        <div class="color-option" style="background-color: #107c10" data-color="#107c10" role="button" tabindex="0" aria-label="绿色"></div>
+                        <div class="color-option" style="background-color: #ff8c00" data-color="#ff8c00" role="button" tabindex="0" aria-label="橙色"></div>
+                        <div class="color-option" style="background-color: #e81123" data-color="#e81123" role="button" tabindex="0" aria-label="红色"></div>
+                        <div class="color-option" style="background-color: #5c2d91" data-color="#5c2d91" role="button" tabindex="0" aria-label="紫色"></div>
+                        <div class="color-option" style="background-color: #008272" data-color="#008272" role="button" tabindex="0" aria-label="青色"></div>
+                        <div class="color-option" style="background-color: #00bcf2" data-color="#00bcf2" role="button" tabindex="0" aria-label="浅蓝色"></div>
+                        <div class="color-option" style="background-color: #bad80a" data-color="#bad80a" role="button" tabindex="0" aria-label="黄绿色"></div>
+                        <div class="color-option" style="background-color: #ff6f61" data-color="#ff6f61" role="button" tabindex="0" aria-label="珊瑚色"></div>
+                        <div class="color-option" style="background-color: #744da9" data-color="#744da9" role="button" tabindex="0" aria-label="紫罗兰色"></div>
+                        <div class="color-option" style="background-color: #f7630c" data-color="#f7630c" role="button" tabindex="0" aria-label="深橙色"></div>
+                        <div class="color-option" style="background-color: #038387" data-color="#038387" role="button" tabindex="0" aria-label="深青色"></div>
+                        <div class="color-option" style="background-color: #c239b3" data-color="#c239b3" role="button" tabindex="0" aria-label="粉紫色"></div>
+                        <div class="color-option" style="background-color: #6b69d6" data-color="#6b69d6" role="button" tabindex="0" aria-label="薰衣草色"></div>
                     </div>
                     <div class="custom-color-row">
                         <input type="color" class="custom-color-input" id="customColorInput" value="#1a1a1a"
@@ -1649,7 +1649,7 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">代理设置</label>
+                    <label class="form-label" for="groupProxyUrl">代理设置</label>
                     <input type="text" class="form-input" id="groupProxyUrl"
                         placeholder="http://host:port 或 socks5://user:pass@host:port">
                     <div class="form-hint">可选，设置后该分组下所有邮箱获取邮件时走此代理（支持 HTTP/SOCKS5）</div>
@@ -1671,13 +1671,13 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">选择分组</label>
+                    <label class="form-label" for="importGroupSelect">选择分组</label>
                     <select class="form-select" id="importGroupSelect">
                         <!-- 分组选项将通过 JS 动态加载 -->
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">账号信息</label>
+                    <label class="form-label" for="accountInput">账号信息</label>
                     <textarea class="form-textarea" id="accountInput"
                         placeholder="邮箱----密码----client_id----refresh_token"></textarea>
                     <div class="form-hint">格式：邮箱----密码----client_id----refresh_token，支持批量导入（每行一个）</div>
@@ -1700,33 +1700,33 @@
             <div class="modal-body">
                 <input type="hidden" id="editAccountId">
                 <div class="form-group">
-                    <label class="form-label">邮箱地址</label>
+                    <label class="form-label" for="editEmail">邮箱地址</label>
                     <input type="text" class="form-input" id="editEmail" placeholder="example@outlook.com">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">密码</label>
+                    <label class="form-label" for="editPassword">密码</label>
                     <input type="password" class="form-input" id="editPassword" placeholder="可选">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Client ID</label>
+                    <label class="form-label" for="editClientId">Client ID</label>
                     <input type="text" class="form-input" id="editClientId">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Refresh Token</label>
+                    <label class="form-label" for="editRefreshToken">Refresh Token</label>
                     <textarea class="form-textarea" id="editRefreshToken" style="height: 80px;"></textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">所属分组</label>
+                    <label class="form-label" for="editGroupSelect">所属分组</label>
                     <select class="form-select" id="editGroupSelect">
                         <!-- 分组选项将通过 JS 动态加载 -->
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">备注</label>
+                    <label class="form-label" for="editRemark">备注</label>
                     <textarea class="form-textarea" id="editRemark" placeholder="可选" rows="3"></textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">状态</label>
+                    <label class="form-label" for="editStatus">状态</label>
                     <select class="form-select" id="editStatus">
                         <option value="active">正常</option>
                         <option value="inactive">停用</option>
@@ -1779,7 +1779,7 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">请输入登录密码以确认导出操作</label>
+                    <label class="form-label" for="exportVerifyPassword">请输入登录密码以确认导出操作</label>
                     <input type="password" class="form-input" id="exportVerifyPassword" placeholder="输入登录密码">
                     <div class="form-hint" style="color: #FF3B30;">导出文件包含敏感信息（Refresh Token），请妥善保管</div>
                 </div>
@@ -1800,15 +1800,15 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">登录密码</label>
+                    <label class="form-label" for="settingsPassword">登录密码</label>
                     <input type="password" class="form-input" id="settingsPassword" placeholder="输入新密码（留空则不修改）">
                     <div class="form-hint">用于登录系统的密码</div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">GPTMail API Key</label>
+                    <label class="form-label" for="settingsApiKey">GPTMail API Key</label>
                     <input type="text" class="form-input" id="settingsApiKey" placeholder="输入 GPTMail API Key">
                     <div class="form-hint">用于临时邮箱功能，可从 <a href="https://mail.chatgpt.org.uk/api" target="_blank"
-                            style="color: #0078d4;">gptmail.io</a> 获取</div>
+                            style="color: var(--mac-blue);">gptmail.io</a> 获取</div>
                 </div>
 
                 <div style="border-top: 1px solid rgba(0,0,0,0.06); margin: 24px 0; padding-top: 24px;">
@@ -1840,9 +1840,9 @@
 
                     <div id="daysStrategyContainer">
                         <div class="form-group">
-                            <label class="form-label">
+                            <label class="form-label" for="refreshIntervalDays">
                                 定时刷新周期
-                                <span style="font-size: 12px; color: #aeaeb2; font-weight: 400;">（每隔 X 天自动刷新所有账号）</span>
+                                <span style="font-size: 12px; color: #86868b; font-weight: 400;">（每隔 X 天自动刷新所有账号）</span>
                             </label>
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <input type="number" class="form-input" id="refreshIntervalDays" min="1" max="90"
@@ -1855,7 +1855,7 @@
 
                     <div id="cronStrategyContainer" style="display: none;">
                         <div class="form-group">
-                            <label class="form-label">Cron 表达式</label>
+                            <label class="form-label" for="refreshCron">Cron 表达式</label>
 
                             <input type="text" class="form-input" id="refreshCron" placeholder="0 2 * * *"
                                 value="0 2 * * *">
@@ -1886,9 +1886,9 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">
+                        <label class="form-label" for="refreshDelaySeconds">
                             邮箱间刷新间隔
-                            <span style="font-size: 12px; color: #aeaeb2; font-weight: 400;">（每个邮箱刷新之间的等待时间）</span>
+                            <span style="font-size: 12px; color: #86868b; font-weight: 400;">（每个邮箱刷新之间的等待时间）</span>
                         </label>
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <input type="number" class="form-input" id="refreshDelaySeconds" min="0" max="60" value="5"
@@ -1948,7 +1948,7 @@
                                 <span><i data-lucide="check-circle"></i></span>
                                 <span>成功邮箱</span>
                             </div>
-                            <div style="font-size: 18px; font-weight: 700; color: #34C759;" id="successRefreshCount">0
+                            <div style="font-size: 18px; font-weight: 700; color: var(--mac-green);" id="successRefreshCount">0
                             </div>
                         </div>
                         <div
@@ -2032,7 +2032,7 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">新建标签</label>
+                    <label class="form-label" for="newTagName">新建标签</label>
                     <div style="display: flex; gap: 8px;">
                         <input type="text" class="form-input" id="newTagName" placeholder="标签名称" style="flex: 1;">
                         <input type="color" class="form-control form-control-color" id="newTagColor" value="#563d7c"
@@ -2046,7 +2046,7 @@
                     <div id="tagList"
                         style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">
                         <!-- 标签列表动态加载 -->
-                        <div style="text-align: center; color: #aeaeb2; padding: 20px;">加载中...</div>
+                        <div style="text-align: center; color: #86868b; padding: 20px;">加载中...</div>
                     </div>
                 </div>
             </div>
@@ -2065,7 +2065,7 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">选择标签</label>
+                    <label class="form-label" for="batchTagSelect">选择标签</label>
                     <select class="form-select" id="batchTagSelect">
                         <option value="">请选择标签...</option>
                     </select>
@@ -2087,7 +2087,7 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">选择目标分组</label>
+                    <label class="form-label" for="batchMoveGroupSelect">选择目标分组</label>
                     <select class="form-select" id="batchMoveGroupSelect">
                         <option value="">请选择分组...</option>
                     </select>
@@ -2201,7 +2201,7 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">步骤 1: 访问授权链接</label>
+                    <label class="form-label" for="authUrlInput">步骤 1: 访问授权链接</label>
                     <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                         <input type="text" class="form-input" id="authUrlInput" readonly
                             style="flex: 1; font-size: 12px; font-family: monospace;">
@@ -2214,7 +2214,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">步骤 2: 粘贴授权后的完整 URL</label>
+                    <label class="form-label" for="redirectUrlInput">步骤 2: 粘贴授权后的完整 URL</label>
                     <textarea class="form-textarea" id="redirectUrlInput"
                         placeholder="授权成功后，浏览器会跳转到一个空白页，请复制地址栏中的完整 URL 并粘贴到这里"
                         style="height: 80px; font-size: 12px; font-family: monospace;"></textarea>
@@ -2222,10 +2222,10 @@
                 </div>
 
                 <div class="form-group" id="refreshTokenResult" style="display: none;">
-                    <label class="form-label"><i data-lucide="check-circle"></i> 账号信息（已获取成功）</label>
+                    <label class="form-label" for="refreshTokenOutput"><i data-lucide="check-circle"></i> 账号信息（已获取成功）</label>
                     <textarea class="form-textarea" id="refreshTokenOutput" readonly
-                        style="height: 100px; font-size: 12px; font-family: monospace; background-color: #f0f9ff; border-color: #0078d4;"></textarea>
-                    <div class="form-hint" style="color: #0078d4;">
+                        style="height: 100px; font-size: 12px; font-family: monospace; background-color: #f0f9ff; border-color: var(--mac-blue);"></textarea>
+                    <div class="form-hint" style="color: var(--mac-blue);">
                         <strong>格式说明：</strong>邮箱----密码----client_id----refresh_token<br>
                         请将"your@outlook.com"和"yourpassword"替换为您的实际邮箱和密码，然后复制整行内容到"导入邮箱"中使用
                     </div>
@@ -2413,7 +2413,7 @@
                     // 显示"没有更多邮件"
                     const loadingEl = document.getElementById('loadingMore');
                     if (loadingEl) {
-                        loadingEl.innerHTML = '<div style="text-align:center;padding:20px;color:#aeaeb2;font-size:13px;">没有更多邮件了</div>';
+                        loadingEl.innerHTML = '<div style="text-align:center;padding:20px;color:#86868b;font-size:13px;">没有更多邮件了</div>';
                     }
                 }
             } catch (error) {
@@ -2632,7 +2632,7 @@
                         <div style="background: #fff5f5; border: 1px solid #fde2e2; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px;">
                             <div style="font-weight: 600; color: #FF3B30; margin-bottom: 6px; font-size: 14px;">${name}</div>
                             <div style="color: #1d1d1f; font-size: 13px; line-height: 1.6;">${reason}</div>
-                            <div style="color: #aeaeb2; font-size: 12px; margin-top: 4px;">错误代码: ${codeText}</div>
+                            <div style="color: #86868b; font-size: 12px; margin-top: 4px;">错误代码: ${codeText}</div>
                         </div>
                     `;
                 }
@@ -2859,7 +2859,7 @@ ${details}
                 `;
             } else {
                 footer.innerHTML = `
-                    <button class="add-account-btn" onclick="showGetRefreshTokenModal()" style="background-color: #0078d4; margin-bottom: 8px;"><i data-lucide="key-round"></i> 获取 Refresh Token</button>
+                    <button class="add-account-btn" onclick="showGetRefreshTokenModal()" style="background-color: var(--mac-blue); margin-bottom: 8px;"><i data-lucide="key-round"></i> 获取 Refresh Token</button>
                     <button class="add-account-btn" onclick="showAddAccountModal()">+ 导入邮箱</button>
                 `;
             }
@@ -2929,7 +2929,7 @@ ${details}
                                 `).join('')}
                             </div>
                             
-                            <div class="account-refresh-time" style="font-size: 11px; color: ${acc.last_refresh_status === 'failed' ? '#FF3B30' : '#aeaeb2'}; margin-top: 4px; padding-left: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <div class="account-refresh-time" style="font-size: 11px; color: ${acc.last_refresh_status === 'failed' ? '#FF3B30' : '#86868b'}; margin-top: 4px; padding-left: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                                 <span><i data-lucide="clock"></i> ${formatRelativeTime(acc.last_refresh_at)}</span>
                                 ${acc.last_refresh_status === 'failed' ? `<button class="account-action-btn" onclick="event.stopPropagation(); showRefreshError(${acc.id}, '${escapeJs(acc.last_refresh_error || '未知错误')}', '${escapeJs(acc.email)}')" style="padding: 2px 6px; font-size: 10px; background-color: #FF3B30; color: white; border: none; border-radius: 3px; cursor: pointer;">查看错误</button>` : ''}
                             </div>
@@ -3894,7 +3894,7 @@ ${details}
             try {
                 // 使用已加载的分组数据
                 if (groups.length === 0) {
-                    container.innerHTML = '<div style="padding: 20px; text-align: center; color: #aeaeb2;">暂无分组</div>';
+                    container.innerHTML = '<div style="padding: 20px; text-align: center; color: #86868b;">暂无分组</div>';
                 } else {
                     container.innerHTML = groups.map(group => `
                         <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background-color 0.15s;"
@@ -3905,7 +3905,7 @@ ${details}
                                 <span style="width: 12px; height: 12px; border-radius: 3px; background-color: ${group.color || '#86868b'}"></span>
                                 <span style="font-size: 14px; color: #1d1d1f;">${escapeHtml(group.name)}</span>
                             </span>
-                            <span style="font-size: 12px; color: #aeaeb2; background-color: rgba(0,0,0,0.05); padding: 2px 8px; border-radius: 10px;">${group.account_count || 0}</span>
+                            <span style="font-size: 12px; color: #86868b; background-color: rgba(0,0,0,0.05); padding: 2px 8px; border-radius: 10px;">${group.account_count || 0}</span>
                         </label>
                     `).join('');
                 }
@@ -4399,7 +4399,7 @@ ${details}
                                     height: auto;
                                 }
                                 a {
-                                    color: #0078d4;
+                                    color: #007AFF;
                                 }
                             </style>
                         </head>
@@ -4898,7 +4898,7 @@ ${details}
                 if (data.success && data.valid) {
                     const nextRun = new Date(data.next_run).toLocaleString('zh-CN');
                     resultEl.innerHTML = `
-                        <div style="color: #34C759;">
+                        <div style="color: var(--mac-green);">
                             ✓ 表达式有效<br>
                             下次执行: ${nextRun}
                         </div>
@@ -5158,11 +5158,11 @@ ${details}
                             progressText.innerHTML = `
                                 正在处理: <strong>${data.email}</strong><br>
                                 进度: <strong>${data.current}/${data.total}</strong> |
-                                成功: <strong style="color: #34C759;">${successCount}</strong> |
+                                成功: <strong style="color: var(--mac-green);">${successCount}</strong> |
                                 失败: <strong style="color: #FF3B30;">${failedCount}</strong>
                             `;
                         } else if (data.type === 'delay') {
-                            progressText.innerHTML += `<br><span style="color: #aeaeb2;">等待 ${data.seconds} 秒后继续...</span>`;
+                            progressText.innerHTML += `<br><span style="color: #86868b;">等待 ${data.seconds} 秒后继续...</span>`;
                         } else if (data.type === 'complete') {
                             eventSource.close();
                             progress.style.display = 'none';
@@ -5349,7 +5349,7 @@ ${details}
                                     <div style="flex: 1;">
                                         <div style="font-weight: 600; margin-bottom: 4px;">${escapeHtml(log.account_email)}</div>
                                         <div style="font-size: 12px; color: #FF3B30;">${escapeHtml(log.error_message || '未知错误')}</div>
-                                        <div style="font-size: 11px; color: #aeaeb2; margin-top: 4px;">最后刷新: ${formatDateTime(log.created_at)}</div>
+                                        <div style="font-size: 11px; color: #86868b; margin-top: 4px;">最后刷新: ${formatDateTime(log.created_at)}</div>
                                     </div>
                                     <button class="btn btn-sm btn-primary" onclick="retrySingleAccount(${log.account_id}, '${escapeJs(log.account_email)}')">
                                         重试
@@ -5382,10 +5382,10 @@ ${details}
                         listEl.innerHTML = `<div style="padding: 12px; background-color: rgba(0,0,0,0.03); border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 13px; color: #86868b;">近半年刷新历史（共 ${data.logs.length} 条）</div>`;
                         let html = '';
                         data.logs.forEach(log => {
-                            const statusColor = log.status === 'success' ? '#34C759' : '#FF3B30';
+                            const statusColor = log.status === 'success' ? 'var(--mac-green)' : '#FF3B30';
                             const statusText = log.status === 'success' ? '成功' : '失败';
                             const typeText = log.refresh_type === 'manual' ? '手动' : '自动';
-                            const typeColor = log.refresh_type === 'manual' ? '#007AFF' : '#34C759';
+                            const typeColor = log.refresh_type === 'manual' ? '#007AFF' : 'var(--mac-green)';
                             const typeBgColor = log.refresh_type === 'manual' ? '#e7f3ff' : '#e8f5e9';
 
                             html += `
@@ -5563,7 +5563,7 @@ ${details}
         function renderTagList() {
             const listEl = document.getElementById('tagList');
             if (!allTags.length) {
-                listEl.innerHTML = '<div style="text-align: center; color: #aeaeb2; padding: 20px;">暂无标签</div>';
+                listEl.innerHTML = '<div style="text-align: center; color: #86868b; padding: 20px;">暂无标签</div>';
                 return;
             }
 
