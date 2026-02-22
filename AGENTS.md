@@ -3,8 +3,10 @@
 ## Project Overview
 
 Monolithic Flask web application for managing Outlook email accounts via Microsoft Graph API / IMAP.
-Backend is a single Python file (`web_outlook_app.py`, ~2500 lines). Frontend is a vanilla JS SPA
-in `templates/index.html` with inline CSS/JS. SQLite database, no ORM. No frontend build pipeline.
+Backend is a single Python file (`web_outlook_app.py`, ~4000 lines). Frontend is a vanilla JS SPA
+in `templates/index.html` (~5800 lines, inline CSS/JS, macOS-style UI with Lucide icons).
+SQLite database, no ORM. No frontend build pipeline.
+Supports both Docker deployment (Linux) and Windows desktop exe (via PyInstaller + pywebview).
 
 ## Build / Run / Test Commands
 
@@ -22,9 +24,24 @@ SECRET_KEY=dev-secret python web_outlook_app.py
 ### Run Production Server (Docker)
 ```bash
 docker build -t outlookemail .
-docker run -p 5000:5000 -e SECRET_KEY=your-secret outlookemail
+docker run -p 5000:5000 -e SECRET_KEY=your-secret -v $(pwd)/data:/app/data outlookemail
 ```
 Production uses: `gunicorn -w 1 -b 0.0.0.0:5000 --timeout 120 --access-logfile - --preload web_outlook_app:app`
+
+### Build Windows Desktop EXE
+```bash
+# On Windows only (PyInstaller cannot cross-compile)
+pip install -r requirements.txt
+pip install waitress pywebview pyinstaller
+pyinstaller outlook_email.spec
+# Output: dist/OutlookEmail.exe
+```
+Or push a `v*` tag to trigger GitHub Actions auto-build:
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+# EXE published to GitHub Releases automatically
+```
 
 ### Testing
 **There are no automated tests.** The `.gitignore` excludes `/test*` files. No test framework
@@ -49,16 +66,79 @@ ruff format web_outlook_app.py
 ```
 outlookEmail/
   web_outlook_app.py          # Main Flask app — ALL backend logic (routes, DB, auth, APIs)
+  run_windows.py              # Windows desktop entry point (pywebview + waitress)
+  outlook_email.spec          # PyInstaller config (--onefile mode)
   outlook_mail_reader.py      # Standalone CLI email reader tool (independent)
   templates/
-    index.html                # Main SPA (1650+ lines, inline JS/CSS)
+    index.html                # Main SPA (~5800 lines, inline JS/CSS, macOS-style UI)
     login.html                # Login page
   requirements.txt            # Python dependencies (minimums only)
   Dockerfile                  # Production container (Python 3.11-slim + gunicorn)
   .env.example                # Environment variable reference
-  .github/workflows/          # CI: Docker build + push to GHCR on main/master
+  .github/workflows/
+    docker-build-push.yml     # CI: Docker build + push to GHCR on main/master
+    build-windows-exe.yml     # CI: Build Windows exe on v* tag push
+  docs/plans/                 # Design and implementation plan documents
   img/                        # README screenshots
 ```
+
+## Windows EXE Packaging (PyInstaller)
+
+### Path Resolution Architecture
+`web_outlook_app.py` handles frozen-environment path detection at module level:
+
+```python
+if getattr(sys, 'frozen', False):
+    _resource_dir = sys._MEIPASS                     # templates (temporary, cleaned on exit)
+    _base_dir = os.path.dirname(sys.executable)      # data persistence (exe directory)
+    app.template_folder = os.path.join(_resource_dir, 'templates')
+else:
+    _base_dir = os.path.dirname(os.path.abspath(__file__))
+
+DATABASE = os.getenv("DATABASE_PATH", os.path.join(_base_dir, "data", "outlook_accounts.db"))
+```
+
+### Runtime file layout (--onefile mode)
+```
+OutlookEmail.exe
+├── sys._MEIPASS (temp dir, auto-cleaned)
+│   ├── templates/index.html    ← Flask loads templates from here
+│   └── web_outlook_app.py      ← imported as module
+│
+└── exe directory (persistent, survives upgrades)
+    └── data/
+        ├── outlook_accounts.db  ← SQLite database
+        └── .secret_key          ← auto-generated SECRET_KEY
+```
+
+### Entry point: `run_windows.py`
+- Generates and persists `SECRET_KEY` to `data/.secret_key` before importing Flask app
+- Starts waitress WSGI server on auto-detected free port (background thread)
+- Opens pywebview native desktop window (EdgeChromium backend)
+- Falls back to browser if pywebview/WebView2 unavailable
+- Closing window exits the program
+
+### Key rules for packaging changes
+- **Templates go into `_MEIPASS`** via `--add-data "templates;templates"` — read-only, temporary
+- **Database goes into exe-local `data/`** — persistent, never in `_MEIPASS`
+- **`web_outlook_app.py` is both the main app AND a data file** — added via `--add-data` so it can be imported from `_MEIPASS`
+- **Do NOT add `waitress` or `pywebview` to `requirements.txt`** — they are Windows-only, installed separately in CI
+- **`--console` mode is kept** to show server logs in a terminal window behind the GUI
+
+## Frontend Architecture
+
+### UI Framework
+- **macOS / Apple Mail aesthetic** — Lucide SVG icons (CDN: `unpkg.com/lucide@0.469.0`), CSS variables for theming
+- **CSS variables** defined at `:root`: `--mac-blue` (#007AFF), `--mac-green` (#34C759), `--mac-orange` (#FF9500), `--mac-red` (#FF3B30)
+- **Lucide icons require `refreshIcons()`** (debounced 16ms wrapper around `lucide.createIcons()`) after every `innerHTML` assignment containing `<i data-lucide="...">`
+- **DOMPurify** for HTML sanitization before DOM insertion
+
+### Key frontend patterns
+- `escapeHtml()` — null-safe HTML escaping; only one definition (duplicate was removed)
+- `closeAllModals()` — covers all 10+ modals; called on Escape key
+- SSE (Server-Sent Events) for streaming refresh operations; tracked via `_currentEventSource`
+- No `transition: all` — use specific properties to avoid jank
+- `backdrop-filter: blur()` only on navbar (GPU performance)
 
 ## Code Style Guidelines
 
@@ -84,7 +164,7 @@ except ImportError:
 | Functions          | `snake_case`       | `get_access_token_graph()`       |
 | Constants          | `UPPER_SNAKE_CASE` | `TOKEN_URL_GRAPH`, `MAX_LOGIN_ATTEMPTS` |
 | Variables          | `snake_case`       | `login_attempts`, `export_verify_tokens` |
-| Private globals    | `_underscore_prefix` | `_cipher_suite`                |
+| Private globals    | `_underscore_prefix` | `_cipher_suite`, `_base_dir`   |
 | Route paths        | kebab-case in URL  | `/api/accounts/refresh-all`      |
 
 ### Type Annotations
@@ -143,6 +223,9 @@ RESTful JSON endpoints under `/api/`:
 - DOM access via `document.getElementById()`
 - Sanitize all HTML with `DOMPurify.sanitize()` before DOM insertion
 - All JS/CSS is inline within HTML templates
+- Use `btn.innerHTML` (not `btn.textContent`) when content includes Lucide icon tags
+- Call `refreshIcons()` after any `innerHTML` assignment containing `<i data-lucide="...">`
+- Never use `<i data-lucide="...">` inside native `confirm()` / `alert()` dialogs (they cannot render HTML)
 
 ### Security Rules (Critical)
 1. **Encryption:** Use Fernet symmetric encryption for stored credentials; prefix with `enc:`
@@ -152,21 +235,31 @@ RESTful JSON endpoints under `/api/`:
 5. **CSRF:** Flask-WTF with graceful degradation if unavailable
 6. **Credential scrubbing:** Regex removal of tokens/passwords from error output and logs
 7. **SECRET_KEY is mandatory** — app raises `RuntimeError` on startup if missing
+8. **XSS prevention:** Always `escapeHtml()` server error messages before `innerHTML` insertion
 
 ### Configuration
 All config via environment variables with fallback defaults. Reference `.env.example`:
 ```python
-DATABASE = os.getenv("DATABASE_PATH", "data/outlook_accounts.db")
+DATABASE = os.getenv("DATABASE_PATH", os.path.join(_base_dir, "data", "outlook_accounts.db"))
 GPTMAIL_BASE_URL = os.getenv("GPTMAIL_BASE_URL", "https://mail.chatgpt.org.uk")
 ```
 
 ## CI/CD
 
-Single GitHub Actions workflow (`.github/workflows/docker-build-push.yml`):
+### Docker (Linux deployment)
+Workflow: `.github/workflows/docker-build-push.yml`
 - Triggers on push to `main`/`master` when `.py`, `requirements.txt`, `Dockerfile`, or `templates/**` change
 - Builds multi-arch Docker image (`linux/amd64`, `linux/arm64`)
 - Pushes to GitHub Container Registry (`ghcr.io`)
 - No lint, test, or quality gate steps
+
+### Windows EXE (Desktop deployment)
+Workflow: `.github/workflows/build-windows-exe.yml`
+- Triggers on push of `v*` tags, or manual `workflow_dispatch`
+- Runs on `windows-latest` with Python 3.11
+- Installs `waitress`, `pywebview`, `pyinstaller` (not in requirements.txt)
+- Builds single `OutlookEmail.exe` via `--onefile` mode
+- Publishes to GitHub Releases with download instructions
 
 ## Key Architectural Notes
 
@@ -175,3 +268,6 @@ Single GitHub Actions workflow (`.github/workflows/docker-build-push.yml`):
 - **API fallback chain** — Graph API -> IMAP (new server) -> IMAP (old server) with retry
 - **Proxy-per-group** — each account group supports its own HTTP/SOCKS5 proxy
 - **No test infrastructure** — `.gitignore` excludes `/test*` files
+- **Dual deployment** — Docker (Linux/server) and PyInstaller exe (Windows/desktop)
+- **PyInstaller path split** — `sys._MEIPASS` for read-only resources, `sys.executable` dir for persistent data
+- **Form accessibility** — all `<label>` elements have `for` attributes; color picker divs have `role="button"` + `tabindex="0"` + `aria-label`
