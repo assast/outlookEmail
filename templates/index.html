@@ -7,7 +7,15 @@
     <title>Outlook 邮件管理</title>
     <!-- DOMPurify for XSS protection -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
+        :root {
+            --mac-blue: #007AFF;
+            --mac-red: #FF3B30;
+            --mac-green: #34C759;
+            --mac-orange: #FF9500;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -5665,6 +5673,11 @@ ${details}
                 showToast('请求失败', 'error');
             }
         }
+        
+        // Initialize Lucide icons
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+        });
     </script>
 
     <!-- 全屏查看邮件模态框 -->
