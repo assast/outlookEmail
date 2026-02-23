@@ -724,6 +724,11 @@ def get_gptmail_api_key() -> str:
     return api_key if api_key else GPTMAIL_API_KEY
 
 
+def get_external_api_key() -> str:
+    """获取对外 API Key（从数据库读取，明文存储）"""
+    return get_setting('external_api_key', '')
+
+
 # ==================== 分组操作 ====================
 
 def load_groups() -> List[Dict]:
@@ -1578,6 +1583,27 @@ def login_required(f):
             if request.is_json or request.path.startswith('/api/'):
                 return jsonify({'success': False, 'error': '请先登录', 'need_login': True}), 401
             return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def api_key_required(f):
+    """API Key 验证装饰器（用于对外 API）"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # 从 Header 或查询参数获取 API Key
+        api_key = request.headers.get('X-API-Key') or request.args.get('api_key') or request.args.get('apikey')
+        if not api_key:
+            return jsonify({'success': False, 'error': '缺少 API Key，请通过 Header X-API-Key 或查询参数 api_key 提供'}), 401
+
+        # 验证 API Key
+        stored_key = get_external_api_key()
+        if not stored_key:
+            return jsonify({'success': False, 'error': '未配置对外 API Key，请在系统设置中配置'}), 403
+
+        if api_key != stored_key:
+            return jsonify({'success': False, 'error': 'API Key 无效'}), 401
+
         return f(*args, **kwargs)
     return decorated_function
 
@@ -3680,6 +3706,8 @@ def api_get_settings():
             settings['login_password_masked'] = pwd[0] + '*' * (len(pwd) - 2) + pwd[-1]
         else:
             settings['login_password_masked'] = '*' * len(pwd)
+    # 返回解密后的对外 API Key
+    settings['external_api_key'] = get_external_api_key()
     return jsonify({'success': True, 'settings': settings})
 
 
@@ -3779,6 +3807,18 @@ def api_update_settings():
         else:
             errors.append('定时刷新开关必须是 true 或 false')
 
+    # 更新对外 API Key
+    if 'external_api_key' in data:
+        new_ext_key = data['external_api_key'].strip()
+        if new_ext_key:
+            if set_setting('external_api_key', new_ext_key):
+                updated.append('对外 API Key')
+            else:
+                errors.append('更新对外 API Key 失败')
+        else:
+            if set_setting('external_api_key', ''):
+                updated.append('对外 API Key（已清空）')
+
     if errors:
         return jsonify({'success': False, 'error': '；'.join(errors)})
 
@@ -3786,6 +3826,104 @@ def api_update_settings():
         return jsonify({'success': True, 'message': f'已更新：{", ".join(updated)}'})
     else:
         return jsonify({'success': False, 'error': '没有需要更新的设置'})
+
+
+# ==================== 对外 API ====================
+
+@app.route('/api/external/emails', methods=['GET'])
+@csrf_exempt
+@api_key_required
+def api_external_get_emails():
+    """对外 API：通过 API Key 获取邮件列表"""
+    email_addr = request.args.get('email', '').strip()
+    folder = request.args.get('folder', 'inbox').strip().lower()
+    skip = int(request.args.get('skip', 0))
+    top = int(request.args.get('top', 20))
+
+    if not email_addr:
+        return jsonify({'success': False, 'error': '缺少 email 参数'}), 400
+
+    # 验证 folder 参数
+    valid_folders = ['inbox', 'junkemail']
+    if folder not in valid_folders:
+        return jsonify({'success': False, 'error': f'folder 参数无效，支持: {", ".join(valid_folders)}'}), 400
+
+    # 限制分页大小
+    if top > 50:
+        top = 50
+
+    account = get_account_by_email(email_addr)
+    if not account:
+        return jsonify({'success': False, 'error': '邮箱账号不存在'}), 404
+
+    # 获取分组代理设置
+    proxy_url = ''
+    if account.get('group_id'):
+        group = get_group_by_id(account['group_id'])
+        if group:
+            proxy_url = group.get('proxy_url', '') or ''
+
+    # 收集所有错误信息
+    all_errors = {}
+
+    # 1. 尝试 Graph API
+    graph_result = get_emails_graph(account['client_id'], account['refresh_token'], folder, skip, top, proxy_url)
+    if graph_result.get('success'):
+        emails = graph_result.get('emails', [])
+        formatted = []
+        for e in emails:
+            formatted.append({
+                'id': e.get('id'),
+                'subject': e.get('subject', '无主题'),
+                'from': e.get('from', {}).get('emailAddress', {}).get('address', '未知'),
+                'date': e.get('receivedDateTime', ''),
+                'is_read': e.get('isRead', False),
+                'has_attachments': e.get('hasAttachments', False),
+                'body_preview': e.get('bodyPreview', '')
+            })
+        return jsonify({
+            'success': True,
+            'emails': formatted,
+            'method': 'Graph API',
+            'has_more': len(formatted) >= top
+        })
+    else:
+        graph_error = graph_result.get('error')
+        all_errors['graph'] = graph_error
+        if isinstance(graph_error, dict) and graph_error.get('type') in ('ProxyError', 'ConnectionError'):
+            return jsonify({'success': False, 'error': '代理连接失败', 'details': all_errors})
+
+    # 2. 尝试新版 IMAP
+    imap_new_result = get_emails_imap_with_server(
+        account['email'], account['client_id'], account['refresh_token'],
+        folder, skip, top, IMAP_SERVER_NEW
+    )
+    if imap_new_result.get('success'):
+        return jsonify({
+            'success': True,
+            'emails': imap_new_result.get('emails', []),
+            'method': 'IMAP (New)',
+            'has_more': False
+        })
+    else:
+        all_errors['imap_new'] = imap_new_result.get('error')
+
+    # 3. 尝试旧版 IMAP
+    imap_old_result = get_emails_imap_with_server(
+        account['email'], account['client_id'], account['refresh_token'],
+        folder, skip, top, IMAP_SERVER_OLD
+    )
+    if imap_old_result.get('success'):
+        return jsonify({
+            'success': True,
+            'emails': imap_old_result.get('emails', []),
+            'method': 'IMAP (Old)',
+            'has_more': False
+        })
+    else:
+        all_errors['imap_old'] = imap_old_result.get('error')
+
+    return jsonify({'success': False, 'error': '无法获取邮件，所有方式均失败', 'details': all_errors})
 
 
 # ==================== 定时任务调度器 ====================

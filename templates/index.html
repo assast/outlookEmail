@@ -1688,6 +1688,20 @@
                             style="color: #0078d4;">gptmail.io</a> 获取</div>
                 </div>
 
+                <div class="form-group">
+                    <label class="form-label">对外 API Key</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" class="form-input" id="settingsExternalApiKey" placeholder="输入或生成对外 API Key"
+                            style="flex: 1;">
+                        <button class="btn btn-secondary" onclick="generateExternalApiKey()"
+                            style="white-space: nowrap; font-size: 13px;">🔑 随机生成</button>
+                    </div>
+                    <div class="form-hint">用于对外 API
+                        认证，调用方式：<code>GET /api/external/emails?email=xxx&folder=inbox</code>，Header:
+                        <code>X-API-Key: your-key</code>
+                    </div>
+                </div>
+
                 <div style="border-top: 1px solid #e5e5e5; margin: 24px 0; padding-top: 24px;">
                     <h4 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">🔄 Token 刷新设置</h4>
 
@@ -4686,6 +4700,15 @@ ${details}
             document.getElementById('settingsPassword').value = '';
         }
 
+        // 生成随机对外 API Key
+        function generateExternalApiKey() {
+            const array = new Uint8Array(16);
+            crypto.getRandomValues(array);
+            const key = Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+            document.getElementById('settingsExternalApiKey').value = key;
+            showToast('已生成随机 API Key，请保存设置', 'success');
+        }
+
         // 加载设置
         async function loadSettings() {
             try {
@@ -4695,6 +4718,7 @@ ${details}
                 if (data.success) {
                     // 密码不显示，只显示 API Key
                     document.getElementById('settingsApiKey').value = data.settings.gptmail_api_key || '';
+                    document.getElementById('settingsExternalApiKey').value = data.settings.external_api_key || '';
                     // 密码框留空
                     document.getElementById('settingsPassword').value = '';
 
@@ -4777,6 +4801,7 @@ ${details}
         async function saveSettings() {
             const password = document.getElementById('settingsPassword').value;
             const apiKey = document.getElementById('settingsApiKey').value.trim();
+            const externalApiKey = document.getElementById('settingsExternalApiKey').value.trim();
             const refreshDays = document.getElementById('refreshIntervalDays').value;
             const refreshDelay = document.getElementById('refreshDelaySeconds').value;
             const refreshCron = document.getElementById('refreshCron').value.trim();
@@ -4792,6 +4817,9 @@ ${details}
 
             // API Key 可以为空（清除）
             settings.gptmail_api_key = apiKey;
+
+            // 对外 API Key
+            settings.external_api_key = externalApiKey;
 
             // 刷新配置
             const days = parseInt(refreshDays);
