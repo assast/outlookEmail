@@ -9,1298 +9,750 @@
     <!-- DOMPurify for XSS protection -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --accent: #0078d4;
+            --accent-hover: #006cbe;
+            --accent-active: #005a9e;
+            --accent-light: #e8f4fd;
+            --accent-bg: #f0f7ff;
+            --bg: #f3f3f3;
+            --surface: #ffffff;
+            --surface-alt: #fafafa;
+            --text: #242424;
+            --text2: #616161;
+            --text3: #999;
+            --border: #e0e0e0;
+            --border-light: #f0f0f0;
+            --danger: #d13438;
+            --danger-bg: #fde7e9;
+            --success: #107c10;
+            --success-bg: #dff6dd;
+            --warning: #ffb900;
+            --warning-bg: #fff4ce;
+            --radius: 8px;
+            --radius-sm: 6px;
+            --radius-lg: 12px;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,.06);
+            --shadow: 0 2px 4px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.08);
+            --shadow-lg: 0 8px 32px rgba(0,0,0,.14);
+            --nav-width: 48px;
+            --navbar-height: 48px;
         }
 
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: #ffffff;
-            color: #1a1a1a;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
             line-height: 1.5;
         }
 
-        /* 顶部导航栏 */
+        /* ==================== 顶部导航栏 ==================== */
         .navbar {
-            height: 56px;
-            background-color: #ffffff;
-            border-bottom: 1px solid #e5e5e5;
+            height: var(--navbar-height);
+            background-color: var(--surface);
+            border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
-            padding: 0 24px;
+            padding: 0 16px;
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
+            top: 0; left: 0; right: 0;
             z-index: 100;
         }
 
         .navbar-brand {
-            font-size: 18px;
+            font-size: 15px;
             font-weight: 600;
-            color: #1a1a1a;
+            color: var(--text);
             display: flex;
             align-items: center;
             gap: 8px;
         }
+        .navbar-brand svg { width: 22px; height: 22px; color: var(--accent); }
 
-        .navbar-brand svg {
-            width: 24px;
-            height: 24px;
+        .github-star-btn {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: var(--surface); border: 1px solid var(--border);
+            color: var(--text); cursor: pointer;
+            font-size: 12px; font-weight: 500;
+            padding: 4px 10px; border-radius: var(--radius-sm);
+            transition: all .15s; text-decoration: none;
         }
+        .github-star-btn:hover { background: var(--surface-alt); border-color: #ccc; }
+        .github-star-btn svg { width: 14px; height: 14px; }
 
-        .navbar-center {
-            flex: 1;
-            display: flex;
-            justify-content: center;
-        }
+        .navbar-center { flex: 1; display: flex; justify-content: center; }
 
         .current-account {
-            font-size: 14px;
-            color: #666;
-            background-color: #f5f5f5;
-            padding: 6px 16px;
-            border-radius: 20px;
-            display: none;
-            cursor: pointer;
-            transition: all 0.2s;
+            font-size: 13px; color: var(--text2);
+            background-color: var(--surface-alt);
+            padding: 5px 14px; border-radius: 20px;
+            display: none; cursor: pointer;
+            transition: all .15s;
         }
+        .current-account:hover { background-color: var(--accent-light); }
+        .current-account.show { display: block; }
+        .current-account strong { color: var(--text); font-weight: 500; }
 
-        .current-account:hover {
-            background-color: #e8e8e8;
-        }
-
-        .current-account.show {
-            display: block;
-        }
-
-        .current-account strong {
-            color: #1a1a1a;
-            font-weight: 500;
-        }
-
-        .navbar-actions {
-            display: flex;
-            gap: 12px;
-        }
+        .navbar-actions { display: flex; gap: 6px; }
 
         .navbar-btn {
-            background: none;
-            border: 1px solid #e5e5e5;
-            color: #666;
-            cursor: pointer;
-            font-size: 13px;
-            padding: 6px 12px;
-            border-radius: 6px;
-            transition: all 0.15s;
+            background: none; border: 1px solid var(--border);
+            color: var(--text2); cursor: pointer;
+            font-size: 12px; padding: 5px 12px;
+            border-radius: var(--radius-sm); transition: all .15s;
+            font-family: inherit;
         }
+        .navbar-btn:hover { background-color: var(--surface-alt); border-color: #ccc; }
 
-        .navbar-btn:hover {
-            background-color: #f5f5f5;
-            border-color: #ccc;
-        }
-
-        /* GitHub Star 按钮 */
-        .github-star-btn {
-            display: inline-flex;
+        /* ==================== 图标导航栏 (新增) ==================== */
+        .icon-nav {
+            width: var(--nav-width);
+            background: var(--bg);
+            border-right: 1px solid var(--border);
+            display: flex; flex-direction: column;
             align-items: center;
-            gap: 6px;
-            background: linear-gradient(180deg, #fafbfc 0%, #eff3f6 90%);
-            border: 1px solid rgba(27, 31, 35, 0.15);
-            color: #24292e;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-            padding: 5px 12px;
-            border-radius: 6px;
-            transition: all 0.15s;
-            text-decoration: none;
-            box-shadow: 0 1px 0 rgba(27, 31, 35, 0.04);
+            padding: 10px 0; gap: 4px;
+            flex-shrink: 0;
         }
-
-        .github-star-btn:hover {
-            background: linear-gradient(180deg, #f3f4f6 0%, #e9ecef 90%);
-            border-color: rgba(27, 31, 35, 0.25);
-            box-shadow: 0 1px 0 rgba(27, 31, 35, 0.1);
+        .icon-nav-item {
+            width: 36px; height: 36px; border-radius: var(--radius);
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; color: var(--text2);
+            transition: all .15s; position: relative;
+            border: none; background: none;
         }
-
-        .github-star-btn svg {
-            width: 16px;
-            height: 16px;
+        .icon-nav-item:hover { background: rgba(0,0,0,.04); color: var(--text); }
+        .icon-nav-item.active { background: var(--accent-light); color: var(--accent); }
+        .icon-nav-item.active::before {
+            content: ''; position: absolute; left: -6px;
+            top: 50%; transform: translateY(-50%);
+            width: 3px; height: 16px;
+            background: var(--accent); border-radius: 2px;
         }
+        .icon-nav-item svg { width: 20px; height: 20px; }
+        .icon-nav-bottom { margin-top: auto; }
 
-        /* 主容器 */
+        /* ==================== 主容器 ==================== */
         .main-container {
             display: flex;
-            margin-top: 56px;
-            height: calc(100vh - 56px);
+            margin-top: var(--navbar-height);
+            height: calc(100vh - var(--navbar-height));
         }
 
-        /* 分组面板 */
+        /* ==================== 分组面板 ==================== */
         .group-panel {
             width: 200px;
-            background-color: #fafafa;
-            border-right: 1px solid #e5e5e5;
-            display: flex;
-            flex-direction: column;
+            background-color: var(--surface-alt);
+            border-right: 1px solid var(--border);
+            display: flex; flex-direction: column;
             flex-shrink: 0;
         }
 
         .panel-header {
-            padding: 0 16px;
-            height: 52px;
-            border-bottom: 1px solid #e5e5e5;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            padding: 0 14px; height: 48px;
+            border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
         }
-
-        .panel-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: #1a1a1a;
-        }
+        .panel-title { font-size: 13px; font-weight: 600; color: var(--text); }
 
         .panel-action-btn {
-            background: none;
-            border: none;
-            color: #666;
-            cursor: pointer;
-            font-size: 18px;
-            padding: 2px 6px;
-            border-radius: 4px;
-            line-height: 1;
+            background: none; border: none; color: var(--text2);
+            cursor: pointer; font-size: 16px;
+            padding: 4px 6px; border-radius: var(--radius-sm);
+            line-height: 1; transition: all .15s;
         }
+        .panel-action-btn:hover { background-color: var(--border); color: var(--text); }
 
-        .panel-action-btn:hover {
-            background-color: #e5e5e5;
-        }
-
-        .group-list {
-            flex: 1;
-            overflow-y: auto;
-        }
+        .group-list { flex: 1; overflow-y: auto; }
 
         .group-item {
-            padding: 10px 16px;
-            cursor: pointer;
-            transition: background-color 0.15s;
+            padding: 9px 14px; cursor: pointer;
+            transition: background-color .1s;
             border-left: 3px solid transparent;
         }
+        .group-item:hover { background-color: rgba(0,0,0,.03); }
+        .group-item.active { background-color: var(--accent-light); border-left-color: var(--accent); }
 
-        .group-item:hover {
-            background-color: #f0f0f0;
-        }
+        .group-row-1 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 
-        .group-item.active {
-            background-color: #e8e8e8;
-            border-left-color: #1a1a1a;
-        }
-
-        .group-row-1 {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 6px;
-        }
-
-        .group-color {
-            width: 10px;
-            height: 10px;
-            border-radius: 3px;
-            flex-shrink: 0;
-        }
+        .group-color { width: 10px; height: 10px; border-radius: 4px; flex-shrink: 0; }
 
         .group-name {
-            font-size: 14px;
-            font-weight: 500;
-            color: #1a1a1a;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            flex: 1;
+            font-size: 13px; font-weight: 500; color: var(--text);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
         }
 
-        .group-row-2 {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding-left: 20px;
-        }
+        .group-row-2 { display: flex; align-items: center; justify-content: space-between; padding-left: 18px; }
 
         .group-count {
-            font-size: 12px;
-            color: #999;
-            background-color: #f0f0f0;
-            padding: 2px 8px;
-            border-radius: 10px;
+            font-size: 11px; color: var(--text3);
+            background-color: var(--border-light); padding: 1px 8px; border-radius: 10px;
         }
+        .group-item.active .group-count { background-color: rgba(0,120,212,.12); color: var(--accent); }
 
-        .group-item.active .group-count {
-            background-color: #d8d8d8;
-        }
-
-        .group-actions {
-            display: flex;
-            gap: 4px;
-            opacity: 0;
-            transition: opacity 0.15s;
-        }
-
-        .group-item:hover .group-actions {
-            opacity: 1;
-        }
+        .group-actions { display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
+        .group-item:hover .group-actions { opacity: 1; }
 
         .group-action-btn {
-            background: none;
-            border: none;
-            color: #999;
-            cursor: pointer;
-            padding: 2px 6px;
-            font-size: 12px;
-            border-radius: 4px;
+            background: none; border: none; color: var(--text3);
+            cursor: pointer; padding: 2px 6px; font-size: 12px;
+            border-radius: 4px; transition: all .15s;
         }
+        .group-action-btn:hover { background-color: var(--border); color: var(--text2); }
 
-        .group-action-btn:hover {
-            background-color: #e0e0e0;
-            color: #666;
-        }
-
-        /* 邮箱账号面板 */
+        /* ==================== 邮箱账号面板 ==================== */
         .account-panel {
-            width: 260px;
-            background-color: #ffffff;
-            border-right: 1px solid #e5e5e5;
-            display: flex;
-            flex-direction: column;
-            flex-shrink: 0;
+            width: 260px; background-color: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; flex-shrink: 0;
         }
 
         .account-panel-header {
-            padding: 0 16px;
-            height: 52px;
-            border-bottom: 1px solid #e5e5e5;
-            display: flex;
-            align-items: center;
+            padding: 0 14px; height: 48px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center;
         }
-
         .account-panel-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: #1a1a1a;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            font-size: 13px; font-weight: 600; color: var(--text);
+            display: flex; align-items: center; gap: 8px;
         }
+        .account-panel-title .group-color { width: 10px; height: 10px; }
 
-        .account-panel-title .group-color {
-            width: 12px;
-            height: 12px;
-        }
-
-        .search-container {
-            padding: 8px 16px;
-            border-bottom: 1px solid #e5e5e5;
-        }
+        .search-container { padding: 8px 14px; border-bottom: 1px solid var(--border); }
 
         .search-input {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #e5e5e5;
-            border-radius: 6px;
-            font-size: 13px;
-            outline: none;
-            transition: border-color 0.2s;
+            width: 100%; padding: 7px 12px;
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            font-size: 13px; outline: none;
+            transition: border-color .15s; font-family: inherit;
+            background: var(--surface-alt);
         }
+        .search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--surface); }
 
-        .search-input:focus {
-            border-color: #1a1a1a;
-        }
+        .account-number { color: var(--text2); font-weight: 500; margin-right: 4px; }
 
-        .account-number {
-            color: #666;
-            font-weight: 500;
-            margin-right: 4px;
-        }
+        .sort-btn:hover { background-color: var(--surface-alt) !important; border-color: #ccc !important; }
+        .sort-btn.active { background-color: var(--accent) !important; color: #ffffff !important; border-color: var(--accent) !important; }
 
-        .sort-btn:hover {
-            background-color: #f5f5f5 !important;
-            border-color: #ccc !important;
-        }
+        .account-list { flex: 1; overflow-y: auto; }
 
-        .sort-btn.active {
-            background-color: #1a1a1a !important;
-            color: #ffffff !important;
-            border-color: #1a1a1a !important;
-        }
-
-        .account-list {
-            flex: 1;
-            overflow-y: auto;
-        }
-
-        .account-panel-footer {
-            padding: 16px;
-            border-top: 1px solid #e5e5e5;
-        }
+        .account-panel-footer { padding: 12px 14px; border-top: 1px solid var(--border); }
 
         .add-account-btn {
-            width: 100%;
-            padding: 10px 16px;
-            background-color: #1a1a1a;
-            color: #ffffff;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s;
+            width: 100%; padding: 9px 14px;
+            background-color: var(--accent); color: #ffffff;
+            border: none; border-radius: var(--radius-sm);
+            font-size: 13px; font-weight: 500;
+            cursor: pointer; transition: background-color .15s;
+            font-family: inherit;
         }
-
-        .add-account-btn:hover {
-            background-color: #333;
-        }
+        .add-account-btn:hover { background-color: var(--accent-hover); }
 
         .account-item {
-            padding: 10px 16px;
-            cursor: pointer;
-            transition: background-color 0.15s;
+            padding: 9px 14px; cursor: pointer;
+            transition: background-color .1s;
             border-left: 3px solid transparent;
-            border-bottom: 1px solid #f5f5f5;
+            border-bottom: 1px solid var(--border-light);
         }
-
-        .account-item:hover {
-            background-color: #f5f5f5;
-        }
-
-        .account-item.active {
-            background-color: #f0f0f0;
-            border-left-color: #1a1a1a;
-        }
-
-        .account-item.inactive {
-            opacity: 0.6;
-        }
-
-        .account-item.inactive .account-email {
-            text-decoration: line-through;
-            color: #999;
-        }
+        .account-item:hover { background-color: var(--surface-alt); }
+        .account-item.active { background-color: var(--accent-light); border-left-color: var(--accent); }
+        .account-item.inactive { opacity: 0.55; }
+        .account-item.inactive .account-email { text-decoration: line-through; color: var(--text3); }
 
         .account-remark {
-            font-size: 12px;
-            color: #666;
-            padding-left: 0;
-            margin-top: 4px;
-            white-space: pre-wrap;
-            word-break: break-all;
-            line-height: 1.4;
+            font-size: 11px; color: var(--text2); margin-top: 3px;
+            white-space: pre-wrap; word-break: break-all; line-height: 1.4;
         }
 
         .account-email {
-            font-size: 13px;
-            color: #1a1a1a;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            margin-bottom: 6px;
+            font-size: 12px; color: var(--text);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            margin-bottom: 4px;
         }
 
         .account-status-tag {
-            font-size: 10px;
-            padding: 1px 6px;
-            border-radius: 3px;
-            margin-left: 8px;
-            background-color: #f0f0f0;
-            color: #999;
+            font-size: 10px; padding: 1px 6px; border-radius: 3px;
+            margin-left: 6px; background-color: var(--border-light); color: var(--text3);
         }
 
         .tag-badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 500;
-            margin-right: 4px;
-            margin-top: 2px;
-            color: white;
-            line-height: 1.4;
+            display: inline-flex; align-items: center;
+            padding: 1px 7px; border-radius: 4px;
+            font-size: 10px; font-weight: 600;
+            margin-right: 3px; margin-top: 2px;
+            color: white; line-height: 1.4;
         }
 
-        .account-tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            margin-top: 4px;
-        }
+        .account-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
 
-        .account-actions {
-            display: flex;
-            gap: 8px;
-            opacity: 0;
-            transition: opacity 0.15s;
-        }
-
-        .account-item:hover .account-actions {
-            opacity: 1;
-        }
+        .account-actions { display: flex; gap: 6px; opacity: 0; transition: opacity .15s; }
+        .account-item:hover .account-actions { opacity: 1; }
 
         .account-action-btn {
-            background: none;
-            border: none;
-            color: #666;
-            cursor: pointer;
-            padding: 2px 0;
-            font-size: 11px;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            gap: 2px;
+            background: none; border: none; color: var(--text2);
+            cursor: pointer; padding: 2px 0; font-size: 11px;
+            border-radius: 4px; display: flex; align-items: center; gap: 2px;
+            transition: color .15s;
         }
-
-        .account-action-btn:hover {
-            color: #1a1a1a;
-        }
-
-
-        .account-action-btn.delete:hover {
-            color: #dc3545;
-        }
+        .account-action-btn:hover { color: var(--accent); }
+        .account-action-btn.delete:hover { color: var(--danger); }
 
         .batch-btn.danger {
-            background-color: #dc3545;
-            color: white;
-            border: none;
-            cursor: pointer;
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-size: 13px;
-            transition: background-color 0.15s;
+            background-color: var(--danger); color: white;
+            border: none; cursor: pointer; padding: 6px 12px;
+            border-radius: 4px; font-size: 13px; transition: background-color .15s;
         }
+        .batch-btn.danger:hover { background-color: #b52e31; }
 
-        .batch-btn.danger:hover {
-            background-color: #c82333;
-        }
+        /* ==================== 内容区域 ==================== */
+        .content-area { flex: 1; display: flex; overflow: hidden; }
 
-        /* 内容区域 */
-        .content-area {
-            flex: 1;
-            display: flex;
-            overflow: hidden;
-        }
-
-        /* 邮件列表面板 */
+        /* ==================== 邮件列表面板 ==================== */
         .email-list-panel {
-            width: 380px;
-            background-color: #ffffff;
-            border-right: 1px solid #e5e5e5;
-            display: flex;
-            flex-direction: column;
-            flex-shrink: 0;
+            width: 360px; background-color: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; flex-shrink: 0;
         }
+        .email-list-panel.hidden { display: none; }
 
-        .email-list-panel.hidden {
-            display: none;
-        }
-
-        /* 邮件列表头部 */
         .email-list-header {
-            padding: 16px 20px;
-            border-bottom: 1px solid #e5e5e5;
-            background-color: #ffffff;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            background-color: var(--surface);
         }
+        .email-list-header h2 { font-size: 14px; font-weight: 600; color: var(--text); }
 
-        .email-list-header h2 {
-            font-size: 16px;
-            font-weight: 600;
-            color: #1a1a1a;
-        }
-
-        .email-count {
-            font-size: 13px;
-            color: #999;
-            font-weight: 400;
-            margin-left: 8px;
-        }
+        .email-count { font-size: 12px; color: var(--text3); font-weight: 400; margin-left: 6px; }
 
         .refresh-btn {
-            background: none;
-            border: 1px solid #e5e5e5;
-            color: #666;
-            cursor: pointer;
-            font-size: 13px;
-            padding: 6px 12px;
-            border-radius: 6px;
-            transition: all 0.15s;
+            background: none; border: 1px solid var(--border);
+            color: var(--text2); cursor: pointer;
+            font-size: 12px; padding: 5px 12px;
+            border-radius: var(--radius-sm); transition: all .15s;
+            font-family: inherit;
         }
+        .refresh-btn:hover { background-color: var(--surface-alt); border-color: #ccc; }
 
-        .refresh-btn:hover {
-            background-color: #f5f5f5;
-            border-color: #ccc;
-        }
-
-        .email-list {
-            flex: 1;
-            overflow-y: auto;
-        }
+        .email-list { flex: 1; overflow-y: auto; }
 
         .email-item {
-            padding: 16px 20px;
-            border-bottom: 1px solid #f0f0f0;
-            cursor: pointer;
-            transition: background-color 0.15s;
-            display: flex;
-            align-items: flex-start;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-light);
+            cursor: pointer; transition: background-color .1s;
+            display: flex; align-items: flex-start;
+            position: relative;
         }
-
-        .email-checkbox-wrapper {
-            padding-right: 12px;
-            padding-top: 2px;
-            display: flex;
-            align-items: center;
-        }
-
-        .email-checkbox {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-        }
-
-        .email-item:hover {
-            background-color: #fafafa;
-        }
-
-        .email-item.active {
-            background-color: #f5f5f5;
-        }
-
-        .email-item.unread .email-subject {
-            font-weight: 600;
-        }
+        .email-checkbox-wrapper { padding-right: 10px; padding-top: 2px; display: flex; align-items: center; }
+        .email-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+        .email-item:hover { background-color: var(--surface-alt); }
+        .email-item.active { background-color: var(--accent-light); }
+        .email-item.unread .email-subject { font-weight: 600; }
 
         .email-from {
-            font-size: 14px;
-            font-weight: 500;
-            color: #1a1a1a;
-            margin-bottom: 4px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            font-size: 13px; font-weight: 500; color: var(--text);
+            margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-
         .email-subject {
-            font-size: 14px;
-            color: #1a1a1a;
-            margin-bottom: 4px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            font-size: 12px; color: var(--text); margin-bottom: 3px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-
         .email-preview {
-            font-size: 13px;
-            color: #999;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            font-size: 11px; color: var(--text2);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
+        .email-date { font-size: 11px; color: var(--text3); margin-top: 6px; }
 
-        .email-date {
-            font-size: 12px;
-            color: #999;
-            margin-top: 8px;
-        }
-
-        /* 邮件详情面板 */
+        /* ==================== 邮件详情面板 ==================== */
         .email-detail-panel {
-            flex: 1;
-            background-color: #ffffff;
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
+            flex: 1; background-color: var(--surface);
+            display: flex; flex-direction: column; min-width: 0;
         }
 
         .email-detail-toolbar {
-            padding: 12px 24px;
-            border-bottom: 1px solid #e5e5e5;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            background-color: #fafafa;
+            padding: 10px 20px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; gap: 10px;
+            background-color: var(--surface-alt);
         }
 
         .back-btn {
-            display: none;
-            background: none;
-            border: 1px solid #e5e5e5;
-            color: #666;
-            cursor: pointer;
-            font-size: 13px;
-            padding: 6px 12px;
-            border-radius: 6px;
-            transition: all 0.15s;
+            display: none; background: none;
+            border: 1px solid var(--border); color: var(--text2);
+            cursor: pointer; font-size: 12px; padding: 5px 12px;
+            border-radius: var(--radius-sm); transition: all .15s;
+            font-family: inherit;
         }
-
-        .back-btn:hover {
-            background-color: #f0f0f0;
-        }
+        .back-btn:hover { background-color: var(--border-light); }
 
         .toggle-list-btn {
-            background: none;
-            border: 1px solid #e5e5e5;
-            color: #666;
-            cursor: pointer;
-            font-size: 13px;
-            padding: 6px 12px;
-            border-radius: 6px;
-            transition: all 0.15s;
+            background: none; border: 1px solid var(--border);
+            color: var(--text2); cursor: pointer;
+            font-size: 12px; padding: 5px 12px;
+            border-radius: var(--radius-sm); transition: all .15s;
+            font-family: inherit;
         }
+        .toggle-list-btn:hover { background-color: var(--border-light); }
 
-        .toggle-list-btn:hover {
-            background-color: #f0f0f0;
-        }
-
-        .email-detail-header {
-            padding: 24px 32px;
-            border-bottom: 1px solid #e5e5e5;
-        }
+        .email-detail-header { padding: 20px 28px; border-bottom: 1px solid var(--border); }
 
         .email-detail-subject {
-            font-size: 24px;
-            font-weight: 600;
-            color: #1a1a1a;
-            margin-bottom: 16px;
-            line-height: 1.3;
+            font-size: 20px; font-weight: 600; color: var(--text);
+            margin-bottom: 14px; line-height: 1.3;
         }
-
-        .email-detail-meta {
-            font-size: 14px;
-            color: #666;
-            line-height: 1.8;
-        }
-
-        .email-detail-meta-row {
-            display: flex;
-            margin-bottom: 4px;
-        }
-
-        .email-detail-meta-label {
-            color: #999;
-            width: 60px;
-            flex-shrink: 0;
-        }
-
-        .email-detail-meta-value {
-            color: #1a1a1a;
-        }
+        .email-detail-meta { font-size: 13px; color: var(--text2); line-height: 1.8; }
+        .email-detail-meta-row { display: flex; margin-bottom: 2px; }
+        .email-detail-meta-label { color: var(--text3); width: 55px; flex-shrink: 0; }
+        .email-detail-meta-value { color: var(--text); }
 
         .email-detail-body {
-            flex: 1;
-            padding: 24px 32px;
-            overflow-y: auto;
-            background-color: #ffffff;
-            min-height: 0;
+            flex: 1; padding: 20px 28px; overflow-y: auto;
+            background-color: var(--surface); min-height: 0;
         }
-
         .email-detail-body iframe {
-            width: 100%;
-            min-height: 600px;
-            border: none;
-            background-color: #ffffff;
-            display: block;
-            overflow: visible;
+            width: 100%; min-height: 600px; border: none;
+            background-color: var(--surface); display: block; overflow: visible;
         }
+        .email-body-text { white-space: pre-wrap; font-size: 14px; line-height: 1.7; color: #333; }
 
-        .email-body-text {
-            white-space: pre-wrap;
-            font-size: 15px;
-            line-height: 1.7;
-            color: #333;
-        }
-
-        /* 全屏查看邮件 */
+        /* ==================== 全屏查看邮件 ==================== */
         .fullscreen-email-modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.95);
-            z-index: 2000;
-            overflow: hidden;
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            z-index: 2000; overflow: hidden;
         }
-
-        .fullscreen-email-modal.show {
-            display: flex;
-            flex-direction: column;
-        }
+        .fullscreen-email-modal.show { display: flex; flex-direction: column; }
 
         .fullscreen-email-header {
-            background-color: #1a1a1a;
-            color: #ffffff;
-            padding: 16px 24px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #333;
-            flex-shrink: 0;
+            background-color: #1a1a2e; color: #ffffff;
+            padding: 14px 20px; display: flex;
+            justify-content: space-between; align-items: center;
+            border-bottom: 1px solid #333; flex-shrink: 0;
         }
-
-        .fullscreen-email-title {
-            font-size: 16px;
-            font-weight: 500;
-        }
-
+        .fullscreen-email-title { font-size: 15px; font-weight: 500; }
         .fullscreen-close-btn {
-            background: none;
-            border: none;
-            color: #ffffff;
-            font-size: 24px;
-            cursor: pointer;
-            padding: 4px 12px;
-            border-radius: 4px;
-            transition: background-color 0.2s;
+            background: none; border: none; color: #ffffff;
+            font-size: 22px; cursor: pointer; padding: 4px 12px;
+            border-radius: 4px; transition: background-color .2s;
         }
-
-        .fullscreen-close-btn:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
+        .fullscreen-close-btn:hover { background-color: rgba(255, 255, 255, 0.1); }
 
         .fullscreen-email-content {
-            flex: 1;
-            overflow-y: auto;
-            background-color: #ffffff;
-            padding: 32px;
+            flex: 1; overflow-y: auto;
+            background-color: var(--surface); padding: 28px;
         }
-
         .fullscreen-email-content iframe {
-            width: 100%;
-            border: none;
-            background-color: #ffffff;
-            display: block;
+            width: 100%; border: none;
+            background-color: var(--surface); display: block;
         }
-
-        .fullscreen-email-content .email-body-text {
-            max-width: 900px;
-            margin: 0 auto;
-        }
+        .fullscreen-email-content .email-body-text { max-width: 900px; margin: 0 auto; }
 
         .fullscreen-btn {
-            background: none;
-            border: 1px solid #e5e5e5;
-            color: #666;
-            cursor: pointer;
-            font-size: 13px;
-            padding: 6px 12px;
-            border-radius: 6px;
-            transition: all 0.15s;
-            margin-left: auto;
+            background: none; border: 1px solid var(--border);
+            color: var(--text2); cursor: pointer;
+            font-size: 12px; padding: 5px 12px;
+            border-radius: var(--radius-sm); transition: all .15s;
+            margin-left: auto; font-family: inherit;
         }
+        .fullscreen-btn:hover { background-color: var(--border-light); }
 
-        .fullscreen-btn:hover {
-            background-color: #f0f0f0;
-        }
-
-        /* 空状态 */
+        /* ==================== 空状态 ==================== */
         .empty-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: #999;
-            padding: 40px;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100%; color: var(--text3); padding: 40px;
         }
+        .empty-state-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
+        .empty-state-text { font-size: 14px; text-align: center; color: var(--text2); }
 
-        .empty-state-icon {
-            font-size: 48px;
-            margin-bottom: 16px;
-            opacity: 0.5;
-        }
-
-        .empty-state-text {
-            font-size: 15px;
-            text-align: center;
-        }
-
-        /* 加载状态 */
-        .loading {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            padding: 40px;
-        }
-
+        /* ==================== 加载状态 ==================== */
+        .loading { display: flex; align-items: center; justify-content: center; height: 100%; padding: 40px; }
         .loading-spinner {
-            width: 32px;
-            height: 32px;
-            border: 2px solid #e5e5e5;
-            border-top-color: #1a1a1a;
+            width: 28px; height: 28px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
         }
+        .loading-small { padding: 16px; }
+        .loading-small .loading-spinner { width: 20px; height: 20px; }
 
-        .loading-small {
-            padding: 20px;
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        .loading-small .loading-spinner {
-            width: 20px;
-            height: 20px;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* 模态框 */
+        /* ==================== 模态框 ==================== */
         .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.4);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.35);
+            z-index: 1000; align-items: center; justify-content: center;
         }
-
-        .modal.show {
-            display: flex;
-        }
+        .modal.show { display: flex; }
 
         .modal-content {
-            background-color: #ffffff;
-            border-radius: 12px;
-            width: 520px;
-            max-width: 90%;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-            position: relative;
-            z-index: 1001;
+            background-color: var(--surface);
+            border-radius: var(--radius-lg); width: 520px;
+            max-width: 92%; max-height: 90vh; overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+            position: relative; z-index: 1001;
         }
-
-        #refreshErrorModal .modal-content {
-            width: 640px;
-        }
+        #refreshErrorModal .modal-content { width: 640px; }
 
         .error-card {
-            background-color: #fafafa;
-            border: 1px solid #e5e5e5;
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 20px;
+            background-color: var(--surface-alt);
+            border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 14px; margin-bottom: 16px;
         }
-
-        .error-card-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: #dc3545;
-            margin-bottom: 12px;
-        }
+        .error-card-title { font-size: 14px; font-weight: 600; color: var(--danger); margin-bottom: 10px; }
 
         .error-message-box {
-            background-color: #ffffff;
-            border: 1px solid #e5e5e5;
-            padding: 12px;
-            border-radius: 6px;
-            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-            font-size: 13px;
-            color: #333;
-            max-height: 150px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-break: break-all;
+            background-color: var(--surface); border: 1px solid var(--border);
+            padding: 10px 12px; border-radius: var(--radius-sm);
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
+            font-size: 12px; color: #333; max-height: 150px;
+            overflow-y: auto; white-space: pre-wrap; word-break: break-all;
         }
 
-        .solution-list {
-            list-style-type: none;
-            padding-left: 0;
-            margin-top: 16px;
-        }
-
+        .solution-list { list-style-type: none; padding-left: 0; margin-top: 12px; }
         .solution-list li {
-            font-size: 14px;
-            color: #333;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: flex-start;
+            font-size: 13px; color: #333; margin-bottom: 8px;
+            display: flex; align-items: flex-start;
         }
-
         .solution-list li::before {
-            content: '✓';
-            color: #28a745;
-            font-weight: 600;
-            margin-right: 10px;
-            margin-top: 2px;
+            content: '✓'; color: var(--success); font-weight: 600;
+            margin-right: 8px; margin-top: 1px;
         }
-
 
         .modal-header {
-            padding: 20px 24px;
-            border-bottom: 1px solid #e5e5e5;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: sticky;
-            top: 0;
-            background-color: #ffffff;
+            padding: 16px 20px; border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+            position: sticky; top: 0; background-color: var(--surface);
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         }
-
-        .modal-header h3 {
-            font-size: 18px;
-            font-weight: 600;
-            color: #1a1a1a;
-        }
+        .modal-header h3 { font-size: 16px; font-weight: 600; color: var(--text); }
 
         .modal-close {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #999;
-            padding: 4px;
-            line-height: 1;
-            border-radius: 4px;
-            transition: all 0.15s;
+            background: none; border: none; font-size: 20px;
+            cursor: pointer; color: var(--text3); padding: 4px;
+            line-height: 1; border-radius: 4px; transition: all .15s;
         }
+        .modal-close:hover { background-color: var(--border-light); color: var(--text2); }
 
-        .modal-close:hover {
-            background-color: #f0f0f0;
-            color: #666;
-        }
+        .modal-body { padding: 20px; }
 
-        .modal-body {
-            padding: 24px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-label {
-            display: block;
-            font-size: 14px;
-            font-weight: 500;
-            color: #333;
-            margin-bottom: 8px;
-        }
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
 
         .form-input {
-            width: 100%;
-            padding: 10px 14px;
-            border: 1px solid #e5e5e5;
-            border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.15s;
+            width: 100%; padding: 8px 12px;
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            font-size: 13px; transition: border-color .15s;
+            font-family: inherit; background: var(--surface);
         }
-
-        .form-input:focus {
-            outline: none;
-            border-color: #1a1a1a;
-        }
+        .form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
         .form-textarea {
-            width: 100%;
-            height: 120px;
-            padding: 12px 14px;
-            border: 1px solid #e5e5e5;
-            border-radius: 6px;
-            font-size: 13px;
-            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-            resize: vertical;
-            transition: border-color 0.15s;
+            width: 100%; height: 120px; padding: 10px 12px;
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            font-size: 12px; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
+            resize: vertical; transition: border-color .15s;
         }
-
-        .form-textarea:focus {
-            outline: none;
-            border-color: #1a1a1a;
-        }
+        .form-textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
         .form-select {
-            width: 100%;
-            padding: 10px 14px;
-            border: 1px solid #e5e5e5;
-            border-radius: 6px;
-            font-size: 14px;
-            background-color: #ffffff;
-            cursor: pointer;
+            width: 100%; padding: 8px 12px;
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            font-size: 13px; background-color: var(--surface);
+            cursor: pointer; font-family: inherit;
         }
+        .form-select:focus { outline: none; border-color: var(--accent); }
 
-        .form-select:focus {
-            outline: none;
-            border-color: #1a1a1a;
-        }
+        .form-hint { font-size: 12px; color: var(--text3); margin-top: 5px; }
 
-        .form-hint {
-            font-size: 12px;
-            color: #999;
-            margin-top: 6px;
-        }
-
-        .color-picker-group {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-bottom: 12px;
-        }
+        .color-picker-group { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 
         .color-option {
-            width: 32px;
-            height: 32px;
-            border-radius: 6px;
-            cursor: pointer;
-            border: 2px solid transparent;
-            transition: all 0.15s;
+            width: 28px; height: 28px; border-radius: var(--radius-sm);
+            cursor: pointer; border: 2px solid transparent;
+            transition: all .15s;
         }
+        .color-option:hover { transform: scale(1.1); }
+        .color-option.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
 
-        .color-option:hover {
-            transform: scale(1.1);
-        }
-
-        .color-option.selected {
-            border-color: #1a1a1a;
-        }
-
-        .custom-color-row {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-top: 8px;
-        }
-
+        .custom-color-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
         .custom-color-input {
-            width: 60px;
-            height: 36px;
-            padding: 2px;
-            border: 1px solid #e5e5e5;
-            border-radius: 6px;
-            cursor: pointer;
+            width: 48px; height: 32px; padding: 2px;
+            border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;
         }
-
-        .custom-color-label {
-            font-size: 13px;
-            color: #666;
-        }
-
+        .custom-color-label { font-size: 12px; color: var(--text2); }
         .custom-color-hex {
-            width: 80px;
-            padding: 8px 10px;
-            border: 1px solid #e5e5e5;
-            border-radius: 6px;
-            font-size: 13px;
-            font-family: monospace;
+            width: 72px; padding: 6px 8px;
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            font-size: 12px; font-family: monospace;
         }
 
         .modal-footer {
-            padding: 16px 24px;
-            border-top: 1px solid #e5e5e5;
-            display: flex;
-            justify-content: flex-end;
-            gap: 12px;
-            position: sticky;
-            bottom: 0;
-            background-color: #ffffff;
+            padding: 14px 20px; border-top: 1px solid var(--border);
+            display: flex; justify-content: flex-end; gap: 8px;
+            position: sticky; bottom: 0; background-color: var(--surface);
+            border-radius: 0 0 var(--radius-lg) var(--radius-lg);
         }
 
+        /* ==================== 按钮系统 ==================== */
         .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.15s;
+            padding: 8px 16px; border: none; border-radius: var(--radius-sm);
+            cursor: pointer; font-size: 13px; font-weight: 500;
+            transition: all .15s; font-family: inherit;
         }
+        .btn-primary { background-color: var(--accent); color: #ffffff; }
+        .btn-primary:hover { background-color: var(--accent-hover); }
+        .btn-secondary { background-color: var(--surface-alt); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background-color: var(--border-light); }
+        .btn-danger { background-color: var(--danger); color: #ffffff; }
+        .btn-danger:hover { background-color: #b52e31; }
+        .btn-warning { background-color: var(--warning); color: var(--text); }
+        .btn-warning:hover { background-color: #e0a800; }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
 
-        .btn-primary {
-            background-color: #1a1a1a;
-            color: #ffffff;
-        }
-
-        .btn-primary:hover {
-            background-color: #333;
-        }
-
-        .btn-secondary {
-            background-color: #f5f5f5;
-            color: #1a1a1a;
-            border: 1px solid #e5e5e5;
-        }
-
-        .btn-secondary:hover {
-            background-color: #e5e5e5;
-        }
-
-        .btn-danger {
-            background-color: #dc3545;
-            color: #ffffff;
-        }
-
-        .btn-danger:hover {
-            background-color: #c82333;
-        }
-
-        .btn-warning {
-            background-color: #ffc107;
-            color: #1a1a1a;
-        }
-
-        .btn-warning:hover {
-            background-color: #e0a800;
-        }
-
-        .btn-sm {
-            padding: 4px 12px;
-            font-size: 12px;
-        }
-
-        /* 消息提示 */
+        /* ==================== 消息提示 ==================== */
         .toast {
-            position: fixed;
-            top: 80px;
-            left: 50%;
-            transform: translateX(-50%) translateY(-20px);
-            padding: 14px 24px;
-            background-color: #1a1a1a;
-            color: #ffffff;
-            border-radius: 8px;
-            font-size: 14px;
-            z-index: 2000;
-            opacity: 0;
-            transition: all 0.3s;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-            min-width: 300px;
-            text-align: center;
-            pointer-events: none;
+            position: fixed; top: 64px; left: 50%;
+            transform: translateX(-50%) translateY(-16px);
+            padding: 12px 20px;
+            background-color: #323232; color: #ffffff;
+            border-radius: var(--radius); font-size: 13px;
+            z-index: 2000; opacity: 0;
+            transition: all .3s; box-shadow: var(--shadow);
+            min-width: 280px; text-align: center; pointer-events: none;
         }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+        .toast.success { background-color: #323232; }
+        .toast.error { background-color: var(--danger); }
 
-        .toast.show {
-            opacity: 1;
-            transform: translateX(-50%) translateY(0);
-            pointer-events: auto;
-        }
-
-        .toast.success {
-            background-color: #1a1a1a;
-        }
-
-        .toast.error {
-            background-color: #dc3545;
-        }
-
-        /* 方法标签 */
+        /* ==================== 方法标签 ==================== */
         .method-tag {
-            font-size: 11px;
-            padding: 3px 8px;
-            background-color: #f5f5f5;
-            color: #666;
-            border-radius: 4px;
-            margin-left: 8px;
-            font-weight: 500;
+            font-size: 10px; padding: 2px 8px;
+            background-color: var(--accent-light); color: var(--accent);
+            border-radius: 4px; margin-left: 6px; font-weight: 600;
         }
 
-        /* 文件夹切换标签 */
+        /* ==================== 文件夹切换标签 ==================== */
         .folder-tabs {
-            display: inline-flex;
-            gap: 8px;
-            background-color: #f5f5f5;
-            padding: 4px;
-            border-radius: 8px;
+            display: inline-flex; gap: 2px;
+            background-color: var(--surface-alt); padding: 3px;
+            border-radius: var(--radius);
         }
-
         .folder-tab {
-            padding: 8px 16px;
-            border: none;
-            background: transparent;
-            color: #666;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            transition: all 0.2s;
-            font-weight: 500;
-            white-space: nowrap;
+            padding: 6px 14px; border: none;
+            background: transparent; color: var(--text2);
+            border-radius: var(--radius-sm); cursor: pointer;
+            font-size: 12px; transition: all .15s;
+            font-weight: 500; white-space: nowrap;
+            font-family: inherit;
         }
-
-        .folder-tab:hover {
-            background-color: #e5e5e5;
-            color: #333;
-        }
-
+        .folder-tab:hover { background-color: var(--border-light); color: var(--text); }
         .folder-tab.active {
-            background-color: #1a1a1a;
-            color: white;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            background-color: var(--accent); color: white;
+            box-shadow: 0 1px 3px rgba(0,120,212,.25);
         }
 
-        /* 响应式 */
+        /* ==================== 移动端底部导航 (新增) ==================== */
+        .mobile-bottom-nav {
+            display: none; position: fixed;
+            bottom: 0; left: 0; right: 0;
+            height: 56px; background: var(--surface);
+            border-top: 1px solid var(--border);
+            align-items: center; justify-content: space-around;
+            padding: 0 8px; z-index: 100;
+        }
+        .mobile-nav-item {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 2px; padding: 6px 14px;
+            border-radius: var(--radius); cursor: pointer;
+            color: var(--text2); transition: all .15s;
+            border: none; background: none; font-size: 10px;
+            font-family: inherit;
+        }
+        .mobile-nav-item.active { color: var(--accent); }
+        .mobile-nav-item svg { width: 22px; height: 22px; }
+
+        /* ==================== 响应式 ==================== */
         @media (max-width: 1200px) {
-            .group-panel {
-                width: 180px;
-            }
-
-            .account-panel {
-                width: 220px;
-            }
-
-            .email-list-panel {
-                width: 320px;
-            }
+            .group-panel { width: 180px; }
+            .account-panel { width: 220px; }
+            .email-list-panel { width: 300px; }
         }
 
         @media (max-width: 1024px) {
-            .group-panel {
-                width: 160px;
-            }
-
-            .account-panel {
-                width: 200px;
-            }
-
-            .email-list-panel {
-                width: 280px;
-            }
+            .icon-nav { display: none; }
+            .group-panel { width: 160px; }
+            .account-panel { width: 200px; }
+            .email-list-panel { width: 260px; }
         }
+
+        /* 移动端专用：邮箱名显示区 */
+        .mobile-current-email {
+            display: none; /* 桌面端隐藏 */
+            font-size: 13px; color: var(--text);
+            padding: 10px 16px; margin: 0 -16px;
+            border-bottom: 1px solid var(--border-light);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            cursor: pointer; font-weight: 500;
+            line-height: 1; /* 确保垂直居中 */
+        }
+        .mobile-fetch-btn { display: none; } /* 桌面端隐藏 */
+
+        /* 侧边栏遮罩层 */
+        .sidebar-overlay {
+            display: none; position: fixed;
+            top: var(--navbar-height); left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,.3); z-index: 45;
+        }
+        .sidebar-overlay.show { display: block; }
 
         @media (max-width: 768px) {
+            .icon-nav { display: none; }
 
-            .group-panel,
-            .account-panel {
-                position: fixed;
-                left: -280px;
-                top: 56px;
-                height: calc(100vh - 56px);
-                z-index: 50;
-                transition: left 0.3s;
-            }
+            /* 导航栏：隐藏除"获取邮件"和"退出"外的按钮，按钮靠右 */
+            .navbar-actions .navbar-btn:not(.mobile-fetch-btn):not(:last-child) { display: none; }
+            .mobile-fetch-btn { display: inline-block; }
+            .navbar-actions { margin-left: auto; }
+            .github-star-btn { display: none; }
+            .navbar-center { display: none; }
 
-            .group-panel.show,
-            .account-panel.show {
-                left: 0;
-            }
+            /* 邮件列表头部：显示邮箱名单独一行，隐藏原"获取邮件"按钮 */
+            .mobile-current-email { display: block; }
+            .refresh-btn { display: none; }
 
-            .email-list-panel {
-                width: 100%;
+            .group-panel, .account-panel {
+                position: fixed; left: -280px; top: var(--navbar-height);
+                height: calc(100vh - var(--navbar-height));
+                z-index: 50; transition: left .3s; width: 260px;
+                box-shadow: 4px 0 16px rgba(0,0,0,.1);
             }
+            .group-panel.show, .account-panel.show { left: 0; }
 
-            .email-list-panel.hidden {
-                display: none;
-            }
+            .email-list-panel { width: 100%; }
+            .email-list-panel.hidden { display: none; }
 
-            .back-btn {
-                display: block;
-            }
+            .back-btn { display: block; }
+
+            .mobile-bottom-nav { display: flex; }
+            .main-container { height: calc(100vh - var(--navbar-height) - 56px); }
+
+            .email-detail-header { padding: 16px 18px; }
+            .email-detail-subject { font-size: 17px; }
+            .email-detail-body { padding: 16px 18px; }
+
+            .modal-content { max-width: 96%; }
         }
+
+        @media (max-width: 480px) {
+            .navbar { padding: 0 10px; }
+            .navbar-brand { font-size: 14px; }
+            .current-account { font-size: 11px; padding: 4px 10px; }
+        }
+
     </style>
 </head>
 
@@ -1328,15 +780,38 @@
             </div>
         </div>
         <div class="navbar-actions">
-            <button class="navbar-btn" onclick="showRefreshModal()">全量刷新Token</button>
-            <button class="navbar-btn" onclick="showExportModal()">导出邮箱</button>
-            <button class="navbar-btn" onclick="showSettingsModal()">⚙️ 设置</button>
-            <button class="navbar-btn" onclick="logout()" style="color: #dc3545;">退出登录</button>
+            <button class="navbar-btn" onclick="showRefreshModal()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>刷新Token
+            </button>
+            <button class="navbar-btn" onclick="showExportModal()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>导出
+            </button>
+            <button class="navbar-btn" onclick="showSettingsModal()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9V10h.09a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>设置
+            </button>
+            <button class="navbar-btn mobile-fetch-btn" onclick="refreshEmails()">获取邮件</button>
+            <button class="navbar-btn" onclick="logout()" style="color: var(--danger);">退出</button>
         </div>
     </nav>
 
     <!-- 主容器 -->
     <div class="main-container">
+        <!-- 图标导航栏 -->
+        <div class="icon-nav">
+            <button class="icon-nav-item active" title="邮件">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </button>
+            <button class="icon-nav-item" onclick="showAddAccountModal()" title="导入邮箱">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            </button>
+            <button class="icon-nav-item" onclick="showRefreshModal()" title="刷新Token">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            </button>
+            <button class="icon-nav-item icon-nav-bottom" onclick="showSettingsModal()" title="设置">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9V10h.09a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+        </div>
+
         <!-- 分组面板 -->
         <div class="group-panel" id="groupPanel">
             <div class="panel-header">
@@ -1357,7 +832,7 @@
                 </div>
                 <div style="margin-left: auto;">
                     <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
-                        🏷️
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                     </button>
                     <button class="panel-action-btn" onclick="showAddAccountModal()" title="导入账号">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -1372,50 +847,50 @@
             </div>
             <!-- 临时邮箱渠道筛选 -->
             <div id="tempEmailProviderFilter"
-                style="padding: 8px 16px; border-bottom: 1px solid #e5e5e5; display: none; align-items: center; gap: 8px; background-color: #fafafa;">
+                style="padding: 8px 16px; border-bottom: 1px solid var(--border); display: none; align-items: center; gap: 8px; background-color: var(--surface-alt);">
                 <div style="display: flex; gap: 4px;">
                     <button class="provider-filter-btn" data-provider="gptmail"
                         onclick="filterTempEmailByProvider('gptmail')"
-                        style="padding: 4px 10px; font-size: 12px; background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 4px; color: #666; cursor: pointer; transition: all 0.15s;">
+                        style="padding: 4px 10px; font-size: 12px; background-color: var(--surface); border: 1px solid var(--border); border-radius: 4px; color: var(--text2); cursor: pointer; transition: all 0.15s;">
                         GPTMail
                     </button>
                     <button class="provider-filter-btn" data-provider="duckmail"
                         onclick="filterTempEmailByProvider('duckmail')"
-                        style="padding: 4px 10px; font-size: 12px; background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 4px; color: #666; cursor: pointer; transition: all 0.15s;">
+                        style="padding: 4px 10px; font-size: 12px; background-color: var(--surface); border: 1px solid var(--border); border-radius: 4px; color: var(--text2); cursor: pointer; transition: all 0.15s;">
                         DuckMail
                     </button>
                 </div>
             </div>
             <div class="sort-control"
-                style="padding: 8px 16px; border-bottom: 1px solid #e5e5e5; display: flex; align-items: center; gap: 8px; background-color: #fafafa;">
-                <label style="font-size: 12px; color: #666; font-weight: 500;">排序：</label>
+                style="padding: 8px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; background-color: var(--surface-alt);">
+                <label style="font-size: 12px; color: var(--text2); font-weight: 500;">排序：</label>
                 <div style="display: flex; gap: 4px;">
                     <button class="sort-btn active" data-sort="refresh_time" onclick="sortAccounts('refresh_time')"
-                        style="padding: 4px 10px; font-size: 12px; background-color: #1a1a1a; border: 1px solid #1a1a1a; border-radius: 4px; color: #ffffff; cursor: pointer; transition: all 0.15s;">
-                        🕐 刷新时间
+                        style="padding: 4px 10px; font-size: 12px; background-color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; color: #ffffff; cursor: pointer; transition: all 0.15s;">
+                        刷新时间
                     </button>
                     <button class="sort-btn" data-sort="email" onclick="sortAccounts('email')"
-                        style="padding: 4px 10px; font-size: 12px; background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 4px; color: #666; cursor: pointer; transition: all 0.15s;">
-                        📧 邮箱名
+                        style="padding: 4px 10px; font-size: 12px; background-color: var(--surface); border: 1px solid var(--border); border-radius: 4px; color: var(--text2); cursor: pointer; transition: all 0.15s;">
+                        邮箱名
                     </button>
                     <!-- Tag Filter moved to new row -->
                 </div>
             </div>
             <!-- Tag Filter Row -->
             <div id="tagFilterContainer"
-                style="padding: 8px 16px; border-bottom: 1px solid #e5e5e5; display: flex; flex-wrap: wrap; gap: 8px; background-color: #fafafa; display: none;">
+                style="padding: 8px 16px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 8px; background-color: var(--surface-alt); display: none;">
                 <!-- Tags checkboxes will be rendered here -->
             </div>
             <div class="account-list" id="accountList">
                 <div class="empty-state">
-                    <div class="empty-state-icon">📁</div>
+                    <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
                     <div class="empty-state-text">请从左侧选择一个分组</div>
                 </div>
             </div>
             <!-- 批量操作栏 -->
             <div id="batchActionBar"
-                style="display: none; padding: 8px 16px; border-top: 1px solid #e5e5e5; background: #f8f9fa; gap: 8px; align-items: center;">
-                <span id="selectedCount" style="font-size: 12px; color: #666;">已选 0 项</span>
+                style="display: none; padding: 8px 16px; border-top: 1px solid var(--border); background: var(--surface-alt); gap: 8px; align-items: center;">
+                <span id="selectedCount" style="font-size: 12px; color: var(--text2);">已选 0 项</span>
                 <div style="flex: 1;"></div>
                 <button class="btn btn-sm btn-secondary" onclick="showBatchTagModal('add')">打标签</button>
                 <button class="btn btn-sm btn-secondary" onclick="showBatchTagModal('remove')">去标签</button>
@@ -1431,14 +906,16 @@
             <!-- 邮件列表面板 -->
             <div class="email-list-panel" id="emailListPanel">
                 <div class="email-list-header">
+                    <!-- 移动端：当前邮箱名单独一行 -->
+                    <div class="mobile-current-email" id="mobileCurrentEmail" onclick="copyCurrentEmail()" title="点击复制邮箱地址"></div>
                     <div
                         style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
                         <div class="folder-tabs" id="folderTabs" style="display: none;">
                             <button class="folder-tab active" data-folder="inbox" onclick="switchFolder('inbox')">
-                                📨 收件箱
+                                收件箱
                             </button>
                             <button class="folder-tab" data-folder="junkemail" onclick="switchFolder('junkemail')">
-                                ⚠️ 垃圾邮件
+                                垃圾邮件
                             </button>
                         </div>
                         <button class="refresh-btn" onclick="refreshEmails()">获取邮件</button>
@@ -1453,17 +930,17 @@
                 </div>
                 <div class="email-list" id="emailList">
                     <div class="empty-state">
-                        <div class="empty-state-icon">📬</div>
+                        <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
                         <div class="empty-state-text">请从左侧选择一个邮箱账号</div>
                     </div>
                 </div>
                 <!-- Email Batch Action Bar -->
                 <div id="emailBatchActionBar"
-                    style="display: none; padding: 8px 16px; border-top: 1px solid #e5e5e5; background: #f8f9fa; gap: 8px; align-items: center;">
-                    <span id="emailSelectedCount" style="font-size: 12px; color: #666;">已选 0 项</span>
+                    style="display: none; padding: 8px 16px; border-top: 1px solid var(--border); background: var(--surface-alt); gap: 8px; align-items: center;">
+                    <span id="emailSelectedCount" style="font-size: 12px; color: var(--text2);">已选 0 项</span>
                     <div style="flex: 1;"></div>
                     <button class="batch-btn danger" onclick="confirmBatchDeleteEmails()">
-                        🗑️ 删除
+                        删除
                     </button>
                 </div>
             </div>
@@ -1475,7 +952,7 @@
                     <button class="toggle-list-btn" onclick="toggleEmailList()">
                         <span id="toggleListText">隐藏列表</span>
                     </button>
-                    <button class="fullscreen-btn" onclick="openFullscreenEmail()">🔍 全屏查看</button>
+                    <button class="fullscreen-btn" onclick="openFullscreenEmail()">全屏查看</button>
                     <label
                         style="display: flex; align-items: center; gap: 6px; font-size: 13px; margin-left: 12px; cursor: pointer;">
                         <input type="checkbox" id="trustEmailCheckbox" onchange="toggleTrustMode(this)">
@@ -1484,17 +961,40 @@
                     <div style="flex: 1;"></div>
                     <button class="batch-btn danger" onclick="confirmDeleteCurrentEmail()"
                         style="padding: 4px 8px; font-size: 12px;">
-                        🗑️ 删除
+                        删除
                     </button>
                 </div>
                 <div id="emailDetail">
                     <div class="empty-state">
-                        <div class="empty-state-icon">📄</div>
+                        <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
                         <div class="empty-state-text">选择一封邮件查看详情</div>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- 侧边栏遮罩层（移动端点击关闭侧边栏） -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobilePanels()"></div>
+
+    <!-- 移动端底部导航 -->
+    <div class="mobile-bottom-nav">
+        <button class="mobile-nav-item active" onclick="mobileShowPanel('email')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            邮件
+        </button>
+        <button class="mobile-nav-item" onclick="mobileShowPanel('group')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            分组
+        </button>
+        <button class="mobile-nav-item" onclick="mobileShowPanel('account')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            账号
+        </button>
+        <button class="mobile-nav-item" onclick="showSettingsModal()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9V10h.09a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            设置
+        </button>
     </div>
 
     <!-- 添加分组模态框 -->
@@ -1678,14 +1178,14 @@
     <div class="modal" id="exportVerifyModal" onclick="if(event.target === this) hideExportVerifyModal()">
         <div class="modal-content" style="width: 400px;">
             <div class="modal-header">
-                <h3>🔐 安全验证</h3>
+                <h3>安全验证</h3>
                 <button class="modal-close" onclick="hideExportVerifyModal()">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
                     <label class="form-label">请输入登录密码以确认导出操作</label>
                     <input type="password" class="form-input" id="exportVerifyPassword" placeholder="输入登录密码">
-                    <div class="form-hint" style="color: #dc3545;">导出文件包含敏感信息（Refresh Token），请妥善保管</div>
+                    <div class="form-hint" style="color: var(--danger);">导出文件包含敏感信息（Refresh Token），请妥善保管</div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -1699,7 +1199,7 @@
     <div class="modal" id="settingsModal" onclick="if(event.target === this) hideSettingsModal()">
         <div class="modal-content" style="width: 480px;">
             <div class="modal-header">
-                <h3>⚙️ 系统设置</h3>
+                <h3>系统设置</h3>
                 <button class="modal-close" onclick="hideSettingsModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -1721,7 +1221,7 @@
                         <input type="text" class="form-input" id="settingsExternalApiKey" placeholder="输入或生成对外 API Key"
                             style="flex: 1;">
                         <button class="btn btn-secondary" onclick="generateExternalApiKey()"
-                            style="white-space: nowrap; font-size: 13px;">🔑 随机生成</button>
+                            style="white-space: nowrap; font-size: 13px;">随机生成</button>
                     </div>
                     <div class="form-hint">用于对外 API
                         认证，调用方式：<code>GET /api/external/emails?email=xxx&folder=inbox</code>，Header:
@@ -1747,7 +1247,7 @@
                 </div>
 
                 <div style="border-top: 1px solid #e5e5e5; margin: 24px 0; padding-top: 24px;">
-                    <h4 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">🔄 Token 刷新设置</h4>
+                    <h4 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">Token 刷新设置</h4>
 
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
@@ -1845,7 +1345,7 @@
     <div class="modal" id="refreshModal" onclick="if(event.target === this) hideRefreshModal()">
         <div class="modal-content" style="width: 800px; max-width: 90vw;">
             <div class="modal-header">
-                <h3>🔄 Token 刷新管理</h3>
+                <h3>Token 刷新管理</h3>
                 <button class="modal-close" onclick="hideRefreshModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -1854,7 +1354,7 @@
                     style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                     <div
                         style="font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #333; display: flex; align-items: center; gap: 8px;">
-                        <span>📊</span>
+                        
                         <span>刷新统计</span>
                     </div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;">
@@ -1862,7 +1362,7 @@
                             style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
                             <div
                                 style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-                                <span>🕐</span>
+                                
                                 <span>上次全量刷新</span>
                             </div>
                             <div style="font-size: 13px; font-weight: 600; color: #333;" id="lastRefreshTime">-</div>
@@ -1871,7 +1371,7 @@
                             style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
                             <div
                                 style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-                                <span>📝</span>
+                                
                                 <span>总邮箱数</span>
                             </div>
                             <div style="font-size: 18px; font-weight: 700; color: #333;" id="totalRefreshCount">0</div>
@@ -1880,7 +1380,7 @@
                             style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
                             <div
                                 style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-                                <span>✅</span>
+                                
                                 <span>成功邮箱</span>
                             </div>
                             <div style="font-size: 18px; font-weight: 700; color: #28a745;" id="successRefreshCount">0
@@ -1890,7 +1390,7 @@
                             style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
                             <div
                                 style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-                                <span>❌</span>
+                                
                                 <span>失败邮箱</span>
                             </div>
                             <div style="font-size: 18px; font-weight: 700; color: #dc3545;" id="failedRefreshCount">0
@@ -1903,16 +1403,16 @@
                 <div
                     style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 16px;">
                     <button class="btn btn-primary" onclick="refreshAllAccounts()" id="refreshAllBtn">
-                        🔄 全量刷新
+                        全量刷新
                     </button>
                     <button class="btn btn-warning" onclick="retryFailedAccounts()" id="retryFailedBtn">
-                        🔁 重试失败
+                        重试失败
                     </button>
                     <button class="btn btn-secondary" onclick="loadFailedLogs()">
-                        ❌ 失败邮箱
+                        失败邮箱
                     </button>
                     <button class="btn btn-secondary" onclick="loadRefreshLogs()">
-                        📋 刷新历史
+                        刷新历史
                     </button>
                 </div>
 
@@ -1941,7 +1441,6 @@
                     <div
                         style="font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; padding: 10px; background-color: #f8f9fa; border-radius: 6px;">
                         <span style="display: flex; align-items: center; gap: 6px;">
-                            <span>📋</span>
                             <span>全量刷新历史</span>
                         </span>
                         <button class="btn btn-sm btn-secondary" onclick="hideRefreshLogs()">隐藏</button>
@@ -1962,7 +1461,7 @@
     <div class="modal" id="tagManagementModal" onclick="if(event.target === this) hideTagManagementModal()">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>🏷️ 标签管理</h3>
+                <h3>标签管理</h3>
                 <button class="modal-close" onclick="hideTagManagementModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -2035,7 +1534,7 @@
     <div class="modal" id="errorDetailModal" onclick="if(event.target === this) hideErrorDetailModal()">
         <div class="modal-content" style="width: 700px; max-width: 90vw;">
             <div class="modal-header" style="background-color: #fef0f0; border-bottom-color: #dc3545;">
-                <h3 style="color: #dc3545;">❌ 错误详情</h3>
+                <h3 style="color: var(--danger);">错误详情</h3>
                 <button class="modal-close" onclick="hideErrorDetailModal()">&times;</button>
             </div>
             <div class="modal-body" style="padding-top: 16px;">
@@ -2051,7 +1550,7 @@
                             显示堆栈/细节
                         </button>
                         <button class="btn btn-sm btn-secondary" onclick="copyErrorDetails()" style="margin-left: 8px;">
-                            📋 复制全部
+                            复制全部
                         </button>
                     </div>
 
@@ -2082,7 +1581,7 @@
     <div class="modal" id="emailFetchErrorModal" onclick="if(event.target === this) hideEmailFetchErrorModal()">
         <div class="modal-content" style="width: 700px; max-width: 90vw;">
             <div class="modal-header" style="background-color: #fef0f0; border-bottom-color: #dc3545;">
-                <h3 style="color: #dc3545;">❌ 获取邮件失败</h3>
+                <h3 style="color: var(--danger);">获取邮件失败</h3>
                 <button class="modal-close" onclick="hideEmailFetchErrorModal()">&times;</button>
             </div>
             <div class="modal-body" style="padding-top: 16px;">
@@ -2099,7 +1598,7 @@
     <div class="modal" id="refreshErrorModal" onclick="if(event.target === this) hideRefreshErrorModal()">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>⚠️ 刷新失败</h3>
+                <h3>刷新失败</h3>
                 <button class="modal-close" onclick="hideRefreshErrorModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -2109,7 +1608,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">💡 解决建议</label>
+                    <label class="form-label">解决建议</label>
                     <ul class="solution-list">
                         <li>检查账号信息中的 <strong>Client ID</strong> 和 <strong>Refresh Token</strong> 是否填写正确且没有多余的空格。</li>
                         <li>尝试使用"获取 Refresh Token"功能，重新为该账号生成一个新的 Token。</li>
@@ -2128,7 +1627,7 @@
     <div class="modal" id="getRefreshTokenModal" onclick="if(event.target === this) hideGetRefreshTokenModal()">
         <div class="modal-content" style="width: 600px;">
             <div class="modal-header">
-                <h3>🔑 获取 Refresh Token</h3>
+                <h3>获取 Refresh Token</h3>
                 <button class="modal-close" onclick="hideGetRefreshTokenModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -2137,10 +1636,8 @@
                     <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                         <input type="text" class="form-input" id="authUrlInput" readonly
                             style="flex: 1; font-size: 12px; font-family: monospace;">
-                        <button class="btn btn-secondary" onclick="copyAuthUrl()" style="white-space: nowrap;">📋
-                            复制</button>
-                        <button class="btn btn-primary" onclick="openAuthUrl()" style="white-space: nowrap;">🔗
-                            打开</button>
+                        <button class="btn btn-secondary" onclick="copyAuthUrl()" style="white-space: nowrap;">复制</button>
+                        <button class="btn btn-primary" onclick="openAuthUrl()" style="white-space: nowrap;">打开</button>
                     </div>
                     <div class="form-hint">点击"打开"按钮在浏览器中授权，或点击"复制"后手动粘贴到浏览器</div>
                 </div>
@@ -2154,7 +1651,7 @@
                 </div>
 
                 <div class="form-group" id="refreshTokenResult" style="display: none;">
-                    <label class="form-label">✅ 账号信息（已获取成功）</label>
+                    <label class="form-label">账号信息（已获取成功）</label>
                     <textarea class="form-textarea" id="refreshTokenOutput" readonly
                         style="height: 100px; font-size: 12px; font-family: monospace; background-color: #f0f9ff; border-color: #0078d4;"></textarea>
                     <div class="form-hint" style="color: #0078d4;">
@@ -2386,7 +1883,7 @@
                 // 清空邮件列表，显示提示
                 document.getElementById('emailList').innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">📬</div>
+                        <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
                         <div class="empty-state-text">点击"获取邮件"按钮获取${folder === 'inbox' ? '收件箱' : '垃圾邮件'}</div>
                     </div>
                 `;
@@ -2729,13 +2226,13 @@ ${details}
                          onclick="selectGroup(${group.id})">
                         <div class="group-row-1">
                             <div class="group-color" style="background-color: ${group.color || '#666'}"></div>
-                            <span class="group-name">${escapeHtml(group.name)}${isTempGroup ? ' ⚡' : ''}</span>
+                            <span class="group-name">${escapeHtml(group.name)}</span>
                         </div>
                         <div class="group-row-2">
                             <span class="group-count">${group.account_count || 0} 个邮箱</span>
                             <div class="group-actions">
-                                ${!isSystem ? `<button class="group-action-btn" onclick="event.stopPropagation(); editGroup(${group.id})" title="编辑">✏️</button>` : ''}
-                                ${!isDefault && !isSystem ? `<button class="group-action-btn" onclick="event.stopPropagation(); deleteGroup(${group.id})" title="删除">🗑️</button>` : ''}
+                                ${!isSystem ? `<button class="group-action-btn" onclick="event.stopPropagation(); editGroup(${group.id})" title="编辑">编辑</button>` : ''}
+                                ${!isDefault && !isSystem ? `<button class="group-action-btn" onclick="event.stopPropagation(); deleteGroup(${group.id})" title="删除">删除</button>` : ''}
                             </div>
                         </div>
                     </div>
@@ -2812,17 +2309,17 @@ ${details}
                 document.querySelectorAll('.provider-filter-btn').forEach(btn => {
                     if (btn.dataset.provider === currentFilter) {
                         btn.style.backgroundColor = '#1a1a1a';
-                        btn.style.borderColor = '#1a1a1a';
+                        btn.style.borderColor = 'var(--accent)';
                         btn.style.color = '#ffffff';
                     } else {
                         btn.style.backgroundColor = '#ffffff';
-                        btn.style.borderColor = '#e5e5e5';
+                        btn.style.borderColor = 'var(--border)';
                         btn.style.color = '#666';
                     }
                 });
             } else {
                 footer.innerHTML = `
-                    <button class="add-account-btn" onclick="showGetRefreshTokenModal()" style="background-color: #0078d4; margin-bottom: 8px;">🔑 获取 Refresh Token</button>
+                    <button class="add-account-btn" onclick="showGetRefreshTokenModal()" style="background-color: #0078d4; margin-bottom: 8px;">获取 Refresh Token</button>
                     <button class="add-account-btn" onclick="showAddAccountModal()">+ 导入邮箱</button>
                 `;
                 // 隐藏渠道筛选、显示排序、恢复标签筛选
@@ -2846,11 +2343,11 @@ ${details}
             document.querySelectorAll('.provider-filter-btn').forEach(btn => {
                 if (btn.dataset.provider === currentFilter) {
                     btn.style.backgroundColor = '#1a1a1a';
-                    btn.style.borderColor = '#1a1a1a';
+                    btn.style.borderColor = 'var(--accent)';
                     btn.style.color = '#ffffff';
                 } else {
                     btn.style.backgroundColor = '#ffffff';
-                    btn.style.borderColor = '#e5e5e5';
+                    btn.style.borderColor = 'var(--border)';
                     btn.style.color = '#666';
                 }
             });
@@ -2911,7 +2408,7 @@ ${details}
                                 <span class="account-number">${index + 1}.</span> ${escapeHtml(acc.email)}
                                 ${acc.status === 'inactive' ? '<span class="account-status-tag">已停用</span>' : ''}
                             </div>
-                            ${acc.remark && acc.remark.trim() ? `<div class="account-remark" title="${escapeHtml(acc.remark)}">📝 ${escapeHtml(acc.remark)}</div>` : ''}
+                            ${acc.remark && acc.remark.trim() ? `<div class="account-remark" title="${escapeHtml(acc.remark)}">${escapeHtml(acc.remark)}</div>` : ''}
                             
                             <div class="account-tags">
                                 ${(acc.tags || []).map(tag => `
@@ -2922,8 +2419,8 @@ ${details}
                             </div>
                             
                             <div class="account-refresh-time" style="font-size: 11px; color: ${acc.last_refresh_status === 'failed' ? '#dc3545' : '#999'}; margin-top: 4px; padding-left: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                <span>🕐 ${formatRelativeTime(acc.last_refresh_at)}</span>
-                                ${acc.last_refresh_status === 'failed' ? '<button class="account-action-btn" onclick="event.stopPropagation(); showRefreshError(' + acc.id + ', \'' + escapeJs(acc.last_refresh_error || '未知错误') + '\', \'' + escapeJs(acc.email) + '\')" style="padding: 2px 6px; font-size: 10px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">查看错误</button>' : ''}
+                                <span>${formatRelativeTime(acc.last_refresh_at)}</span>
+                                ${acc.last_refresh_status === 'failed' ? '<button class="account-action-btn" onclick="event.stopPropagation(); showRefreshError(' + acc.id + ', \'' + escapeJs(acc.last_refresh_error || '未知错误') + '\', \'' + escapeJs(acc.email) + '\')" style="padding: 2px 6px; font-size: 10px; background-color: var(--danger); color: white; border: none; border-radius: 3px; cursor: pointer;">查看错误</button>' : ''}
                             </div>
                         </div>
                     </div>
@@ -2956,7 +2453,7 @@ ${details}
                 btn.classList.remove('active');
                 btn.style.backgroundColor = '#ffffff';
                 btn.style.color = '#666';
-                btn.style.borderColor = '#e5e5e5';
+                btn.style.borderColor = 'var(--border)';
             });
 
             const activeBtn = document.querySelector(`[data-sort="${sortBy}"]`);
@@ -2964,7 +2461,7 @@ ${details}
                 activeBtn.classList.add('active');
                 activeBtn.style.backgroundColor = '#1a1a1a';
                 activeBtn.style.color = '#ffffff';
-                activeBtn.style.borderColor = '#1a1a1a';
+                activeBtn.style.borderColor = 'var(--accent)';
             }
 
             // 重新加载并排序账号列表
@@ -3298,7 +2795,7 @@ ${details}
                 const hint = filter === 'all' ? '暂无临时邮箱<br>点击下方按钮生成' : `暂无 ${filter === 'duckmail' ? 'DuckMail' : 'GPTMail'} 邮箱`;
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">⚡</div>
+                        <div class="empty-state-icon"><svg width='36' height='36' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' style='color:#bbb'><polyline points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/></svg></div>
                         <div class="empty-state-text">${hint}</div>
                     </div>
                 `;
@@ -3340,7 +2837,7 @@ ${details}
                 modal.innerHTML = `
                     <div class="modal-content" style="width: 460px;">
                         <div class="modal-header">
-                            <h3>⚡ 生成临时邮箱</h3>
+                            <h3>生成临时邮箱</h3>
                             <button class="modal-close" onclick="document.getElementById('tempEmailProviderModal').classList.remove('show')">&times;</button>
                         </div>
                         <div class="modal-body">
@@ -3380,7 +2877,7 @@ ${details}
                         </div>
                         <div class="modal-footer">
                             <button class="btn btn-secondary" onclick="document.getElementById('tempEmailProviderModal').classList.remove('show')">取消</button>
-                            <button class="btn btn-primary" id="createTempEmailBtn" onclick="doGenerateTempEmail()">✨ 创建邮箱</button>
+                            <button class="btn btn-primary" id="createTempEmailBtn" onclick="doGenerateTempEmail()">创建邮箱</button>
                         </div>
                     </div>
                 `;
@@ -3407,18 +2904,18 @@ ${details}
             if (provider === 'duckmail') {
                 gptmailFields.style.display = 'none';
                 duckmailFields.style.display = 'block';
-                labelGpt.style.borderColor = '#e5e5e5';
+                labelGpt.style.borderColor = 'var(--border)';
                 labelGpt.style.backgroundColor = 'transparent';
-                labelDuck.style.borderColor = '#1a1a1a';
-                labelDuck.style.backgroundColor = '#f8f8f8';
+                labelDuck.style.borderColor = 'var(--accent)';
+                labelDuck.style.backgroundColor = 'var(--accent-light)';
                 // 加载 DuckMail 域名
                 loadDuckmailDomains();
             } else {
                 gptmailFields.style.display = 'block';
                 duckmailFields.style.display = 'none';
-                labelGpt.style.borderColor = '#1a1a1a';
-                labelGpt.style.backgroundColor = '#f8f8f8';
-                labelDuck.style.borderColor = '#e5e5e5';
+                labelGpt.style.borderColor = 'var(--accent)';
+                labelGpt.style.backgroundColor = 'var(--accent-light)';
+                labelDuck.style.borderColor = 'var(--border)';
                 labelDuck.style.backgroundColor = 'transparent';
             }
         }
@@ -3506,6 +3003,7 @@ ${details}
 
             document.getElementById('currentAccount').classList.add('show');
             document.getElementById('currentAccountEmail').textContent = email + ' (临时)';
+            document.getElementById('mobileCurrentEmail').textContent = email + ' (临时)';
 
             document.querySelectorAll('.account-item').forEach(item => {
                 item.classList.remove('active');
@@ -3523,14 +3021,14 @@ ${details}
 
             document.getElementById('emailList').innerHTML = `
                 <div class="empty-state">
-                    <div class="empty-state-icon">📬</div>
+                    <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
                     <div class="empty-state-text">点击"获取邮件"按钮获取邮件</div>
                 </div>
             `;
 
             document.getElementById('emailDetail').innerHTML = `
                 <div class="empty-state">
-                    <div class="empty-state-icon">📄</div>
+                    <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
                     <div class="empty-state-text">选择一封邮件查看详情</div>
                 </div>
             `;
@@ -3567,7 +3065,7 @@ ${details}
                         `;
                         document.getElementById('emailDetail').innerHTML = `
                             <div class="empty-state">
-                                <div class="empty-state-icon">📄</div>
+                                <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
                                 <div class="empty-state-text">选择一封邮件查看详情</div>
                             </div>
                         `;
@@ -3603,13 +3101,13 @@ ${details}
                         document.getElementById('currentAccount').classList.remove('show');
                         document.getElementById('emailList').innerHTML = `
                             <div class="empty-state">
-                                <div class="empty-state-icon">📬</div>
+                                <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
                                 <div class="empty-state-text">请从左侧选择一个邮箱账号</div>
                             </div>
                         `;
                         document.getElementById('emailDetail').innerHTML = `
                             <div class="empty-state">
-                                <div class="empty-state-icon">📄</div>
+                                <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
                                 <div class="empty-state-text">选择一封邮件查看详情</div>
                             </div>
                         `;
@@ -3658,7 +3156,7 @@ ${details}
                     handleApiError(data, '加载临时邮件失败');
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-state-icon">⚠️</div>
+                            <div class="empty-state-icon"><svg width='36' height='36' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' style='color:#bbb'><path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/><line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg></div>
                             <div class="empty-state-text">${data.error && data.error.message ? data.error.message : '加载失败'}</div>
                         </div>
                     `;
@@ -3666,7 +3164,7 @@ ${details}
             } catch (error) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">⚠️</div>
+                        <div class="empty-state-icon"><svg width='36' height='36' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' style='color:#bbb'><path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/><line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg></div>
                         <div class="empty-state-text">网络错误，请重试</div>
                     </div>
                 `;
@@ -3700,7 +3198,7 @@ ${details}
                     handleApiError(data, '加载邮件详情失败');
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-state-icon">⚠️</div>
+                            <div class="empty-state-icon"><svg width='36' height='36' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' style='color:#bbb'><path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/><line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg></div>
                             <div class="empty-state-text">${data.error && data.error.message ? data.error.message : '加载失败'}</div>
                         </div>
                     `;
@@ -3708,7 +3206,7 @@ ${details}
             } catch (error) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">⚠️</div>
+                        <div class="empty-state-icon"><svg width='36' height='36' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' style='color:#bbb'><path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/><line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg></div>
                         <div class="empty-state-text">网络错误，请重试</div>
                     </div>
                 `;
@@ -3725,7 +3223,7 @@ ${details}
 
             document.getElementById('currentAccount').classList.add('show');
             document.getElementById('currentAccountEmail').textContent = email;
-
+            document.getElementById('mobileCurrentEmail').textContent = email;
             document.querySelectorAll('.account-item').forEach(item => {
                 item.classList.remove('active');
                 const emailEl = item.querySelector('.account-email');
@@ -3764,7 +3262,7 @@ ${details}
             } else {
                 document.getElementById('emailList').innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">📬</div>
+                        <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
                         <div class="empty-state-text">点击"获取邮件"按钮获取邮件</div>
                     </div>
                 `;
@@ -3775,7 +3273,7 @@ ${details}
 
             document.getElementById('emailDetail').innerHTML = `
                 <div class="empty-state">
-                    <div class="empty-state-icon">📄</div>
+                    <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
                     <div class="empty-state-text">选择一封邮件查看详情</div>
                 </div>
             `;
@@ -3965,13 +3463,13 @@ ${details}
                         document.getElementById('currentAccount').classList.remove('show');
                         document.getElementById('emailList').innerHTML = `
                             <div class="empty-state">
-                                <div class="empty-state-icon">📬</div>
+                                <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
                                 <div class="empty-state-text">请从左侧选择一个邮箱账号</div>
                             </div>
                         `;
                         document.getElementById('emailDetail').innerHTML = `
                             <div class="empty-state">
-                                <div class="empty-state-icon">📄</div>
+                                <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
                                 <div class="empty-state-text">选择一封邮件查看详情</div>
                             </div>
                         `;
@@ -4043,13 +3541,13 @@ ${details}
                         document.getElementById('currentAccount').classList.remove('show');
                         document.getElementById('emailList').innerHTML = `
                             <div class="empty-state">
-                                <div class="empty-state-icon">📬</div>
+                                <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
                                 <div class="empty-state-text">请从左侧选择一个邮箱账号</div>
                             </div>
                         `;
                         document.getElementById('emailDetail').innerHTML = `
                             <div class="empty-state">
-                                <div class="empty-state-icon">📄</div>
+                                <div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#bbb"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
                                 <div class="empty-state-text">选择一封邮件查看详情</div>
                             </div>
                         `;
@@ -4304,7 +3802,7 @@ ${details}
                     }
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-state-icon">⚠️</div>
+                            <div class="empty-state-icon"><svg width='36' height='36' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' style='color:#bbb'><path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/><line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg></div>
                             <div class="empty-state-text">获取邮件失败，<a href="javascript:void(0)" onclick="showEmailFetchErrorModal(window._lastFetchErrorDetails)" style="color:#409eff;text-decoration:underline;">点击查看详情</a></div>
                         </div>
                     `;
@@ -4313,7 +3811,7 @@ ${details}
             } catch (error) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">⚠️</div>
+                        <div class="empty-state-icon"><svg width='36' height='36' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' style='color:#bbb'><path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/><line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg></div>
                         <div class="empty-state-text">网络错误，请重试</div>
                     </div>
                 `;
@@ -4444,7 +3942,7 @@ ${details}
                     if (currentEmailDetail && deletedIds.has(currentEmailDetail.id)) {
                         document.getElementById('emailDetail').innerHTML = `
                             <div class="empty-state">
-                                <div class="empty-state-icon">🗑️</div>
+                                <div class="empty-state-icon"><svg width='36' height='36' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' style='color:#bbb'><polyline points='3 6 5 6 21 6'/><path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'/></svg></div>
                                 <div class="empty-state-text">邮件已删除</div>
                             </div>
                         `;
@@ -4496,7 +3994,7 @@ ${details}
                     handleApiError(data, '加载邮件详情失败');
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-state-icon">⚠️</div>
+                            <div class="empty-state-icon"><svg width='36' height='36' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' style='color:#bbb'><path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/><line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg></div>
                             <div class="empty-state-text">${data.error && data.error.message ? data.error.message : '加载失败'}</div>
                         </div>
                     `;
@@ -4504,7 +4002,7 @@ ${details}
             } catch (error) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">⚠️</div>
+                        <div class="empty-state-icon"><svg width='36' height='36' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' style='color:#bbb'><path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/><line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg></div>
                         <div class="empty-state-text">网络错误，请重试</div>
                     </div>
                 `;
@@ -4738,7 +4236,7 @@ ${details}
         // 切换信任模式
         function toggleTrustMode(checkbox) {
             if (checkbox.checked) {
-                if (confirm('⚠️ 警告：启用信任模式将直接显示邮件原始内容，不进行任何安全过滤。\n\n这可能包含恶意脚本或不安全的内容。您确定要继续吗？')) {
+                if (confirm('警告：启用信任模式将直接显示邮件原始内容，不进行任何安全过滤。\n\n这可能包含恶意脚本或不安全的内容。您确定要继续吗？')) {
                     isTrustedMode = true;
                     if (currentEmailDetail) {
                         renderEmailDetail(currentEmailDetail);
@@ -4999,7 +4497,7 @@ ${details}
                     document.getElementById('refreshTokenOutput').value = importFormat;
                     document.getElementById('refreshTokenResult').style.display = 'block';
 
-                    showToast('✅ Refresh Token 获取成功！', 'success');
+                    showToast('Refresh Token 获取成功！', 'success');
 
                     // 重置按钮状态（不隐藏，允许重复使用）
                     btn.disabled = false;
@@ -5118,14 +4616,14 @@ ${details}
                     `;
                 } else {
                     resultEl.innerHTML = `
-                        <div style="color: #dc3545;">
+                        <div style="color: var(--danger);">
                             ✗ ${data.error && data.error.message ? data.error.message : (data.error || '表达式无效')}
                         </div>
                     `;
                 }
             } catch (error) {
                 resultEl.innerHTML = `
-                    <div style="color: #dc3545;">
+                    <div style="color: var(--danger);">
                         ✗ 验证失败: ${error.message}
                     </div>
                 `;
@@ -5285,13 +4783,13 @@ ${details}
             const refreshAllBtn = document.getElementById('refreshAllBtn');
             if (refreshAllBtn) {
                 refreshAllBtn.disabled = false;
-                refreshAllBtn.textContent = '🔄 全量刷新';
+                refreshAllBtn.textContent = '全量刷新';
             }
 
             const retryFailedBtn = document.getElementById('retryFailedBtn');
             if (retryFailedBtn) {
                 retryFailedBtn.disabled = false;
-                retryFailedBtn.textContent = '🔁 重试失败';
+                retryFailedBtn.textContent = '重试失败';
             }
         }
 
@@ -5371,7 +4869,7 @@ ${details}
                                 正在处理: <strong>${data.email}</strong><br>
                                 进度: <strong>${data.current}/${data.total}</strong> |
                                 成功: <strong style="color: #28a745;">${successCount}</strong> |
-                                失败: <strong style="color: #dc3545;">${failedCount}</strong>
+                                失败: <strong style="color: var(--danger);">${failedCount}</strong>
                             `;
                         } else if (data.type === 'delay') {
                             progressText.innerHTML += `<br><span style="color: #999;">等待 ${data.seconds} 秒后继续...</span>`;
@@ -5379,7 +4877,7 @@ ${details}
                             eventSource.close();
                             progress.style.display = 'none';
                             btn.disabled = false;
-                            btn.textContent = '🔄 全量刷新';
+                            btn.textContent = '全量刷新';
 
                             // 直接更新统计数据，使用本地时间
                             const now = new Date();
@@ -5412,14 +4910,14 @@ ${details}
                     eventSource.close();
                     progress.style.display = 'none';
                     btn.disabled = false;
-                    btn.textContent = '🔄 全量刷新';
+                    btn.textContent = '全量刷新';
                     showToast('刷新过程中出现错误', 'error');
                 };
 
             } catch (error) {
                 progress.style.display = 'none';
                 btn.disabled = false;
-                btn.textContent = '🔄 全量刷新';
+                btn.textContent = '全量刷新';
                 showToast('刷新请求失败', 'error');
             }
         }
@@ -5445,7 +4943,7 @@ ${details}
 
                 progress.style.display = 'none';
                 btn.disabled = false;
-                btn.textContent = '🔁 重试失败';
+                btn.textContent = '重试失败';
 
                 if (data.success) {
                     if (data.total === 0) {
@@ -5470,7 +4968,7 @@ ${details}
             } catch (error) {
                 progress.style.display = 'none';
                 btn.disabled = false;
-                btn.textContent = '🔁 重试失败';
+                btn.textContent = '重试失败';
                 showToast('重试请求失败', 'error');
             }
         }
@@ -5673,6 +5171,45 @@ ${details}
             hideErrorDetailModal();
             hideGetRefreshTokenModal();
             closeFullscreenEmail();
+        }
+
+        // 移动端面板切换
+        function mobileShowPanel(panel) {
+            const groupPanel = document.getElementById('groupPanel');
+            const accountPanel = document.getElementById('accountPanel');
+            const overlay = document.getElementById('sidebarOverlay');
+            // 更新底部导航激活态
+            document.querySelectorAll('.mobile-nav-item').forEach((item, i) => {
+                item.classList.toggle('active',
+                    (panel === 'email' && i === 0) ||
+                    (panel === 'group' && i === 1) ||
+                    (panel === 'account' && i === 2)
+                );
+            });
+            if (panel === 'group') {
+                const opening = !groupPanel.classList.contains('show');
+                groupPanel.classList.toggle('show');
+                accountPanel.classList.remove('show');
+                overlay.classList.toggle('show', opening);
+            } else if (panel === 'account') {
+                const opening = !accountPanel.classList.contains('show');
+                accountPanel.classList.toggle('show');
+                groupPanel.classList.remove('show');
+                overlay.classList.toggle('show', opening);
+            } else {
+                closeMobilePanels();
+            }
+        }
+
+        // 关闭移动端侧边栏
+        function closeMobilePanels() {
+            document.getElementById('groupPanel').classList.remove('show');
+            document.getElementById('accountPanel').classList.remove('show');
+            document.getElementById('sidebarOverlay').classList.remove('show');
+            // 重置底部导航到邮件态
+            document.querySelectorAll('.mobile-nav-item').forEach((item, i) => {
+                item.classList.toggle('active', i === 0);
+            });
         }
 
         // HTML 转义
