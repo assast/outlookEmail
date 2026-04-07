@@ -1580,6 +1580,13 @@
                         placeholder="http://host:port 或 socks5://user:pass@host:port">
                     <div class="form-hint">可选，设置后该分组下所有邮箱获取邮件时走此代理（支持 HTTP/SOCKS5）</div>
                 </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="groupForwardEnabledPlaceholder">
+                        <span class="form-label" style="margin: 0;">启用邮件转发</span>
+                    </label>
+                    <div class="form-hint">开启后会按系统设置转发到邮箱或 Telegram。</div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="hideAddGroupModal()">取消</button>
@@ -1610,12 +1617,35 @@
                         <option value="cloudflare">Cloudflare</option>
                     </select>
                 </div>
+                <div class="form-group" id="importProviderGroup">
+                    <label class="form-label">邮箱类型</label>
+                    <select class="form-select" id="importProviderSelect" onchange="updateImportHint()">
+                        <option value="outlook">Outlook OAuth</option>
+                        <option value="gmail">Gmail</option>
+                        <option value="qq">QQ</option>
+                        <option value="163">163</option>
+                        <option value="126">126</option>
+                        <option value="yahoo">Yahoo</option>
+                        <option value="aliyun">Aliyun</option>
+                        <option value="custom">自定义 IMAP</option>
+                    </select>
+                </div>
                 <div class="form-group" id="importFormatGroup">
                     <label class="form-label">导入格式</label>
                     <select class="form-select" id="importFormatSelect" onchange="updateImportHint()">
                         <option value="client_id_refresh_token">邮箱----密码----client_id----refresh_token</option>
                         <option value="refresh_token_client_id">邮箱----密码----令牌----client_id</option>
                     </select>
+                </div>
+                <div id="customImapSettings" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">IMAP 服务器</label>
+                        <input type="text" class="form-input" id="importImapHost" placeholder="imap.example.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">IMAP 端口</label>
+                        <input type="number" class="form-input" id="importImapPort" value="993" min="1" max="65535">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">账号信息</label>
@@ -1649,6 +1679,19 @@
                     <input type="text" class="form-input" id="editEmail" placeholder="example@outlook.com">
                 </div>
                 <div class="form-group">
+                    <label class="form-label">邮箱类型</label>
+                    <select class="form-select" id="editProviderSelect" onchange="updateEditAccountFields()">
+                        <option value="outlook">Outlook OAuth</option>
+                        <option value="gmail">Gmail</option>
+                        <option value="qq">QQ</option>
+                        <option value="163">163</option>
+                        <option value="126">126</option>
+                        <option value="yahoo">Yahoo</option>
+                        <option value="aliyun">Aliyun</option>
+                        <option value="custom">自定义 IMAP</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label class="form-label">密码</label>
                     <input type="text" class="form-input" id="editPassword" placeholder="可选">
                 </div>
@@ -1659,6 +1702,22 @@
                 <div class="form-group">
                     <label class="form-label">Refresh Token</label>
                     <textarea class="form-textarea" id="editRefreshToken" style="height: 80px;"></textarea>
+                </div>
+                <div id="editImapFields" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">IMAP 密码 / 授权码</label>
+                        <input type="text" class="form-input" id="editImapPassword">
+                    </div>
+                    <div id="editCustomImapFields" style="display: none;">
+                        <div class="form-group">
+                            <label class="form-label">IMAP 服务器</label>
+                            <input type="text" class="form-input" id="editImapHost" placeholder="imap.example.com">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">IMAP 端口</label>
+                            <input type="number" class="form-input" id="editImapPort" value="993" min="1" max="65535">
+                        </div>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">所属分组</label>
@@ -2300,6 +2359,9 @@
         document.addEventListener('DOMContentLoaded', async function () {
             // 初始化 CSRF Token
             await initCSRFToken();
+            ensureForwardingSettingsUI();
+            document.getElementById('importImapHost')?.addEventListener('input', updateImportHint);
+            document.getElementById('importImapPort')?.addEventListener('input', updateImportHint);
 
             closeAllModals(); // 修复：应用启动时关闭所有模态框，防止浏览器缓存导致残留的模态框背景层
             loadGroups();
@@ -3253,6 +3315,10 @@ ${details}
                             ${acc.remark && acc.remark.trim() ? `<div class="account-remark" title="${escapeHtml(acc.remark)}">📝 ${escapeHtml(acc.remark)}</div>` : ''}
                             
                             <div class="account-tags">
+                                <span class="tag-badge" style="background-color: ${acc.account_type === 'imap' ? '#0ea5e9' : '#2563eb'}">
+                                    ${escapeHtml(getProviderLabel(acc.provider || (acc.account_type === 'imap' ? 'custom' : 'outlook')))}
+                                </span>
+                                ${acc.forward_enabled ? '<span class="tag-badge" style="background-color: #16a34a">Forward</span>' : ''}
                                 ${(acc.tags || []).map(tag => `
                                     <span class="tag-badge" style="background-color: ${tag.color}">
                                         ${escapeHtml(tag.name)}
@@ -3509,6 +3575,195 @@ ${details}
         }
 
         // 显示添加分组模态框
+        const MAIL_PROVIDER_LABELS = {
+            outlook: 'Outlook',
+            gmail: 'Gmail',
+            qq: 'QQ',
+            '163': '163',
+            '126': '126',
+            yahoo: 'Yahoo',
+            aliyun: 'Aliyun',
+            custom: 'Custom IMAP'
+        };
+
+        function getProviderLabel(provider) {
+            return MAIL_PROVIDER_LABELS[provider] || (provider || 'Outlook');
+        }
+
+        function isTempImportGroup() {
+            const importSelect = document.getElementById('importGroupSelect');
+            const selectedGroup = groups.find(g => g.id === parseInt(importSelect?.value || '0'));
+            return !!(selectedGroup && selectedGroup.name === '涓存椂閭');
+        }
+
+        function ensureForwardingSettingsUI() {
+            if (document.getElementById('forwardCheckIntervalMinutes')) return;
+            const footer = document.querySelector('#settingsModal .modal-footer');
+            if (!footer) return;
+            footer.insertAdjacentHTML('beforebegin', `
+                <div style="border-top: 1px solid #e5e5e5; margin: 24px 0; padding-top: 24px;">
+                    <h4 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">邮件转发设置</h4>
+                    <div class="form-group">
+                        <label class="form-label">轮询间隔</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" class="form-input" id="forwardCheckIntervalMinutes" min="1" max="60" value="5" style="max-width: 120px;">
+                            <span style="font-size: 14px; color: #666; font-weight: 500;">分钟</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">转发到邮箱</label>
+                        <input type="text" class="form-input" id="settingsEmailForwardRecipient" placeholder="main@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">SMTP 主机</label>
+                        <input type="text" class="form-input" id="settingsSmtpHost" placeholder="smtp.example.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">SMTP 端口</label>
+                        <input type="number" class="form-input" id="settingsSmtpPort" value="465" min="1" max="65535">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">SMTP 用户名</label>
+                        <input type="text" class="form-input" id="settingsSmtpUsername" placeholder="username">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">SMTP 密码</label>
+                        <input type="password" class="form-input" id="settingsSmtpPassword" placeholder="密码或授权码">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">发件人邮箱</label>
+                        <input type="text" class="form-input" id="settingsSmtpFromEmail" placeholder="noreply@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 8px;">
+                            <input type="checkbox" id="settingsSmtpUseSsl" checked>
+                            <span class="form-label" style="margin: 0;">使用 SSL</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="settingsSmtpUseTls">
+                            <span class="form-label" style="margin: 0;">使用 TLS / STARTTLS</span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Telegram Bot Token</label>
+                        <input type="password" class="form-input" id="settingsTelegramBotToken" placeholder="123456:ABCDEF...">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Telegram Chat ID</label>
+                        <input type="text" class="form-input" id="settingsTelegramChatId" placeholder="-1001234567890">
+                    </div>
+                </div>
+            `);
+        }
+
+        function updateEditAccountFields() {
+            const provider = document.getElementById('editProviderSelect')?.value || 'outlook';
+            const isOutlook = provider === 'outlook';
+            const passwordGroup = document.getElementById('editPassword')?.closest('.form-group');
+            const clientIdGroup = document.getElementById('editClientId')?.closest('.form-group');
+            const refreshTokenGroup = document.getElementById('editRefreshToken')?.closest('.form-group');
+            const imapFields = document.getElementById('editImapFields');
+            const customImapFields = document.getElementById('editCustomImapFields');
+
+            if (passwordGroup) passwordGroup.style.display = isOutlook ? '' : 'none';
+            if (clientIdGroup) clientIdGroup.style.display = isOutlook ? '' : 'none';
+            if (refreshTokenGroup) refreshTokenGroup.style.display = isOutlook ? '' : 'none';
+            if (imapFields) imapFields.style.display = isOutlook ? 'none' : '';
+            if (customImapFields) customImapFields.style.display = provider === 'custom' ? '' : 'none';
+        }
+
+        function updateImportHint() {
+            const hintEl = document.getElementById('importFormatHint');
+            const inputEl = document.getElementById('accountInput');
+            const channelGroup = document.getElementById('importChannelGroup');
+            const channelSelect = document.getElementById('importChannelSelect');
+            const providerGroup = document.getElementById('importProviderGroup');
+            const providerSelect = document.getElementById('importProviderSelect');
+            const formatGroup = document.getElementById('importFormatGroup');
+            const formatSelect = document.getElementById('importFormatSelect');
+            const exampleEl = document.getElementById('importFormatExample');
+            const customImapSettings = document.getElementById('customImapSettings');
+            const customHost = document.getElementById('importImapHost');
+            const customPort = document.getElementById('importImapPort');
+            if (!hintEl || !inputEl) return;
+
+            const isTempGroup = isTempImportGroup();
+            if (channelGroup) channelGroup.style.display = isTempGroup ? '' : 'none';
+            if (providerGroup) providerGroup.style.display = isTempGroup ? 'none' : '';
+
+            if (isTempGroup) {
+                if (formatGroup) formatGroup.style.display = 'none';
+                if (customImapSettings) customImapSettings.style.display = 'none';
+                const channel = channelSelect ? channelSelect.value : 'gptmail';
+                if (channel === 'duckmail') {
+                    hintEl.textContent = '格式：邮箱----密码，每行一个。';
+                    inputEl.placeholder = '邮箱----密码';
+                    if (exampleEl) {
+                        exampleEl.style.display = '';
+                        exampleEl.textContent = '示例：\\nuser@duck.com----mypassword\\nuser2@duck.com----password2';
+                    }
+                    return;
+                }
+                if (channel === 'cloudflare') {
+                    hintEl.textContent = '格式：邮箱----JWT，每行一个。';
+                    inputEl.placeholder = '邮箱----JWT';
+                    if (exampleEl) {
+                        exampleEl.style.display = '';
+                        exampleEl.textContent = '示例：\\nuser@example.com----eyJhbGciOi...';
+                    }
+                    return;
+                }
+                hintEl.textContent = '格式：每行一个邮箱地址。';
+                inputEl.placeholder = '每行一个邮箱地址';
+                if (exampleEl) {
+                    exampleEl.style.display = '';
+                    exampleEl.textContent = '示例：\\nuser1@gptmail.com\\nuser2@gptmail.com';
+                }
+                return;
+            }
+
+            const provider = providerSelect ? providerSelect.value : 'outlook';
+            const isOutlook = provider === 'outlook';
+            if (formatGroup) formatGroup.style.display = isOutlook ? '' : 'none';
+            if (customImapSettings) customImapSettings.style.display = provider === 'custom' ? '' : 'none';
+            if (exampleEl) exampleEl.style.display = '';
+
+            if (isOutlook) {
+                const format = formatSelect ? formatSelect.value : 'client_id_refresh_token';
+                if (format === 'refresh_token_client_id') {
+                    hintEl.textContent = '格式：邮箱----密码----令牌----client_id，支持批量导入。';
+                    inputEl.placeholder = '邮箱----密码----令牌----client_id';
+                    if (exampleEl) {
+                        exampleEl.textContent = '示例：\\nuser@outlook.com----password123----0.AXEA...----24d9a0ed-8787-4584-883c-2fd79308940a';
+                    }
+                    return;
+                }
+                hintEl.textContent = '格式：邮箱----密码----client_id----refresh_token，支持批量导入。';
+                inputEl.placeholder = '邮箱----密码----client_id----refresh_token';
+                if (exampleEl) {
+                    exampleEl.textContent = '示例：\\nuser@outlook.com----password123----24d9a0ed-8787-4584-883c-2fd79308940a----0.AXEA...';
+                }
+                return;
+            }
+
+            if (provider === 'custom') {
+                hintEl.textContent = '格式：邮箱----IMAP密码。也支持兼容格式：邮箱----IMAP密码----imap_host----imap_port。';
+                inputEl.placeholder = '邮箱----IMAP密码';
+                if (exampleEl) {
+                    const host = customHost?.value?.trim() || 'imap.example.com';
+                    const port = customPort?.value?.trim() || '993';
+                    exampleEl.textContent = `示例：\\nuser@example.com----app-password\\nuser@example.com----app-password----${host}----${port}`;
+                }
+                return;
+            }
+
+            hintEl.textContent = `格式：邮箱----IMAP授权码/应用密码，每行一个。当前类型：${getProviderLabel(provider)}。`;
+            inputEl.placeholder = '邮箱----IMAP授权码/应用密码';
+            if (exampleEl) {
+                exampleEl.textContent = '示例：\\nuser@gmail.com----app-password\\nuser2@qq.com----imap-auth-code';
+            }
+        }
+
         function showAddGroupModal() {
             editingGroupId = null;
             document.getElementById('groupModalTitle').textContent = '添加分组';
@@ -5697,6 +5952,347 @@ ${details}
         // ==================== 工具函数 ====================
 
         // 相对时间格式化
+        function isTempImportGroup() {
+            const importSelect = document.getElementById('importGroupSelect');
+            const selectedGroup = groups.find(g => g.id === parseInt(importSelect?.value || '0'));
+            return !!(selectedGroup && (selectedGroup.id === -1 || selectedGroup.name === '涓存椂閭'));
+        }
+
+        function ensureEditForwardToggle() {
+            if (document.getElementById('editForwardEnabled')) return;
+            const statusGroup = document.getElementById('editStatus')?.closest('.form-group');
+            if (!statusGroup) return;
+            statusGroup.insertAdjacentHTML('afterend', `
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="editForwardEnabled">
+                        <span class="form-label" style="margin: 0;">启用邮件转发</span>
+                    </label>
+                    <div class="form-hint">开启后会按系统设置转发到邮箱或 Telegram。</div>
+                </div>
+            `);
+        }
+
+        function isTempImportGroup() {
+            const importSelect = document.getElementById('importGroupSelect');
+            const selectedGroup = groups.find(g => g.id === parseInt(importSelect?.value || '0'));
+            return !!(selectedGroup && selectedGroup.id === -1);
+        }
+
+        function showAddAccountModal() {
+            document.getElementById('accountInput').value = '';
+            if (document.getElementById('importFormatSelect')) {
+                document.getElementById('importFormatSelect').value = 'client_id_refresh_token';
+            }
+            if (document.getElementById('importProviderSelect')) {
+                document.getElementById('importProviderSelect').value = 'outlook';
+            }
+            if (document.getElementById('importImapHost')) {
+                document.getElementById('importImapHost').value = '';
+            }
+            if (document.getElementById('importImapPort')) {
+                document.getElementById('importImapPort').value = '993';
+            }
+            if (currentGroupId) {
+                document.getElementById('importGroupSelect').value = currentGroupId;
+            }
+            updateImportHint();
+            document.getElementById('addAccountModal').classList.add('show');
+        }
+
+        async function addAccount() {
+            const input = document.getElementById('accountInput').value.trim();
+            const groupId = parseInt(document.getElementById('importGroupSelect').value);
+            const accountFormat = document.getElementById('importFormatSelect')?.value || 'client_id_refresh_token';
+            const provider = document.getElementById('importProviderSelect')?.value || 'outlook';
+            const imapHost = document.getElementById('importImapHost')?.value.trim() || '';
+            const imapPort = parseInt(document.getElementById('importImapPort')?.value || '993', 10);
+
+            if (!input) {
+                showToast('请输入账号信息', 'error');
+                return;
+            }
+
+            const isTempGroup = isTempImportGroup();
+            if (!isTempGroup && provider === 'custom' && !imapHost) {
+                showToast('自定义 IMAP 必须填写服务器地址', 'error');
+                return;
+            }
+
+            try {
+                let response;
+                if (isTempGroup) {
+                    const tempProvider = document.getElementById('importChannelSelect').value || 'gptmail';
+                    response = await fetch('/api/temp-emails/import', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ account_string: input, provider: tempProvider })
+                    });
+                } else {
+                    response = await fetch('/api/accounts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            account_string: input,
+                            group_id: groupId,
+                            account_format: accountFormat,
+                            provider,
+                            imap_host: imapHost,
+                            imap_port: Number.isFinite(imapPort) ? imapPort : 993
+                        })
+                    });
+                }
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    hideAddAccountModal();
+                    delete accountsCache[groupId];
+                    await loadGroups();
+                    if (isTempGroup) {
+                        await loadTempEmails(true);
+                    } else {
+                        await loadAccountsByGroup(groupId, true);
+                    }
+                } else {
+                    handleApiError(data, '导入失败');
+                }
+            } catch (error) {
+                showToast('导入失败', 'error');
+            }
+        }
+
+        async function showEditAccountModal(accountId) {
+            try {
+                ensureEditForwardToggle();
+                const response = await fetch(`/api/accounts/${accountId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const acc = data.account;
+                    document.getElementById('editAccountId').value = acc.id;
+                    document.getElementById('editEmail').value = acc.email || '';
+                    document.getElementById('editPassword').value = acc.password || '';
+                    document.getElementById('editClientId').value = acc.client_id || '';
+                    document.getElementById('editRefreshToken').value = acc.refresh_token || '';
+                    document.getElementById('editImapPassword').value = acc.imap_password || '';
+                    document.getElementById('editImapHost').value = acc.imap_host || '';
+                    document.getElementById('editImapPort').value = acc.imap_port || 993;
+                    document.getElementById('editGroupSelect').value = acc.group_id || 1;
+                    document.getElementById('editRemark').value = acc.remark || '';
+                    document.getElementById('editStatus').value = acc.status || 'active';
+                    if (document.getElementById('editForwardEnabled')) {
+                        document.getElementById('editForwardEnabled').checked = !!acc.forward_enabled;
+                    }
+                    if (document.getElementById('editProviderSelect')) {
+                        document.getElementById('editProviderSelect').value = acc.provider || (acc.account_type === 'imap' ? 'custom' : 'outlook');
+                    }
+                    updateEditAccountFields();
+                    document.getElementById('editAccountModal').classList.add('show');
+                }
+            } catch (error) {
+                showToast('加载账号信息失败', 'error');
+            }
+        }
+
+        async function updateAccount() {
+            const accountId = document.getElementById('editAccountId').value;
+            const oldGroupId = currentGroupId;
+            const newGroupId = parseInt(document.getElementById('editGroupSelect').value);
+            const provider = document.getElementById('editProviderSelect')?.value || 'outlook';
+            const isOutlook = provider === 'outlook';
+            const imapPort = parseInt(document.getElementById('editImapPort')?.value || '993', 10);
+
+            const data = {
+                email: document.getElementById('editEmail').value.trim(),
+                password: document.getElementById('editPassword').value,
+                client_id: document.getElementById('editClientId').value.trim(),
+                refresh_token: document.getElementById('editRefreshToken').value.trim(),
+                account_type: isOutlook ? 'outlook' : 'imap',
+                provider,
+                imap_host: document.getElementById('editImapHost')?.value.trim() || '',
+                imap_port: Number.isFinite(imapPort) ? imapPort : 993,
+                imap_password: document.getElementById('editImapPassword')?.value || '',
+                group_id: newGroupId,
+                remark: document.getElementById('editRemark').value.trim(),
+                status: document.getElementById('editStatus').value,
+                forward_enabled: !!document.getElementById('editForwardEnabled')?.checked
+            };
+
+            if (isOutlook) {
+                if (!data.email || !data.client_id || !data.refresh_token) {
+                    showToast('邮箱、Client ID 和 Refresh Token 不能为空', 'error');
+                    return;
+                }
+            } else {
+                if (!data.email || !data.imap_password) {
+                    showToast('邮箱和 IMAP 密码不能为空', 'error');
+                    return;
+                }
+                if (provider === 'custom' && !data.imap_host) {
+                    showToast('自定义 IMAP 必须填写服务器地址', 'error');
+                    return;
+                }
+            }
+
+            try {
+                const response = await fetch(`/api/accounts/${accountId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    hideEditAccountModal();
+                    delete accountsCache[oldGroupId];
+                    if (oldGroupId !== newGroupId) {
+                        delete accountsCache[newGroupId];
+                    }
+                    loadGroups();
+                    if (currentGroupId) {
+                        loadAccountsByGroup(currentGroupId, true);
+                    }
+                } else {
+                    handleApiError(result, '更新失败');
+                }
+            } catch (error) {
+                showToast('更新失败', 'error');
+            }
+        }
+
+        async function loadSettings() {
+            ensureForwardingSettingsUI();
+            try {
+                const response = await fetch('/api/settings');
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('settingsApiKey').value = data.settings.gptmail_api_key || '';
+                    document.getElementById('settingsExternalApiKey').value = data.settings.external_api_key || '';
+                    document.getElementById('settingsDuckmailBaseUrl').value = data.settings.duckmail_base_url || '';
+                    document.getElementById('settingsDuckmailApiKey').value = data.settings.duckmail_api_key || '';
+                    document.getElementById('settingsCloudflareWorkerDomain').value = data.settings.cloudflare_worker_domain || '';
+                    document.getElementById('settingsCloudflareEmailDomains').value = data.settings.cloudflare_email_domains || '';
+                    document.getElementById('settingsCloudflareAdminPassword').value = data.settings.cloudflare_admin_password || '';
+                    document.getElementById('settingsPassword').value = '';
+
+                    document.getElementById('refreshIntervalDays').value = data.settings.refresh_interval_days || '30';
+                    document.getElementById('refreshDelaySeconds').value = data.settings.refresh_delay_seconds || '5';
+                    document.getElementById('refreshCron').value = data.settings.refresh_cron || '0 2 * * *';
+                    document.getElementById('enableScheduledRefresh').checked = data.settings.enable_scheduled_refresh !== 'false';
+
+                    document.getElementById('forwardCheckIntervalMinutes').value = data.settings.forward_check_interval_minutes || '5';
+                    document.getElementById('settingsEmailForwardRecipient').value = data.settings.email_forward_recipient || '';
+                    document.getElementById('settingsSmtpHost').value = data.settings.smtp_host || '';
+                    document.getElementById('settingsSmtpPort').value = data.settings.smtp_port || '465';
+                    document.getElementById('settingsSmtpUsername').value = data.settings.smtp_username || '';
+                    document.getElementById('settingsSmtpPassword').value = data.settings.smtp_password || '';
+                    document.getElementById('settingsSmtpFromEmail').value = data.settings.smtp_from_email || '';
+                    document.getElementById('settingsSmtpUseTls').checked = String(data.settings.smtp_use_tls) === 'true';
+                    document.getElementById('settingsSmtpUseSsl').checked = String(data.settings.smtp_use_ssl) !== 'false';
+                    document.getElementById('settingsTelegramBotToken').value = data.settings.telegram_bot_token || '';
+                    document.getElementById('settingsTelegramChatId').value = data.settings.telegram_chat_id || '';
+
+                    const useCron = data.settings.use_cron_schedule === 'true';
+                    document.querySelector('input[name="refreshStrategy"][value="' + (useCron ? 'cron' : 'days') + '"]').checked = true;
+                    toggleRefreshStrategy();
+                }
+            } catch (error) {
+                showToast('加载设置失败', 'error');
+            }
+        }
+
+        async function saveSettings() {
+            ensureForwardingSettingsUI();
+            const password = document.getElementById('settingsPassword').value;
+            const apiKey = document.getElementById('settingsApiKey').value.trim();
+            const externalApiKey = document.getElementById('settingsExternalApiKey').value.trim();
+            const refreshDays = document.getElementById('refreshIntervalDays').value;
+            const refreshDelay = document.getElementById('refreshDelaySeconds').value;
+            const refreshCron = document.getElementById('refreshCron').value.trim();
+            const strategy = document.querySelector('input[name="refreshStrategy"]:checked').value;
+            const enableScheduled = document.getElementById('enableScheduledRefresh').checked;
+            const settings = {};
+
+            if (password) {
+                settings.login_password = password;
+            }
+
+            settings.gptmail_api_key = apiKey;
+            settings.external_api_key = externalApiKey;
+            settings.duckmail_base_url = document.getElementById('settingsDuckmailBaseUrl').value.trim();
+            settings.duckmail_api_key = document.getElementById('settingsDuckmailApiKey').value.trim();
+            settings.cloudflare_worker_domain = document.getElementById('settingsCloudflareWorkerDomain').value.trim();
+            settings.cloudflare_email_domains = document.getElementById('settingsCloudflareEmailDomains').value.trim();
+            settings.cloudflare_admin_password = document.getElementById('settingsCloudflareAdminPassword').value.trim();
+
+            const days = parseInt(refreshDays, 10);
+            const delay = parseInt(refreshDelay, 10);
+            const forwardMinutes = parseInt(document.getElementById('forwardCheckIntervalMinutes').value || '5', 10);
+            const smtpPort = parseInt(document.getElementById('settingsSmtpPort').value || '465', 10);
+
+            if (Number.isNaN(days) || days < 1 || days > 90) {
+                showToast('刷新周期必须在 1-90 天之间', 'error');
+                return;
+            }
+            if (Number.isNaN(delay) || delay < 0 || delay > 60) {
+                showToast('刷新间隔必须在 0-60 秒之间', 'error');
+                return;
+            }
+            if (Number.isNaN(forwardMinutes) || forwardMinutes < 1 || forwardMinutes > 60) {
+                showToast('转发轮询间隔必须在 1-60 分钟之间', 'error');
+                return;
+            }
+            if (Number.isNaN(smtpPort) || smtpPort < 1 || smtpPort > 65535) {
+                showToast('SMTP 端口无效', 'error');
+                return;
+            }
+
+            settings.refresh_interval_days = days;
+            settings.refresh_delay_seconds = delay;
+            settings.use_cron_schedule = strategy === 'cron';
+            settings.enable_scheduled_refresh = enableScheduled;
+            settings.forward_check_interval_minutes = forwardMinutes;
+            settings.email_forward_recipient = document.getElementById('settingsEmailForwardRecipient').value.trim();
+            settings.smtp_host = document.getElementById('settingsSmtpHost').value.trim();
+            settings.smtp_port = smtpPort;
+            settings.smtp_username = document.getElementById('settingsSmtpUsername').value.trim();
+            settings.smtp_password = document.getElementById('settingsSmtpPassword').value;
+            settings.smtp_from_email = document.getElementById('settingsSmtpFromEmail').value.trim();
+            settings.smtp_use_tls = document.getElementById('settingsSmtpUseTls').checked;
+            settings.smtp_use_ssl = document.getElementById('settingsSmtpUseSsl').checked;
+            settings.telegram_bot_token = document.getElementById('settingsTelegramBotToken').value.trim();
+            settings.telegram_chat_id = document.getElementById('settingsTelegramChatId').value.trim();
+
+            if (strategy === 'cron') {
+                if (!refreshCron) {
+                    showToast('请输入 Cron 表达式', 'error');
+                    return;
+                }
+                settings.refresh_cron = refreshCron;
+            }
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast('设置已保存，重启应用后生效', 'success');
+                    hideSettingsModal();
+                } else {
+                    handleApiError(data, '保存设置失败');
+                }
+            } catch (error) {
+                showToast('保存设置失败', 'error');
+            }
+        }
+
         function formatRelativeTime(timestamp) {
             if (!timestamp) return '从未刷新';
 

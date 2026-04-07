@@ -18,11 +18,15 @@ import json
 import re
 import uuid
 import threading
+import smtplib
 import bcrypt
 import base64
 import html
+import socket
 from datetime import datetime
+from email.message import EmailMessage
 from email.header import decode_header
+from email.utils import parsedate_to_datetime
 from typing import Optional, List, Dict, Any
 from urllib.parse import quote
 from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for, Response, make_response
@@ -101,6 +105,111 @@ IMAP_SERVER_OLD = "outlook.office365.com"
 IMAP_SERVER_NEW = "outlook.live.com"
 IMAP_PORT = 993
 
+MAIL_PROVIDERS = {
+    "outlook": {
+        "label": "Outlook",
+        "imap_host": IMAP_SERVER_NEW,
+        "imap_port": 993,
+        "account_type": "outlook",
+    },
+    "gmail": {
+        "label": "Gmail",
+        "imap_host": "imap.gmail.com",
+        "imap_port": 993,
+        "account_type": "imap",
+    },
+    "qq": {
+        "label": "QQ邮箱",
+        "imap_host": "imap.qq.com",
+        "imap_port": 993,
+        "account_type": "imap",
+    },
+    "163": {
+        "label": "163邮箱",
+        "imap_host": "imap.163.com",
+        "imap_port": 993,
+        "account_type": "imap",
+    },
+    "126": {
+        "label": "126邮箱",
+        "imap_host": "imap.126.com",
+        "imap_port": 993,
+        "account_type": "imap",
+    },
+    "yahoo": {
+        "label": "Yahoo",
+        "imap_host": "imap.mail.yahoo.com",
+        "imap_port": 993,
+        "account_type": "imap",
+    },
+    "aliyun": {
+        "label": "阿里邮箱",
+        "imap_host": "imap.aliyun.com",
+        "imap_port": 993,
+        "account_type": "imap",
+    },
+    "custom": {
+        "label": "自定义 IMAP",
+        "imap_host": "",
+        "imap_port": 993,
+        "account_type": "imap",
+    },
+}
+
+DOMAIN_PROVIDER_MAP = {
+    "outlook.com": "outlook",
+    "hotmail.com": "outlook",
+    "live.com": "outlook",
+    "live.cn": "outlook",
+    "gmail.com": "gmail",
+    "googlemail.com": "gmail",
+    "qq.com": "qq",
+    "foxmail.com": "qq",
+    "163.com": "163",
+    "126.com": "126",
+    "yahoo.com": "yahoo",
+    "yahoo.co.jp": "yahoo",
+    "yahoo.co.uk": "yahoo",
+    "aliyun.com": "aliyun",
+    "alimail.com": "aliyun",
+}
+
+PROVIDER_FOLDER_MAP = {
+    "gmail": {
+        "inbox": ["INBOX"],
+        "junkemail": ["[Gmail]/Spam", "[Gmail]/垃圾邮件"],
+        "deleteditems": ["[Gmail]/Trash", "[Gmail]/已删除邮件"],
+    },
+    "qq": {
+        "inbox": ["INBOX"],
+        "junkemail": ["Junk", "&V4NXPpCuTvY-"],
+        "deleteditems": ["Deleted Messages", "&XfJT0ZABkK5O9g-"],
+    },
+    "163": {
+        "inbox": ["INBOX"],
+        "junkemail": ["Junk", "&V4NXPpCuTvY-"],
+        "deleteditems": ["Deleted Messages", "&XfJT0ZABkK5O9g-"],
+    },
+    "126": {
+        "inbox": ["INBOX"],
+        "junkemail": ["Junk", "&V4NXPpCuTvY-"],
+        "deleteditems": ["Deleted Messages", "&XfJT0ZABkK5O9g-"],
+    },
+    "yahoo": {
+        "inbox": ["INBOX"],
+        "junkemail": ["Bulk Mail", "Spam"],
+        "deleteditems": ["Trash"],
+    },
+    "_default": {
+        "inbox": ["INBOX"],
+        "junkemail": ["Junk", "Junk Email", "Spam", "SPAM", "Bulk Mail"],
+        "deleteditems": ["Trash", "Deleted", "Deleted Items", "Deleted Messages"],
+    },
+}
+
+FORWARD_CHANNEL_EMAIL = "email"
+FORWARD_CHANNEL_TELEGRAM = "telegram"
+
 # 数据库文件
 DATABASE = os.getenv("DATABASE_PATH", "data/outlook_accounts.db")
 
@@ -133,6 +242,37 @@ OAUTH_SCOPES = [
     "https://graph.microsoft.com/Mail.ReadWrite",
     "https://graph.microsoft.com/User.Read"
 ]
+
+
+def infer_provider_from_email(email_addr: str) -> str:
+    if not email_addr or '@' not in email_addr:
+        return 'custom'
+    return DOMAIN_PROVIDER_MAP.get(email_addr.rsplit('@', 1)[-1].strip().lower(), 'custom')
+
+
+def normalize_provider(provider: str, email_addr: str = '') -> str:
+    provider = (provider or '').strip().lower()
+    if provider == 'auto':
+        provider = infer_provider_from_email(email_addr)
+    if provider not in MAIL_PROVIDERS:
+        provider = infer_provider_from_email(email_addr) if email_addr else 'outlook'
+    if provider not in MAIL_PROVIDERS:
+        provider = 'custom'
+    return provider
+
+
+def get_provider_meta(provider: str, email_addr: str = '') -> Dict[str, Any]:
+    provider_key = normalize_provider(provider, email_addr)
+    meta = dict(MAIL_PROVIDERS.get(provider_key, MAIL_PROVIDERS['custom']))
+    meta['key'] = provider_key
+    return meta
+
+
+def get_imap_folder_candidates(provider: str, folder: str) -> List[str]:
+    provider_key = (provider or '').strip().lower() or '_default'
+    folder_key = (folder or 'inbox').strip().lower()
+    folder_map = PROVIDER_FOLDER_MAP.get(provider_key, PROVIDER_FOLDER_MAP['_default'])
+    return folder_map.get(folder_key, PROVIDER_FOLDER_MAP['_default'].get(folder_key, ['INBOX']))
 
 
 # ==================== 登录速率限制 ====================
@@ -430,11 +570,18 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL,
             password TEXT,
-            client_id TEXT NOT NULL,
-            refresh_token TEXT NOT NULL,
+            client_id TEXT DEFAULT '',
+            refresh_token TEXT DEFAULT '',
             group_id INTEGER,
             remark TEXT,
             status TEXT DEFAULT 'active',
+            account_type TEXT DEFAULT 'outlook',
+            provider TEXT DEFAULT 'outlook',
+            imap_host TEXT,
+            imap_port INTEGER DEFAULT 993,
+            imap_password TEXT,
+            forward_enabled INTEGER DEFAULT 0,
+            forward_last_checked_at TIMESTAMP,
             last_refresh_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -481,6 +628,18 @@ def init_db():
             status TEXT NOT NULL,
             error_message TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE CASCADE
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS forward_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            message_id TEXT NOT NULL,
+            channel TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(account_id, message_id, channel),
             FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE CASCADE
         )
     ''')
@@ -534,6 +693,20 @@ def init_db():
         cursor.execute('ALTER TABLE accounts ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
     if 'last_refresh_at' not in columns:
         cursor.execute('ALTER TABLE accounts ADD COLUMN last_refresh_at TIMESTAMP')
+    if 'account_type' not in columns:
+        cursor.execute("ALTER TABLE accounts ADD COLUMN account_type TEXT DEFAULT 'outlook'")
+    if 'provider' not in columns:
+        cursor.execute("ALTER TABLE accounts ADD COLUMN provider TEXT DEFAULT 'outlook'")
+    if 'imap_host' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN imap_host TEXT')
+    if 'imap_port' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN imap_port INTEGER DEFAULT 993')
+    if 'imap_password' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN imap_password TEXT')
+    if 'forward_enabled' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN forward_enabled INTEGER DEFAULT 0')
+    if 'forward_last_checked_at' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN forward_last_checked_at TIMESTAMP')
     
     # 检查 groups 表是否有 is_system 列
     cursor.execute("PRAGMA table_info(groups)")
@@ -665,6 +838,51 @@ def init_db():
         VALUES ('enable_scheduled_refresh', 'true')
     ''')
 
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('forward_check_interval_minutes', '5')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('email_forward_recipient', '')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('smtp_host', '')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('smtp_port', '465')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('smtp_username', '')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('smtp_password', '')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('smtp_from_email', '')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('smtp_use_tls', 'false')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('smtp_use_ssl', 'true')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('telegram_bot_token', '')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('telegram_chat_id', '')
+    ''')
+
     # 创建索引以优化查询性能
     cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_accounts_last_refresh_at
@@ -679,6 +897,16 @@ def init_db():
     cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_account_refresh_logs_account_id
         ON account_refresh_logs(account_id)
+    ''')
+
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_accounts_forward_enabled
+        ON accounts(forward_enabled)
+    ''')
+
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_forward_logs_lookup
+        ON forward_logs(account_id, message_id, channel)
     ''')
 
     # 迁移现有明文数据为加密数据
@@ -775,6 +1003,25 @@ def set_setting(key: str, value: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def set_setting_encrypted(key: str, value: str) -> bool:
+    normalized = value.strip() if isinstance(value, str) else value
+    if normalized:
+        normalized = encrypt_data(normalized)
+    else:
+        normalized = ''
+    return set_setting(key, normalized)
+
+
+def get_setting_decrypted(key: str, default: str = '') -> str:
+    value = get_setting(key, default)
+    if not value:
+        return value
+    try:
+        return decrypt_data(value)
+    except Exception:
+        return value
 
 
 def get_all_settings() -> Dict[str, str]:
@@ -1040,6 +1287,15 @@ def load_accounts(group_id: int = None) -> List[Dict]:
                 pass  # 解密失败保持原值
         
         # 加载账号标签
+        if account.get('imap_password'):
+            try:
+                account['imap_password'] = decrypt_data(account['imap_password'])
+            except Exception:
+                pass
+        account['provider'] = normalize_provider(account.get('provider'), account.get('email', ''))
+        account['account_type'] = account.get('account_type') or get_provider_meta(
+            account['provider'], account.get('email', '')
+        ).get('account_type', 'outlook')
         account['tags'] = get_account_tags(account['id'])
         accounts.append(account)
     return accounts
@@ -1134,6 +1390,15 @@ def get_account_by_email(email_addr: str) -> Optional[Dict]:
             account['refresh_token'] = decrypt_data(account['refresh_token'])
         except Exception:
             pass
+    if account.get('imap_password'):
+        try:
+            account['imap_password'] = decrypt_data(account['imap_password'])
+        except Exception:
+            pass
+    account['provider'] = normalize_provider(account.get('provider'), account.get('email', ''))
+    account['account_type'] = account.get('account_type') or get_provider_meta(
+        account['provider'], account.get('email', '')
+    ).get('account_type', 'outlook')
     return account
 
 
@@ -1161,22 +1426,51 @@ def get_account_by_id(account_id: int) -> Optional[Dict]:
             account['refresh_token'] = decrypt_data(account['refresh_token'])
         except Exception:
             pass
+    if account.get('imap_password'):
+        try:
+            account['imap_password'] = decrypt_data(account['imap_password'])
+        except Exception:
+            pass
+    account['provider'] = normalize_provider(account.get('provider'), account.get('email', ''))
+    account['account_type'] = account.get('account_type') or get_provider_meta(
+        account['provider'], account.get('email', '')
+    ).get('account_type', 'outlook')
     return account
 
 
-def add_account(email_addr: str, password: str, client_id: str, refresh_token: str,
-                group_id: int = 1, remark: str = '') -> bool:
+def add_account(email_addr: str, password: str, client_id: str = '', refresh_token: str = '',
+                group_id: int = 1, remark: str = '', account_type: str = 'outlook',
+                provider: str = 'outlook', imap_host: str = '', imap_port: int = 993,
+                imap_password: str = '', forward_enabled: bool = False) -> bool:
     """添加邮箱账号"""
     db = get_db()
     try:
         # 加密敏感字段
         encrypted_password = encrypt_data(password) if password else password
         encrypted_refresh_token = encrypt_data(refresh_token) if refresh_token else refresh_token
+        encrypted_imap_password = encrypt_data(imap_password) if imap_password else imap_password
+        provider_meta = get_provider_meta(provider, email_addr)
+        provider = provider_meta['key']
+        account_type = account_type or provider_meta.get('account_type', 'outlook')
+        imap_host = imap_host or provider_meta.get('imap_host', '')
+        imap_port = int(imap_port or provider_meta.get('imap_port', 993) or 993)
+        encrypted_imap_password = encrypt_data(imap_password) if imap_password else imap_password
+        provider_meta = get_provider_meta(provider, email_addr)
+        provider = provider_meta['key']
+        account_type = account_type or provider_meta.get('account_type', 'outlook')
+        imap_host = imap_host or provider_meta.get('imap_host', '')
+        imap_port = int(imap_port or provider_meta.get('imap_port', 993) or 993)
 
         db.execute('''
-            INSERT INTO accounts (email, password, client_id, refresh_token, group_id, remark)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (email_addr, encrypted_password, client_id, encrypted_refresh_token, group_id, remark))
+            INSERT INTO accounts (
+                email, password, client_id, refresh_token, group_id, remark,
+                account_type, provider, imap_host, imap_port, imap_password, forward_enabled
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            email_addr, encrypted_password, client_id, encrypted_refresh_token, group_id, remark,
+            account_type, provider, imap_host, imap_port, encrypted_imap_password, 1 if forward_enabled else 0
+        ))
         db.commit()
         return True
     except sqlite3.IntegrityError:
@@ -1184,7 +1478,10 @@ def add_account(email_addr: str, password: str, client_id: str, refresh_token: s
 
 
 def update_account(account_id: int, email_addr: str, password: str, client_id: str,
-                   refresh_token: str, group_id: int, remark: str, status: str) -> bool:
+                   refresh_token: str, group_id: int, remark: str, status: str,
+                   account_type: str = 'outlook', provider: str = 'outlook',
+                   imap_host: str = '', imap_port: int = 993, imap_password: str = '',
+                   forward_enabled: bool = False) -> bool:
     """更新邮箱账号"""
     db = get_db()
     try:
@@ -1195,9 +1492,15 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
         db.execute('''
             UPDATE accounts
             SET email = ?, password = ?, client_id = ?, refresh_token = ?,
-                group_id = ?, remark = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                group_id = ?, remark = ?, status = ?, account_type = ?, provider = ?,
+                imap_host = ?, imap_port = ?, imap_password = ?, forward_enabled = ?,
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-        ''', (email_addr, encrypted_password, client_id, encrypted_refresh_token, group_id, remark, status, account_id))
+        ''', (
+            email_addr, encrypted_password, client_id, encrypted_refresh_token, group_id, remark, status,
+            account_type, provider, imap_host, imap_port, encrypted_imap_password, 1 if forward_enabled else 0,
+            account_id
+        ))
         db.commit()
         return True
     except Exception:
@@ -1455,6 +1758,82 @@ def parse_account_string(account_str: str, account_format: str = 'client_id_refr
 
 
 # ==================== Graph API 方式 ====================
+
+
+def parse_outlook_account_string(account_str: str, account_format: str = 'client_id_refresh_token') -> Optional[Dict]:
+    parts = [part.strip() for part in account_str.strip().split('----')]
+    if len(parts) < 4 or not parts[0]:
+        return None
+
+    email_addr, password, third, fourth = parts[:4]
+    if account_format == 'refresh_token_client_id':
+        refresh_token = third
+        client_id = fourth
+    else:
+        client_id = third
+        refresh_token = fourth
+
+    if not client_id or not refresh_token:
+        return None
+
+    return {
+        'email': email_addr,
+        'password': password,
+        'client_id': client_id,
+        'refresh_token': refresh_token,
+        'provider': 'outlook',
+        'account_type': 'outlook',
+        'imap_host': IMAP_SERVER_NEW,
+        'imap_port': IMAP_PORT,
+        'imap_password': '',
+    }
+
+
+def parse_imap_account_string(account_str: str, provider: str = 'custom', imap_host: str = '', imap_port: int = 993) -> Optional[Dict]:
+    parts = [part.strip() for part in account_str.strip().split('----')]
+    if len(parts) < 2 or not parts[0]:
+        return None
+
+    email_addr = parts[0]
+    password = parts[1]
+    provider_meta = get_provider_meta(provider, email_addr)
+    provider_key = provider_meta['key']
+
+    if provider_key == 'custom':
+        if len(parts) >= 4:
+            imap_host = parts[2].strip() or imap_host
+            try:
+                imap_port = int(parts[3].strip() or imap_port or 993)
+            except ValueError:
+                return None
+        if not imap_host:
+            return None
+    else:
+        imap_host = provider_meta.get('imap_host', '')
+        imap_port = int(provider_meta.get('imap_port', 993) or 993)
+
+    if not password or not imap_host:
+        return None
+
+    return {
+        'email': email_addr,
+        'password': '',
+        'client_id': '',
+        'refresh_token': '',
+        'provider': provider_key,
+        'account_type': 'imap',
+        'imap_host': imap_host,
+        'imap_port': int(imap_port or 993),
+        'imap_password': password,
+    }
+
+
+def parse_account_import(account_str: str, account_format: str = 'client_id_refresh_token',
+                         provider: str = 'outlook', imap_host: str = '', imap_port: int = 993) -> Optional[Dict]:
+    provider_key = normalize_provider(provider, account_str.split('----', 1)[0].strip() if account_str else '')
+    if provider_key == 'outlook':
+        return parse_outlook_account_string(account_str, account_format)
+    return parse_imap_account_string(account_str, provider_key, imap_host, imap_port)
 
 
 def build_proxies(proxy_url: str) -> Optional[Dict[str, str]]:
@@ -1887,6 +2266,304 @@ def get_email_detail_imap(account: str, client_id: str, refresh_token: str, mess
 
 # ==================== 登录验证 ====================
 
+def strip_html_content(html_text: str) -> str:
+    if not html_text:
+        return ''
+    text = re.sub(r'(?is)<script.*?>.*?</script>', ' ', html_text)
+    text = re.sub(r'(?is)<style.*?>.*?</style>', ' ', text)
+    text = re.sub(r'(?s)<[^>]+>', ' ', text)
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
+
+
+def extract_text_and_html(msg) -> tuple[str, str]:
+    text_part = ''
+    html_part = ''
+
+    def decode_part(part) -> str:
+        try:
+            payload = part.get_payload(decode=True)
+            charset = part.get_content_charset() or 'utf-8'
+            if isinstance(payload, (bytes, bytearray)):
+                return payload.decode(charset, errors='replace')
+            return str(payload) if payload is not None else ''
+        except Exception:
+            try:
+                return str(part.get_payload())
+            except Exception:
+                return ''
+
+    if msg.is_multipart():
+        for part in msg.walk():
+            disposition = str(part.get('Content-Disposition', '') or '').lower()
+            if 'attachment' in disposition:
+                continue
+            content_type = (part.get_content_type() or '').lower()
+            if content_type == 'text/plain' and not text_part:
+                text_part = decode_part(part)
+            elif content_type == 'text/html' and not html_part:
+                html_part = decode_part(part)
+            if text_part and html_part:
+                break
+    else:
+        content_type = (msg.get_content_type() or '').lower()
+        if content_type == 'text/html':
+            html_part = decode_part(msg)
+        else:
+            text_part = decode_part(msg)
+
+    return text_part or '', html_part or ''
+
+
+def has_message_attachments(msg) -> bool:
+    if not msg.is_multipart():
+        return False
+    for part in msg.walk():
+        disposition = str(part.get('Content-Disposition', '') or '').lower()
+        if 'attachment' in disposition:
+            return True
+    return False
+
+
+def create_imap_connection(imap_host: str, imap_port: int = 993):
+    host = (imap_host or '').strip()
+    port = int(imap_port or 993)
+    if not host:
+        raise ValueError('IMAP host 不能为空')
+    try:
+        return imaplib.IMAP4_SSL(host, port, timeout=30)
+    except TypeError:
+        old_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(30)
+        try:
+            return imaplib.IMAP4_SSL(host, port)
+        finally:
+            socket.setdefaulttimeout(old_timeout)
+
+
+def resolve_imap_folder(mail, provider: str, folder: str, readonly: bool = True) -> Optional[str]:
+    candidates = get_imap_folder_candidates(provider, folder)
+    for folder_name in candidates:
+        try_names = [folder_name]
+        if ' ' in folder_name and not (folder_name.startswith('"') and folder_name.endswith('"')):
+            try_names.append(f'"{folder_name}"')
+        for candidate in try_names:
+            try:
+                status, _ = mail.select(candidate, readonly=readonly)
+                if status == 'OK':
+                    return candidate
+            except Exception:
+                continue
+    return None
+
+
+def normalize_imap_auth_error(provider: str, imap_host: str, raw_message: str) -> str:
+    message = sanitize_error_details(str(raw_message or '')).strip() or 'IMAP 认证失败'
+    if (provider or '').strip().lower() == 'gmail':
+        return 'IMAP 认证失败，请使用 Gmail 应用专用密码并确认已开启 IMAP'
+    if ((provider or '').strip().lower() == 'outlook' or (imap_host or '').strip().lower() in {IMAP_SERVER_NEW, IMAP_SERVER_OLD}) and 'basicauthblocked' in message.lower():
+        return 'Outlook 已阻止 Basic Auth，请改用 Outlook OAuth 导入'
+    return message
+
+
+def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
+                            imap_port: int = 993, folder: str = 'inbox',
+                            provider: str = 'custom', skip: int = 0, top: int = 20) -> Dict[str, Any]:
+    mail = None
+    try:
+        skip = max(0, int(skip or 0))
+        top = max(1, int(top or 20))
+        mail = create_imap_connection(imap_host, imap_port)
+        try:
+            mail.login(email_addr, imap_password)
+        except imaplib.IMAP4.error as exc:
+            return {
+                'success': False,
+                'error': build_error_payload(
+                    'IMAP_AUTH_FAILED',
+                    normalize_imap_auth_error(provider, imap_host, str(exc)),
+                    'IMAPAuthError',
+                    401,
+                    ''
+                ),
+                'error_code': 'IMAP_AUTH_FAILED'
+            }
+
+        selected = resolve_imap_folder(mail, provider, folder, readonly=True)
+        if not selected:
+            return {
+                'success': False,
+                'error': build_error_payload(
+                    'IMAP_FOLDER_NOT_FOUND',
+                    'IMAP 文件夹不存在或无权访问',
+                    'IMAPFolderError',
+                    400,
+                    {'provider': provider, 'folder': folder}
+                ),
+                'error_code': 'IMAP_FOLDER_NOT_FOUND'
+            }
+
+        status, data = mail.uid('SEARCH', None, 'ALL')
+        if status != 'OK':
+            return {
+                'success': False,
+                'error': build_error_payload('IMAP_SEARCH_FAILED', 'IMAP 搜索邮件失败', 'IMAPSearchError', 502, status),
+                'error_code': 'IMAP_SEARCH_FAILED'
+            }
+
+        uid_bytes = data[0] if data else b''
+        if not uid_bytes:
+            return {'success': True, 'emails': [], 'method': 'IMAP (Generic)', 'has_more': False}
+
+        uids = uid_bytes.split()
+        total = len(uids)
+        start_idx = max(0, total - skip - top)
+        end_idx = total - skip
+        if start_idx >= end_idx:
+            return {'success': True, 'emails': [], 'method': 'IMAP (Generic)', 'has_more': False}
+
+        paged_uids = uids[start_idx:end_idx][::-1]
+        emails_data = []
+        for uid in paged_uids:
+            try:
+                f_status, f_data = mail.uid('FETCH', uid, '(FLAGS RFC822)')
+                if f_status != 'OK' or not f_data:
+                    continue
+                raw_email = None
+                flags_text = ''
+                for item in f_data:
+                    if not item:
+                        continue
+                    if isinstance(item, tuple) and len(item) >= 2:
+                        flags_text = item[0].decode('utf-8', errors='ignore') if isinstance(item[0], (bytes, bytearray)) else str(item[0])
+                        raw_email = item[1]
+                        break
+                if not raw_email:
+                    continue
+
+                msg = email.message_from_bytes(raw_email)
+                body_text, body_html = extract_text_and_html(msg)
+                preview_source = body_text or strip_html_content(body_html)
+                preview = preview_source[:200] + ('...' if len(preview_source) > 200 else '')
+                emails_data.append({
+                    'id': uid.decode('utf-8', errors='ignore') if isinstance(uid, (bytes, bytearray)) else str(uid),
+                    'subject': decode_header_value(msg.get('Subject', '无主题')),
+                    'from': decode_header_value(msg.get('From', '未知')),
+                    'date': msg.get('Date', ''),
+                    'is_read': '\\Seen' in (flags_text or ''),
+                    'has_attachments': has_message_attachments(msg),
+                    'body_preview': preview,
+                })
+            except Exception:
+                continue
+
+        return {
+            'success': True,
+            'emails': emails_data,
+            'method': 'IMAP (Generic)',
+            'has_more': total > end_idx
+        }
+    except Exception as exc:
+        return {
+            'success': False,
+            'error': build_error_payload(
+                'IMAP_CONNECT_FAILED',
+                sanitize_error_details(str(exc)) or 'IMAP 连接失败',
+                'IMAPConnectError',
+                502,
+                ''
+            ),
+            'error_code': 'IMAP_CONNECT_FAILED'
+        }
+    finally:
+        if mail:
+            try:
+                mail.logout()
+            except Exception:
+                pass
+
+
+def get_email_detail_imap_generic_result(email_addr: str, imap_password: str, imap_host: str,
+                                         imap_port: int = 993, message_id: str = '',
+                                         folder: str = 'inbox', provider: str = 'custom') -> Dict[str, Any]:
+    if not message_id:
+        return {'success': False, 'error': build_error_payload('EMAIL_DETAIL_INVALID', 'message_id 不能为空', 'ValidationError', 400, '')}
+
+    mail = None
+    try:
+        mail = create_imap_connection(imap_host, imap_port)
+        try:
+            mail.login(email_addr, imap_password)
+        except imaplib.IMAP4.error as exc:
+            return {
+                'success': False,
+                'error': build_error_payload(
+                    'IMAP_AUTH_FAILED',
+                    normalize_imap_auth_error(provider, imap_host, str(exc)),
+                    'IMAPAuthError',
+                    401,
+                    ''
+                )
+            }
+
+        selected = resolve_imap_folder(mail, provider, folder, readonly=True)
+        if not selected:
+            return {'success': False, 'error': build_error_payload('IMAP_FOLDER_NOT_FOUND', 'IMAP 文件夹不存在或无权访问', 'IMAPFolderError', 400, '')}
+
+        status, msg_data = mail.uid('FETCH', str(message_id), '(RFC822)')
+        if status != 'OK' or not msg_data:
+            return {'success': False, 'error': build_error_payload('EMAIL_DETAIL_FETCH_FAILED', '获取邮件详情失败', 'IMAPFetchError', 502, status)}
+
+        raw_email = None
+        for item in msg_data:
+            if isinstance(item, tuple) and len(item) >= 2:
+                raw_email = item[1]
+                break
+        if not raw_email:
+            return {'success': False, 'error': build_error_payload('EMAIL_DETAIL_FETCH_FAILED', '获取邮件详情失败', 'IMAPFetchError', 502, '')}
+
+        msg = email.message_from_bytes(raw_email)
+        body_text, body_html = extract_text_and_html(msg)
+        body = body_html or body_text.replace('\n', '<br>')
+        return {
+            'success': True,
+            'email': {
+                'id': str(message_id),
+                'subject': decode_header_value(msg.get('Subject', '无主题')),
+                'from': decode_header_value(msg.get('From', '未知')),
+                'to': decode_header_value(msg.get('To', '')),
+                'cc': decode_header_value(msg.get('Cc', '')),
+                'date': msg.get('Date', ''),
+                'body': body,
+                'body_type': 'html' if body_html else 'text'
+            }
+        }
+    except Exception as exc:
+        return {'success': False, 'error': build_error_payload('IMAP_CONNECT_FAILED', sanitize_error_details(str(exc)) or 'IMAP 连接失败', 'IMAPConnectError', 502, '')}
+    finally:
+        if mail:
+            try:
+                mail.logout()
+            except Exception:
+                pass
+
+
+def parse_email_datetime(value: str) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        if 'T' in str(value):
+            normalized = str(value).replace('Z', '+00:00')
+            dt = datetime.fromisoformat(normalized)
+        else:
+            dt = parsedate_to_datetime(str(value))
+        if dt.tzinfo is not None:
+            return dt.astimezone().replace(tzinfo=None)
+        return dt
+    except Exception:
+        return None
+
+
 def login_required(f):
     """登录验证装饰器"""
     @wraps(f)
@@ -2186,7 +2863,7 @@ def api_export_group(group_id):
         log_audit('export', 'group', str(group_id), f"导出分组 '{group['name']}' 的 {len(accounts)} 个账号")
 
         for acc in accounts:
-            line = f"{acc['email']}----{acc.get('password', '')}----{acc['client_id']}----{acc['refresh_token']}"
+            line = format_account_export_line(acc)
             lines.append(line)
 
     content = '\n'.join(lines)
@@ -2203,6 +2880,15 @@ def api_export_group(group_id):
             'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"
         }
     )
+
+def format_account_export_line(account: Dict[str, Any]) -> str:
+    if account.get('account_type') == 'imap':
+        provider = account.get('provider', 'custom')
+        imap_password = account.get('imap_password', '')
+        if provider == 'custom':
+            return f"{account['email']}----{imap_password}----{account.get('imap_host', '')}----{account.get('imap_port', 993)}"
+        return f"{account['email']}----{imap_password}"
+    return f"{account['email']}----{account.get('password', '')}----{account.get('client_id', '')}----{account.get('refresh_token', '')}"
 
 
 @app.route('/api/accounts/export')
@@ -2236,7 +2922,7 @@ def api_export_all_accounts():
     # 生成导出内容（格式：email----password----client_id----refresh_token）
     lines = []
     for acc in accounts:
-        line = f"{acc['email']}----{acc.get('password', '')}----{acc['client_id']}----{acc['refresh_token']}"
+        line = format_account_export_line(acc)
         lines.append(line)
 
     content = '\n'.join(lines)
@@ -2331,7 +3017,7 @@ def api_export_selected_accounts():
             if accounts:
                 all_lines.append(group['name'])
                 for acc in accounts:
-                    line = f"{acc['email']}----{acc.get('password', '')}----{acc['client_id']}----{acc['refresh_token']}"
+                    line = format_account_export_line(acc)
                     all_lines.append(line)
                     total_count += 1
 
@@ -2428,12 +3114,17 @@ def api_get_accounts():
         safe_accounts.append({
             'id': acc['id'],
             'email': acc['email'],
-            'client_id': acc['client_id'][:8] + '...' if len(acc['client_id']) > 8 else acc['client_id'],
+            'client_id': acc['client_id'][:8] + '...' if acc.get('client_id') and len(acc['client_id']) > 8 else (acc.get('client_id') or ''),
             'group_id': acc.get('group_id'),
             'group_name': acc.get('group_name', '默认分组'),
             'group_color': acc.get('group_color', '#666666'),
             'remark': acc.get('remark', ''),
             'status': acc.get('status', 'active'),
+            'account_type': acc.get('account_type', 'outlook'),
+            'provider': acc.get('provider', 'outlook'),
+            'imap_host': acc.get('imap_host', ''),
+            'imap_port': acc.get('imap_port', 993),
+            'forward_enabled': bool(acc.get('forward_enabled')),
             'last_refresh_at': acc.get('last_refresh_at', ''),
             'last_refresh_status': last_refresh_log['status'] if last_refresh_log else None,
             'last_refresh_error': last_refresh_log['error_message'] if last_refresh_log else None,
@@ -2593,6 +3284,9 @@ def api_search_accounts():
             'group_color': acc['group_color'] if acc['group_color'] else '#666666',
             'remark': acc['remark'] if acc['remark'] else '',
             'status': acc['status'] if acc['status'] else 'active',
+            'account_type': acc.get('account_type', 'outlook'),
+            'provider': acc.get('provider', 'outlook'),
+            'forward_enabled': bool(acc.get('forward_enabled')),
             'created_at': acc['created_at'] if acc['created_at'] else '',
             'updated_at': acc['updated_at'] if acc['updated_at'] else '',
             'tags': acc['tags'],
@@ -2620,6 +3314,12 @@ def api_get_account(account_id):
             'password': account['password'],
             'client_id': account['client_id'],
             'refresh_token': account['refresh_token'],
+            'account_type': account.get('account_type', 'outlook'),
+            'provider': account.get('provider', 'outlook'),
+            'imap_host': account.get('imap_host', ''),
+            'imap_port': account.get('imap_port', 993),
+            'imap_password': account.get('imap_password', ''),
+            'forward_enabled': bool(account.get('forward_enabled')),
             'group_id': account.get('group_id'),
             'group_name': account.get('group_name', '默认分组'),
             'remark': account.get('remark', ''),
@@ -2638,6 +3338,12 @@ def api_add_account():
     account_str = data.get('account_string', '')
     group_id = data.get('group_id', 1)
     account_format = data.get('account_format', 'client_id_refresh_token')
+    provider = data.get('provider', 'outlook')
+    imap_host = (data.get('imap_host', '') or '').strip()
+    try:
+        imap_port = int(data.get('imap_port', 993) or 993)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'IMAP 端口无效'})
     
     if not account_str:
         return jsonify({'success': False, 'error': '请输入账号信息'})
@@ -2651,10 +3357,22 @@ def api_add_account():
         if not line:
             continue
         
-        parsed = parse_account_string(line, account_format)
+        parsed = parse_account_import(line, account_format, provider, imap_host, imap_port)
         if parsed:
-            if add_account(parsed['email'], parsed['password'], 
-                          parsed['client_id'], parsed['refresh_token'], group_id):
+            if add_account(
+                parsed['email'],
+                parsed.get('password', ''),
+                parsed.get('client_id', ''),
+                parsed.get('refresh_token', ''),
+                group_id,
+                '',
+                parsed.get('account_type', 'outlook'),
+                parsed.get('provider', provider),
+                parsed.get('imap_host', ''),
+                parsed.get('imap_port', 993),
+                parsed.get('imap_password', ''),
+                False
+            ):
                 added += 1
     
     if added > 0:
@@ -2678,14 +3396,46 @@ def api_update_account(account_id):
     password = data.get('password', '')
     client_id = data.get('client_id', '')
     refresh_token = data.get('refresh_token', '')
+    account_type = data.get('account_type', 'outlook')
+    provider = data.get('provider', 'outlook')
+    imap_host = (data.get('imap_host', '') or '').strip()
+    imap_port = data.get('imap_port', 993)
+    imap_password = data.get('imap_password', '')
     group_id = data.get('group_id', 1)
     remark = sanitize_input(data.get('remark', ''), max_length=200)
     status = data.get('status', 'active')
+    forward_enabled = bool(data.get('forward_enabled', False))
 
-    if not email_addr or not client_id or not refresh_token:
+    provider_meta = get_provider_meta(provider, email_addr)
+    is_outlook = (account_type == 'outlook') or provider_meta['key'] == 'outlook'
+    if is_outlook:
+        if not email_addr or not client_id or not refresh_token:
+            return jsonify({'success': False, 'error': '邮箱、Client ID 和 Refresh Token 不能为空'})
+        account_type = 'outlook'
+        provider = 'outlook'
+        imap_host = IMAP_SERVER_NEW
+        imap_port = IMAP_PORT
+        imap_password = ''
+    else:
+        if not email_addr or not imap_password:
+            return jsonify({'success': False, 'error': '邮箱和 IMAP 密码不能为空'})
+        if provider_meta['key'] == 'custom' and not imap_host:
+            return jsonify({'success': False, 'error': '自定义 IMAP 必须填写服务器地址'})
+        client_id = ''
+        refresh_token = ''
+        account_type = 'imap'
+        provider = provider_meta['key']
+        if provider != 'custom':
+            imap_host = provider_meta.get('imap_host', '')
+            imap_port = provider_meta.get('imap_port', 993)
+
+    if False:
         return jsonify({'success': False, 'error': '邮箱、Client ID 和 Refresh Token 不能为空'})
 
-    if update_account(account_id, email_addr, password, client_id, refresh_token, group_id, remark, status):
+    if update_account(
+        account_id, email_addr, password, client_id, refresh_token, group_id, remark, status,
+        account_type, provider, imap_host, imap_port, imap_password, forward_enabled
+    ):
         return jsonify({'success': True, 'message': '账号更新成功'})
     else:
         return jsonify({'success': False, 'error': '更新失败'})
@@ -2785,7 +3535,7 @@ def test_refresh_token(client_id: str, refresh_token: str, proxy_url: str = None
 def api_refresh_account(account_id):
     """刷新单个账号的 token"""
     db = get_db()
-    cursor = db.execute('SELECT id, email, client_id, refresh_token, group_id FROM accounts WHERE id = ?', (account_id,))
+    cursor = db.execute('SELECT id, email, client_id, refresh_token, group_id, account_type, provider FROM accounts WHERE id = ?', (account_id,))
     account = cursor.fetchone()
 
     if not account:
@@ -2797,6 +3547,9 @@ def api_refresh_account(account_id):
             f"account_id={account_id}"
         )
         return jsonify({'success': False, 'error': error_payload})
+
+    if (account['account_type'] or '').strip().lower() == 'imap':
+        return jsonify({'success': False, 'error': 'IMAP 账号无需刷新 Token'})
 
     account_id = account['id']
     account_email = account['email']
@@ -2869,7 +3622,7 @@ def api_refresh_all_accounts():
             except Exception as e:
                 print(f"清理旧记录失败: {str(e)}")
 
-            cursor = conn.execute("SELECT id, email, client_id, refresh_token, group_id FROM accounts WHERE status = 'active'")
+            cursor = conn.execute("SELECT id, email, client_id, refresh_token, group_id FROM accounts WHERE status = 'active' AND COALESCE(account_type, 'outlook') = 'outlook'")
             accounts = cursor.fetchall()
 
             total = len(accounts)
@@ -3095,7 +3848,7 @@ def api_trigger_scheduled_refresh():
             except Exception as e:
                 print(f"清理旧记录失败: {str(e)}")
 
-            cursor = conn.execute("SELECT id, email, client_id, refresh_token, group_id FROM accounts WHERE status = 'active'")
+            cursor = conn.execute("SELECT id, email, client_id, refresh_token, group_id FROM accounts WHERE status = 'active' AND COALESCE(account_type, 'outlook') = 'outlook'")
             accounts = cursor.fetchall()
 
             total = len(accounts)
@@ -3457,6 +4210,81 @@ def api_get_emails(email_addr):
             proxy_url = group.get('proxy_url', '') or ''
 
     # 收集所有错误信息
+    if account.get('account_type') == 'imap':
+        imap_result = get_emails_imap_generic(
+            account['email'],
+            account.get('imap_password', ''),
+            account.get('imap_host', ''),
+            account.get('imap_port', 993),
+            folder,
+            account.get('provider', 'custom'),
+            skip,
+            top
+        )
+        if imap_result.get('success'):
+            db = get_db()
+            db.execute('''
+                UPDATE accounts
+                SET last_refresh_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                WHERE email = ?
+            ''', (email_addr,))
+            db.commit()
+            return jsonify(imap_result)
+        return jsonify({
+            'success': False,
+            'error': imap_result.get('error', '获取邮件失败'),
+            'details': {'imap_generic': imap_result.get('error')}
+        })
+
+    if account.get('account_type') == 'imap':
+        imap_result = get_emails_imap_generic(
+            account['email'],
+            account.get('imap_password', ''),
+            account.get('imap_host', ''),
+            account.get('imap_port', 993),
+            folder,
+            account.get('provider', 'custom'),
+            skip,
+            top
+        )
+        if imap_result.get('success'):
+            return jsonify(imap_result)
+        return jsonify({'success': False, 'error': imap_result.get('error', '获取邮件失败')})
+
+    if account.get('account_type') == 'imap':
+        imap_result = get_emails_imap_generic(
+            account['email'],
+            account.get('imap_password', ''),
+            account.get('imap_host', ''),
+            account.get('imap_port', 993),
+            folder,
+            account.get('provider', 'custom'),
+            skip,
+            top
+        )
+        if imap_result.get('success'):
+            return jsonify(imap_result)
+        return jsonify({'success': False, 'error': imap_result.get('error', '获取邮件失败')})
+
+    if account.get('account_type') == 'imap':
+        imap_result = get_emails_imap_generic(
+            account['email'],
+            account.get('imap_password', ''),
+            account.get('imap_host', ''),
+            account.get('imap_port', 993),
+            folder,
+            account.get('provider', 'custom'),
+            skip,
+            top
+        )
+        if imap_result.get('success'):
+            return jsonify(imap_result)
+        return jsonify({
+            'success': False,
+            'error': imap_result.get('error', '鑾峰彇閭欢澶辫触'),
+            'details': {'imap_generic': imap_result.get('error')}
+        })
+
     all_errors = {}
 
     # 1. 尝试 Graph API
@@ -3561,6 +4389,9 @@ def api_delete_emails():
             proxy_url = group.get('proxy_url', '') or ''
 
     # 1. 优先尝试 Graph API
+    if account.get('account_type') == 'imap':
+        return jsonify({'success': False, 'error': 'IMAP 账号暂不支持批量删除邮件'})
+
     graph_res = delete_emails_graph(account['client_id'], account['refresh_token'], message_ids, proxy_url)
     if graph_res['success']:
         return jsonify(graph_res)
@@ -3596,6 +4427,20 @@ def api_get_email_detail(email_addr, message_id):
 
     method = request.args.get('method', 'graph')
     folder = request.args.get('folder', 'inbox')
+
+    if account.get('account_type') == 'imap':
+        detail_result = get_email_detail_imap_generic_result(
+            account['email'],
+            account.get('imap_password', ''),
+            account.get('imap_host', ''),
+            account.get('imap_port', 993),
+            message_id,
+            folder,
+            account.get('provider', 'custom')
+        )
+        if detail_result.get('success'):
+            return jsonify(detail_result)
+        return jsonify({'success': False, 'error': detail_result.get('error', '获取邮件详情失败')})
 
     if method == 'graph':
         # 获取分组代理设置
@@ -4946,6 +5791,17 @@ def api_get_settings():
     settings['cloudflare_worker_domain'] = get_cloudflare_worker_domain()
     settings['cloudflare_email_domains'] = ', '.join(get_cloudflare_email_domains())
     settings['cloudflare_admin_password'] = get_cloudflare_admin_password()
+    settings['forward_check_interval_minutes'] = get_setting('forward_check_interval_minutes', '5')
+    settings['email_forward_recipient'] = get_setting('email_forward_recipient', '')
+    settings['smtp_host'] = get_setting('smtp_host', '')
+    settings['smtp_port'] = get_setting('smtp_port', '465')
+    settings['smtp_username'] = get_setting('smtp_username', '')
+    settings['smtp_password'] = get_setting_decrypted('smtp_password', '')
+    settings['smtp_from_email'] = get_setting('smtp_from_email', '')
+    settings['smtp_use_tls'] = get_setting('smtp_use_tls', 'false')
+    settings['smtp_use_ssl'] = get_setting('smtp_use_ssl', 'true')
+    settings['telegram_bot_token'] = get_setting_decrypted('telegram_bot_token', '')
+    settings['telegram_chat_id'] = get_setting('telegram_chat_id', '')
     return jsonify({'success': True, 'settings': settings})
 
 
@@ -5093,6 +5949,84 @@ def api_update_settings():
         else:
             errors.append('更新 Cloudflare 管理密码失败')
 
+    if 'forward_check_interval_minutes' in data:
+        try:
+            minutes = int(data['forward_check_interval_minutes'])
+            if minutes < 1 or minutes > 60:
+                errors.append('转发检查间隔必须在 1-60 分钟之间')
+            elif set_setting('forward_check_interval_minutes', str(minutes)):
+                updated.append('转发检查间隔')
+            else:
+                errors.append('保存转发检查间隔失败')
+        except ValueError:
+            errors.append('转发检查间隔必须是数字')
+
+    if 'email_forward_recipient' in data:
+        if set_setting('email_forward_recipient', data['email_forward_recipient'].strip()):
+            updated.append('邮件转发收件箱')
+        else:
+            errors.append('保存邮件转发收件箱失败')
+
+    if 'smtp_host' in data:
+        if set_setting('smtp_host', data['smtp_host'].strip()):
+            updated.append('SMTP 主机')
+        else:
+            errors.append('保存 SMTP 主机失败')
+
+    if 'smtp_port' in data:
+        try:
+            smtp_port = int(data['smtp_port'])
+            if smtp_port <= 0 or smtp_port > 65535:
+                errors.append('SMTP 端口无效')
+            elif set_setting('smtp_port', str(smtp_port)):
+                updated.append('SMTP 端口')
+            else:
+                errors.append('保存 SMTP 端口失败')
+        except ValueError:
+            errors.append('SMTP 端口必须是数字')
+
+    if 'smtp_username' in data:
+        if set_setting('smtp_username', data['smtp_username'].strip()):
+            updated.append('SMTP 用户名')
+        else:
+            errors.append('保存 SMTP 用户名失败')
+
+    if 'smtp_password' in data:
+        if set_setting_encrypted('smtp_password', data['smtp_password'].strip()):
+            updated.append('SMTP 密码')
+        else:
+            errors.append('保存 SMTP 密码失败')
+
+    if 'smtp_from_email' in data:
+        if set_setting('smtp_from_email', data['smtp_from_email'].strip()):
+            updated.append('SMTP 发件人')
+        else:
+            errors.append('保存 SMTP 发件人失败')
+
+    if 'smtp_use_tls' in data:
+        if set_setting('smtp_use_tls', str(data['smtp_use_tls']).lower()):
+            updated.append('SMTP TLS')
+        else:
+            errors.append('保存 SMTP TLS 失败')
+
+    if 'smtp_use_ssl' in data:
+        if set_setting('smtp_use_ssl', str(data['smtp_use_ssl']).lower()):
+            updated.append('SMTP SSL')
+        else:
+            errors.append('保存 SMTP SSL 失败')
+
+    if 'telegram_bot_token' in data:
+        if set_setting_encrypted('telegram_bot_token', data['telegram_bot_token'].strip()):
+            updated.append('Telegram Bot Token')
+        else:
+            errors.append('保存 Telegram Bot Token 失败')
+
+    if 'telegram_chat_id' in data:
+        if set_setting('telegram_chat_id', data['telegram_chat_id'].strip()):
+            updated.append('Telegram Chat ID')
+        else:
+            errors.append('保存 Telegram Chat ID 失败')
+
     if errors:
         return jsonify({'success': False, 'error': '；'.join(errors)})
 
@@ -5202,6 +6136,232 @@ def api_external_get_emails():
 
 # ==================== 定时任务调度器 ====================
 
+def get_bool_setting(key: str, default: bool = False) -> bool:
+    value = str(get_setting(key, 'true' if default else 'false')).strip().lower()
+    return value in ('1', 'true', 'yes', 'on')
+
+
+def has_forward_log(conn, account_id: int, message_id: str, channel: str) -> bool:
+    row = conn.execute(
+        'SELECT 1 FROM forward_logs WHERE account_id = ? AND message_id = ? AND channel = ? LIMIT 1',
+        (account_id, str(message_id), channel)
+    ).fetchone()
+    return row is not None
+
+
+def record_forward_log(conn, account_id: int, message_id: str, channel: str):
+    conn.execute(
+        'INSERT OR IGNORE INTO forward_logs (account_id, message_id, channel) VALUES (?, ?, ?)',
+        (account_id, str(message_id), channel)
+    )
+
+
+def send_forward_email(subject: str, body_text: str, body_html: str = '') -> bool:
+    recipient = get_setting('email_forward_recipient', '').strip()
+    host = get_setting('smtp_host', '').strip()
+    if not recipient or not host:
+        return False
+
+    port = int(get_setting('smtp_port', '465') or 465)
+    username = get_setting('smtp_username', '').strip()
+    password = get_setting_decrypted('smtp_password', '').strip()
+    from_email = get_setting('smtp_from_email', '').strip() or username
+    use_tls = get_bool_setting('smtp_use_tls', False)
+    use_ssl = get_bool_setting('smtp_use_ssl', True)
+
+    message = EmailMessage()
+    message['From'] = from_email
+    message['To'] = recipient
+    message['Subject'] = subject
+    message.set_content(body_text)
+    if body_html:
+        message.add_alternative(body_html, subtype='html')
+
+    smtp_cls = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+    with smtp_cls(host, port, timeout=20) as client:
+        if not use_ssl:
+            client.ehlo()
+            if use_tls:
+                client.starttls()
+                client.ehlo()
+        if username:
+            client.login(username, password)
+        client.send_message(message)
+    return True
+
+
+def send_forward_telegram(text: str) -> bool:
+    bot_token = get_setting_decrypted('telegram_bot_token', '').strip()
+    chat_id = get_setting('telegram_chat_id', '').strip()
+    if not bot_token or not chat_id:
+        return False
+    response = requests.post(
+        f'https://api.telegram.org/bot{bot_token}/sendMessage',
+        json={
+            'chat_id': chat_id,
+            'text': text[:4000],
+            'disable_web_page_preview': True,
+        },
+        timeout=15
+    )
+    return response.ok
+
+
+def build_forward_payload(account: Dict[str, Any], email_detail: Dict[str, Any]) -> tuple[str, str, str, str]:
+    subject = email_detail.get('subject') or '无主题'
+    sender = email_detail.get('from') or '未知'
+    received_at = email_detail.get('date') or ''
+    body = email_detail.get('body') or ''
+    body_text = strip_html_content(body) if email_detail.get('body_type') == 'html' else strip_html_content(body.replace('<br>', '\n'))
+    body_text = body_text[:2000]
+
+    title = f"[邮件转发] {subject}"
+    plain = f"账号: {account.get('email','')}\n发件人: {sender}\n时间: {received_at}\n主题: {subject}\n\n{body_text}"
+    html_body = (
+        f"<p><strong>账号:</strong> {html.escape(account.get('email', ''))}</p>"
+        f"<p><strong>发件人:</strong> {html.escape(sender)}</p>"
+        f"<p><strong>时间:</strong> {html.escape(received_at)}</p>"
+        f"<p><strong>主题:</strong> {html.escape(subject)}</p><hr>{body}"
+    )
+    telegram_text = f"新邮件转发\n账号: {account.get('email','')}\n发件人: {sender}\n主题: {subject}\n时间: {received_at}\n\n{body_text[:1200]}"
+    return title, plain, html_body, telegram_text
+
+
+def fetch_forward_candidates(account: Dict[str, Any], top: int = 20) -> List[Dict[str, Any]]:
+    if account.get('account_type') == 'imap':
+        result = get_emails_imap_generic(
+            account['email'],
+            account.get('imap_password', ''),
+            account.get('imap_host', ''),
+            account.get('imap_port', 993),
+            'inbox',
+            account.get('provider', 'custom'),
+            0,
+            top
+        )
+        return result.get('emails', []) if result.get('success') else []
+
+    proxy_url = ''
+    if account.get('group_id'):
+        group = get_group_by_id(account['group_id'])
+        if group:
+            proxy_url = group.get('proxy_url', '') or ''
+    result = get_emails_graph(account.get('client_id', ''), account.get('refresh_token', ''), 'inbox', 0, top, proxy_url)
+    if not result.get('success'):
+        return []
+
+    formatted = []
+    for e in result.get('emails', []):
+        formatted.append({
+            'id': e.get('id'),
+            'subject': e.get('subject', '无主题'),
+            'from': e.get('from', {}).get('emailAddress', {}).get('address', '未知'),
+            'date': e.get('receivedDateTime', ''),
+            'body_preview': e.get('bodyPreview', '')
+        })
+    return formatted
+
+
+def fetch_forward_detail(account: Dict[str, Any], message_id: str) -> Optional[Dict[str, Any]]:
+    if account.get('account_type') == 'imap':
+        result = get_email_detail_imap_generic_result(
+            account['email'],
+            account.get('imap_password', ''),
+            account.get('imap_host', ''),
+            account.get('imap_port', 993),
+            message_id,
+            'inbox',
+            account.get('provider', 'custom')
+        )
+        return result.get('email') if result.get('success') else None
+
+    proxy_url = ''
+    if account.get('group_id'):
+        group = get_group_by_id(account['group_id'])
+        if group:
+            proxy_url = group.get('proxy_url', '') or ''
+    detail = get_email_detail_graph(account.get('client_id', ''), account.get('refresh_token', ''), message_id, proxy_url)
+    if not detail:
+        return None
+    return {
+        'id': detail.get('id'),
+        'subject': detail.get('subject', '无主题'),
+        'from': detail.get('from', {}).get('emailAddress', {}).get('address', '未知'),
+        'to': ', '.join([r.get('emailAddress', {}).get('address', '') for r in detail.get('toRecipients', [])]),
+        'cc': ', '.join([r.get('emailAddress', {}).get('address', '') for r in detail.get('ccRecipients', [])]),
+        'date': detail.get('receivedDateTime', ''),
+        'body': detail.get('body', {}).get('content', ''),
+        'body_type': detail.get('body', {}).get('contentType', 'text').lower()
+    }
+
+
+def process_forwarding_job():
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    try:
+        email_enabled = bool(get_setting('email_forward_recipient', '').strip() and get_setting('smtp_host', '').strip())
+        telegram_enabled = bool(get_setting_decrypted('telegram_bot_token', '').strip() and get_setting('telegram_chat_id', '').strip())
+        if not email_enabled and not telegram_enabled:
+            return
+
+        accounts = conn.execute(
+            "SELECT * FROM accounts WHERE status = 'active' AND forward_enabled = 1"
+        ).fetchall()
+        for row in accounts:
+            account = dict(row)
+            if account.get('password'):
+                try:
+                    account['password'] = decrypt_data(account['password'])
+                except Exception:
+                    pass
+            if account.get('refresh_token'):
+                try:
+                    account['refresh_token'] = decrypt_data(account['refresh_token'])
+                except Exception:
+                    pass
+            if account.get('imap_password'):
+                try:
+                    account['imap_password'] = decrypt_data(account['imap_password'])
+                except Exception:
+                    pass
+
+            cursor_time = parse_email_datetime(account.get('forward_last_checked_at', ''))
+            emails = fetch_forward_candidates(account, 20)
+            recent_emails = []
+            for item in emails:
+                dt = parse_email_datetime(item.get('date', ''))
+                if cursor_time and dt and dt <= cursor_time:
+                    continue
+                recent_emails.append((dt, item))
+            recent_emails.sort(key=lambda pair: pair[0] or datetime.min)
+
+            for _, item in recent_emails:
+                detail = fetch_forward_detail(account, item.get('id'))
+                if not detail:
+                    continue
+                title, plain, html_body, telegram_text = build_forward_payload(account, detail)
+                if email_enabled and not has_forward_log(conn, account['id'], detail['id'], FORWARD_CHANNEL_EMAIL):
+                    try:
+                        if send_forward_email(title, plain, html_body):
+                            record_forward_log(conn, account['id'], detail['id'], FORWARD_CHANNEL_EMAIL)
+                    except Exception:
+                        pass
+                if telegram_enabled and not has_forward_log(conn, account['id'], detail['id'], FORWARD_CHANNEL_TELEGRAM):
+                    try:
+                        if send_forward_telegram(telegram_text):
+                            record_forward_log(conn, account['id'], detail['id'], FORWARD_CHANNEL_TELEGRAM)
+                    except Exception:
+                        pass
+
+            conn.execute(
+                'UPDATE accounts SET forward_last_checked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (account['id'],)
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
+
 def init_scheduler():
     """初始化定时任务调度器"""
     global scheduler_instance
@@ -5250,6 +6410,14 @@ def init_scheduler():
                                 name='Token 定时刷新',
                                 replace_existing=True
                             )
+                            forward_interval = max(1, min(60, int(get_setting('forward_check_interval_minutes', '5') or '5')))
+                            scheduler.add_job(
+                                func=process_forwarding_job,
+                                trigger=CronTrigger(minute=f'*/{forward_interval}'),
+                                id='forward_mail',
+                                name='邮件转发轮询',
+                                replace_existing=True
+                            )
                             scheduler.start()
                             scheduler_instance = scheduler
                             print(f"✓ 定时任务已启动：Cron 表达式 '{cron_expr}'")
@@ -5269,6 +6437,14 @@ def init_scheduler():
                     replace_existing=True
                 )
 
+                forward_interval = max(1, min(60, int(get_setting('forward_check_interval_minutes', '5') or '5')))
+                scheduler.add_job(
+                    func=process_forwarding_job,
+                    trigger=CronTrigger(minute=f'*/{forward_interval}'),
+                    id='forward_mail',
+                    name='邮件转发轮询',
+                    replace_existing=True
+                )
                 scheduler.start()
                 scheduler_instance = scheduler
                 print(f"✓ 定时任务已启动：每天凌晨 2:00 检查刷新（周期：{refresh_interval_days} 天）")
@@ -5359,7 +6535,7 @@ def trigger_refresh_internal():
         conn.execute("DELETE FROM account_refresh_logs WHERE created_at < datetime('now', '-6 months')")
         conn.commit()
 
-        cursor = conn.execute("SELECT id, email, client_id, refresh_token, group_id FROM accounts WHERE status = 'active'")
+        cursor = conn.execute("SELECT id, email, client_id, refresh_token, group_id FROM accounts WHERE status = 'active' AND COALESCE(account_type, 'outlook') = 'outlook'")
         accounts = cursor.fetchall()
 
         total = len(accounts)
@@ -5423,6 +6599,333 @@ def trigger_refresh_internal():
 
 # ==================== 错误处理 ====================
 
+def api_update_account_v2(account_id):
+    data = request.json or {}
+
+    if 'status' in data and len(data) == 1:
+        return api_update_account_status(account_id, data['status'])
+
+    email_addr = (data.get('email', '') or '').strip()
+    password = data.get('password', '') or ''
+    client_id = (data.get('client_id', '') or '').strip()
+    refresh_token = (data.get('refresh_token', '') or '').strip()
+    account_type = (data.get('account_type', 'outlook') or 'outlook').strip().lower()
+    provider = (data.get('provider', 'outlook') or 'outlook').strip().lower()
+    imap_host = (data.get('imap_host', '') or '').strip()
+    imap_password = data.get('imap_password', '') or ''
+    group_id = data.get('group_id', 1)
+    remark = sanitize_input(data.get('remark', ''), max_length=200)
+    status = data.get('status', 'active')
+    forward_enabled = bool(data.get('forward_enabled', False))
+
+    try:
+        group_id = int(group_id or 1)
+    except (TypeError, ValueError):
+        group_id = 1
+
+    try:
+        imap_port = int(data.get('imap_port', 993) or 993)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'IMAP 端口无效'})
+
+    provider_meta = get_provider_meta(provider, email_addr)
+    is_outlook = account_type == 'outlook' or provider_meta['key'] == 'outlook'
+
+    if is_outlook:
+        if not email_addr or not client_id or not refresh_token:
+            return jsonify({'success': False, 'error': '邮箱、Client ID 和 Refresh Token 不能为空'})
+        account_type = 'outlook'
+        provider = 'outlook'
+        imap_host = IMAP_SERVER_NEW
+        imap_port = IMAP_PORT
+        imap_password = ''
+    else:
+        if not email_addr or not imap_password:
+            return jsonify({'success': False, 'error': '邮箱和 IMAP 密码不能为空'})
+        account_type = 'imap'
+        provider = provider_meta['key']
+        client_id = ''
+        refresh_token = ''
+        password = ''
+        if provider == 'custom':
+            if not imap_host:
+                return jsonify({'success': False, 'error': '自定义 IMAP 必须填写服务器地址'})
+        else:
+            imap_host = provider_meta.get('imap_host', '')
+            imap_port = int(provider_meta.get('imap_port', 993) or 993)
+
+    if update_account(
+        account_id,
+        email_addr,
+        password,
+        client_id,
+        refresh_token,
+        group_id,
+        remark,
+        status,
+        account_type,
+        provider,
+        imap_host,
+        imap_port,
+        imap_password,
+        forward_enabled
+    ):
+        return jsonify({'success': True, 'message': '账号更新成功'})
+    return jsonify({'success': False, 'error': '更新失败'})
+
+
+def api_get_emails_v2(email_addr):
+    account = get_account_by_email(email_addr)
+    if not account:
+        error_payload = build_error_payload(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            "NotFoundError",
+            404,
+            f"email={email_addr}"
+        )
+        return jsonify({'success': False, 'error': error_payload})
+
+    folder = request.args.get('folder', 'inbox')
+    skip = int(request.args.get('skip', 0))
+    top = int(request.args.get('top', 20))
+
+    proxy_url = ''
+    if account.get('group_id'):
+        group = get_group_by_id(account['group_id'])
+        if group:
+            proxy_url = group.get('proxy_url', '') or ''
+
+    if account.get('account_type') == 'imap':
+        result = get_emails_imap_generic(
+            account['email'],
+            account.get('imap_password', ''),
+            account.get('imap_host', ''),
+            account.get('imap_port', 993),
+            folder,
+            account.get('provider', 'custom'),
+            skip,
+            top
+        )
+        if result.get('success'):
+            db = get_db()
+            db.execute(
+                '''
+                UPDATE accounts
+                SET last_refresh_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                WHERE email = ?
+                ''',
+                (email_addr,)
+            )
+            db.commit()
+            return jsonify(result)
+        return jsonify({
+            'success': False,
+            'error': result.get('error', '获取邮件失败'),
+            'details': {'imap_generic': result.get('error')}
+        })
+
+    all_errors = {}
+    graph_result = get_emails_graph(account['client_id'], account['refresh_token'], folder, skip, top, proxy_url)
+    if graph_result.get("success"):
+        emails = graph_result.get("emails", [])
+        db = get_db()
+        db.execute(
+            '''
+            UPDATE accounts
+            SET last_refresh_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE email = ?
+            ''',
+            (email_addr,)
+        )
+        db.commit()
+
+        formatted = []
+        for e in emails:
+            formatted.append({
+                'id': e.get('id'),
+                'subject': e.get('subject', '无主题'),
+                'from': e.get('from', {}).get('emailAddress', {}).get('address', '未知'),
+                'date': e.get('receivedDateTime', ''),
+                'is_read': e.get('isRead', False),
+                'has_attachments': e.get('hasAttachments', False),
+                'body_preview': e.get('bodyPreview', '')
+            })
+        return jsonify({
+            'success': True,
+            'emails': formatted,
+            'method': 'Graph API',
+            'has_more': len(formatted) >= top
+        })
+
+    graph_error = graph_result.get("error")
+    all_errors["graph"] = graph_error
+    if isinstance(graph_error, dict) and graph_error.get('type') in ('ProxyError', 'ConnectionError'):
+        return jsonify({
+            'success': False,
+            'error': '代理连接失败，请检查分组代理设置',
+            'details': all_errors
+        })
+
+    imap_new_result = get_emails_imap_with_server(
+        account['email'],
+        account['client_id'],
+        account['refresh_token'],
+        folder,
+        skip,
+        top,
+        IMAP_SERVER_NEW
+    )
+    if imap_new_result.get("success"):
+        return jsonify({
+            'success': True,
+            'emails': imap_new_result.get("emails", []),
+            'method': 'IMAP (New)',
+            'has_more': False
+        })
+    all_errors["imap_new"] = imap_new_result.get("error")
+
+    imap_old_result = get_emails_imap_with_server(
+        account['email'],
+        account['client_id'],
+        account['refresh_token'],
+        folder,
+        skip,
+        top,
+        IMAP_SERVER_OLD
+    )
+    if imap_old_result.get("success"):
+        return jsonify({
+            'success': True,
+            'emails': imap_old_result.get("emails", []),
+            'method': 'IMAP (Old)',
+            'has_more': False
+        })
+    all_errors["imap_old"] = imap_old_result.get("error")
+
+    return jsonify({
+        'success': False,
+        'error': '无法获取邮件，所有方式均失败',
+        'details': all_errors
+    })
+
+
+def api_external_get_emails_v2():
+    email_addr = request.args.get('email', '').strip()
+    folder = request.args.get('folder', 'inbox').strip().lower()
+    skip = int(request.args.get('skip', 0))
+    top = int(request.args.get('top', 20))
+
+    if not email_addr:
+        return jsonify({'success': False, 'error': '缺少 email 参数'}), 400
+
+    valid_folders = ['inbox', 'junkemail']
+    if folder not in valid_folders:
+        return jsonify({'success': False, 'error': f'folder 参数无效，仅支持 {", ".join(valid_folders)}'}), 400
+
+    if top > 50:
+        top = 50
+
+    account = get_account_by_email(email_addr)
+    if not account:
+        return jsonify({'success': False, 'error': '邮箱账号不存在'}), 404
+
+    proxy_url = ''
+    if account.get('group_id'):
+        group = get_group_by_id(account['group_id'])
+        if group:
+            proxy_url = group.get('proxy_url', '') or ''
+
+    if account.get('account_type') == 'imap':
+        result = get_emails_imap_generic(
+            account['email'],
+            account.get('imap_password', ''),
+            account.get('imap_host', ''),
+            account.get('imap_port', 993),
+            folder,
+            account.get('provider', 'custom'),
+            skip,
+            top
+        )
+        if result.get('success'):
+            return jsonify(result)
+        return jsonify({
+            'success': False,
+            'error': result.get('error', '获取邮件失败'),
+            'details': {'imap_generic': result.get('error')}
+        })
+
+    all_errors = {}
+    graph_result = get_emails_graph(account['client_id'], account['refresh_token'], folder, skip, top, proxy_url)
+    if graph_result.get('success'):
+        emails = graph_result.get('emails', [])
+        formatted = []
+        for e in emails:
+            formatted.append({
+                'id': e.get('id'),
+                'subject': e.get('subject', '无主题'),
+                'from': e.get('from', {}).get('emailAddress', {}).get('address', '未知'),
+                'date': e.get('receivedDateTime', ''),
+                'is_read': e.get('isRead', False),
+                'has_attachments': e.get('hasAttachments', False),
+                'body_preview': e.get('bodyPreview', '')
+            })
+        return jsonify({
+            'success': True,
+            'emails': formatted,
+            'method': 'Graph API',
+            'has_more': len(formatted) >= top
+        })
+
+    graph_error = graph_result.get('error')
+    all_errors['graph'] = graph_error
+    if isinstance(graph_error, dict) and graph_error.get('type') in ('ProxyError', 'ConnectionError'):
+        return jsonify({'success': False, 'error': '代理连接失败', 'details': all_errors})
+
+    imap_new_result = get_emails_imap_with_server(
+        account['email'],
+        account['client_id'],
+        account['refresh_token'],
+        folder,
+        skip,
+        top,
+        IMAP_SERVER_NEW
+    )
+    if imap_new_result.get('success'):
+        return jsonify({
+            'success': True,
+            'emails': imap_new_result.get('emails', []),
+            'method': 'IMAP (New)',
+            'has_more': False
+        })
+    all_errors['imap_new'] = imap_new_result.get('error')
+
+    imap_old_result = get_emails_imap_with_server(
+        account['email'],
+        account['client_id'],
+        account['refresh_token'],
+        folder,
+        skip,
+        top,
+        IMAP_SERVER_OLD
+    )
+    if imap_old_result.get('success'):
+        return jsonify({
+            'success': True,
+            'emails': imap_old_result.get('emails', []),
+            'method': 'IMAP (Old)',
+            'has_more': False
+        })
+    all_errors['imap_old'] = imap_old_result.get('error')
+
+    return jsonify({'success': False, 'error': '无法获取邮件，所有方式均失败', 'details': all_errors})
+
+
+app.view_functions['api_update_account'] = api_update_account_v2
+app.view_functions['api_get_emails'] = api_get_emails_v2
+app.view_functions['api_external_get_emails'] = api_external_get_emails_v2
+
+
 @app.errorhandler(400)
 def bad_request(error):
     """处理400错误"""
@@ -5454,9 +6957,8 @@ if __name__ == '__main__':
     print(f"运行模式: {'开发' if debug else '生产'}")
     print("=" * 60)
 
+    init_scheduler()
     app.run(debug=debug, host=host, port=port)
 
     # 初始化定时任务
-    scheduler = init_scheduler()
-
-    app.run(debug=debug, host=host, port=port)
+    init_scheduler()
