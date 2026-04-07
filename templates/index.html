@@ -1071,6 +1071,202 @@
             margin-top: 6px;
         }
 
+        .settings-section {
+            border-top: 1px solid #e5e5e5;
+            margin: 24px 0;
+            padding-top: 24px;
+        }
+
+        .settings-section-head {
+            margin-bottom: 18px;
+        }
+
+        .settings-section-kicker {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: #f3f4f6;
+            color: #4b5563;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .settings-section-head h4 {
+            margin: 10px 0 6px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .settings-section-head p {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #6b7280;
+        }
+
+        .input-inline {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .input-inline .form-input {
+            max-width: 132px;
+        }
+
+        .input-inline span {
+            font-size: 14px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .forward-channel-picker {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .forward-channel-option {
+            position: relative;
+            display: flex;
+            align-items: stretch;
+            cursor: pointer;
+        }
+
+        .forward-channel-option input {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .forward-channel-option__content {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 14px 16px;
+            border: 1px solid #dcdfe4;
+            border-radius: 12px;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+        }
+
+        .forward-channel-option__title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .forward-channel-option__meta {
+            font-size: 12px;
+            line-height: 1.5;
+            color: #6b7280;
+        }
+
+        .forward-channel-option.is-selected .forward-channel-option__content {
+            border-color: #111827;
+            background: linear-gradient(180deg, #ffffff 0%, #f3f4f6 100%);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+            transform: translateY(-1px);
+        }
+
+        .forward-channel-empty {
+            margin-bottom: 18px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: #f8fafc;
+            color: #6b7280;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .forward-channel-panels {
+            display: grid;
+            gap: 14px;
+        }
+
+        .forward-channel-panel {
+            padding: 18px;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            background: #fbfbfc;
+        }
+
+        .forward-channel-panel[hidden] {
+            display: none !important;
+        }
+
+        .forward-channel-panel__header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .forward-channel-panel__title {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .forward-channel-panel__desc {
+            margin: 4px 0 0;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #6b7280;
+        }
+
+        .forward-channel-panel__tag {
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: #eef2f7;
+            color: #4b5563;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+        }
+
+        .forward-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .forward-grid .form-group {
+            margin-bottom: 0;
+        }
+
+        .forward-toggle-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .forward-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .forward-checkbox .form-label {
+            margin: 0;
+        }
+
+        @media (max-width: 640px) {
+            .forward-channel-picker,
+            .forward-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .color-picker-group {
             display: flex;
             gap: 8px;
@@ -1797,7 +1993,7 @@
 
     <!-- 设置模态框 -->
     <div class="modal" id="settingsModal" onclick="if(event.target === this) hideSettingsModal()">
-        <div class="modal-content" style="width: 480px;">
+        <div class="modal-content" style="width: min(560px, calc(100vw - 32px));">
             <div class="modal-header">
                 <h3>⚙️ 系统设置</h3>
                 <button class="modal-close" onclick="hideSettingsModal()">&times;</button>
@@ -3596,64 +3792,172 @@ ${details}
             return !!(selectedGroup && selectedGroup.name === '涓存椂閭');
         }
 
+        function normalizeForwardChannels(rawChannels) {
+            const aliases = {
+                email: 'smtp',
+                smtp: 'smtp',
+                tg: 'telegram',
+                telegram: 'telegram'
+            };
+            const values = Array.isArray(rawChannels)
+                ? rawChannels
+                : String(rawChannels || '').split(',');
+
+            return [...new Set(
+                values
+                    .map(channel => aliases[String(channel || '').trim().toLowerCase()])
+                    .filter(Boolean)
+            )];
+        }
+
+        function getSelectedForwardChannels() {
+            return ['smtp', 'telegram'].filter(channel =>
+                document.getElementById(`forwardChannel${channel === 'smtp' ? 'Smtp' : 'Telegram'}`)?.checked
+            );
+        }
+
+        function setSelectedForwardChannels(rawChannels) {
+            const channels = normalizeForwardChannels(rawChannels);
+            const smtpCheckbox = document.getElementById('forwardChannelSmtp');
+            const telegramCheckbox = document.getElementById('forwardChannelTelegram');
+            if (smtpCheckbox) smtpCheckbox.checked = channels.includes('smtp');
+            if (telegramCheckbox) telegramCheckbox.checked = channels.includes('telegram');
+            syncForwardChannelUI();
+        }
+
+        function syncForwardChannelUI() {
+            const selectedChannels = new Set(getSelectedForwardChannels());
+
+            document.querySelectorAll('#forwardChannelPicker .forward-channel-option').forEach(option => {
+                const input = option.querySelector('input');
+                option.classList.toggle('is-selected', !!input?.checked);
+            });
+
+            document.querySelectorAll('#forwardChannelPanels .forward-channel-panel').forEach(panel => {
+                const channel = panel.dataset.channel;
+                panel.hidden = !selectedChannels.has(channel);
+            });
+
+            const emptyState = document.getElementById('forwardChannelEmptyState');
+            if (emptyState) {
+                emptyState.hidden = selectedChannels.size > 0;
+            }
+        }
+
         function ensureForwardingSettingsUI() {
-            if (document.getElementById('forwardCheckIntervalMinutes')) return;
+            if (document.getElementById('forwardingSettingsSection')) return;
             const footer = document.querySelector('#settingsModal .modal-footer');
             if (!footer) return;
             footer.insertAdjacentHTML('beforebegin', `
-                <div style="border-top: 1px solid #e5e5e5; margin: 24px 0; padding-top: 24px;">
-                    <h4 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">邮件转发设置</h4>
+                <div class="settings-section" id="forwardingSettingsSection">
+                    <div class="settings-section-head">
+                        <span class="settings-section-kicker">Forwarding</span>
+                        <h4>邮件转发设置</h4>
+                        <p>可同时启用多个转发渠道，只有选中的渠道才会展示并参与实际转发。</p>
+                    </div>
                     <div class="form-group">
                         <label class="form-label">轮询间隔</label>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="number" class="form-input" id="forwardCheckIntervalMinutes" min="1" max="60" value="5" style="max-width: 120px;">
-                            <span style="font-size: 14px; color: #666; font-weight: 500;">分钟</span>
+                        <div class="input-inline">
+                            <input type="number" class="form-input" id="forwardCheckIntervalMinutes" min="1" max="60" value="5">
+                            <span>分钟</span>
                         </div>
+                        <div class="form-hint">系统会按该频率扫描开启了“邮件转发”的邮箱账号。</div>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">转发到邮箱</label>
-                        <input type="text" class="form-input" id="settingsEmailForwardRecipient" placeholder="main@example.com">
+                        <label class="form-label">转发渠道</label>
+                        <div class="forward-channel-picker" id="forwardChannelPicker">
+                            <label class="forward-channel-option">
+                                <input type="checkbox" id="forwardChannelSmtp" onchange="syncForwardChannelUI()">
+                                <span class="forward-channel-option__content">
+                                    <span class="forward-channel-option__title">SMTP</span>
+                                    <span class="forward-channel-option__meta">转发为邮件，适合归档或再次分发。</span>
+                                </span>
+                            </label>
+                            <label class="forward-channel-option">
+                                <input type="checkbox" id="forwardChannelTelegram" onchange="syncForwardChannelUI()">
+                                <span class="forward-channel-option__content">
+                                    <span class="forward-channel-option__title">TG</span>
+                                    <span class="forward-channel-option__meta">转发到 Telegram，适合即时提醒。</span>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="form-hint">支持多选；不选渠道时不会执行自动转发。</div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">SMTP 主机</label>
-                        <input type="text" class="form-input" id="settingsSmtpHost" placeholder="smtp.example.com">
+                    <div class="forward-channel-empty" id="forwardChannelEmptyState" hidden>
+                        当前未选择任何转发渠道。保存后，已开启邮件转发的账号也不会再向外发送通知。
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">SMTP 端口</label>
-                        <input type="number" class="form-input" id="settingsSmtpPort" value="465" min="1" max="65535">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">SMTP 用户名</label>
-                        <input type="text" class="form-input" id="settingsSmtpUsername" placeholder="username">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">SMTP 密码</label>
-                        <input type="password" class="form-input" id="settingsSmtpPassword" placeholder="密码或授权码">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">发件人邮箱</label>
-                        <input type="text" class="form-input" id="settingsSmtpFromEmail" placeholder="noreply@example.com">
-                    </div>
-                    <div class="form-group">
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 8px;">
-                            <input type="checkbox" id="settingsSmtpUseSsl" checked>
-                            <span class="form-label" style="margin: 0;">使用 SSL</span>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <input type="checkbox" id="settingsSmtpUseTls">
-                            <span class="form-label" style="margin: 0;">使用 TLS / STARTTLS</span>
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Telegram Bot Token</label>
-                        <input type="password" class="form-input" id="settingsTelegramBotToken" placeholder="123456:ABCDEF...">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Telegram Chat ID</label>
-                        <input type="text" class="form-input" id="settingsTelegramChatId" placeholder="-1001234567890">
+                    <div class="forward-channel-panels" id="forwardChannelPanels">
+                        <section class="forward-channel-panel" data-channel="smtp" hidden>
+                            <div class="forward-channel-panel__header">
+                                <div>
+                                    <h5 class="forward-channel-panel__title">SMTP 转发</h5>
+                                    <p class="forward-channel-panel__desc">配置接收邮箱与 SMTP 服务器，用于邮件形式的二次转发。</p>
+                                </div>
+                                <span class="forward-channel-panel__tag">SMTP</span>
+                            </div>
+                            <div class="forward-grid">
+                                <div class="form-group">
+                                    <label class="form-label">转发到邮箱</label>
+                                    <input type="text" class="form-input" id="settingsEmailForwardRecipient" placeholder="main@example.com">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">发件人邮箱</label>
+                                    <input type="text" class="form-input" id="settingsSmtpFromEmail" placeholder="noreply@example.com">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">SMTP 主机</label>
+                                    <input type="text" class="form-input" id="settingsSmtpHost" placeholder="smtp.example.com">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">SMTP 端口</label>
+                                    <input type="number" class="form-input" id="settingsSmtpPort" value="465" min="1" max="65535">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">SMTP 用户名</label>
+                                    <input type="text" class="form-input" id="settingsSmtpUsername" placeholder="username">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">SMTP 密码</label>
+                                    <input type="password" class="form-input" id="settingsSmtpPassword" placeholder="密码或授权码">
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-top: 14px;">
+                                <label class="form-label">连接选项</label>
+                                <div class="forward-toggle-list">
+                                    <label class="forward-checkbox">
+                                        <input type="checkbox" id="settingsSmtpUseSsl" checked>
+                                        <span class="form-label">使用 SSL</span>
+                                    </label>
+                                    <label class="forward-checkbox">
+                                        <input type="checkbox" id="settingsSmtpUseTls">
+                                        <span class="form-label">使用 TLS / STARTTLS</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </section>
+                        <section class="forward-channel-panel" data-channel="telegram" hidden>
+                            <div class="forward-channel-panel__header">
+                                <div>
+                                    <h5 class="forward-channel-panel__title">Telegram 转发</h5>
+                                    <p class="forward-channel-panel__desc">使用 Bot Token 与 Chat ID，把新邮件摘要推送到指定 TG 会话。</p>
+                                </div>
+                                <span class="forward-channel-panel__tag">TG</span>
+                            </div>
+                            <div class="forward-grid">
+                                <div class="form-group">
+                                    <label class="form-label">Telegram Bot Token</label>
+                                    <input type="password" class="form-input" id="settingsTelegramBotToken" placeholder="123456:ABCDEF...">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Telegram Chat ID</label>
+                                    <input type="text" class="form-input" id="settingsTelegramChatId" placeholder="-1001234567890">
+                                </div>
+                            </div>
+                        </section>
                     </div>
                 </div>
             `);
+            syncForwardChannelUI();
         }
 
         function updateEditAccountFields() {
@@ -6194,6 +6498,7 @@ ${details}
                     document.getElementById('settingsSmtpUseSsl').checked = String(data.settings.smtp_use_ssl) !== 'false';
                     document.getElementById('settingsTelegramBotToken').value = data.settings.telegram_bot_token || '';
                     document.getElementById('settingsTelegramChatId').value = data.settings.telegram_chat_id || '';
+                    setSelectedForwardChannels(data.settings.forward_channels || []);
 
                     const useCron = data.settings.use_cron_schedule === 'true';
                     document.querySelector('input[name="refreshStrategy"][value="' + (useCron ? 'cron' : 'days') + '"]').checked = true;
@@ -6215,6 +6520,7 @@ ${details}
             const strategy = document.querySelector('input[name="refreshStrategy"]:checked').value;
             const enableScheduled = document.getElementById('enableScheduledRefresh').checked;
             const settings = {};
+            const forwardChannels = getSelectedForwardChannels();
 
             if (password) {
                 settings.login_password = password;
@@ -6231,7 +6537,12 @@ ${details}
             const days = parseInt(refreshDays, 10);
             const delay = parseInt(refreshDelay, 10);
             const forwardMinutes = parseInt(document.getElementById('forwardCheckIntervalMinutes').value || '5', 10);
-            const smtpPort = parseInt(document.getElementById('settingsSmtpPort').value || '465', 10);
+            const smtpPortValue = document.getElementById('settingsSmtpPort').value.trim();
+            const smtpPort = parseInt(smtpPortValue || '465', 10);
+            const smtpRecipient = document.getElementById('settingsEmailForwardRecipient').value.trim();
+            const smtpHost = document.getElementById('settingsSmtpHost').value.trim();
+            const telegramBotToken = document.getElementById('settingsTelegramBotToken').value.trim();
+            const telegramChatId = document.getElementById('settingsTelegramChatId').value.trim();
 
             if (Number.isNaN(days) || days < 1 || days > 90) {
                 showToast('刷新周期必须在 1-90 天之间', 'error');
@@ -6245,8 +6556,24 @@ ${details}
                 showToast('转发轮询间隔必须在 1-60 分钟之间', 'error');
                 return;
             }
-            if (Number.isNaN(smtpPort) || smtpPort < 1 || smtpPort > 65535) {
+            if (forwardChannels.includes('smtp') && !smtpRecipient) {
+                showToast('启用 SMTP 转发时必须填写转发到邮箱', 'error');
+                return;
+            }
+            if (forwardChannels.includes('smtp') && !smtpHost) {
+                showToast('启用 SMTP 转发时必须填写 SMTP 主机', 'error');
+                return;
+            }
+            if (forwardChannels.includes('smtp') && (Number.isNaN(smtpPort) || smtpPort < 1 || smtpPort > 65535)) {
                 showToast('SMTP 端口无效', 'error');
+                return;
+            }
+            if (forwardChannels.includes('telegram') && !telegramBotToken) {
+                showToast('启用 TG 转发时必须填写 Telegram Bot Token', 'error');
+                return;
+            }
+            if (forwardChannels.includes('telegram') && !telegramChatId) {
+                showToast('启用 TG 转发时必须填写 Telegram Chat ID', 'error');
                 return;
             }
 
@@ -6254,17 +6581,18 @@ ${details}
             settings.refresh_delay_seconds = delay;
             settings.use_cron_schedule = strategy === 'cron';
             settings.enable_scheduled_refresh = enableScheduled;
+            settings.forward_channels = forwardChannels;
             settings.forward_check_interval_minutes = forwardMinutes;
-            settings.email_forward_recipient = document.getElementById('settingsEmailForwardRecipient').value.trim();
-            settings.smtp_host = document.getElementById('settingsSmtpHost').value.trim();
-            settings.smtp_port = smtpPort;
+            settings.email_forward_recipient = smtpRecipient;
+            settings.smtp_host = smtpHost;
+            settings.smtp_port = Number.isNaN(smtpPort) ? 465 : smtpPort;
             settings.smtp_username = document.getElementById('settingsSmtpUsername').value.trim();
             settings.smtp_password = document.getElementById('settingsSmtpPassword').value;
             settings.smtp_from_email = document.getElementById('settingsSmtpFromEmail').value.trim();
             settings.smtp_use_tls = document.getElementById('settingsSmtpUseTls').checked;
             settings.smtp_use_ssl = document.getElementById('settingsSmtpUseSsl').checked;
-            settings.telegram_bot_token = document.getElementById('settingsTelegramBotToken').value.trim();
-            settings.telegram_chat_id = document.getElementById('settingsTelegramChatId').value.trim();
+            settings.telegram_bot_token = telegramBotToken;
+            settings.telegram_chat_id = telegramChatId;
 
             if (strategy === 'cron') {
                 if (!refreshCron) {

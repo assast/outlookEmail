@@ -209,6 +209,8 @@ PROVIDER_FOLDER_MAP = {
 
 FORWARD_CHANNEL_EMAIL = "email"
 FORWARD_CHANNEL_TELEGRAM = "telegram"
+FORWARD_CHANNEL_SMTP_SETTING = "smtp"
+FORWARD_CHANNEL_TG_SETTING = "telegram"
 
 # 数据库文件
 DATABASE = os.getenv("DATABASE_PATH", "data/outlook_accounts.db")
@@ -841,6 +843,10 @@ def init_db():
     cursor.execute('''
         INSERT OR IGNORE INTO settings (key, value)
         VALUES ('forward_check_interval_minutes', '5')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('forward_channels', 'auto')
     ''')
     cursor.execute('''
         INSERT OR IGNORE INTO settings (key, value)
@@ -5791,6 +5797,7 @@ def api_get_settings():
     settings['cloudflare_worker_domain'] = get_cloudflare_worker_domain()
     settings['cloudflare_email_domains'] = ', '.join(get_cloudflare_email_domains())
     settings['cloudflare_admin_password'] = get_cloudflare_admin_password()
+    settings['forward_channels'] = get_forward_channels()
     settings['forward_check_interval_minutes'] = get_setting('forward_check_interval_minutes', '5')
     settings['email_forward_recipient'] = get_setting('email_forward_recipient', '')
     settings['smtp_host'] = get_setting('smtp_host', '')
@@ -5960,6 +5967,14 @@ def api_update_settings():
                 errors.append('保存转发检查间隔失败')
         except ValueError:
             errors.append('转发检查间隔必须是数字')
+
+    if 'forward_channels' in data:
+        forward_channels = normalize_forward_channel_settings(data['forward_channels'])
+        stored_value = ','.join(forward_channels) if forward_channels else 'none'
+        if set_setting('forward_channels', stored_value):
+            updated.append('转发渠道')
+        else:
+            errors.append('保存转发渠道失败')
 
     if 'email_forward_recipient' in data:
         if set_setting('email_forward_recipient', data['email_forward_recipient'].strip()):
@@ -6141,6 +6156,47 @@ def get_bool_setting(key: str, default: bool = False) -> bool:
     return value in ('1', 'true', 'yes', 'on')
 
 
+def normalize_forward_channel_settings(raw_channels: Any) -> list[str]:
+    if isinstance(raw_channels, str):
+        values = raw_channels.split(',')
+    elif isinstance(raw_channels, (list, tuple, set)):
+        values = list(raw_channels)
+    else:
+        values = []
+
+    normalized = []
+    channel_aliases = {
+        'email': FORWARD_CHANNEL_SMTP_SETTING,
+        'smtp': FORWARD_CHANNEL_SMTP_SETTING,
+        'tg': FORWARD_CHANNEL_TG_SETTING,
+        'telegram': FORWARD_CHANNEL_TG_SETTING,
+    }
+
+    for item in values:
+        channel = channel_aliases.get(str(item).strip().lower())
+        if channel and channel not in normalized:
+            normalized.append(channel)
+    return normalized
+
+
+def get_configured_forward_channels() -> list[str]:
+    channels = []
+    if get_setting('email_forward_recipient', '').strip() and get_setting('smtp_host', '').strip():
+        channels.append(FORWARD_CHANNEL_SMTP_SETTING)
+    if get_setting_decrypted('telegram_bot_token', '').strip() and get_setting('telegram_chat_id', '').strip():
+        channels.append(FORWARD_CHANNEL_TG_SETTING)
+    return channels
+
+
+def get_forward_channels() -> list[str]:
+    raw_channels = get_setting('forward_channels', 'auto').strip().lower()
+    if raw_channels in ('', 'auto'):
+        return get_configured_forward_channels()
+    if raw_channels == 'none':
+        return []
+    return normalize_forward_channel_settings(raw_channels)
+
+
 def has_forward_log(conn, account_id: int, message_id: str, channel: str) -> bool:
     row = conn.execute(
         'SELECT 1 FROM forward_logs WHERE account_id = ? AND message_id = ? AND channel = ? LIMIT 1',
@@ -6299,8 +6355,13 @@ def process_forwarding_job():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     try:
-        email_enabled = bool(get_setting('email_forward_recipient', '').strip() and get_setting('smtp_host', '').strip())
-        telegram_enabled = bool(get_setting_decrypted('telegram_bot_token', '').strip() and get_setting('telegram_chat_id', '').strip())
+        forward_channels = set(get_forward_channels())
+        email_enabled = FORWARD_CHANNEL_SMTP_SETTING in forward_channels and bool(
+            get_setting('email_forward_recipient', '').strip() and get_setting('smtp_host', '').strip()
+        )
+        telegram_enabled = FORWARD_CHANNEL_TG_SETTING in forward_channels and bool(
+            get_setting_decrypted('telegram_bot_token', '').strip() and get_setting('telegram_chat_id', '').strip()
+        )
         if not email_enabled and not telegram_enabled:
             return
 
