@@ -182,6 +182,12 @@ docker-compose up -d
 邮箱----密码----client_id----refresh_token
 ```
 
+也支持在 Web 导入弹窗中切换为：
+
+```
+邮箱----密码----refresh_token----client_id
+```
+
 示例：
 ```
 user@outlook.com----password123----24d9a0ed-8787-4584-883c-2fd79308940a----0.AXEA...

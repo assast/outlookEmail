@@ -1428,20 +1428,30 @@ def parse_raw_email_to_temp_message(email_addr: str, raw_email: str, fallback_id
     }
 
 
-def parse_account_string(account_str: str) -> Optional[Dict]:
-    """
-    解析账号字符串
-    格式: email----password----client_id----refresh_token
-    """
-    parts = account_str.strip().split('----')
-    if len(parts) >= 4:
-        return {
-            'email': parts[0],
-            'password': parts[1],
-            'client_id': parts[2],
-            'refresh_token': parts[3]
-        }
-    return None
+# 重写导入解析函数，支持多种账号字段顺序
+def parse_account_string(account_str: str, account_format: str = 'client_id_refresh_token') -> Optional[Dict]:
+    parts = [part.strip() for part in account_str.strip().split('----')]
+    if len(parts) < 4 or not parts[0]:
+        return None
+
+    email_addr, password, third, fourth = parts[:4]
+
+    if account_format == 'refresh_token_client_id':
+        refresh_token = third
+        client_id = fourth
+    else:
+        client_id = third
+        refresh_token = fourth
+
+    if not client_id or not refresh_token:
+        return None
+
+    return {
+        'email': email_addr,
+        'password': password,
+        'client_id': client_id,
+        'refresh_token': refresh_token
+    }
 
 
 # ==================== Graph API 方式 ====================
@@ -2627,6 +2637,7 @@ def api_add_account():
     data = request.json
     account_str = data.get('account_string', '')
     group_id = data.get('group_id', 1)
+    account_format = data.get('account_format', 'client_id_refresh_token')
     
     if not account_str:
         return jsonify({'success': False, 'error': '请输入账号信息'})
@@ -2640,7 +2651,7 @@ def api_add_account():
         if not line:
             continue
         
-        parsed = parse_account_string(line)
+        parsed = parse_account_string(line, account_format)
         if parsed:
             if add_account(parsed['email'], parsed['password'], 
                           parsed['client_id'], parsed['refresh_token'], group_id):

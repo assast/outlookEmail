@@ -1610,6 +1610,13 @@
                         <option value="cloudflare">Cloudflare</option>
                     </select>
                 </div>
+                <div class="form-group" id="importFormatGroup">
+                    <label class="form-label">导入格式</label>
+                    <select class="form-select" id="importFormatSelect" onchange="updateImportHint()">
+                        <option value="client_id_refresh_token">邮箱----密码----client_id----refresh_token</option>
+                        <option value="refresh_token_client_id">邮箱----密码----令牌----client_id</option>
+                    </select>
+                </div>
                 <div class="form-group">
                     <label class="form-label">账号信息</label>
                     <textarea class="form-textarea" id="accountInput"
@@ -2215,7 +2222,11 @@
                     <textarea class="form-textarea" id="refreshTokenOutput" readonly
                         style="height: 100px; font-size: 12px; font-family: monospace; background-color: #f0f9ff; border-color: #0078d4;"></textarea>
                     <div class="form-hint" style="color: #0078d4;">
-                        <strong>格式说明：</strong>邮箱----密码----client_id----refresh_token<br>
+                        <strong>格式说明：</strong>默认导入格式为：邮箱----密码----client_id----refresh_token<br>
+                        也支持在“导入邮箱”中切换为：邮箱----密码----令牌----client_id
+                    </div>
+                    <div class="form-hint" style="color: #0078d4;">
+                        <strong>示例说明：</strong>上方第一行是旧格式，第二行是新格式<br>
                         请将"your@outlook.com"和"yourpassword"替换为您的实际邮箱和密码，然后复制整行内容到"导入邮箱"中使用
                     </div>
                 </div>
@@ -3438,6 +3449,8 @@ ${details}
             const inputEl = document.getElementById('accountInput');
             const channelGroup = document.getElementById('importChannelGroup');
             const channelSelect = document.getElementById('importChannelSelect');
+            const formatGroup = document.getElementById('importFormatGroup');
+            const formatSelect = document.getElementById('importFormatSelect');
             const exampleEl = document.getElementById('importFormatExample');
             if (!importSelect || !hintEl || !inputEl) return;
 
@@ -3447,6 +3460,7 @@ ${details}
             if (isTempGroup) {
                 // 显示渠道选择器
                 if (channelGroup) channelGroup.style.display = '';
+                if (formatGroup) formatGroup.style.display = 'none';
 
                 const channel = channelSelect ? channelSelect.value : 'gptmail';
                 if (channel === 'duckmail') {
@@ -3474,9 +3488,23 @@ ${details}
             } else {
                 // 隐藏渠道选择器
                 if (channelGroup) channelGroup.style.display = 'none';
-                if (exampleEl) exampleEl.style.display = 'none';
+                if (formatGroup) formatGroup.style.display = '';
+                if (exampleEl) exampleEl.style.display = '';
+                const format = formatSelect ? formatSelect.value : 'client_id_refresh_token';
+                if (format === 'refresh_token_client_id') {
+                    hintEl.textContent = '格式：邮箱----密码----令牌----client_id，支持批量导入（每行一个）';
+                    inputEl.placeholder = '邮箱----密码----令牌----client_id';
+                    if (exampleEl) {
+                        exampleEl.textContent = '示例：\nuser@outlook.com----password123----0.AXEA...----24d9a0ed-8787-4584-883c-2fd79308940a';
+                    }
+                    return;
+                }
                 hintEl.textContent = '格式：邮箱----密码----client_id----refresh_token，支持批量导入（每行一个）';
                 inputEl.placeholder = '邮箱----密码----client_id----refresh_token';
+                if (exampleEl) {
+                    exampleEl.textContent = '示例：\nuser@outlook.com----password123----24d9a0ed-8787-4584-883c-2fd79308940a----0.AXEA...';
+                }
+                return;
             }
         }
 
@@ -4218,6 +4246,9 @@ ${details}
         // 显示添加账号模态框
         function showAddAccountModal() {
             document.getElementById('accountInput').value = '';
+            if (document.getElementById('importFormatSelect')) {
+                document.getElementById('importFormatSelect').value = 'client_id_refresh_token';
+            }
             // 设置默认分组为当前选中的分组
             if (currentGroupId) {
                 document.getElementById('importGroupSelect').value = currentGroupId;
@@ -4235,6 +4266,8 @@ ${details}
         async function addAccount() {
             const input = document.getElementById('accountInput').value.trim();
             const groupId = parseInt(document.getElementById('importGroupSelect').value);
+            const accountFormatEl = document.getElementById('importFormatSelect');
+            const accountFormat = accountFormatEl ? accountFormatEl.value : 'client_id_refresh_token';
 
             if (!input) {
                 showToast('请输入账号信息', 'error');
@@ -4259,7 +4292,7 @@ ${details}
                     response = await fetch('/api/accounts', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ account_string: input, group_id: groupId })
+                        body: JSON.stringify({ account_string: input, group_id: groupId, account_format: accountFormat })
                     });
                 }
 
@@ -5440,9 +5473,10 @@ ${details}
                 if (data.success) {
                     // 生成完整的导入格式
                     const importFormat = `your@outlook.com----yourpassword----${data.client_id}----${data.refresh_token}`;
+                    const importFormatAlt = `your@outlook.com----yourpassword----${data.refresh_token}----${data.client_id}`;
 
                     // 显示结果
-                    document.getElementById('refreshTokenOutput').value = importFormat;
+                    document.getElementById('refreshTokenOutput').value = `${importFormat}\n---\n${importFormatAlt}`;
                     document.getElementById('refreshTokenResult').style.display = 'block';
 
                     showToast('✅ Refresh Token 获取成功！', 'success');

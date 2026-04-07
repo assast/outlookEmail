@@ -133,7 +133,7 @@ A: SQLite 数据库 `data/outlook_accounts.db`，建议定期备份
 A: 收件箱（Inbox）、垃圾邮件（Junk Email）、已删除邮件（Deleted Items）
 
 ### Q: 如何批量导入邮箱？
-A: 格式：`邮箱----密码----client_id----refresh_token`，每行一个
+A: 默认格式：`邮箱----密码----client_id----refresh_token`，每行一个；也支持在导入弹窗中切换为 `邮箱----密码----refresh_token----client_id`
 
 ### Q: 如何导出邮箱账号？
 A: (1) 导出单个分组 (2) 导出所有 (3) 导出选中分组
