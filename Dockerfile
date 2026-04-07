@@ -12,7 +12,10 @@ RUN apt-get update && \
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    GUNICORN_TIMEOUT=300 \
+    GUNICORN_THREADS=4 \
+    IMAP_TIMEOUT=45
 
 # 复制依赖文件
 COPY requirements.txt .
@@ -31,5 +34,5 @@ RUN mkdir -p /app/data
 # 暴露端口
 EXPOSE 5000
 
-# 启动应用（使用 Gunicorn，单 worker 避免 session 共享问题）
-CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:5000", "--timeout", "120", "--access-logfile", "-", "--preload", "web_outlook_app:app"]
+# 启动应用（保持单 worker，使用线程提升慢请求容错）
+CMD ["sh", "-c", "gunicorn -k gthread -w 1 --threads ${GUNICORN_THREADS:-4} -b 0.0.0.0:5000 --timeout ${GUNICORN_TIMEOUT:-300} --graceful-timeout 30 --access-logfile - --error-logfile - --capture-output web_outlook_app:app"]
