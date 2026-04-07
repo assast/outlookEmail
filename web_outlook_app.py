@@ -100,6 +100,7 @@ TOKEN_URL_IMAP = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
 IMAP_SERVER_OLD = "outlook.office365.com"
 IMAP_SERVER_NEW = "outlook.live.com"
 IMAP_PORT = 993
+IMAP_TIMEOUT = int(os.getenv("IMAP_TIMEOUT", "45"))
 
 # 数据库文件
 DATABASE = os.getenv("DATABASE_PATH", "data/outlook_accounts.db")
@@ -1687,7 +1688,7 @@ def get_emails_imap_with_server(account: str, client_id: str, refresh_token: str
 
     connection = None
     try:
-        connection = imaplib.IMAP4_SSL(server, IMAP_PORT)
+        connection = imaplib.IMAP4_SSL(server, IMAP_PORT, timeout=IMAP_TIMEOUT)
         auth_string = f"user={account}\1auth=Bearer {access_token}\1\1".encode('utf-8')
         connection.authenticate('XOAUTH2', lambda x: auth_string)
 
@@ -1783,13 +1784,14 @@ def get_emails_imap_with_server(account: str, client_id: str, refresh_token: str
                 if status == 'OK' and msg_data and msg_data[0]:
                     raw_email = msg_data[0][1]
                     msg = email.message_from_bytes(raw_email)
+                    body_preview = get_email_body(msg)
 
                     emails.append({
                         'id': msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id),
                         'subject': decode_header_value(msg.get("Subject", "无主题")),
                         'from': decode_header_value(msg.get("From", "未知发件人")),
                         'date': msg.get("Date", "未知时间"),
-                        'body_preview': get_email_body(msg)[:200] + "..." if len(get_email_body(msg)) > 200 else get_email_body(msg)
+                        'body_preview': body_preview[:200] + "..." if len(body_preview) > 200 else body_preview
                     })
             except Exception:
                 continue
@@ -1822,7 +1824,7 @@ def get_email_detail_imap(account: str, client_id: str, refresh_token: str, mess
 
     connection = None
     try:
-        connection = imaplib.IMAP4_SSL(IMAP_SERVER_NEW, IMAP_PORT)
+        connection = imaplib.IMAP4_SSL(IMAP_SERVER_NEW, IMAP_PORT, timeout=IMAP_TIMEOUT)
         auth_string = f"user={account}\1auth=Bearer {access_token}\1\1".encode('utf-8')
         connection.authenticate('XOAUTH2', lambda x: auth_string)
 
@@ -3402,7 +3404,7 @@ def delete_emails_imap(email_addr: str, client_id: str, refresh_token: str, mess
         auth_string = 'user=%s\x01auth=Bearer %s\x01\x01' % (email_addr, access_token)
         
         # 连接 IMAP
-        imap = imaplib.IMAP4_SSL(server, IMAP_PORT)
+        imap = imaplib.IMAP4_SSL(server, IMAP_PORT, timeout=IMAP_TIMEOUT)
         imap.authenticate('XOAUTH2', lambda x: auth_string.encode('utf-8'))
         
         # 选择文件夹
