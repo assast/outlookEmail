@@ -2843,11 +2843,13 @@
         window.fetch = function (url, options = {}) {
             // 只对非 GET 请求添加 CSRF Token
             if (options.method && options.method.toUpperCase() !== 'GET' && csrfToken) {
-                options.headers = options.headers || {};
                 if (options.headers instanceof Headers) {
-                    options.headers.append('X-CSRFToken', csrfToken);
+                    options.headers.set('X-CSRFToken', csrfToken);
                 } else {
-                    options.headers['X-CSRFToken'] = csrfToken;
+                    options.headers = {
+                        ...(options.headers || {}),
+                        'X-CSRFToken': csrfToken
+                    };
                 }
             }
             return originalFetch(url, options);
@@ -3115,8 +3117,14 @@
             triggerBtn.textContent = '触发中...';
 
             try {
+                if (!csrfToken) {
+                    await initCSRFToken();
+                }
+
                 const response = await fetch('/api/accounts/trigger-forwarding-check', {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
                 });
                 const data = await response.json();
 
