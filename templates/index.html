@@ -303,20 +303,22 @@
 
         /* 邮箱账号面板 */
         .account-panel {
-            width: 260px;
+            width: 340px;
             background-color: #ffffff;
             border-right: 1px solid #e5e5e5;
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
+            min-width: 0;
         }
 
         .account-panel-header {
             padding: 0 16px;
-            height: 52px;
+            min-height: 56px;
             border-bottom: 1px solid #e5e5e5;
             display: flex;
             align-items: center;
+            gap: 12px;
         }
 
         .account-panel-title {
@@ -333,50 +335,134 @@
             height: 12px;
         }
 
-        .search-container {
-            padding: 8px 16px;
+        .account-panel-header-actions {
+            margin-left: auto;
+            display: flex;
+            gap: 4px;
+        }
+
+        .account-toolbar {
+            padding: 12px 16px 14px;
             border-bottom: 1px solid #e5e5e5;
+            background: linear-gradient(180deg, #fafafa 0%, #f4f5f8 100%);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .search-container {
+            padding: 0;
+            border-bottom: none;
         }
 
         .search-input {
             width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #e5e5e5;
-            border-radius: 6px;
+            padding: 10px 12px;
+            border: 1px solid #d9dce3;
+            border-radius: 10px;
             font-size: 13px;
             outline: none;
-            transition: border-color 0.2s;
+            background-color: #ffffff;
+            transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
         }
 
         .search-input:focus {
             border-color: #1a1a1a;
+            box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.08);
+            background-color: #ffffff;
         }
 
-        .account-number {
+        .toolbar-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-label {
+            font-size: 12px;
             color: #666;
-            font-weight: 500;
-            margin-right: 4px;
+            font-weight: 600;
+            white-space: nowrap;
         }
 
-        .sort-btn:hover {
-            background-color: #f5f5f5 !important;
-            border-color: #ccc !important;
+        .toolbar-chip-group {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
         }
 
-        .sort-btn.active {
+        .toolbar-chip,
+        .sort-btn,
+        .provider-filter-btn {
+            padding: 5px 10px;
+            font-size: 12px;
+            line-height: 1.2;
+            background-color: #ffffff;
+            border: 1px solid #d9dce3;
+            border-radius: 999px;
+            color: #4b5563;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .toolbar-chip:hover,
+        .sort-btn:hover,
+        .provider-filter-btn:hover {
+            background-color: #f9fafb !important;
+            border-color: #c4c9d4 !important;
+            color: #111827 !important;
+        }
+
+        .sort-btn.active,
+        .provider-filter-btn.active {
             background-color: #1a1a1a !important;
             color: #ffffff !important;
             border-color: #1a1a1a !important;
+            box-shadow: 0 6px 16px rgba(26, 26, 26, 0.16);
+        }
+
+        #tagFilterContainer {
+            display: none;
+        }
+
+        .tag-filter-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border: 1px solid #d9dce3;
+            border-radius: 999px;
+            background-color: #ffffff;
+            cursor: pointer;
+            font-size: 11px;
+            color: #374151;
+            user-select: none;
+        }
+
+        .tag-filter-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .tag-filter-checkbox {
+            margin: 0;
+            accent-color: #1a1a1a;
         }
 
         .account-list {
             flex: 1;
             overflow-y: auto;
+            background-color: #f7f8fb;
+            padding: 8px 0 16px;
         }
 
         .account-panel-footer {
             padding: 16px;
             border-top: 1px solid #e5e5e5;
+            background-color: #ffffff;
         }
 
         .add-account-btn {
@@ -385,78 +471,132 @@
             background-color: #1a1a1a;
             color: #ffffff;
             border: none;
-            border-radius: 6px;
+            border-radius: 10px;
             font-size: 14px;
             font-weight: 500;
             cursor: pointer;
-            transition: background-color 0.2s;
+            transition: background-color 0.2s, transform 0.15s, box-shadow 0.15s;
+            box-shadow: 0 10px 22px rgba(26, 26, 26, 0.12);
         }
 
         .add-account-btn:hover {
             background-color: #333;
+            transform: translateY(-1px);
         }
 
         .account-item {
-            padding: 10px 16px;
+            position: relative;
+            margin: 0 12px 10px;
+            padding: 14px;
             cursor: pointer;
-            transition: background-color 0.15s;
-            border-left: 3px solid transparent;
-            border-bottom: 1px solid #f5f5f5;
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
+            transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            display: grid;
+            grid-template-columns: 18px minmax(0, 1fr) 32px;
+            align-items: start;
             gap: 12px;
-        }
-
-        .account-item > :first-child {
-            flex: 1;
-            min-width: 0;
+            background-color: #ffffff;
+            box-shadow: 0 6px 16px rgba(15, 23, 42, 0.04);
         }
 
         .account-item:hover {
-            background-color: #f5f5f5;
+            background-color: #ffffff;
+            border-color: #d4d9e2;
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+            transform: translateY(-1px);
         }
 
         .account-item.active {
-            background-color: #f0f0f0;
-            border-left-color: #1a1a1a;
+            background-color: #f6f7fb;
+            border-color: #1a1a1a;
+            box-shadow: inset 3px 0 0 #1a1a1a, 0 10px 24px rgba(15, 23, 42, 0.06);
         }
 
         .account-item.inactive {
-            opacity: 0.6;
+            opacity: 0.78;
         }
 
         .account-item.inactive .account-email {
             text-decoration: line-through;
-            color: #999;
+            color: #6b7280;
+        }
+
+        .account-leading-icon,
+        .account-select-checkbox {
+            margin-top: 4px;
+        }
+
+        .account-leading-icon {
+            font-size: 14px;
+            line-height: 1;
+            color: #64748b;
+            text-align: center;
+        }
+
+        .account-select-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #1a1a1a;
+        }
+
+        .account-body {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .account-title-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            justify-content: space-between;
+        }
+
+        .account-email-wrap {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .account-email-index {
+            min-width: 18px;
+            font-size: 11px;
+            color: #9aa0aa;
+            font-weight: 700;
+            line-height: 1.8;
+            flex-shrink: 0;
         }
 
         .account-remark {
             font-size: 12px;
-            color: #666;
-            padding-left: 0;
-            margin-top: 4px;
-            white-space: pre-wrap;
-            word-break: break-all;
-            line-height: 1.4;
+            color: #5b6472;
+            margin: 0;
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            word-break: break-word;
         }
 
         .account-email {
             font-size: 13px;
-            color: #1a1a1a;
+            color: #111827;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            margin-bottom: 6px;
+            margin: 0;
+            font-weight: 600;
         }
 
-        .account-status-tag {
-            font-size: 10px;
-            padding: 1px 6px;
-            border-radius: 3px;
-            margin-left: 8px;
-            background-color: #f0f0f0;
-            color: #999;
+        .account-meta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
         }
 
         .tag-badge {
@@ -466,56 +606,179 @@
             border-radius: 12px;
             font-size: 11px;
             font-weight: 500;
-            margin-right: 4px;
-            margin-top: 2px;
             color: white;
             line-height: 1.4;
+        }
+
+        .account-status-pill {
+            display: inline-flex;
+            align-items: center;
+            min-height: 22px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.2;
+            white-space: nowrap;
+            background-color: #eef2f7;
+            color: #475569;
+        }
+
+        .account-status-pill.provider,
+        .account-status-pill.tag {
+            background-color: var(--pill-accent, #2563eb);
+            color: #ffffff;
+        }
+
+        .account-status-pill.success {
+            background-color: #e7f8ee;
+            color: #137333;
+        }
+
+        .account-status-pill.danger {
+            background-color: #fdebec;
+            color: #b42318;
+        }
+
+        .account-status-pill.muted {
+            background-color: #f1f3f5;
+            color: #6b7280;
+        }
+
+        .account-status-pill.outline {
+            background-color: #ffffff;
+            color: #475569;
+            border: 1px dashed #cbd5e1;
         }
 
         .account-tags {
             display: flex;
             flex-wrap: wrap;
-            gap: 4px;
-            margin-top: 4px;
+            gap: 6px;
         }
 
-        .account-actions {
+        .account-refresh-row {
             display: flex;
             gap: 8px;
-            opacity: 0;
-            transition: opacity 0.15s;
-            pointer-events: none;
-            flex-shrink: 0;
             align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
         }
 
-        .account-item:hover .account-actions,
-        .account-item.active .account-actions,
-        .account-item:focus-within .account-actions {
-            opacity: 1;
-            pointer-events: auto;
+        .account-refresh-meta {
+            font-size: 12px;
+            color: #6b7280;
         }
 
-        .account-action-btn {
+        .account-refresh-meta.failed {
+            color: #b42318;
+            font-weight: 600;
+        }
+
+        .account-error-btn {
             background: none;
             border: none;
-            color: #666;
+            color: #b42318;
             cursor: pointer;
-            padding: 2px 0;
+            padding: 0;
             font-size: 11px;
-            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .account-error-btn:hover {
+            text-decoration: underline;
+        }
+
+        .account-menu-wrap {
+            position: relative;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .account-menu-trigger {
+            width: 32px;
+            height: 32px;
+            border: 1px solid #e5e7eb;
+            background-color: #ffffff;
+            border-radius: 10px;
+            color: #6b7280;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
             display: flex;
             align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+        }
+
+        .account-menu-trigger:hover,
+        .account-item.menu-open .account-menu-trigger {
+            border-color: #1a1a1a;
+            color: #1a1a1a;
+            background-color: #f8fafc;
+        }
+
+        .account-menu-panel {
+            position: absolute;
+            top: 38px;
+            right: 0;
+            z-index: 30;
+            min-width: 140px;
+            padding: 6px;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            background-color: #ffffff;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
+            display: none;
+            flex-direction: column;
             gap: 2px;
         }
 
-        .account-action-btn:hover {
-            color: #1a1a1a;
+        .account-item.menu-open .account-menu-panel {
+            display: flex;
         }
 
+        .account-action-btn {
+            width: 100%;
+            background: none;
+            border: none;
+            color: #374151;
+            cursor: pointer;
+            padding: 8px 10px;
+            font-size: 12px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            text-align: left;
+        }
+
+        .account-action-btn:hover {
+            background-color: #f3f4f6;
+            color: #111827;
+        }
+
+        .account-action-btn.delete {
+            color: #b42318;
+        }
 
         .account-action-btn.delete:hover {
-            color: #dc3545;
+            background-color: #fef2f2;
+            color: #b42318;
+        }
+
+        .batch-action-bar {
+            display: none;
+            padding: 10px 16px;
+            border-top: 1px solid #e5e5e5;
+            background: #ffffff;
+            gap: 8px;
+            align-items: center;
+            box-shadow: 0 -8px 18px rgba(15, 23, 42, 0.04);
+        }
+
+        .batch-selection-count {
+            font-size: 12px;
+            color: #666;
         }
 
         .batch-btn.danger {
@@ -542,12 +805,13 @@
 
         /* 邮件列表面板 */
         .email-list-panel {
-            width: 380px;
+            width: 400px;
             background-color: #ffffff;
             border-right: 1px solid #e5e5e5;
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
+            min-width: 0;
         }
 
         .email-list-panel.hidden {
@@ -556,9 +820,9 @@
 
         /* 邮件列表头部 */
         .email-list-header {
-            padding: 16px 20px;
+            padding: 18px 20px 16px;
             border-bottom: 1px solid #e5e5e5;
-            background-color: #ffffff;
+            background: linear-gradient(180deg, #fafafa 0%, #f4f6f9 100%);
         }
 
         .email-list-header h2 {
@@ -567,46 +831,90 @@
             color: #1a1a1a;
         }
 
+        .email-list-header-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        .email-list-title-wrap {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .email-list-title-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .email-list-header-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .email-list-hint {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
         .email-count {
             font-size: 13px;
-            color: #999;
-            font-weight: 400;
-            margin-left: 8px;
+            color: #6b7280;
+            font-weight: 500;
         }
 
         .refresh-btn {
-            background: none;
-            border: 1px solid #e5e5e5;
-            color: #666;
+            background-color: #ffffff;
+            border: 1px solid #d9dce3;
+            color: #374151;
             cursor: pointer;
             font-size: 13px;
-            padding: 6px 12px;
-            border-radius: 6px;
+            font-weight: 600;
+            padding: 8px 14px;
+            border-radius: 10px;
             transition: all 0.15s;
+            white-space: nowrap;
         }
 
         .refresh-btn:hover {
-            background-color: #f5f5f5;
-            border-color: #ccc;
+            background-color: #f9fafb;
+            border-color: #c4c9d4;
+            color: #111827;
         }
 
         .email-list {
             flex: 1;
             overflow-y: auto;
+            background-color: #f7f8fb;
+            padding: 8px 0 16px;
         }
 
         .email-item {
-            padding: 16px 20px;
-            border-bottom: 1px solid #f0f0f0;
+            margin: 0 12px 10px;
+            padding: 14px;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
             cursor: pointer;
-            transition: background-color 0.15s;
-            display: flex;
-            align-items: flex-start;
+            transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+            display: grid;
+            grid-template-columns: 18px minmax(0, 1fr);
+            align-items: start;
+            gap: 12px;
+            background-color: #ffffff;
+            box-shadow: 0 6px 16px rgba(15, 23, 42, 0.04);
         }
 
         .email-checkbox-wrapper {
-            padding-right: 12px;
-            padding-top: 2px;
+            padding-top: 3px;
             display: flex;
             align-items: center;
         }
@@ -615,51 +923,136 @@
             width: 16px;
             height: 16px;
             cursor: pointer;
+            accent-color: #1a1a1a;
         }
 
         .email-item:hover {
-            background-color: #fafafa;
+            border-color: #d4d9e2;
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+            transform: translateY(-1px);
         }
 
         .email-item.active {
-            background-color: #f5f5f5;
+            background-color: #f6f7fb;
+            border-color: #1a1a1a;
+            box-shadow: inset 3px 0 0 #1a1a1a, 0 10px 24px rgba(15, 23, 42, 0.06);
+        }
+
+        .email-item.unread {
+            border-color: #d9e2f0;
+        }
+
+        .email-body {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .email-top-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .email-top-main {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .email-unread-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #2563eb;
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+            flex-shrink: 0;
+            margin-top: 5px;
+        }
+
+        .email-item:not(.unread) .email-unread-dot {
+            background-color: #cbd5e1;
+            box-shadow: none;
         }
 
         .email-item.unread .email-subject {
-            font-weight: 600;
+            font-weight: 700;
         }
 
         .email-from {
-            font-size: 14px;
-            font-weight: 500;
-            color: #1a1a1a;
-            margin-bottom: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #111827;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            min-width: 0;
         }
 
         .email-subject {
             font-size: 14px;
-            color: #1a1a1a;
-            margin-bottom: 4px;
+            color: #111827;
+            line-height: 1.45;
             overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
         }
 
         .email-preview {
             font-size: 13px;
-            color: #999;
+            color: #6b7280;
+            line-height: 1.55;
             overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            word-break: break-word;
         }
 
         .email-date {
             font-size: 12px;
-            color: #999;
-            margin-top: 8px;
+            color: #6b7280;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .email-meta-row {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .email-meta-pill {
+            display: inline-flex;
+            align-items: center;
+            min-height: 22px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.2;
+            white-space: nowrap;
+            background-color: #eef2f7;
+            color: #475569;
+        }
+
+        .email-meta-pill.unread {
+            background-color: #e8f0ff;
+            color: #1d4ed8;
+        }
+
+        .email-meta-pill.read {
+            background-color: #f1f3f5;
+            color: #6b7280;
+        }
+
+        .email-meta-pill.attachment {
+            background-color: #fef3c7;
+            color: #92400e;
         }
 
         /* 邮件详情面板 */
@@ -1589,12 +1982,11 @@
         /* 方法标签 */
         .method-tag {
             font-size: 11px;
-            padding: 3px 8px;
-            background-color: #f5f5f5;
-            color: #666;
-            border-radius: 4px;
-            margin-left: 8px;
-            font-weight: 500;
+            padding: 4px 10px;
+            background-color: #eef2f7;
+            color: #475569;
+            border-radius: 999px;
+            font-weight: 600;
         }
 
         /* 文件夹切换标签 */
@@ -1637,11 +2029,11 @@
             }
 
             .account-panel {
-                width: 220px;
+                width: 300px;
             }
 
             .email-list-panel {
-                width: 320px;
+                width: 340px;
             }
         }
 
@@ -1651,11 +2043,11 @@
             }
 
             .account-panel {
-                width: 200px;
+                width: 260px;
             }
 
             .email-list-panel {
-                width: 280px;
+                width: 300px;
             }
         }
 
@@ -1664,16 +2056,25 @@
             .group-panel,
             .account-panel {
                 position: fixed;
-                left: -280px;
+                left: -380px;
                 top: 56px;
                 height: calc(100vh - 56px);
                 z-index: 50;
                 transition: left 0.3s;
+                max-width: 86vw;
             }
 
             .group-panel.show,
             .account-panel.show {
                 left: 0;
+            }
+
+            .group-panel {
+                width: min(260px, 82vw);
+            }
+
+            .account-panel {
+                width: min(360px, 86vw);
             }
 
             .email-list-panel {
@@ -1742,7 +2143,7 @@
                     <span class="group-color" id="currentGroupColor" style="background-color: #666"></span>
                     <span id="currentGroupName">选择分组</span>
                 </div>
-                <div style="margin-left: auto;">
+                <div class="account-panel-header-actions">
                     <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
                         🏷️
                     </button>
@@ -1754,49 +2155,48 @@
                     </button>
                 </div>
             </div>
-            <div class="search-container">
-                <input type="text" id="globalSearch" class="search-input" placeholder="搜索邮箱地址..." autocomplete="off">
-            </div>
-            <!-- 临时邮箱渠道筛选 -->
-            <div id="tempEmailProviderFilter"
-                style="padding: 8px 16px; border-bottom: 1px solid #e5e5e5; display: none; align-items: center; gap: 8px; background-color: #fafafa;">
-                <div style="display: flex; gap: 4px;">
-                    <button class="provider-filter-btn" data-provider="gptmail"
-                        onclick="filterTempEmailByProvider('gptmail')"
-                        style="padding: 4px 10px; font-size: 12px; background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 4px; color: #666; cursor: pointer; transition: all 0.15s;">
-                        GPTMail
-                    </button>
-                    <button class="provider-filter-btn" data-provider="duckmail"
-                        onclick="filterTempEmailByProvider('duckmail')"
-                        style="padding: 4px 10px; font-size: 12px; background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 4px; color: #666; cursor: pointer; transition: all 0.15s;">
-                        DuckMail
-                    </button>
-                    <button class="provider-filter-btn" data-provider="cloudflare"
-                        onclick="filterTempEmailByProvider('cloudflare')"
-                        style="padding: 4px 10px; font-size: 12px; background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 4px; color: #666; cursor: pointer; transition: all 0.15s;">
-                        Cloudflare
-                    </button>
+            <div class="account-toolbar">
+                <div class="search-container">
+                    <input type="text" id="globalSearch" class="search-input" placeholder="搜索邮箱地址、备注或标签..."
+                        autocomplete="off">
                 </div>
-            </div>
-            <div class="sort-control"
-                style="padding: 8px 16px; border-bottom: 1px solid #e5e5e5; display: flex; align-items: center; gap: 8px; background-color: #fafafa;">
-                <label style="font-size: 12px; color: #666; font-weight: 500;">排序：</label>
-                <div style="display: flex; gap: 4px;">
-                    <button class="sort-btn active" data-sort="refresh_time" onclick="sortAccounts('refresh_time')"
-                        style="padding: 4px 10px; font-size: 12px; background-color: #1a1a1a; border: 1px solid #1a1a1a; border-radius: 4px; color: #ffffff; cursor: pointer; transition: all 0.15s;">
-                        🕐 刷新时间
-                    </button>
-                    <button class="sort-btn" data-sort="email" onclick="sortAccounts('email')"
-                        style="padding: 4px 10px; font-size: 12px; background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 4px; color: #666; cursor: pointer; transition: all 0.15s;">
-                        📧 邮箱名
-                    </button>
-                    <!-- Tag Filter moved to new row -->
+                <!-- 临时邮箱渠道筛选 -->
+                <div id="tempEmailProviderFilter" class="toolbar-row" style="display: none;">
+                    <span class="toolbar-label">渠道</span>
+                    <div class="toolbar-chip-group">
+                        <button class="provider-filter-btn" data-provider="all"
+                            onclick="filterTempEmailByProvider('all')">
+                            全部
+                        </button>
+                        <button class="provider-filter-btn" data-provider="gptmail"
+                            onclick="filterTempEmailByProvider('gptmail')">
+                            GPTMail
+                        </button>
+                        <button class="provider-filter-btn" data-provider="duckmail"
+                            onclick="filterTempEmailByProvider('duckmail')">
+                            DuckMail
+                        </button>
+                        <button class="provider-filter-btn" data-provider="cloudflare"
+                            onclick="filterTempEmailByProvider('cloudflare')">
+                            Cloudflare
+                        </button>
+                    </div>
                 </div>
-            </div>
-            <!-- Tag Filter Row -->
-            <div id="tagFilterContainer"
-                style="padding: 8px 16px; border-bottom: 1px solid #e5e5e5; display: flex; flex-wrap: wrap; gap: 8px; background-color: #fafafa; display: none;">
-                <!-- Tags checkboxes will be rendered here -->
+                <div class="sort-control toolbar-row">
+                    <span class="toolbar-label">排序</span>
+                    <div class="toolbar-chip-group">
+                        <button class="sort-btn active" data-sort="refresh_time" onclick="sortAccounts('refresh_time')">
+                            最近刷新
+                        </button>
+                        <button class="sort-btn" data-sort="email" onclick="sortAccounts('email')">
+                            邮箱名称
+                        </button>
+                    </div>
+                </div>
+                <!-- Tag Filter Row -->
+                <div id="tagFilterContainer" class="toolbar-row">
+                    <!-- Tags checkboxes will be rendered here -->
+                </div>
             </div>
             <div class="account-list" id="accountList">
                 <div class="empty-state">
@@ -1805,9 +2205,8 @@
                 </div>
             </div>
             <!-- 批量操作栏 -->
-            <div id="batchActionBar"
-                style="display: none; padding: 8px 16px; border-top: 1px solid #e5e5e5; background: #f8f9fa; gap: 8px; align-items: center;">
-                <span id="selectedCount" style="font-size: 12px; color: #666;">已选 0 项</span>
+            <div id="batchActionBar" class="batch-action-bar">
+                <span id="selectedCount" class="batch-selection-count">已选 0 项</span>
                 <div style="flex: 1;"></div>
                 <button class="btn btn-sm btn-secondary" onclick="showBatchTagModal('add')">打标签</button>
                 <button class="btn btn-sm btn-secondary" onclick="showBatchTagModal('remove')">去标签</button>
@@ -1823,24 +2222,26 @@
             <!-- 邮件列表面板 -->
             <div class="email-list-panel" id="emailListPanel">
                 <div class="email-list-header">
-                    <div
-                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                        <div class="folder-tabs" id="folderTabs" style="display: none;">
-                            <button class="folder-tab active" data-folder="inbox" onclick="switchFolder('inbox')">
-                                📨 收件箱
-                            </button>
-                            <button class="folder-tab" data-folder="junkemail" onclick="switchFolder('junkemail')">
-                                ⚠️ 垃圾邮件
-                            </button>
+                    <div class="email-list-header-top">
+                        <div class="email-list-title-wrap">
+                            <div class="email-list-title-row">
+                                <h2 style="margin: 0;">邮件</h2>
+                                <span class="email-count" id="emailCount"></span>
+                            </div>
+                            <div class="email-list-header-meta">
+                                <span class="method-tag" id="methodTag" style="display:none;"></span>
+                                <span class="email-list-hint">按时间顺序查看当前账号邮件</span>
+                            </div>
                         </div>
                         <button class="refresh-btn" onclick="refreshEmails()">获取邮件</button>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <h2 style="margin: 0; font-size: 16px; font-weight: 600;">
-                            邮件
-                            <span class="email-count" id="emailCount"></span>
-                        </h2>
-                        <span class="method-tag" id="methodTag" style="display:none;"></span>
+                    <div class="folder-tabs" id="folderTabs" style="display: none;">
+                        <button class="folder-tab active" data-folder="inbox" onclick="switchFolder('inbox')">
+                            📨 收件箱
+                        </button>
+                        <button class="folder-tab" data-folder="junkemail" onclick="switchFolder('junkemail')">
+                            ⚠️ 垃圾邮件
+                        </button>
                     </div>
                 </div>
                 <div class="email-list" id="emailList">
@@ -1850,9 +2251,8 @@
                     </div>
                 </div>
                 <!-- Email Batch Action Bar -->
-                <div id="emailBatchActionBar"
-                    style="display: none; padding: 8px 16px; border-top: 1px solid #e5e5e5; background: #f8f9fa; gap: 8px; align-items: center;">
-                    <span id="emailSelectedCount" style="font-size: 12px; color: #666;">已选 0 项</span>
+                <div id="emailBatchActionBar" class="batch-action-bar">
+                    <span id="emailSelectedCount" class="batch-selection-count">已选 0 项</span>
                     <div style="flex: 1;"></div>
                     <button class="batch-btn danger" onclick="confirmBatchDeleteEmails()">
                         🗑️ 删除
@@ -2847,6 +3247,7 @@
 
         // 缓存与信任模式
         let emailListCache = {}; // 结构: { "account_folder": { emails: [], hasMore: bool, skip: int, method: str, count: int } }
+        let currentEmailId = null; // 当前选中的邮件 ID
         let currentEmailDetail = null; // 当前查看的邮件详细数据
         let isTrustedMode = false; // 是否处于信任模式（不过滤 HTML）
 
@@ -2889,6 +3290,7 @@
             await initCSRFToken();
             ensureForwardingSettingsUI();
             bindPersistentButtonHandlers();
+            document.addEventListener('click', closeAccountActionMenus);
             document.getElementById('importImapHost')?.addEventListener('input', updateImportHint);
             document.getElementById('importImapPort')?.addEventListener('input', updateImportHint);
 
@@ -2914,16 +3316,42 @@
             }
         });
 
+        function closeAccountActionMenus() {
+            document.querySelectorAll('.account-item.menu-open').forEach(item => {
+                item.classList.remove('menu-open');
+            });
+        }
+
+        function toggleAccountActionMenu(toggleBtn) {
+            const accountItem = toggleBtn?.closest('.account-item');
+            if (!accountItem) return;
+
+            const shouldOpen = !accountItem.classList.contains('menu-open');
+            closeAccountActionMenus();
+            if (shouldOpen) {
+                accountItem.classList.add('menu-open');
+            }
+        }
+
         function bindPersistentButtonHandlers() {
             const accountList = document.getElementById('accountList');
             if (accountList && !accountList.dataset.boundActions) {
                 accountList.dataset.boundActions = 'true';
                 accountList.addEventListener('click', function (event) {
+                    const menuToggle = event.target.closest('[data-account-menu-toggle]');
+                    if (menuToggle) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        toggleAccountActionMenu(menuToggle);
+                        return;
+                    }
+
                     const actionBtn = event.target.closest('[data-account-action]');
                     if (!actionBtn) return;
 
                     event.preventDefault();
                     event.stopPropagation();
+                    closeAccountActionMenus();
 
                     const action = actionBtn.dataset.accountAction;
                     const accountId = parseInt(actionBtn.dataset.accountId || '0', 10);
@@ -3052,6 +3480,8 @@
             if (currentFolder === folder) return;
 
             currentFolder = folder;
+            currentEmailId = null;
+            currentEmailDetail = null;
 
             // 更新按钮状态
             document.querySelectorAll('.folder-tab').forEach(tab => {
@@ -3091,6 +3521,14 @@
                 currentSkip = 0;
                 hasMoreEmails = true;
             }
+
+            document.getElementById('emailDetail').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📄</div>
+                    <div class="empty-state-text">选择一封邮件查看详情</div>
+                </div>
+            `;
+            document.getElementById('emailDetailToolbar').style.display = 'none';
 
             // 切换文件夹后自动刷新对应列表
             if (currentAccount && !isTempEmailGroup) {
@@ -3895,15 +4333,7 @@ ${details}
                 // 同步筛选按钮样式
                 const currentFilter = localStorage.getItem('outlook_temp_email_filter') || 'all';
                 document.querySelectorAll('.provider-filter-btn').forEach(btn => {
-                    if (btn.dataset.provider === currentFilter) {
-                        btn.style.backgroundColor = '#1a1a1a';
-                        btn.style.borderColor = '#1a1a1a';
-                        btn.style.color = '#ffffff';
-                    } else {
-                        btn.style.backgroundColor = '#ffffff';
-                        btn.style.borderColor = '#e5e5e5';
-                        btn.style.color = '#666';
-                    }
+                    btn.classList.toggle('active', btn.dataset.provider === currentFilter);
                 });
             } else {
                 footer.innerHTML = `
@@ -3919,8 +4349,10 @@ ${details}
 
         // 筛选临时邮箱渠道（点击已激活的按钮取消筛选）
         function filterTempEmailByProvider(provider) {
-            // 点击已激活的按钮取消筛选（显示全部）
-            if (localStorage.getItem('outlook_temp_email_filter') === provider) {
+            if (provider === 'all') {
+                localStorage.setItem('outlook_temp_email_filter', 'all');
+            } else if (localStorage.getItem('outlook_temp_email_filter') === provider) {
+                // 点击已激活的按钮取消筛选（显示全部）
                 localStorage.setItem('outlook_temp_email_filter', 'all');
             } else {
                 localStorage.setItem('outlook_temp_email_filter', provider);
@@ -3929,15 +4361,7 @@ ${details}
             // 更新按钮样式
             const currentFilter = localStorage.getItem('outlook_temp_email_filter') || 'all';
             document.querySelectorAll('.provider-filter-btn').forEach(btn => {
-                if (btn.dataset.provider === currentFilter) {
-                    btn.style.backgroundColor = '#1a1a1a';
-                    btn.style.borderColor = '#1a1a1a';
-                    btn.style.color = '#ffffff';
-                } else {
-                    btn.style.backgroundColor = '#ffffff';
-                    btn.style.borderColor = '#e5e5e5';
-                    btn.style.color = '#666';
-                }
+                btn.classList.toggle('active', btn.dataset.provider === currentFilter);
             });
             if (accountsCache['temp']) {
                 renderTempEmailList(accountsCache['temp']);
@@ -3972,8 +4396,44 @@ ${details}
 
         function showForwardStatusLabel(enabled) {
             return enabled
-                ? '<span class="tag-badge" style="background-color: #16a34a">转发已开启</span>'
-                : '<span class="tag-badge" style="background-color: #6b7280">转发未开启</span>';
+                ? '<span class="account-status-pill success">转发已开启</span>'
+                : '<span class="account-status-pill muted">转发未开启</span>';
+        }
+
+        function renderEmailMetaSummary(email) {
+            const pills = [];
+
+            if (typeof email.is_read === 'boolean') {
+                pills.push(
+                    email.is_read === false
+                        ? '<span class="email-meta-pill unread">未读</span>'
+                        : '<span class="email-meta-pill read">已读</span>'
+                );
+            }
+
+            if (email.has_attachments) {
+                pills.push('<span class="email-meta-pill attachment">附件</span>');
+            }
+
+            return pills.join('');
+        }
+
+        function renderAccountTagSummary(tags) {
+            const safeTags = Array.isArray(tags) ? tags : [];
+            const visibleTags = safeTags.slice(0, 2);
+            const hiddenCount = Math.max(0, safeTags.length - visibleTags.length);
+
+            let html = visibleTags.map(tag => `
+                <span class="account-status-pill tag" style="--pill-accent: ${tag.color}">
+                    ${escapeHtml(tag.name)}
+                </span>
+            `).join('');
+
+            if (hiddenCount > 0) {
+                html += `<span class="account-status-pill outline">+${hiddenCount}</span>`;
+            }
+
+            return html;
         }
 
         // 渲染邮箱列表
@@ -3993,41 +4453,44 @@ ${details}
             container.innerHTML = accounts.map((acc, index) => `
                 <div class="account-item ${currentAccount === acc.email ? 'active' : ''} ${acc.status === 'inactive' ? 'inactive' : ''}"
                      onclick="selectAccount('${escapeJs(acc.email)}')">
-                    <div style="display: flex; align-items: flex-start; gap: 10px;">
-                        <input type="checkbox" class="account-select-checkbox" value="${acc.id}" 
-                               onclick="event.stopPropagation(); updateBatchActionBar()"
-                               style="margin-top: 6px; cursor: pointer;">
-                        <div style="flex: 1; min-width: 0;">
-                            <div class="account-email" title="${escapeHtml(acc.email)}" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; ${acc.last_refresh_status === 'failed' ? 'color: #dc3545; font-weight: 700;' : ''}">
-                                <span class="account-number">${index + 1}.</span> ${escapeHtml(acc.email)}
-                                ${acc.status === 'inactive' ? '<span class="account-status-tag">已停用</span>' : ''}
-                            </div>
-                            ${acc.remark && acc.remark.trim() ? `<div class="account-remark" title="${escapeHtml(acc.remark)}">📝 ${escapeHtml(acc.remark)}</div>` : ''}
-                            
-                            <div class="account-tags">
-                                <span class="tag-badge" style="background-color: ${acc.account_type === 'imap' ? '#0ea5e9' : '#2563eb'}">
-                                    ${escapeHtml(getProviderLabel(acc.provider || (acc.account_type === 'imap' ? 'custom' : 'outlook')))}
-                                </span>
-                                ${showForwardStatusLabel(!!acc.forward_enabled)}
-                                ${(acc.tags || []).map(tag => `
-                                    <span class="tag-badge" style="background-color: ${tag.color}">
-                                        ${escapeHtml(tag.name)}
-                                    </span>
-                                `).join('')}
-                            </div>
-                            
-                            <div class="account-refresh-time" style="font-size: 11px; color: ${acc.last_refresh_status === 'failed' ? '#dc3545' : '#999'}; margin-top: 4px; padding-left: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                <span>🕐 ${formatRelativeTime(acc.last_refresh_at)}</span>
-                                ${acc.last_refresh_status === 'failed' ? '<button class="account-action-btn" onclick="event.stopPropagation(); showRefreshError(' + acc.id + ', \'' + escapeJs(acc.last_refresh_error || '未知错误') + '\', \'' + escapeJs(acc.email) + '\')" style="padding: 2px 6px; font-size: 10px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">查看错误</button>' : ''}
+                    <input type="checkbox" class="account-select-checkbox" value="${acc.id}" 
+                           onclick="event.stopPropagation(); updateBatchActionBar()">
+                    <div class="account-body">
+                        <div class="account-title-row">
+                            <div class="account-email-wrap">
+                                <span class="account-email-index">${index + 1}.</span>
+                                <div class="account-email" title="${escapeHtml(acc.email)}" style="${acc.last_refresh_status === 'failed' ? 'color: #b42318;' : ''}">
+                                    ${escapeHtml(acc.email)}
+                                </div>
                             </div>
                         </div>
+                        <div class="account-meta-row">
+                            <span class="account-status-pill provider"
+                                style="--pill-accent: ${acc.account_type === 'imap' ? '#0ea5e9' : '#2563eb'}">
+                                ${escapeHtml(getProviderLabel(acc.provider || (acc.account_type === 'imap' ? 'custom' : 'outlook')))}
+                            </span>
+                            ${showForwardStatusLabel(!!acc.forward_enabled)}
+                            ${acc.status === 'inactive' ? '<span class="account-status-pill muted">已停用</span>' : ''}
+                            ${acc.last_refresh_status === 'failed' ? '<span class="account-status-pill danger">刷新失败</span>' : ''}
+                        </div>
+                        ${acc.remark && acc.remark.trim() ? `<div class="account-remark" title="${escapeHtml(acc.remark)}">${escapeHtml(acc.remark)}</div>` : ''}
+                        ${(acc.tags || []).length ? `<div class="account-tags">${renderAccountTagSummary(acc.tags)}</div>` : ''}
+                        <div class="account-refresh-row">
+                            <span class="account-refresh-meta ${acc.last_refresh_status === 'failed' ? 'failed' : ''}">
+                                最近刷新 ${formatRelativeTime(acc.last_refresh_at)}
+                            </span>
+                            ${acc.last_refresh_status === 'failed' ? '<button class="account-error-btn" onclick="event.stopPropagation(); showRefreshError(' + acc.id + ', \'' + escapeJs(acc.last_refresh_error || '未知错误') + '\', \'' + escapeJs(acc.email) + '\')">查看错误</button>' : ''}
+                        </div>
                     </div>
-                    <div class="account-actions">
-                        <button class="account-action-btn" type="button" data-account-action="copy" data-account-email="${escapeHtml(acc.email)}" title="复制">复制</button>
-                        <button class="account-action-btn" type="button" data-account-action="forwardingLogs" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}" title="转发日志">转发日志</button>
-                        <button class="account-action-btn" type="button" data-account-action="toggleStatus" data-account-id="${acc.id}" data-account-status="${escapeHtml(acc.status || 'active')}" title="${acc.status === 'inactive' ? '启用' : '停用'}">${acc.status === 'inactive' ? '启用' : '停用'}</button>
-                        <button class="account-action-btn" type="button" data-account-action="edit" data-account-id="${acc.id}" title="编辑">编辑</button>
-                        <button class="account-action-btn delete" type="button" data-account-action="delete" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}" title="删除">删除</button>
+                    <div class="account-menu-wrap">
+                        <button class="account-menu-trigger" type="button" data-account-menu-toggle="true" title="更多操作">⋯</button>
+                        <div class="account-menu-panel">
+                            <button class="account-action-btn" type="button" data-account-action="copy" data-account-email="${escapeHtml(acc.email)}">复制邮箱</button>
+                            <button class="account-action-btn" type="button" data-account-action="forwardingLogs" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">转发日志</button>
+                            <button class="account-action-btn" type="button" data-account-action="toggleStatus" data-account-id="${acc.id}" data-account-status="${escapeHtml(acc.status || 'active')}">${acc.status === 'inactive' ? '启用账号' : '停用账号'}</button>
+                            <button class="account-action-btn" type="button" data-account-action="edit" data-account-id="${acc.id}">编辑账号</button>
+                            <button class="account-action-btn delete" type="button" data-account-action="delete" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">删除账号</button>
+                        </div>
                     </div>
                 </div>
             `).join('');
@@ -4637,14 +5100,27 @@ ${details}
             container.innerHTML = filtered.map(email => `
                 <div class="account-item ${currentAccount === email.email ? 'active' : ''}"
                      onclick="selectTempEmail('${escapeJs(email.email)}')">
-                    <div style="flex: 1; min-width: 0; overflow: hidden;">
-                        <div class="account-email" title="${escapeHtml(email.email)}" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                            ${escapeHtml(email.email)}
+                    <div class="account-leading-icon">⚡</div>
+                    <div class="account-body">
+                        <div class="account-title-row">
+                            <div class="account-email-wrap">
+                                <div class="account-email" title="${escapeHtml(email.email)}">${escapeHtml(email.email)}</div>
+                            </div>
+                        </div>
+                        <div class="account-meta-row">
+                            <span class="account-status-pill provider"
+                                style="--pill-accent: ${email.provider === 'duckmail' ? '#ff9800' : (email.provider === 'cloudflare' ? '#f48120' : '#00bcf2')}">
+                                ${escapeHtml(email.provider === 'duckmail' ? 'DuckMail' : (email.provider === 'cloudflare' ? 'Cloudflare' : 'GPTMail'))}
+                            </span>
+                            <span class="account-status-pill muted">临时邮箱</span>
                         </div>
                     </div>
-                    <div class="account-actions" style="flex-shrink: 0;">
-                        <button class="account-action-btn" onclick="event.stopPropagation(); copyEmail('${escapeJs(email.email)}')" title="复制邮箱">复制</button>
-                        <button class="account-action-btn delete" onclick="event.stopPropagation(); deleteTempEmail('${escapeJs(email.email)}')" title="删除">删除</button>
+                    <div class="account-menu-wrap">
+                        <button class="account-menu-trigger" type="button" data-account-menu-toggle="true" title="更多操作">⋯</button>
+                        <div class="account-menu-panel">
+                            <button class="account-action-btn" type="button" onclick="event.stopPropagation(); closeAccountActionMenus(); copyEmail('${escapeJs(email.email)}')">复制邮箱</button>
+                            <button class="account-action-btn delete" type="button" onclick="event.stopPropagation(); closeAccountActionMenus(); deleteTempEmail('${escapeJs(email.email)}')">删除邮箱</button>
+                        </div>
                     </div>
                 </div>
             `).join('');
@@ -4904,6 +5380,8 @@ ${details}
         function selectTempEmail(email) {
             currentAccount = email;
             isTempEmailGroup = true;
+            currentEmailId = null;
+            currentEmailDetail = null;
 
             document.getElementById('currentAccount').classList.add('show');
             document.getElementById('currentAccountEmail').textContent = email + ' (临时)';
@@ -5030,6 +5508,8 @@ ${details}
         async function loadTempEmailMessages(email) {
             const container = document.getElementById('emailList');
             container.innerHTML = '<div class="loading"><div class="loading-spinner"></div></div>';
+            currentEmailId = null;
+            currentEmailDetail = null;
 
             // 禁用按钮
             const refreshBtn = document.querySelector('.refresh-btn');
@@ -5086,6 +5566,7 @@ ${details}
 
         // 获取临时邮件详情
         async function getTempEmailDetail(messageId, index) {
+            currentEmailId = messageId;
             document.querySelectorAll('.email-item').forEach((item, i) => {
                 item.classList.toggle('active', i === index);
             });
@@ -5129,6 +5610,8 @@ ${details}
             currentAccount = email;
             isTempEmailGroup = false;
             currentFolder = 'inbox'; // 重置为收件箱
+            currentEmailId = null;
+            currentEmailDetail = null;
 
             document.getElementById('currentAccount').classList.add('show');
             document.getElementById('currentAccountEmail').textContent = email;
@@ -5755,7 +6238,6 @@ ${details}
 
         function renderEmailList(emails) {
             const container = document.getElementById('emailList');
-            const actionBar = document.getElementById('emailBatchActionBar');
 
             if (emails.length === 0) {
                 container.innerHTML = `
@@ -5766,6 +6248,7 @@ ${details}
                 `;
                 // Reset selection
                 selectedEmailIds.clear();
+                currentEmailId = null;
                 updateEmailBatchActionBar();
                 return;
             }
@@ -5775,17 +6258,24 @@ ${details}
 
             container.innerHTML = emails.map((email, index) => {
                 const isChecked = selectedEmailIds.has(email.id);
+                const isActive = currentEmailId === email.id;
                 return `
-                <div class="email-item ${email.is_read === false ? 'unread' : ''}"
+                <div class="email-item ${email.is_read === false ? 'unread' : ''} ${isActive ? 'active' : ''}"
                      onclick="${clickHandler}('${email.id}', ${index})">
                     <div class="email-checkbox-wrapper" onclick="event.stopPropagation(); toggleEmailSelection('${email.id}')">
                         <input type="checkbox" class="email-checkbox" ${isChecked ? 'checked' : ''} style="pointer-events: none;">
                     </div>
-                    <div style="flex: 1; min-width: 0;">
-                        <div class="email-from">${escapeHtml(email.from)}</div>
+                    <div class="email-body">
+                        <div class="email-top-row">
+                            <div class="email-top-main">
+                                <span class="email-unread-dot"></span>
+                                <div class="email-from" title="${escapeHtml(email.from || '未知发件人')}">${escapeHtml(email.from || '未知发件人')}</div>
+                            </div>
+                            <div class="email-date">${formatDate(email.date)}</div>
+                        </div>
                         <div class="email-subject">${escapeHtml(email.subject || '无主题')}</div>
-                        <div class="email-preview">${escapeHtml(email.body_preview || '')}</div>
-                        <div class="email-date">${formatDate(email.date)}</div>
+                        <div class="email-preview">${escapeHtml((email.body_preview || '').trim() || '暂无预览内容')}</div>
+                        <div class="email-meta-row">${renderEmailMetaSummary(email)}</div>
                     </div>
                 </div>
             `}).join('');
@@ -5863,11 +6353,16 @@ ${details}
                     const deletedIds = new Set(ids); // Ideally result should return what was deleted
                     currentEmails = currentEmails.filter(e => !deletedIds.has(e.id));
                     selectedEmailIds.clear();
+                    if (currentEmailId && deletedIds.has(currentEmailId)) {
+                        currentEmailId = null;
+                    }
 
                     renderEmailList(currentEmails);
 
                     // If current viewed email was deleted, clear view
                     if (currentEmailDetail && deletedIds.has(currentEmailDetail.id)) {
+                        currentEmailId = null;
+                        currentEmailDetail = null;
                         document.getElementById('emailDetail').innerHTML = `
                             <div class="empty-state">
                                 <div class="empty-state-icon">🗑️</div>
@@ -5893,6 +6388,7 @@ ${details}
 
         // 选择邮件
         async function selectEmail(messageId, index) {
+            currentEmailId = messageId;
             // 更新 UI
             document.querySelectorAll('.email-item').forEach((item, i) => {
                 item.classList.toggle('active', i === index);
@@ -7620,6 +8116,7 @@ ${details}
         // 键盘快捷键
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
+                closeAccountActionMenus();
                 closeAllModals();
             }
         });
@@ -7668,9 +8165,9 @@ ${details}
             let html = '';
             allTags.forEach(tag => {
                 html += `
-                    <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer; padding: 2px 6px; border: 1px solid #e5e5e5; border-radius: 12px; background: white; user-select: none;">
-                        <input type="checkbox" class="tag-filter-checkbox" value="${tag.id}" onchange="handleTagFilterChange()" style="margin: 0;">
-                        <span style="width: 8px; height: 8px; border-radius: 50%; background-color: ${tag.color}; display: inline-block;"></span>
+                    <label class="tag-filter-label">
+                        <input type="checkbox" class="tag-filter-checkbox" value="${tag.id}" onchange="handleTagFilterChange()">
+                        <span class="tag-filter-dot" style="background-color: ${tag.color};"></span>
                         ${escapeHtml(tag.name)}
                     </label>
                 `;
