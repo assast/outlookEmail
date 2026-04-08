@@ -3099,9 +3099,25 @@
             toast.className = 'toast show ' + type;
         }
 
+        function setModalVisible(modalId, visible) {
+            const modal = document.getElementById(modalId);
+            if (!modal) return null;
+            modal.classList.toggle('show', visible);
+            return modal;
+        }
+
+        function hideModal(modalId) {
+            return setModalVisible(modalId, false);
+        }
+
+        function showModal(modalId) {
+            closeAllModals();
+            return setModalVisible(modalId, true);
+        }
+
         // 显示刷新错误信息
         function showRefreshError(accountId, errorMessage, accountEmail) {
-            document.getElementById('refreshErrorModal').classList.add('show');
+            showModal('refreshErrorModal');
             document.getElementById('refreshErrorEmail').textContent = `账号：${accountEmail || '未知'}`;
             document.getElementById('refreshErrorMessage').textContent = errorMessage;
             document.getElementById('editAccountFromErrorBtn').onclick = function () {
@@ -3148,10 +3164,9 @@
         async function showAccountForwardingLogs(accountId, accountEmail) {
             currentForwardingLogAccountId = accountId;
             currentForwardingLogAccountEmail = accountEmail || '';
-            const modal = document.getElementById('accountForwardingLogsModal');
             const title = document.getElementById('accountForwardingLogsTitle');
             title.textContent = `${accountEmail || '该账号'} 的转发日志`;
-            modal.classList.add('show');
+            showModal('accountForwardingLogsModal');
             await loadAccountForwardingLogs();
         }
 
@@ -3208,19 +3223,19 @@
         }
 
         function hideAccountForwardingLogs() {
-            document.getElementById('accountForwardingLogsModal').classList.remove('show');
+            hideModal('accountForwardingLogsModal');
         }
 
         // 隐藏刷新错误模态框
         function hideRefreshErrorModal() {
-            document.getElementById('refreshErrorModal').classList.remove('show');
+            hideModal('refreshErrorModal');
         }
 
         // ==================== 统一错误处理相关 ====================
 
         // 显示统一错误详情模态框
         function showErrorDetailModal(error) {
-            document.getElementById('errorDetailModal').classList.add('show');
+            showModal('errorDetailModal');
             document.getElementById('errorModalUserMessage').textContent = error.message || '发生未知错误';
             document.getElementById('errorModalCode').textContent = error.code || '-';
             document.getElementById('errorModalType').textContent = error.type || '-';
@@ -3240,7 +3255,7 @@
 
         // 隐藏统一错误详情模态框
         function hideErrorDetailModal() {
-            document.getElementById('errorDetailModal').classList.remove('show');
+            hideModal('errorDetailModal');
         }
 
         // 邮件获取失败详情弹框
@@ -3307,11 +3322,11 @@
             }
 
             document.getElementById('emailFetchErrorContent').innerHTML = html;
-            document.getElementById('emailFetchErrorModal').classList.add('show');
+            showModal('emailFetchErrorModal');
         }
 
         function hideEmailFetchErrorModal() {
-            document.getElementById('emailFetchErrorModal').classList.remove('show');
+            hideModal('emailFetchErrorModal');
         }
 
         // 切换堆栈信息的显示/隐藏
@@ -4203,7 +4218,7 @@ ${details}
         function isTempImportGroup() {
             const importSelect = document.getElementById('importGroupSelect');
             const selectedGroup = groups.find(g => g.id === parseInt(importSelect?.value || '0'));
-            return !!(selectedGroup && selectedGroup.name === '涓存椂閭');
+            return !!(selectedGroup && selectedGroup.name === '临时邮箱');
         }
 
         function normalizeForwardChannels(rawChannels) {
@@ -4372,6 +4387,7 @@ ${details}
         }
 
         function showAddGroupModal() {
+            closeAllModals();
             editingGroupId = null;
             document.getElementById('groupModalTitle').textContent = '添加分组';
             document.getElementById('groupName').value = '';
@@ -4384,12 +4400,12 @@ ${details}
             document.getElementById('customColorInput').value = selectedColor;
             document.getElementById('customColorHex').value = selectedColor;
             document.getElementById('groupProxyUrl').value = '';
-            document.getElementById('addGroupModal').classList.add('show');
+            setModalVisible('addGroupModal', true);
         }
 
         // 隐藏添加分组模态框
         function hideAddGroupModal() {
-            document.getElementById('addGroupModal').classList.remove('show');
+            hideModal('addGroupModal');
         }
 
         // 编辑分组
@@ -4424,7 +4440,7 @@ ${details}
                     // 填充代理设置
                     document.getElementById('groupProxyUrl').value = data.group.proxy_url || '';
 
-                    document.getElementById('addGroupModal').classList.add('show');
+                    showModal('addGroupModal');
                 }
             } catch (error) {
                 showToast('加载分组信息失败', 'error');
@@ -4574,20 +4590,25 @@ ${details}
             showTempEmailProviderModal();
         }
 
+        function hideTempEmailProviderModal() {
+            hideModal('tempEmailProviderModal');
+        }
+
         // 显示提供商选择弹窗
         function showTempEmailProviderModal() {
+            closeAllModals();
             // 动态创建弹窗
             let modal = document.getElementById('tempEmailProviderModal');
             if (!modal) {
                 modal = document.createElement('div');
                 modal.id = 'tempEmailProviderModal';
                 modal.className = 'modal';
-                modal.onclick = function (e) { if (e.target === modal) modal.classList.remove('show'); };
+                modal.onclick = function (e) { if (e.target === modal) hideTempEmailProviderModal(); };
                 modal.innerHTML = `
                     <div class="modal-content" style="width: 460px;">
                         <div class="modal-header">
                             <h3>⚡ 生成临时邮箱</h3>
-                            <button class="modal-close" onclick="document.getElementById('tempEmailProviderModal').classList.remove('show')">&times;</button>
+                            <button class="modal-close" onclick="hideTempEmailProviderModal()">&times;</button>
                         </div>
                         <div class="modal-body">
                             <div class="form-group">
@@ -4642,7 +4663,7 @@ ${details}
                             </div>
                         </div>
                         <div class="modal-footer">
-                            <button class="btn btn-secondary" onclick="document.getElementById('tempEmailProviderModal').classList.remove('show')">取消</button>
+                            <button class="btn btn-secondary" onclick="hideTempEmailProviderModal()">取消</button>
                             <button class="btn btn-primary" id="createTempEmailBtn" onclick="doGenerateTempEmail()">✨ 创建邮箱</button>
                         </div>
                     </div>
@@ -4654,7 +4675,7 @@ ${details}
             const radio = modal.querySelector(`input[value="${defaultProvider}"]`);
             if (radio) radio.checked = true;
             toggleTempEmailProvider(defaultProvider);
-            modal.classList.add('show');
+            setModalVisible('tempEmailProviderModal', true);
         }
 
         // 切换提供商显示
@@ -5121,7 +5142,7 @@ ${details}
 
         // 隐藏添加账号模态框
         function hideAddAccountModal() {
-            document.getElementById('addAccountModal').classList.remove('show');
+            hideModal('addAccountModal');
         }
 
         // 添加账号
@@ -5209,7 +5230,7 @@ ${details}
 
         // 隐藏编辑账号模态框
         function hideEditAccountModal() {
-            document.getElementById('editAccountModal').classList.remove('show');
+            hideModal('editAccountModal');
         }
 
         // 更新账号
@@ -5400,13 +5421,13 @@ ${details}
 
         // 显示导出邮箱模态框
         async function showExportModal() {
-            document.getElementById('exportModal').classList.add('show');
+            showModal('exportModal');
             await loadExportGroupList();
         }
 
         // 隐藏导出邮箱模态框
         function hideExportModal() {
-            document.getElementById('exportModal').classList.remove('show');
+            hideModal('exportModal');
         }
 
         // 加载导出分组列表
@@ -5471,15 +5492,21 @@ ${details}
 
         // 显示导出密码确认对话框
         function showExportVerifyModal() {
-            document.getElementById('exportVerifyModal').classList.add('show');
-            document.getElementById('exportVerifyPassword').value = '';
-            document.getElementById('exportVerifyPassword').focus();
+            showModal('exportVerifyModal');
+            const passwordInput = document.getElementById('exportVerifyPassword');
+            if (passwordInput) {
+                passwordInput.value = '';
+                passwordInput.focus();
+            }
         }
 
         // 隐藏导出密码确认对话框
         function hideExportVerifyModal() {
-            document.getElementById('exportVerifyModal').classList.remove('show');
-            document.getElementById('exportVerifyPassword').value = '';
+            hideModal('exportVerifyModal');
+            const passwordInput = document.getElementById('exportVerifyPassword');
+            if (passwordInput) {
+                passwordInput.value = '';
+            }
         }
 
         // 确认导出验证
@@ -6091,6 +6118,7 @@ ${details}
 
         function closeFullscreenEmail() {
             const modal = document.getElementById('fullscreenEmailModal');
+            if (!modal) return;
             modal.classList.remove('show');
             document.body.style.overflow = '';
         }
@@ -6256,7 +6284,7 @@ ${details}
 
         // 显示获取 Refresh Token 模态框
         async function showGetRefreshTokenModal() {
-            document.getElementById('getRefreshTokenModal').classList.add('show');
+            showModal('getRefreshTokenModal');
 
             // 重置表单
             document.getElementById('redirectUrlInput').value = '';
@@ -6286,7 +6314,7 @@ ${details}
 
         // 隐藏获取 Refresh Token 模态框
         function hideGetRefreshTokenModal() {
-            document.getElementById('getRefreshTokenModal').classList.remove('show');
+            hideModal('getRefreshTokenModal');
         }
 
         // 复制授权 URL
@@ -6362,15 +6390,18 @@ ${details}
 
         // 显示设置模态框
         async function showSettingsModal() {
-            document.getElementById('settingsModal').classList.add('show');
+            showModal('settingsModal');
             await loadSettings();
         }
 
         // 隐藏设置模态框
         function hideSettingsModal() {
-            document.getElementById('settingsModal').classList.remove('show');
+            hideModal('settingsModal');
             // 清空密码输入框
-            document.getElementById('settingsPassword').value = '';
+            const passwordInput = document.getElementById('settingsPassword');
+            if (passwordInput) {
+                passwordInput.value = '';
+            }
         }
 
         // 生成随机对外 API Key
@@ -6560,15 +6591,6 @@ ${details}
             }
         }
 
-        // ==================== 工具函数 ====================
-
-        // 相对时间格式化
-        function isTempImportGroup() {
-            const importSelect = document.getElementById('importGroupSelect');
-            const selectedGroup = groups.find(g => g.id === parseInt(importSelect?.value || '0'));
-            return !!(selectedGroup && (selectedGroup.id === -1 || selectedGroup.name === '涓存椂閭'));
-        }
-
         function ensureEditForwardToggle() {
             if (document.getElementById('editForwardEnabled')) return;
             const statusGroup = document.getElementById('editStatus')?.closest('.form-group');
@@ -6584,13 +6606,8 @@ ${details}
             `);
         }
 
-        function isTempImportGroup() {
-            const importSelect = document.getElementById('importGroupSelect');
-            const selectedGroup = groups.find(g => g.id === parseInt(importSelect?.value || '0'));
-            return !!(selectedGroup && selectedGroup.id === -1);
-        }
-
         function showAddAccountModal() {
+            showModal('addAccountModal');
             document.getElementById('accountInput').value = '';
             if (document.getElementById('importFormatSelect')) {
                 document.getElementById('importFormatSelect').value = 'client_id_refresh_token';
@@ -6608,7 +6625,6 @@ ${details}
                 document.getElementById('importGroupSelect').value = currentGroupId;
             }
             updateImportHint();
-            document.getElementById('addAccountModal').classList.add('show');
         }
 
         async function addAccount() {
@@ -6682,6 +6698,7 @@ ${details}
                 const data = await response.json();
 
                 if (data.success) {
+                    closeAllModals();
                     const acc = data.account;
                     document.getElementById('editAccountId').value = acc.id;
                     document.getElementById('editEmail').value = acc.email || '';
@@ -6701,7 +6718,7 @@ ${details}
                         document.getElementById('editProviderSelect').value = acc.provider || (acc.account_type === 'imap' ? 'custom' : 'outlook');
                     }
                     updateEditAccountFields();
-                    document.getElementById('editAccountModal').classList.add('show');
+                    setModalVisible('editAccountModal', true);
                 }
             } catch (error) {
                 showToast('加载账号信息失败', 'error');
@@ -6956,7 +6973,7 @@ ${details}
 
         // 显示刷新模态框
         async function showRefreshModal() {
-            document.getElementById('refreshModal').classList.add('show');
+            showModal('refreshModal');
             // 加载统计数据
             await loadRefreshStats();
             // 自动加载失败列表（如果有失败记录）
@@ -6984,8 +7001,7 @@ ${details}
 
         // 隐藏刷新模态框
         function hideRefreshModal() {
-            const modal = document.getElementById('refreshModal');
-            modal.classList.remove('show');
+            hideModal('refreshModal');
 
             // 确保所有内容都被隐藏，防止残留
             const progress = document.getElementById('refreshProgress');
@@ -7251,7 +7267,10 @@ ${details}
 
         // 隐藏失败列表
         function hideFailedList() {
-            document.getElementById('failedListContainer').style.display = 'none';
+            const container = document.getElementById('failedListContainer');
+            if (container) {
+                container.style.display = 'none';
+            }
         }
 
         // 加载失败日志
@@ -7422,15 +7441,24 @@ ${details}
 
         // 隐藏刷新历史
         function hideRefreshLogs() {
-            document.getElementById('refreshLogsContainer').style.display = 'none';
+            const container = document.getElementById('refreshLogsContainer');
+            if (container) {
+                container.style.display = 'none';
+            }
         }
 
         function hideForwardingLogs() {
-            document.getElementById('forwardingLogsContainer').style.display = 'none';
+            const container = document.getElementById('forwardingLogsContainer');
+            if (container) {
+                container.style.display = 'none';
+            }
         }
 
         function hideFailedForwardingLogs() {
-            document.getElementById('failedForwardingLogsContainer').style.display = 'none';
+            const container = document.getElementById('failedForwardingLogsContainer');
+            if (container) {
+                container.style.display = 'none';
+            }
         }
 
         // 格式化日期时间
@@ -7474,16 +7502,42 @@ ${details}
 
         // 统一关闭所有模态框的函数 (修复 bug：防止模态框意外残留)
         function closeAllModals() {
-            hideAddGroupModal();
-            hideAddAccountModal();
-            hideEditAccountModal();
-            hideExportModal();
-            hideSettingsModal();
-            hideRefreshModal();
-            hideRefreshErrorModal();
-            hideAccountForwardingLogs();
-            hideErrorDetailModal();
-            hideGetRefreshTokenModal();
+            document.querySelectorAll('.modal.show').forEach(modal => {
+                modal.classList.remove('show');
+            });
+
+            const settingsPassword = document.getElementById('settingsPassword');
+            if (settingsPassword) {
+                settingsPassword.value = '';
+            }
+
+            const exportVerifyPassword = document.getElementById('exportVerifyPassword');
+            if (exportVerifyPassword) {
+                exportVerifyPassword.value = '';
+            }
+
+            hideFailedList();
+            hideRefreshLogs();
+            hideForwardingLogs();
+            hideFailedForwardingLogs();
+
+            const progress = document.getElementById('refreshProgress');
+            if (progress) {
+                progress.style.display = 'none';
+            }
+
+            const refreshAllBtn = document.getElementById('refreshAllBtn');
+            if (refreshAllBtn) {
+                refreshAllBtn.disabled = false;
+                refreshAllBtn.textContent = '🔄 全量刷新';
+            }
+
+            const retryFailedBtn = document.getElementById('retryFailedBtn');
+            if (retryFailedBtn) {
+                retryFailedBtn.disabled = false;
+                retryFailedBtn.textContent = '🔁 重试失败';
+            }
+
             closeFullscreenEmail();
         }
 
@@ -7497,17 +7551,7 @@ ${details}
         // 键盘快捷键
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
-                hideAddGroupModal();
-                hideAddAccountModal();
-                hideEditAccountModal();
-                hideExportModal();
-                hideSettingsModal();
-                hideRefreshModal();
-                hideRefreshErrorModal();
-                hideAccountForwardingLogs();
-                hideErrorDetailModal();
-                hideGetRefreshTokenModal();
-                closeFullscreenEmail();
+                closeAllModals();
             }
         });
         // ==================== 标签管理 ====================
@@ -7516,13 +7560,13 @@ ${details}
 
         // 显示标签管理模态框
         async function showTagManagementModal() {
-            document.getElementById('tagManagementModal').classList.add('show');
+            showModal('tagManagementModal');
             await loadTags();
         }
 
         // 隐藏标签管理模态框
         function hideTagManagementModal() {
-            document.getElementById('tagManagementModal').classList.remove('show');
+            hideModal('tagManagementModal');
         }
 
         // 加载标签列表
@@ -7669,14 +7713,14 @@ ${details}
         async function showBatchTagModal(type) {
             batchActionType = type;
             document.getElementById('batchTagTitle').textContent = type === 'add' ? '批量添加标签' : '批量移除标签';
-            document.getElementById('batchTagModal').classList.add('show');
+            showModal('batchTagModal');
 
             // 加载标签选项
             await loadTagsForSelect();
         }
 
         function hideBatchTagModal() {
-            document.getElementById('batchTagModal').classList.remove('show');
+            hideModal('batchTagModal');
         }
 
         // 加载标签到下拉框
@@ -7746,12 +7790,12 @@ ${details}
 
         // 显示批量移动分组模态框
         async function showBatchMoveGroupModal() {
-            document.getElementById('batchMoveGroupModal').classList.add('show');
+            showModal('batchMoveGroupModal');
             await loadGroupsForBatchMove();
         }
 
         function hideBatchMoveGroupModal() {
-            document.getElementById('batchMoveGroupModal').classList.remove('show');
+            hideModal('batchMoveGroupModal');
         }
 
         // 加载分组到下拉框
