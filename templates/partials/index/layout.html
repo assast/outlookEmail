@@ -1,0 +1,217 @@
+    <!-- 顶部导航栏 -->
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                <polyline points="22,6 12,13 2,6"></polyline>
+            </svg>
+            Outlook 邮件
+            <a href="https://github.com/assast/outlookEmail" target="_blank" class="github-star-btn"
+                style="margin-left: 16px;">
+                <svg viewBox="0 0 16 16" fill="currentColor">
+                    <path
+                        d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z" />
+                </svg>
+                Star on GitHub
+            </a>
+        </div>
+        <div class="navbar-center">
+            <div class="current-account" id="currentAccount" onclick="copyCurrentEmail()" title="点击复制邮箱地址">
+                当前邮箱：<strong id="currentAccountEmail"></strong>
+            </div>
+        </div>
+        <div class="navbar-actions">
+            <button class="navbar-btn" id="refreshTokensBtn" type="button" onclick="showRefreshModal()">Token刷新管理</button>
+            <button class="navbar-btn" id="exportAccountsBtn" type="button" onclick="showExportModal()">导出邮箱</button>
+            <button class="navbar-btn" id="openSettingsBtn" type="button" onclick="showSettingsModal()">⚙️ 设置</button>
+            <button class="navbar-btn" id="logoutBtn" type="button" onclick="logout()" style="color: #dc3545;">退出登录</button>
+        </div>
+    </nav>
+
+    <!-- 主容器 -->
+    <div class="main-container">
+        <!-- 分组面板 -->
+        <div class="group-panel" id="groupPanel">
+            <div class="panel-header">
+                <span class="panel-title">分组</span>
+                <button class="panel-action-btn" onclick="showAddGroupModal()" title="添加分组">+</button>
+            </div>
+            <div class="group-list" id="groupList">
+                <!-- 分组列表将通过 JS 动态加载 -->
+            </div>
+        </div>
+
+        <!-- 邮箱账号面板 -->
+        <div class="account-panel" id="accountPanel">
+            <div class="account-panel-header">
+                <div class="account-panel-title" id="accountPanelTitle">
+                    <span class="group-color" id="currentGroupColor" style="background-color: #666"></span>
+                    <span class="current-group-title-wrap">
+                        <span id="currentGroupName">选择分组</span>
+                        <span class="group-id-badge current-group-id" id="currentGroupIdBadge" style="display: none;"></span>
+                    </span>
+                </div>
+                <div class="account-panel-header-actions">
+                    <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
+                        🏷️
+                    </button>
+                    <button class="panel-action-btn panel-action-btn-accent" onclick="showGetRefreshTokenModal()" title="授权并保存 Outlook 账号">
+                        🔑
+                    </button>
+                    <button class="panel-action-btn panel-action-btn-primary" onclick="showAddAccountModal()" title="导入邮箱账号">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path fill-rule="evenodd"
+                                d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="account-toolbar">
+                <div class="search-container">
+                    <input type="text" id="globalSearch" class="search-input" placeholder="搜索邮箱地址、别名、备注或标签..."
+                        autocomplete="off">
+                </div>
+                <!-- 临时邮箱渠道筛选 -->
+                <div id="tempEmailProviderFilter" class="toolbar-row" style="display: none;">
+                    <span class="toolbar-label">渠道</span>
+                    <div class="toolbar-chip-group">
+                        <button class="provider-filter-btn" data-provider="all"
+                            onclick="filterTempEmailByProvider('all')">
+                            全部
+                        </button>
+                        <button class="provider-filter-btn" data-provider="gptmail"
+                            onclick="filterTempEmailByProvider('gptmail')">
+                            GPTMail
+                        </button>
+                        <button class="provider-filter-btn" data-provider="duckmail"
+                            onclick="filterTempEmailByProvider('duckmail')">
+                            DuckMail
+                        </button>
+                        <button class="provider-filter-btn" data-provider="cloudflare"
+                            onclick="filterTempEmailByProvider('cloudflare')">
+                            Cloudflare
+                        </button>
+                    </div>
+                </div>
+                <div class="sort-control toolbar-row">
+                    <span class="toolbar-label">排序</span>
+                    <div class="toolbar-chip-group">
+                        <button class="sort-btn active" data-sort="refresh_time" onclick="sortAccounts('refresh_time')">
+                            最近刷新
+                        </button>
+                        <button class="sort-btn" data-sort="email" onclick="sortAccounts('email')">
+                            邮箱名称
+                        </button>
+                    </div>
+                </div>
+                <!-- Tag Filter Row -->
+                <div id="tagFilterContainer" class="toolbar-row">
+                    <!-- Tags checkboxes will be rendered here -->
+                </div>
+            </div>
+            <div class="account-list" id="accountList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📁</div>
+                    <div class="empty-state-text">请从左侧选择一个分组</div>
+                </div>
+            </div>
+            <!-- 批量操作栏 -->
+            <div id="batchActionBar" class="batch-action-bar">
+                <div class="batch-action-bar__summary">
+                    <span id="selectedCount" class="batch-selection-count">已选 0 项</span>
+                </div>
+                <div class="batch-action-bar__controls">
+                    <div class="batch-action-group">
+                        <button class="batch-btn batch-btn-secondary" id="accountSelectAllBtn" onclick="toggleSelectAllAccounts()">全选</button>
+                        <button class="batch-btn batch-btn-secondary" onclick="clearAccountSelection()">清空选择</button>
+                    </div>
+                    <div class="batch-action-group batch-action-group--accent">
+                        <button class="batch-btn batch-btn-primary" id="batchRefreshTokensBtn" onclick="refreshSelectedAccounts()">刷新 Token</button>
+                        <button class="batch-btn batch-btn-accent" id="batchEnableForwardingBtn" onclick="enableForwardingForSelectedAccounts()">开启转发</button>
+                        <button class="batch-btn batch-btn-accent" id="batchDisableForwardingBtn" onclick="disableForwardingForSelectedAccounts()">取消转发</button>
+                        <button class="batch-btn batch-btn-accent" onclick="showBatchTagModal('add')">标签+</button>
+                        <button class="batch-btn batch-btn-accent" onclick="showBatchTagModal('remove')">标签-</button>
+                        <button class="batch-btn batch-btn-accent" onclick="showBatchMoveGroupModal()">移动</button>
+                        <button class="batch-btn batch-btn-danger" id="batchDeleteAccountsBtn" onclick="deleteSelectedAccounts()">删除</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 内容区域 -->
+        <div class="content-area">
+            <!-- 邮件列表面板 -->
+            <div class="email-list-panel" id="emailListPanel">
+                <div class="email-list-header">
+                    <div class="email-list-header-top">
+                        <div class="email-list-title-wrap">
+                            <div class="email-list-title-row">
+                                <h2 style="margin: 0;">邮件</h2>
+                                <span class="email-count" id="emailCount"></span>
+                            </div>
+                            <div class="email-list-header-meta">
+                                <span class="method-tag" id="methodTag" style="display:none;"></span>
+                                <span class="email-list-hint">按时间顺序查看邮件</span>
+                            </div>
+                        </div>
+                        <button class="refresh-btn" onclick="refreshEmails()">获取邮件</button>
+                    </div>
+                    <div class="folder-tabs" id="folderTabs" style="display: none;">
+                        <button class="folder-tab active" data-folder="inbox" onclick="switchFolder('inbox')">
+                            📨 收件箱
+                        </button>
+                        <button class="folder-tab" data-folder="junkemail" onclick="switchFolder('junkemail')">
+                            ⚠️ 垃圾邮件
+                        </button>
+                    </div>
+                </div>
+                <div class="email-list" id="emailList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📬</div>
+                        <div class="empty-state-text">请从左侧选择一个邮箱账号</div>
+                    </div>
+                </div>
+                <!-- Email Batch Action Bar -->
+                <div id="emailBatchActionBar" class="batch-action-bar">
+                    <div class="batch-action-bar__summary">
+                        <span id="emailSelectedCount" class="batch-selection-count">已选 0 项</span>
+                    </div>
+                    <div class="batch-action-bar__controls">
+                        <div class="batch-action-group">
+                            <button class="batch-btn batch-btn-secondary" id="emailSelectAllBtn" onclick="toggleSelectAllEmails()">全选</button>
+                            <button class="batch-btn batch-btn-secondary" onclick="clearEmailSelection()">清空选择</button>
+                        </div>
+                        <button class="batch-btn batch-btn-danger" onclick="confirmBatchDeleteEmails()">
+                        删除
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 邮件详情面板 -->
+            <div class="email-detail-panel">
+                <div class="email-detail-toolbar" id="emailDetailToolbar" style="display:none;">
+                    <button class="back-btn" onclick="showEmailList()">← 返回</button>
+                    <button class="toggle-list-btn" onclick="toggleEmailList()">
+                        <span id="toggleListText">隐藏列表</span>
+                    </button>
+                    <button class="fullscreen-btn" onclick="openFullscreenEmail()">🔍 全屏查看</button>
+                    <label
+                        style="display: flex; align-items: center; gap: 6px; font-size: 13px; margin-left: 12px; cursor: pointer;">
+                        <input type="checkbox" id="trustEmailCheckbox" onchange="toggleTrustMode(this)">
+                        <span style="user-select: none;">信任此邮件</span>
+                    </label>
+                    <div style="flex: 1;"></div>
+                    <button class="batch-btn danger" onclick="confirmDeleteCurrentEmail()"
+                        style="padding: 4px 8px; font-size: 12px;">
+                        🗑️ 删除
+                    </button>
+                </div>
+                <div id="emailDetail">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📄</div>
+                        <div class="empty-state-text">选择一封邮件查看详情</div>
+                    </div>
+                </div>
+            </div>
+        </div>

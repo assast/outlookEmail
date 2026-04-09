@@ -1,0 +1,95 @@
+    <!-- 获取 Refresh Token 模态框 -->
+    <div class="modal" id="getRefreshTokenModal" onclick="if(event.target === this) hideGetRefreshTokenModal()">
+        <div class="modal-content" style="width: min(720px, calc(100vw - 32px));">
+            <div class="modal-header">
+                <h3>🔑 授权并保存 Outlook 账号</h3>
+                <button class="modal-close" onclick="hideGetRefreshTokenModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-panel" style="margin-bottom: 16px;">
+                    <div class="settings-section-head" style="margin-bottom: 14px;">
+                        <h4 style="margin-top: 0;">待入库账号</h4>
+                        <p>先填写账号基础信息。换取成功后会在当前弹窗内预览，并可直接保存入库。</p>
+                    </div>
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label class="form-label">邮箱账号</label>
+                            <input type="text" class="form-input" id="oauthEmailInput" placeholder="your@outlook.com">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">密码</label>
+                            <input type="password" class="form-input" id="oauthPasswordInput" placeholder="输入邮箱密码">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">目标分组</label>
+                            <select class="form-select" id="tokenSaveGroupSelect"></select>
+                        </div>
+                        <div class="form-group" style="display: flex; align-items: end;">
+                            <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #4b5563; margin-bottom: 8px;">
+                                <input type="checkbox" id="oauthForwardEnabled">
+                                <span>保存后启用邮件转发</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">步骤 1: 打开授权页面</label>
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <input type="text" class="form-input" id="authUrlInput" readonly
+                            style="flex: 1; font-size: 12px; font-family: monospace;">
+                        <button class="btn btn-secondary" onclick="copyAuthUrl()" style="white-space: nowrap;">📋
+                            复制</button>
+                        <button class="btn btn-primary" onclick="openAuthUrl()" style="white-space: nowrap;">🔗
+                            打开</button>
+                    </div>
+                    <div class="form-hint">点击"打开"按钮在浏览器中授权，或点击"复制"后手动粘贴到浏览器</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">步骤 2: 粘贴授权后的回调 URL</label>
+                    <textarea class="form-textarea" id="redirectUrlInput"
+                        placeholder="授权成功后，浏览器会跳转到一个空白页，请复制地址栏中的完整 URL 并粘贴到这里"
+                        style="height: 80px; font-size: 12px; font-family: monospace;"></textarea>
+                    <div class="form-hint">URL 格式类似：http://localhost:8080/?code=xxxxx&state=12345</div>
+                </div>
+
+                <div class="form-group" id="refreshTokenResult" style="display: none;">
+                    <label class="form-label">✅ 保存预览</label>
+                    <div class="settings-panel" style="border-color: #bfdbfe; background: #f8fbff;">
+                        <div class="settings-grid" style="margin-bottom: 14px;">
+                            <div class="form-group">
+                                <label class="form-label">邮箱</label>
+                                <input type="text" class="form-input" id="oauthPreviewEmail" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">密码</label>
+                                <input type="text" class="form-input" id="oauthPreviewPassword" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Client ID</label>
+                                <input type="text" class="form-input" id="oauthPreviewClientId" readonly style="font-family: monospace; font-size: 12px;">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">目标分组</label>
+                                <input type="text" class="form-input" id="oauthPreviewGroup" readonly>
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">Refresh Token</label>
+                            <textarea class="form-textarea" id="oauthPreviewRefreshToken" readonly
+                                style="height: 110px; font-size: 12px; font-family: monospace; background-color: #f0f9ff; border-color: #93c5fd;"></textarea>
+                        </div>
+                    </div>
+                    <div class="form-hint" style="color: #0078d4;">
+                        可先手动点击“换取并预览”查看结果；也可以直接点击“直接保存（自动换取）”，系统会在保存前自动换取 Token。若修改了邮箱、密码或授权回调 URL，会要求重新换取。
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideGetRefreshTokenModal()">关闭</button>
+                <button class="btn btn-primary" id="exchangeTokenBtn" onclick="exchangeToken()">换取并预览</button>
+                <button class="btn btn-primary" id="saveTokenAccountBtn" onclick="saveTokenAccount()">直接保存（自动换取）</button>
+            </div>
+        </div>
+    </div>

@@ -1,0 +1,43 @@
+        /* 方法标签 */
+        .method-tag {
+            font-size: 11px;
+            padding: 4px 10px;
+            background-color: #eef2f7;
+            color: #475569;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+
+        /* 文件夹切换标签 */
+        .folder-tabs {
+            display: inline-flex;
+            gap: 8px;
+            background-color: #f5f5f5;
+            padding: 4px;
+            border-radius: 8px;
+        }
+
+        .folder-tab {
+            padding: 8px 16px;
+            border: none;
+            background: transparent;
+            color: #666;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .folder-tab:hover {
+            background-color: #e5e5e5;
+            color: #333;
+        }
+
+        .folder-tab.active {
+            background-color: #1a1a1a;
+            color: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+

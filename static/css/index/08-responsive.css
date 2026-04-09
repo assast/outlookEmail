@@ -1,0 +1,100 @@
+        /* 响应式 */
+        @media (max-width: 1200px) {
+            .group-panel {
+                width: 180px;
+            }
+
+            .account-panel {
+                width: 300px;
+            }
+
+            .email-list-panel {
+                width: 340px;
+            }
+        }
+
+        @media (max-width: 1024px) {
+            .group-panel {
+                width: 160px;
+            }
+
+            .account-panel {
+                width: 260px;
+            }
+
+            .email-list-panel {
+                width: 300px;
+            }
+        }
+
+        @media (max-width: 768px) {
+
+            .group-panel,
+            .account-panel {
+                position: fixed;
+                left: -380px;
+                top: 56px;
+                height: calc(100vh - 56px);
+                z-index: 50;
+                transition: left 0.3s;
+                max-width: 86vw;
+            }
+
+            .group-panel.show,
+            .account-panel.show {
+                left: 0;
+            }
+
+            .group-panel {
+                width: min(260px, 82vw);
+            }
+
+            .account-panel {
+                width: min(360px, 86vw);
+            }
+
+            .current-group-title-wrap {
+                flex-wrap: wrap;
+            }
+
+            .email-list-panel {
+                width: 100%;
+            }
+
+            .batch-action-bar {
+                left: 10px;
+                right: 10px;
+                bottom: 10px;
+                padding: 10px;
+                border-radius: 16px;
+                align-items: stretch;
+            }
+
+            .batch-action-bar__summary {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .batch-action-bar__controls {
+                width: 100%;
+                justify-content: stretch;
+            }
+
+            .batch-action-group {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .batch-btn,
+            .batch-action-group .batch-btn {
+                flex: 1 1 140px;
+            }
+
+            .email-list-panel.hidden {
+                display: none;
+            }
+
+            .back-btn {
+                display: block;
+            }
+        }

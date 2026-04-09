@@ -1,0 +1,271 @@
+    <!-- 添加分组模态框 -->
+    <div class="modal" id="addGroupModal" onclick="if(event.target === this) hideAddGroupModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="groupModalTitle">添加分组</h3>
+                <button class="modal-close" onclick="hideAddGroupModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">分组名称</label>
+                    <input type="text" class="form-input" id="groupName" placeholder="输入分组名称">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">分组描述</label>
+                    <input type="text" class="form-input" id="groupDescription" placeholder="可选">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">排序位置</label>
+                    <select class="form-select" id="groupSortPosition"></select>
+                    <div class="form-hint">临时邮箱固定在最前，其他分组从第 1 位开始排序。</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">分组颜色</label>
+                    <div class="color-picker-group" id="colorPicker">
+                        <div class="color-option selected" style="background-color: #1a1a1a" data-color="#1a1a1a"></div>
+                        <div class="color-option" style="background-color: #666666" data-color="#666666"></div>
+                        <div class="color-option" style="background-color: #0078d4" data-color="#0078d4"></div>
+                        <div class="color-option" style="background-color: #107c10" data-color="#107c10"></div>
+                        <div class="color-option" style="background-color: #ff8c00" data-color="#ff8c00"></div>
+                        <div class="color-option" style="background-color: #e81123" data-color="#e81123"></div>
+                        <div class="color-option" style="background-color: #5c2d91" data-color="#5c2d91"></div>
+                        <div class="color-option" style="background-color: #008272" data-color="#008272"></div>
+                        <div class="color-option" style="background-color: #00bcf2" data-color="#00bcf2"></div>
+                        <div class="color-option" style="background-color: #bad80a" data-color="#bad80a"></div>
+                        <div class="color-option" style="background-color: #ff6f61" data-color="#ff6f61"></div>
+                        <div class="color-option" style="background-color: #744da9" data-color="#744da9"></div>
+                        <div class="color-option" style="background-color: #f7630c" data-color="#f7630c"></div>
+                        <div class="color-option" style="background-color: #038387" data-color="#038387"></div>
+                        <div class="color-option" style="background-color: #c239b3" data-color="#c239b3"></div>
+                        <div class="color-option" style="background-color: #6b69d6" data-color="#6b69d6"></div>
+                    </div>
+                    <div class="custom-color-row">
+                        <input type="color" class="custom-color-input" id="customColorInput" value="#1a1a1a"
+                            onchange="selectCustomColor(this.value)">
+                        <span class="custom-color-label">自定义颜色</span>
+                        <input type="text" class="custom-color-hex" id="customColorHex" placeholder="#000000"
+                            maxlength="7" onchange="selectCustomColorHex(this.value)">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">代理设置</label>
+                    <input type="text" class="form-input" id="groupProxyUrl"
+                        placeholder="http://host:port 或 socks5://user:pass@host:port">
+                    <div class="form-hint">可选，设置后该分组下所有邮箱获取邮件时走此代理（支持 HTTP/SOCKS5）</div>
+                </div>
+                <div class="form-group">
+                    <div class="form-hint">账号级转发请在“编辑邮箱账号”里开启，这里不再提供无效的分组级开关。</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideAddGroupModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveGroup()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加账号模态框 -->
+    <div class="modal" id="addAccountModal" onclick="if(event.target === this) hideAddAccountModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>导入邮箱账号</h3>
+                <button class="modal-close" onclick="hideAddAccountModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">选择分组</label>
+                    <select class="form-select" id="importGroupSelect">
+                        <!-- 分组选项将通过 JS 动态加载 -->
+                    </select>
+                </div>
+                <div class="form-group" id="importChannelGroup" style="display: none;">
+                    <label class="form-label">选择渠道</label>
+                    <select class="form-select" id="importChannelSelect" onchange="updateImportHint()">
+                        <option value="gptmail">GPTMail</option>
+                        <option value="duckmail">DuckMail</option>
+                        <option value="cloudflare">Cloudflare</option>
+                    </select>
+                </div>
+                <div class="form-group" id="importProviderGroup">
+                    <label class="form-label">邮箱类型</label>
+                    <select class="form-select" id="importProviderSelect" onchange="updateImportHint()">
+                        <option value="outlook">Outlook OAuth</option>
+                        <option value="gmail">Gmail</option>
+                        <option value="qq">QQ</option>
+                        <option value="163">163</option>
+                        <option value="126">126</option>
+                        <option value="yahoo">Yahoo</option>
+                        <option value="aliyun">Aliyun</option>
+                        <option value="custom">自定义 IMAP</option>
+                    </select>
+                </div>
+                <div id="customImapSettings" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">IMAP 服务器</label>
+                        <input type="text" class="form-input" id="importImapHost" placeholder="imap.example.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">IMAP 端口</label>
+                        <input type="number" class="form-input" id="importImapPort" value="993" min="1" max="65535">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">账号信息</label>
+                    <textarea class="form-textarea" id="accountInput"
+                        placeholder="邮箱----密码----client_id----refresh_token"></textarea>
+                    <div class="form-hint" id="importFormatHint">Outlook 支持两种格式并自动识别：邮箱----密码----client_id----refresh_token 或 邮箱----密码----refresh_token----client_id
+                    </div>
+                    <div id="importFormatExample"
+                        style="display: none; margin-top: 8px; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; font-size: 12px; color: #666; font-family: monospace; white-space: pre-line; border: 1px solid #e9ecef;">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="importForwardEnabled">
+                        <span class="form-label" style="margin: 0;">导入后启用邮件转发</span>
+                    </label>
+                    <div class="form-hint">开启后，新导入账号会立即参与转发轮询。</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideAddAccountModal()">取消</button>
+                <button class="btn btn-primary" onclick="addAccount()">导入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑账号模态框 -->
+    <div class="modal" id="editAccountModal" onclick="if(event.target === this) hideEditAccountModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>编辑邮箱账号</h3>
+                <button class="modal-close" onclick="hideEditAccountModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editAccountId">
+                <div class="form-group">
+                    <label class="form-label">邮箱地址</label>
+                    <input type="text" class="form-input" id="editEmail" placeholder="example@outlook.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">邮箱类型</label>
+                    <select class="form-select" id="editProviderSelect" onchange="updateEditAccountFields()">
+                        <option value="outlook">Outlook OAuth</option>
+                        <option value="gmail">Gmail</option>
+                        <option value="qq">QQ</option>
+                        <option value="163">163</option>
+                        <option value="126">126</option>
+                        <option value="yahoo">Yahoo</option>
+                        <option value="aliyun">Aliyun</option>
+                        <option value="custom">自定义 IMAP</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">密码</label>
+                    <input type="text" class="form-input" id="editPassword" placeholder="可选">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Client ID</label>
+                    <input type="text" class="form-input" id="editClientId">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Refresh Token</label>
+                    <textarea class="form-textarea" id="editRefreshToken" style="height: 80px;"></textarea>
+                </div>
+                <div id="editImapFields" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">IMAP 密码 / 授权码</label>
+                        <input type="text" class="form-input" id="editImapPassword">
+                    </div>
+                    <div id="editCustomImapFields" style="display: none;">
+                        <div class="form-group">
+                            <label class="form-label">IMAP 服务器</label>
+                            <input type="text" class="form-input" id="editImapHost" placeholder="imap.example.com">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">IMAP 端口</label>
+                            <input type="number" class="form-input" id="editImapPort" value="993" min="1" max="65535">
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">所属分组</label>
+                    <select class="form-select" id="editGroupSelect">
+                        <!-- 分组选项将通过 JS 动态加载 -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">备注</label>
+                    <textarea class="form-textarea" id="editRemark" placeholder="可选" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">别名邮箱</label>
+                    <textarea class="form-textarea" id="editAliases" placeholder="每行一个别名邮箱，例如&#10;alias1@example.com&#10;alias2@example.com" rows="4"></textarea>
+                    <div class="form-hint">支持多个别名。保存后，可直接用别名邮箱调用对外 API 获取该账号收到的邮件或验证码。</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">状态</label>
+                    <select class="form-select" id="editStatus">
+                        <option value="active">正常</option>
+                        <option value="inactive">停用</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger" onclick="deleteCurrentAccount()" style="margin-right: auto;">删除</button>
+                <button class="btn btn-secondary" onclick="hideEditAccountModal()">取消</button>
+                <button class="btn btn-primary" onclick="updateAccount()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导出邮箱模态框 -->
+    <div class="modal" id="exportModal" onclick="if(event.target === this) hideExportModal()">
+        <div class="modal-content" style="width: 500px;">
+            <div class="modal-header">
+                <h3>导出邮箱</h3>
+                <button class="modal-close" onclick="hideExportModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">选择要导出的分组</label>
+                    <div id="exportGroupList"
+                        style="max-height: 300px; overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 6px; padding: 8px;">
+                        <!-- 分组列表将通过 JS 动态加载 -->
+                    </div>
+                    <div class="form-hint" style="margin-top: 8px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="selectAllGroups" onchange="toggleSelectAllGroups()">
+                            <span>全选</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideExportModal()">取消</button>
+                <button class="btn btn-primary" onclick="exportSelectedGroups()">导出</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导出密码确认模态框 -->
+    <div class="modal" id="exportVerifyModal" onclick="if(event.target === this) hideExportVerifyModal()">
+        <div class="modal-content" style="width: 400px;">
+            <div class="modal-header">
+                <h3>🔐 安全验证</h3>
+                <button class="modal-close" onclick="hideExportVerifyModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">请输入登录密码以确认导出操作</label>
+                    <input type="password" class="form-input" id="exportVerifyPassword" placeholder="输入登录密码">
+                    <div class="form-hint" style="color: #dc3545;">导出文件包含敏感信息（Refresh Token），请妥善保管</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideExportVerifyModal()">取消</button>
+                <button class="btn btn-primary" onclick="confirmExportVerify()">确认导出</button>
+            </div>
+        </div>
+    </div>
+
