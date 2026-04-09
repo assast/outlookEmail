@@ -446,6 +446,7 @@
             overflow-y: auto;
             background-color: #f7f8fb;
             padding: 8px 0 16px;
+            isolation: isolate;
         }
 
         .account-panel-footer {
@@ -475,6 +476,7 @@
 
         .account-item {
             position: relative;
+            z-index: 0;
             margin: 0 12px 10px;
             padding: 14px;
             cursor: pointer;
@@ -490,6 +492,7 @@
         }
 
         .account-item:hover {
+            z-index: 4;
             background-color: #ffffff;
             border-color: #d4d9e2;
             box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
@@ -497,9 +500,14 @@
         }
 
         .account-item.active {
+            z-index: 6;
             background-color: #f6f7fb;
             border-color: #1a1a1a;
             box-shadow: inset 3px 0 0 #1a1a1a, 0 10px 24px rgba(15, 23, 42, 0.06);
+        }
+
+        .account-item.menu-open {
+            z-index: 20;
         }
 
         .account-item.inactive {
@@ -694,6 +702,7 @@
             position: relative;
             display: flex;
             justify-content: flex-end;
+            z-index: 2;
         }
 
         .account-menu-trigger {
@@ -723,7 +732,7 @@
             position: absolute;
             top: 38px;
             right: 0;
-            z-index: 30;
+            z-index: 60;
             min-width: 140px;
             padding: 6px;
             border: 1px solid #e5e7eb;
