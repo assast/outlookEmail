@@ -1925,6 +1925,54 @@ def delete_account_by_email(email_addr: str) -> bool:
         return False
 
 
+def delete_accounts_by_ids(account_ids: List[int]) -> Dict[str, Any]:
+    """批量删除邮箱账号。"""
+    db = get_db()
+    normalized_ids = []
+    seen_ids = set()
+    for account_id in account_ids or []:
+        try:
+            normalized_id = int(account_id)
+        except (TypeError, ValueError):
+            continue
+        if normalized_id <= 0 or normalized_id in seen_ids:
+            continue
+        seen_ids.add(normalized_id)
+        normalized_ids.append(normalized_id)
+
+    if not normalized_ids:
+        return {'success': False, 'error': '请选择要删除的账号'}
+
+    placeholders = ','.join('?' * len(normalized_ids))
+    rows = db.execute(f'''
+        SELECT id, email
+        FROM accounts
+        WHERE id IN ({placeholders})
+        ORDER BY email COLLATE NOCASE ASC
+    ''', normalized_ids).fetchall()
+
+    if not rows:
+        return {'success': False, 'error': '未找到可删除的账号'}
+
+    existing_ids = [row['id'] for row in rows]
+    deleted_accounts = [{'id': row['id'], 'email': row['email']} for row in rows]
+    missing_ids = [account_id for account_id in normalized_ids if account_id not in set(existing_ids)]
+
+    try:
+        delete_placeholders = ','.join('?' * len(existing_ids))
+        db.execute(f'DELETE FROM accounts WHERE id IN ({delete_placeholders})', existing_ids)
+        db.commit()
+        return {
+            'success': True,
+            'deleted_count': len(existing_ids),
+            'deleted_accounts': deleted_accounts,
+            'missing_ids': missing_ids,
+        }
+    except Exception as e:
+        db.rollback()
+        return {'success': False, 'error': str(e)}
+
+
 # ==================== 工具函数 ====================
 
 def sanitize_input(text: str, max_length: int = 500) -> str:
@@ -4139,6 +4187,30 @@ def api_delete_account_by_email(email_addr):
         return jsonify({'success': True})
     else:
         return jsonify({'success': False, 'error': '删除失败'})
+
+
+@app.route('/api/accounts/batch-delete', methods=['POST'])
+@login_required
+def api_batch_delete_accounts():
+    """批量删除账号"""
+    data = request.get_json(silent=True) or {}
+    result = delete_accounts_by_ids(data.get('account_ids') or [])
+    if not result.get('success'):
+        return jsonify({'success': False, 'error': result.get('error', '删除失败')})
+
+    deleted_count = result.get('deleted_count', 0)
+    missing_ids = result.get('missing_ids', [])
+    message = f'已删除 {deleted_count} 个账号'
+    if missing_ids:
+        message += f'，忽略 {len(missing_ids)} 个不存在的账号'
+
+    return jsonify({
+        'success': True,
+        'message': message,
+        'deleted_count': deleted_count,
+        'deleted_accounts': result.get('deleted_accounts', []),
+        'missing_ids': missing_ids,
+    })
 
 
 # ==================== 账号刷新 API ====================

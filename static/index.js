@@ -1509,6 +1509,49 @@ ${details}
             return Promise.resolve();
         }
 
+        function invalidateAccountCaches() {
+            Object.keys(accountsCache).forEach(key => {
+                if (key !== 'temp') {
+                    delete accountsCache[key];
+                }
+            });
+        }
+
+        function resetSelectedAccountView() {
+            currentAccount = null;
+            currentEmailId = null;
+            currentEmailDetail = null;
+            currentEmails = [];
+            currentSkip = 0;
+            hasMoreEmails = true;
+
+            document.getElementById('currentAccount').classList.remove('show');
+            document.getElementById('currentAccountEmail').textContent = '';
+            document.getElementById('emailCount').textContent = '';
+            document.getElementById('methodTag').style.display = 'none';
+            document.getElementById('folderTabs').style.display = 'none';
+            document.getElementById('emailDetailToolbar').style.display = 'none';
+            document.getElementById('emailList').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📬</div>
+                    <div class="empty-state-text">请从左侧选择一个邮箱账号</div>
+                </div>
+            `;
+            document.getElementById('emailDetail').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📄</div>
+                    <div class="empty-state-text">选择一封邮件查看详情</div>
+                </div>
+            `;
+        }
+
+        function resetSelectedAccountViewIfDeleted(deletedEmails) {
+            const emailSet = new Set((deletedEmails || []).map(email => String(email || '').toLowerCase()));
+            if (currentAccount && emailSet.has(String(currentAccount).toLowerCase())) {
+                resetSelectedAccountView();
+            }
+        }
+
         // 应用筛选和排序
         function applyFiltersAndSort(accounts) {
             let result = [...accounts];
@@ -2937,36 +2980,10 @@ ${details}
 
                 if (data.success) {
                     showToast('删除成功', 'success');
-
-                    // 清除当前分组的缓存
-                    if (currentGroupId) {
-                        delete accountsCache[currentGroupId];
-                    }
-
-                    if (currentAccount === email) {
-                        currentAccount = null;
-                        document.getElementById('currentAccount').classList.remove('show');
-                        document.getElementById('emailList').innerHTML = `
-                            <div class="empty-state">
-                                <div class="empty-state-icon">📬</div>
-                                <div class="empty-state-text">请从左侧选择一个邮箱账号</div>
-                            </div>
-                        `;
-                        document.getElementById('emailDetail').innerHTML = `
-                            <div class="empty-state">
-                                <div class="empty-state-icon">📄</div>
-                                <div class="empty-state-text">选择一封邮件查看详情</div>
-                            </div>
-                        `;
-                    }
-
-                    // 刷新分组列表
+                    invalidateAccountCaches();
+                    resetSelectedAccountViewIfDeleted([email]);
                     loadGroups();
-
-                    // 刷新当前分组的邮箱列表
-                    if (currentGroupId) {
-                        loadAccountsByGroup(currentGroupId, true);
-                    }
+                    await refreshVisibleAccountList(true);
                 } else {
                     handleApiError(data, '删除账号失败');
                 }
@@ -5641,6 +5658,7 @@ ${details}
             const countSpan = document.getElementById('selectedCount');
             const selectAllBtn = document.getElementById('accountSelectAllBtn');
             const batchRefreshBtn = document.getElementById('batchRefreshTokensBtn');
+            const batchDeleteBtn = document.getElementById('batchDeleteAccountsBtn');
             const panel = document.getElementById('accountPanel');
             const refreshableChecked = checked.filter(cb => cb.dataset.refreshable === 'true');
 
@@ -5667,6 +5685,13 @@ ${details}
                             : '刷新 Token';
                     }
                 }
+                if (batchDeleteBtn) {
+                    const isDeleting = batchDeleteBtn.dataset.loading === 'true';
+                    batchDeleteBtn.disabled = isDeleting;
+                    if (!isDeleting) {
+                        batchDeleteBtn.textContent = checked.length > 1 ? `删除 (${checked.length})` : '删除';
+                    }
+                }
             } else {
                 bar.style.display = 'none';
                 panel?.classList.remove('batch-toolbar-active');
@@ -5675,6 +5700,11 @@ ${details}
                     batchRefreshBtn.dataset.loading = 'false';
                     batchRefreshBtn.textContent = '刷新 Token';
                     batchRefreshBtn.title = '';
+                }
+                if (batchDeleteBtn) {
+                    batchDeleteBtn.disabled = false;
+                    batchDeleteBtn.dataset.loading = 'false';
+                    batchDeleteBtn.textContent = '删除';
                 }
             }
         }
@@ -5753,6 +5783,62 @@ ${details}
                 await refreshVisibleAccountList(true);
             } catch (error) {
                 showToast('批量刷新请求失败', 'error');
+            } finally {
+                btn.dataset.loading = 'false';
+                updateBatchActionBar();
+            }
+        }
+
+        async function deleteSelectedAccounts() {
+            const btn = document.getElementById('batchDeleteAccountsBtn');
+            if (!btn || btn.disabled) return;
+
+            const checked = Array.from(document.querySelectorAll('#accountList .account-select-checkbox:checked'));
+            const accountIds = checked
+                .map(cb => parseInt(cb.value, 10))
+                .filter(Number.isFinite);
+            const accountEmails = checked
+                .map(cb => cb.dataset.accountEmail || '')
+                .filter(Boolean);
+
+            if (!accountIds.length) {
+                showToast('请先选择要删除的邮箱', 'error');
+                return;
+            }
+
+            if (!confirm(`确定要删除所选 ${accountIds.length} 个邮箱吗？此操作不可恢复。`)) {
+                return;
+            }
+
+            btn.disabled = true;
+            btn.dataset.loading = 'true';
+            btn.textContent = '删除中...';
+
+            try {
+                const response = await fetch('/api/accounts/batch-delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ account_ids: accountIds })
+                });
+                const data = await response.json();
+
+                if (!data.success) {
+                    handleApiError(data, '批量删除失败');
+                    return;
+                }
+
+                const deletedEmails = Array.isArray(data.deleted_accounts)
+                    ? data.deleted_accounts.map(item => item.email).filter(Boolean)
+                    : accountEmails;
+
+                showToast(data.message || `已删除 ${deletedEmails.length} 个账号`, 'success');
+                invalidateAccountCaches();
+                resetSelectedAccountViewIfDeleted(deletedEmails);
+                clearAccountSelection();
+                loadGroups();
+                await refreshVisibleAccountList(true);
+            } catch (error) {
+                showToast('批量删除失败', 'error');
             } finally {
                 btn.dataset.loading = 'false';
                 updateBatchActionBar();
