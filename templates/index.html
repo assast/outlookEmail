@@ -125,13 +125,20 @@
             </div>
             <!-- 批量操作栏 -->
             <div id="batchActionBar" class="batch-action-bar">
-                <span id="selectedCount" class="batch-selection-count">已选 0 项</span>
-                <div style="flex: 1;"></div>
-                <button class="btn btn-sm btn-secondary" id="accountSelectAllBtn" onclick="toggleSelectAllAccounts()">全选当前列表</button>
-                <button class="btn btn-sm btn-secondary" onclick="clearAccountSelection()">清空选择</button>
-                <button class="btn btn-sm btn-secondary" onclick="showBatchTagModal('add')">打标签</button>
-                <button class="btn btn-sm btn-secondary" onclick="showBatchTagModal('remove')">去标签</button>
-                <button class="btn btn-sm btn-secondary" onclick="showBatchMoveGroupModal()">移动分组</button>
+                <div class="batch-action-bar__summary">
+                    <span id="selectedCount" class="batch-selection-count">已选 0 项</span>
+                </div>
+                <div class="batch-action-bar__controls">
+                    <div class="batch-action-group">
+                        <button class="batch-btn batch-btn-secondary" id="accountSelectAllBtn" onclick="toggleSelectAllAccounts()">全选当前列表</button>
+                        <button class="batch-btn batch-btn-secondary" onclick="clearAccountSelection()">清空选择</button>
+                    </div>
+                    <div class="batch-action-group batch-action-group--accent">
+                        <button class="batch-btn batch-btn-accent" onclick="showBatchTagModal('add')">打标签</button>
+                        <button class="batch-btn batch-btn-accent" onclick="showBatchTagModal('remove')">去标签</button>
+                        <button class="batch-btn batch-btn-accent" onclick="showBatchMoveGroupModal()">移动分组</button>
+                    </div>
+                </div>
             </div>
             <div class="account-panel-footer">
                 <button class="add-account-btn" onclick="showAddAccountModal()">+ 导入邮箱</button>
@@ -173,13 +180,18 @@
                 </div>
                 <!-- Email Batch Action Bar -->
                 <div id="emailBatchActionBar" class="batch-action-bar">
-                    <span id="emailSelectedCount" class="batch-selection-count">已选 0 项</span>
-                    <div style="flex: 1;"></div>
-                    <button class="btn btn-sm btn-secondary" id="emailSelectAllBtn" onclick="toggleSelectAllEmails()">全选当前列表</button>
-                    <button class="btn btn-sm btn-secondary" onclick="clearEmailSelection()">清空选择</button>
-                    <button class="batch-btn danger" onclick="confirmBatchDeleteEmails()">
+                    <div class="batch-action-bar__summary">
+                        <span id="emailSelectedCount" class="batch-selection-count">已选 0 项</span>
+                    </div>
+                    <div class="batch-action-bar__controls">
+                        <div class="batch-action-group">
+                            <button class="batch-btn batch-btn-secondary" id="emailSelectAllBtn" onclick="toggleSelectAllEmails()">全选当前列表</button>
+                            <button class="batch-btn batch-btn-secondary" onclick="clearEmailSelection()">清空选择</button>
+                        </div>
+                        <button class="batch-btn batch-btn-danger" onclick="confirmBatchDeleteEmails()">
                         🗑️ 删除
-                    </button>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -313,13 +325,6 @@
                         <option value="custom">自定义 IMAP</option>
                     </select>
                 </div>
-                <div class="form-group" id="importFormatGroup">
-                    <label class="form-label">导入格式</label>
-                    <select class="form-select" id="importFormatSelect" onchange="updateImportHint()">
-                        <option value="client_id_refresh_token">邮箱----密码----client_id----refresh_token</option>
-                        <option value="refresh_token_client_id">邮箱----密码----令牌----client_id</option>
-                    </select>
-                </div>
                 <div id="customImapSettings" style="display: none;">
                     <div class="form-group">
                         <label class="form-label">IMAP 服务器</label>
@@ -334,7 +339,7 @@
                     <label class="form-label">账号信息</label>
                     <textarea class="form-textarea" id="accountInput"
                         placeholder="邮箱----密码----client_id----refresh_token"></textarea>
-                    <div class="form-hint" id="importFormatHint">格式：邮箱----密码----client_id----refresh_token，支持批量导入（每行一个）
+                    <div class="form-hint" id="importFormatHint">Outlook 支持两种格式并自动识别：邮箱----密码----client_id----refresh_token 或 邮箱----密码----refresh_token----client_id
                     </div>
                     <div id="importFormatExample"
                         style="display: none; margin-top: 8px; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; font-size: 12px; color: #666; font-family: monospace; white-space: pre-line; border: 1px solid #e9ecef;">

@@ -778,32 +778,133 @@
 
         .batch-action-bar {
             display: none;
-            padding: 10px 16px;
-            border-top: 1px solid #e5e5e5;
-            background: #ffffff;
-            gap: 8px;
+            margin: 12px 14px 14px;
+            padding: 12px;
+            border: 1px solid rgba(209, 213, 219, 0.9);
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.94);
+            backdrop-filter: blur(14px);
+            gap: 12px;
             align-items: center;
-            box-shadow: 0 -8px 18px rgba(15, 23, 42, 0.04);
+            justify-content: space-between;
+            flex-wrap: wrap;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+        }
+
+        .batch-action-bar__summary {
+            display: inline-flex;
+            align-items: center;
+            min-height: 40px;
+            padding: 0 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(209, 213, 219, 0.9);
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        }
+
+        .batch-action-bar__summary::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #1a1a1a;
+            box-shadow: 0 0 0 6px rgba(26, 26, 26, 0.08);
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+
+        .batch-action-bar__controls {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            flex: 1;
+            flex-wrap: wrap;
+            min-width: 0;
+        }
+
+        .batch-action-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            padding: 5px;
+            border-radius: 999px;
+            border: 1px solid rgba(226, 232, 240, 0.95);
+            background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+        }
+
+        .batch-action-group--accent {
+            background: linear-gradient(180deg, #eef4ff 0%, #e6efff 100%);
+            border-color: rgba(191, 219, 254, 0.95);
         }
 
         .batch-selection-count {
             font-size: 12px;
-            color: #666;
+            color: #111827;
+            font-weight: 700;
+            letter-spacing: 0.01em;
         }
 
+        .batch-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 34px;
+            padding: 0 14px;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+            white-space: nowrap;
+            transition: transform 0.15s, box-shadow 0.15s, background-color 0.15s, border-color 0.15s, color 0.15s;
+        }
+
+        .batch-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .batch-btn-secondary {
+            background: #ffffff;
+            color: #475569;
+            border-color: rgba(203, 213, 225, 0.95);
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+
+        .batch-btn-secondary:hover {
+            background: #f8fafc;
+            border-color: rgba(148, 163, 184, 0.95);
+            color: #0f172a;
+        }
+
+        .batch-btn-accent {
+            background: #ffffff;
+            color: #1d4ed8;
+            border-color: rgba(147, 197, 253, 0.95);
+            box-shadow: 0 1px 2px rgba(59, 130, 246, 0.08);
+        }
+
+        .batch-btn-accent:hover {
+            background: #eff6ff;
+            border-color: rgba(96, 165, 250, 0.95);
+            color: #1e40af;
+        }
+
+        .batch-btn-danger,
         .batch-btn.danger {
             background-color: #dc3545;
             color: white;
-            border: none;
-            cursor: pointer;
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-size: 13px;
-            transition: background-color 0.15s;
+            border-color: #dc3545;
+            box-shadow: 0 10px 20px rgba(220, 53, 69, 0.18);
         }
 
+        .batch-btn-danger:hover,
         .batch-btn.danger:hover {
             background-color: #c82333;
+            border-color: #c82333;
+            box-shadow: 0 14px 26px rgba(200, 35, 51, 0.22);
         }
 
         /* 内容区域 */
@@ -2049,6 +2150,33 @@
 
             .email-list-panel {
                 width: 100%;
+            }
+
+            .batch-action-bar {
+                margin: 10px 12px 12px;
+                padding: 10px;
+                border-radius: 16px;
+                align-items: stretch;
+            }
+
+            .batch-action-bar__summary {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .batch-action-bar__controls {
+                width: 100%;
+                justify-content: stretch;
+            }
+
+            .batch-action-group {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .batch-btn,
+            .batch-action-group .batch-btn {
+                flex: 1 1 140px;
             }
 
             .email-list-panel.hidden {

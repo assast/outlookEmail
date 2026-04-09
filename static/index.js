@@ -1554,8 +1554,6 @@ ${details}
             const inputEl = document.getElementById('accountInput');
             const channelGroup = document.getElementById('importChannelGroup');
             const channelSelect = document.getElementById('importChannelSelect');
-            const formatGroup = document.getElementById('importFormatGroup');
-            const formatSelect = document.getElementById('importFormatSelect');
             const exampleEl = document.getElementById('importFormatExample');
             if (!importSelect || !hintEl || !inputEl) return;
 
@@ -1565,7 +1563,6 @@ ${details}
             if (isTempGroup) {
                 // 显示渠道选择器
                 if (channelGroup) channelGroup.style.display = '';
-                if (formatGroup) formatGroup.style.display = 'none';
 
                 const channel = channelSelect ? channelSelect.value : 'gptmail';
                 if (channel === 'duckmail') {
@@ -1593,21 +1590,11 @@ ${details}
             } else {
                 // 隐藏渠道选择器
                 if (channelGroup) channelGroup.style.display = 'none';
-                if (formatGroup) formatGroup.style.display = '';
                 if (exampleEl) exampleEl.style.display = '';
-                const format = formatSelect ? formatSelect.value : 'client_id_refresh_token';
-                if (format === 'refresh_token_client_id') {
-                    hintEl.textContent = '格式：邮箱----密码----令牌----client_id，支持批量导入（每行一个）';
-                    inputEl.placeholder = '邮箱----密码----令牌----client_id';
-                    if (exampleEl) {
-                        exampleEl.textContent = '示例：\nuser@outlook.com----password123----0.AXEA...----24d9a0ed-8787-4584-883c-2fd79308940a';
-                    }
-                    return;
-                }
-                hintEl.textContent = '格式：邮箱----密码----client_id----refresh_token，支持批量导入（每行一个）';
+                hintEl.textContent = 'Outlook 支持两种格式并自动识别：邮箱----密码----client_id----refresh_token 或 邮箱----密码----refresh_token----client_id';
                 inputEl.placeholder = '邮箱----密码----client_id----refresh_token';
                 if (exampleEl) {
-                    exampleEl.textContent = '示例：\nuser@outlook.com----password123----24d9a0ed-8787-4584-883c-2fd79308940a----0.AXEA...';
+                    exampleEl.textContent = '示例：\nuser@outlook.com----password123----24d9a0ed-8787-4584-883c-2fd79308940a----0.AXEA...\nuser@outlook.com----password123----0.AXEA...----24d9a0ed-8787-4584-883c-2fd79308940a';
                 }
                 return;
             }
@@ -1758,8 +1745,6 @@ ${details}
             const channelSelect = document.getElementById('importChannelSelect');
             const providerGroup = document.getElementById('importProviderGroup');
             const providerSelect = document.getElementById('importProviderSelect');
-            const formatGroup = document.getElementById('importFormatGroup');
-            const formatSelect = document.getElementById('importFormatSelect');
             const exampleEl = document.getElementById('importFormatExample');
             const customImapSettings = document.getElementById('customImapSettings');
             const customHost = document.getElementById('importImapHost');
@@ -1771,7 +1756,6 @@ ${details}
             if (providerGroup) providerGroup.style.display = isTempGroup ? 'none' : '';
 
             if (isTempGroup) {
-                if (formatGroup) formatGroup.style.display = 'none';
                 if (customImapSettings) customImapSettings.style.display = 'none';
                 const channel = channelSelect ? channelSelect.value : 'gptmail';
                 if (channel === 'duckmail') {
@@ -1803,24 +1787,14 @@ ${details}
 
             const provider = providerSelect ? providerSelect.value : 'outlook';
             const isOutlook = provider === 'outlook';
-            if (formatGroup) formatGroup.style.display = isOutlook ? '' : 'none';
             if (customImapSettings) customImapSettings.style.display = provider === 'custom' ? '' : 'none';
             if (exampleEl) exampleEl.style.display = '';
 
             if (isOutlook) {
-                const format = formatSelect ? formatSelect.value : 'client_id_refresh_token';
-                if (format === 'refresh_token_client_id') {
-                    hintEl.textContent = '格式：邮箱----密码----令牌----client_id，支持批量导入。';
-                    inputEl.placeholder = '邮箱----密码----令牌----client_id';
-                    if (exampleEl) {
-                        exampleEl.textContent = '示例：\\nuser@outlook.com----password123----0.AXEA...----24d9a0ed-8787-4584-883c-2fd79308940a';
-                    }
-                    return;
-                }
-                hintEl.textContent = '格式：邮箱----密码----client_id----refresh_token，支持批量导入。';
+                hintEl.textContent = 'Outlook 支持两种格式并自动识别：邮箱----密码----client_id----refresh_token 或 邮箱----密码----refresh_token----client_id。';
                 inputEl.placeholder = '邮箱----密码----client_id----refresh_token';
                 if (exampleEl) {
-                    exampleEl.textContent = '示例：\\nuser@outlook.com----password123----24d9a0ed-8787-4584-883c-2fd79308940a----0.AXEA...';
+                    exampleEl.textContent = '示例：\\nuser@outlook.com----password123----24d9a0ed-8787-4584-883c-2fd79308940a----0.AXEA...\\nuser@outlook.com----password123----0.AXEA...----24d9a0ed-8787-4584-883c-2fd79308940a';
                 }
                 return;
             }
@@ -2607,9 +2581,6 @@ ${details}
         // 显示添加账号模态框
         function showAddAccountModalLegacy() {
             document.getElementById('accountInput').value = '';
-            if (document.getElementById('importFormatSelect')) {
-                document.getElementById('importFormatSelect').value = 'client_id_refresh_token';
-            }
             // 设置默认分组为当前选中的分组
             if (currentGroupId) {
                 document.getElementById('importGroupSelect').value = currentGroupId;
@@ -2627,8 +2598,6 @@ ${details}
         async function addAccountLegacy() {
             const input = document.getElementById('accountInput').value.trim();
             const groupId = parseInt(document.getElementById('importGroupSelect').value);
-            const accountFormatEl = document.getElementById('importFormatSelect');
-            const accountFormat = accountFormatEl ? accountFormatEl.value : 'client_id_refresh_token';
 
             if (!input) {
                 showToast('请输入账号信息', 'error');
@@ -2653,7 +2622,7 @@ ${details}
                     response = await fetch('/api/accounts', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ account_string: input, group_id: groupId, account_format: accountFormat })
+                        body: JSON.stringify({ account_string: input, group_id: groupId })
                     });
                 }
 
@@ -4122,9 +4091,6 @@ ${details}
         function showAddAccountModal() {
             showModal('addAccountModal');
             document.getElementById('accountInput').value = '';
-            if (document.getElementById('importFormatSelect')) {
-                document.getElementById('importFormatSelect').value = 'client_id_refresh_token';
-            }
             if (document.getElementById('importProviderSelect')) {
                 document.getElementById('importProviderSelect').value = 'outlook';
             }
@@ -4143,7 +4109,6 @@ ${details}
         async function addAccount() {
             const input = document.getElementById('accountInput').value.trim();
             const groupId = parseInt(document.getElementById('importGroupSelect').value);
-            const accountFormat = document.getElementById('importFormatSelect')?.value || 'client_id_refresh_token';
             const provider = document.getElementById('importProviderSelect')?.value || 'outlook';
             const imapHost = document.getElementById('importImapHost')?.value.trim() || '';
             const imapPort = parseInt(document.getElementById('importImapPort')?.value || '993', 10);
@@ -4176,7 +4141,6 @@ ${details}
                         body: JSON.stringify({
                             account_string: input,
                             group_id: groupId,
-                            account_format: accountFormat,
                             provider,
                             imap_host: imapHost,
                             imap_port: Number.isFinite(imapPort) ? imapPort : 993,
