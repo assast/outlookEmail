@@ -23,6 +23,7 @@
         let currentEmailId = null; // 当前选中的邮件 ID
         let currentEmailDetail = null; // 当前查看的邮件详细数据
         let isTrustedMode = false; // 是否处于信任模式（不过滤 HTML）
+        let oauthPreviewAccount = null;
 
         // ==================== CSRF 防护 ====================
 
@@ -66,6 +67,9 @@
             document.addEventListener('click', closeAccountActionMenus);
             document.getElementById('importImapHost')?.addEventListener('input', updateImportHint);
             document.getElementById('importImapPort')?.addEventListener('input', updateImportHint);
+            document.getElementById('oauthEmailInput')?.addEventListener('input', invalidateRefreshTokenPreview);
+            document.getElementById('oauthPasswordInput')?.addEventListener('input', invalidateRefreshTokenPreview);
+            document.getElementById('redirectUrlInput')?.addEventListener('input', invalidateRefreshTokenPreview);
 
             closeAllModals(); // 修复：应用启动时关闭所有模态框，防止浏览器缓存导致残留的模态框背景层
             loadGroups();
@@ -1182,7 +1186,7 @@ ${details}
                     <button class="panel-action-btn panel-action-btn-accent" onclick="generateTempEmail()" title="生成临时邮箱">
                         ⚡
                     </button>
-                    <button class="panel-action-btn panel-action-btn-primary" onclick="showAddAccountModal()" title="导入邮箱">
+                    <button class="panel-action-btn panel-action-btn-primary" onclick="showAddAccountModal()" title="导入邮箱账号">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                             <path fill-rule="evenodd"
                                 d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" />
@@ -1203,10 +1207,10 @@ ${details}
                     <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
                         🏷️
                     </button>
-                    <button class="panel-action-btn panel-action-btn-accent" onclick="showGetRefreshTokenModal()" title="获取 Refresh Token">
+                    <button class="panel-action-btn panel-action-btn-accent" onclick="showGetRefreshTokenModal()" title="授权并保存 Outlook 账号">
                         🔑
                     </button>
-                    <button class="panel-action-btn panel-action-btn-primary" onclick="showAddAccountModal()" title="导入账号">
+                    <button class="panel-action-btn panel-action-btn-primary" onclick="showAddAccountModal()" title="导入邮箱账号">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                             <path fill-rule="evenodd"
                                 d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" />
@@ -1534,13 +1538,13 @@ ${details}
 
         // 更新分组下拉选择框
         function updateGroupSelects() {
-            const selects = ['importGroupSelect', 'editGroupSelect'];
+            const selects = ['importGroupSelect', 'editGroupSelect', 'tokenSaveGroupSelect'];
             selects.forEach(selectId => {
                 const select = document.getElementById(selectId);
                 if (select) {
                     const currentValue = select.value;
-                    // editGroupSelect 过滤掉临时邮箱分组（不能移动到临时邮箱分组）
-                    const filteredGroups = selectId === 'editGroupSelect'
+                    // editGroupSelect 和 tokenSaveGroupSelect 过滤掉临时邮箱分组
+                    const filteredGroups = (selectId === 'editGroupSelect' || selectId === 'tokenSaveGroupSelect')
                         ? groups.filter(g => g.name !== '临时邮箱')
                         : groups;
 
@@ -1550,6 +1554,13 @@ ${details}
                     // 恢复之前的选择
                     if (currentValue && filteredGroups.find(g => g.id === parseInt(currentValue))) {
                         select.value = currentValue;
+                    } else if (selectId === 'tokenSaveGroupSelect') {
+                        const preferredGroupId = (!isTempEmailGroup && currentGroupId && filteredGroups.find(g => g.id === currentGroupId))
+                            ? currentGroupId
+                            : (filteredGroups[0]?.id || '');
+                        if (preferredGroupId) {
+                            select.value = preferredGroupId;
+                        }
                     } else if (currentGroupId && filteredGroups.find(g => g.id === currentGroupId)) {
                         select.value = currentGroupId;
                     }
@@ -3787,20 +3798,64 @@ ${details}
 
         // ==================== OAuth Refresh Token 相关 ====================
 
+        function invalidateRefreshTokenPreview() {
+            oauthPreviewAccount = null;
+            const resultEl = document.getElementById('refreshTokenResult');
+            if (resultEl) {
+                resultEl.style.display = 'none';
+            }
+        }
+
+        function renderRefreshTokenPreview() {
+            if (!oauthPreviewAccount) {
+                invalidateRefreshTokenPreview();
+                return;
+            }
+            const resultEl = document.getElementById('refreshTokenResult');
+            const saveBtn = document.getElementById('saveTokenAccountBtn');
+            const group = groups.find(item => item.id === oauthPreviewAccount.group_id);
+            document.getElementById('oauthPreviewEmail').value = oauthPreviewAccount.email || '';
+            document.getElementById('oauthPreviewPassword').value = oauthPreviewAccount.password || '';
+            document.getElementById('oauthPreviewClientId').value = oauthPreviewAccount.client_id || '';
+            document.getElementById('oauthPreviewGroup').value = group?.name || `分组 #${oauthPreviewAccount.group_id}`;
+            document.getElementById('oauthPreviewRefreshToken').value = oauthPreviewAccount.refresh_token || '';
+            if (resultEl) {
+                resultEl.style.display = 'block';
+            }
+        }
+
         // 显示获取 Refresh Token 模态框
         async function showGetRefreshTokenModal() {
             showModal('getRefreshTokenModal');
 
             // 重置表单
+            document.getElementById('oauthEmailInput').value = '';
+            document.getElementById('oauthPasswordInput').value = '';
             document.getElementById('redirectUrlInput').value = '';
-            document.getElementById('refreshTokenResult').style.display = 'none';
-            document.getElementById('refreshTokenOutput').value = '';
+            document.getElementById('oauthForwardEnabled').checked = false;
+            invalidateRefreshTokenPreview();
 
             // 重置按钮状态
             const btn = document.getElementById('exchangeTokenBtn');
             btn.disabled = false;
-            btn.textContent = '换取 Token';
+            btn.textContent = '换取并预览';
             btn.style.display = '';
+            const saveBtn = document.getElementById('saveTokenAccountBtn');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = '直接保存（自动换取）';
+            }
+
+            const groupSelect = document.getElementById('tokenSaveGroupSelect');
+            if (groupSelect) {
+                const nonTempGroups = groups.filter(group => group.name !== '临时邮箱');
+                const fallbackGroupId = (!isTempEmailGroup && currentGroupId && nonTempGroups.find(group => group.id === currentGroupId))
+                    ? currentGroupId
+                    : (nonTempGroups[0]?.id || '');
+                if (fallbackGroupId) {
+                    groupSelect.value = fallbackGroupId;
+                }
+            }
 
             // 获取授权 URL
             try {
@@ -3840,17 +3895,36 @@ ${details}
         }
 
         // 换取 Token
-        async function exchangeToken() {
+        async function exchangeToken(options = {}) {
+            const { silentSuccess = false, keepSavingState = false } = options;
+            const email = document.getElementById('oauthEmailInput').value.trim();
+            const password = document.getElementById('oauthPasswordInput').value;
             const redirectUrl = document.getElementById('redirectUrlInput').value.trim();
+            const groupId = parseInt(document.getElementById('tokenSaveGroupSelect')?.value || '0', 10);
+            const forwardEnabled = !!document.getElementById('oauthForwardEnabled')?.checked;
+
+            if (!email || !password) {
+                showToast('请先输入邮箱账号和密码', 'error');
+                return;
+            }
 
             if (!redirectUrl) {
                 showToast('请先粘贴授权后的完整 URL', 'error');
                 return;
             }
 
+            if (!groupId) {
+                showToast('请选择目标分组', 'error');
+                return;
+            }
+
             const btn = document.getElementById('exchangeTokenBtn');
+            const saveBtn = document.getElementById('saveTokenAccountBtn');
             btn.disabled = true;
-            btn.textContent = '⏳ 换取中...';
+            if (!keepSavingState && saveBtn) {
+                saveBtn.disabled = true;
+            }
+            btn.textContent = '⏳ 预览中...';
 
             try {
                 const response = await fetch('/api/oauth/exchange-token', {
@@ -3866,27 +3940,95 @@ ${details}
                 const data = await response.json();
 
                 if (data.success) {
-                    // 输出默认推荐导入格式，避免用户复制到与当前导入格式不匹配的备用顺序。
-                    const importFormat = `your@outlook.com----yourpassword----${data.client_id}----${data.refresh_token}`;
+                    oauthPreviewAccount = {
+                        email,
+                        password,
+                        client_id: data.client_id,
+                        refresh_token: data.refresh_token,
+                        group_id: groupId,
+                        forward_enabled: forwardEnabled
+                    };
+                    renderRefreshTokenPreview();
 
-                    // 显示结果
-                    document.getElementById('refreshTokenOutput').value = importFormat;
-                    document.getElementById('refreshTokenResult').style.display = 'block';
-
-                    showToast('✅ Refresh Token 获取成功！', 'success');
+                    if (!silentSuccess) {
+                        showToast('✅ Refresh Token 获取成功！', 'success');
+                    }
 
                     // 重置按钮状态（不隐藏，允许重复使用）
                     btn.disabled = false;
-                    btn.textContent = '换取 Token';
+                    if (!keepSavingState && saveBtn) {
+                        saveBtn.disabled = false;
+                    }
+                    btn.textContent = '换取并预览';
+                    return true;
                 } else {
                     handleApiError(data, '换取 Token 失败');
                     btn.disabled = false;
-                    btn.textContent = '换取 Token';
+                    if (!keepSavingState && saveBtn) {
+                        saveBtn.disabled = false;
+                    }
+                    btn.textContent = '换取并预览';
+                    return false;
                 }
             } catch (error) {
                 showToast('换取 Token 失败: ' + error.message, 'error');
                 btn.disabled = false;
-                btn.textContent = '换取 Token';
+                if (!keepSavingState && saveBtn) {
+                    saveBtn.disabled = false;
+                }
+                btn.textContent = '换取并预览';
+                return false;
+            }
+        }
+
+        async function saveTokenAccount() {
+            if (!oauthPreviewAccount) {
+                const exchanged = await exchangeToken({ silentSuccess: true, keepSavingState: true });
+                if (!exchanged || !oauthPreviewAccount) {
+                    return;
+                }
+            }
+
+            const saveBtn = document.getElementById('saveTokenAccountBtn');
+            const exchangeBtn = document.getElementById('exchangeTokenBtn');
+            saveBtn.disabled = true;
+            exchangeBtn.disabled = true;
+            saveBtn.textContent = '保存中...';
+
+            try {
+                const accountString = [
+                    oauthPreviewAccount.email,
+                    oauthPreviewAccount.password,
+                    oauthPreviewAccount.client_id,
+                    oauthPreviewAccount.refresh_token
+                ].join('----');
+
+                const response = await fetch('/api/accounts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        account_string: accountString,
+                        group_id: oauthPreviewAccount.group_id,
+                        provider: 'outlook',
+                        forward_enabled: !!oauthPreviewAccount.forward_enabled
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast(data.message || '账号已保存', 'success');
+                    currentGroupId = oauthPreviewAccount.group_id;
+                    await loadGroups();
+                    hideGetRefreshTokenModal();
+                } else {
+                    handleApiError(data, '保存账号失败');
+                }
+            } catch (error) {
+                showToast('保存账号失败', 'error');
+            } finally {
+                exchangeBtn.disabled = false;
+                saveBtn.disabled = false;
+                saveBtn.textContent = '直接保存（自动换取）';
             }
         }
 
