@@ -1,4 +1,4 @@
-        /* global accountsCache, adjustIframeHeight, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentGroupId, currentMethod, emailListCache, escapeHtml, formatDate, handleApiError, isTempEmailGroup, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
+        /* global adjustIframeHeight, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, emailListCache, escapeHtml, formatDate, handleApiError, isTempEmailGroup, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
 
         // ==================== 邮件相关 ====================
 
@@ -110,55 +110,27 @@
         let selectedEmailIds = new Set();
         let isBatchSelectMode = false;
 
-        function getCurrentAccountAliases() {
-            const normalizedCurrentAccount = String(currentAccount || '').trim().toLowerCase();
-            if (!normalizedCurrentAccount) {
-                return [];
-            }
-
-            const accountSources = [];
-            if (Array.isArray(currentAccountListSource) && currentAccountListSource.length > 0) {
-                accountSources.push(...currentAccountListSource);
-            }
-            if (currentGroupId && Array.isArray(accountsCache[currentGroupId])) {
-                accountSources.push(...accountsCache[currentGroupId]);
-            }
-
-            const matchedAccount = accountSources.find(account =>
-                String(account?.email || '').trim().toLowerCase() === normalizedCurrentAccount
-            );
-
-            if (!matchedAccount || !Array.isArray(matchedAccount.aliases)) {
-                return [];
-            }
-
-            return matchedAccount.aliases
-                .map(alias => String(alias || '').trim().toLowerCase())
-                .filter(Boolean);
-        }
-
-        function getAliasRecipientLabel(emailItem) {
+        function getRecipientDisplayLabel(emailItem) {
             if (isTempEmailGroup) {
                 return '';
             }
 
-            const aliases = getCurrentAccountAliases();
+            const normalizedCurrentAccount = String(currentAccount || '').trim().toLowerCase();
             const toValue = String(emailItem?.to || '').trim();
-            if (!aliases.length || !toValue) {
+            if (!normalizedCurrentAccount || !toValue) {
                 return '';
             }
 
             const recipientCandidates = toValue.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
-            const normalizedRecipients = recipientCandidates.length > 0
+            const recipients = recipientCandidates.length > 0
                 ? recipientCandidates.map(recipient => recipient.trim().toLowerCase())
                 : [toValue.toLowerCase()];
-            const matchedAliases = aliases.filter(alias => normalizedRecipients.includes(alias));
 
-            if (!matchedAliases.length) {
+            if (recipients.includes(normalizedCurrentAccount)) {
                 return '';
             }
 
-            return `to: ${matchedAliases.join(', ')}`;
+            return `to: ${toValue}`;
         }
 
         function renderEmailList(emails) {
@@ -184,7 +156,7 @@
             container.innerHTML = emails.map((email, index) => {
                 const isChecked = selectedEmailIds.has(email.id);
                 const isActive = currentEmailId === email.id;
-                const aliasRecipientLabel = getAliasRecipientLabel(email);
+                const recipientDisplayLabel = getRecipientDisplayLabel(email);
                 return `
                 <div class="email-item ${email.is_read === false ? 'unread' : ''} ${isActive ? 'active' : ''}"
                      onclick="${clickHandler}('${email.id}', ${index})">
@@ -196,7 +168,7 @@
                             <div class="email-top-main">
                                 <div class="email-sender-block">
                                     <div class="email-from" title="${escapeHtml(email.from || '未知发件人')}">${escapeHtml(email.from || '未知发件人')}</div>
-                                    ${aliasRecipientLabel ? `<div class="email-recipient" title="${escapeHtml(aliasRecipientLabel)}">${escapeHtml(aliasRecipientLabel)}</div>` : ''}
+                                    ${recipientDisplayLabel ? `<div class="email-recipient" title="${escapeHtml(recipientDisplayLabel)}">${escapeHtml(recipientDisplayLabel)}</div>` : ''}
                                 </div>
                             </div>
                             <div class="email-date">${formatDate(email.date)}</div>
