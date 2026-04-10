@@ -768,6 +768,7 @@ def api_get_account(account_id):
             'alias_count': account.get('alias_count', 0),
             'matched_alias': account.get('matched_alias', ''),
             'forward_enabled': bool(account.get('forward_enabled')),
+            'forward_last_checked_at': account.get('forward_last_checked_at', ''),
             'group_id': account.get('group_id'),
             'group_name': account.get('group_name', '默认分组'),
             'remark': account.get('remark', ''),
@@ -1012,4 +1013,3 @@ def api_batch_delete_accounts():
 
 
 # ==================== 账号刷新 API ====================
-

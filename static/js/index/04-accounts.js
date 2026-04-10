@@ -1,3 +1,5 @@
+        /* global accountsCache, closeMobilePanels, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentGroupId, currentMethod, currentSkip, emailListCache, handleApiError, hasMoreEmails, hideModal, isTempEmailGroup, loadAccountsByGroup, loadEmails, loadGroups, renderEmailList, setModalVisible, showEmailList, showToast, updateImportHint, updateMobileContext */
+
         // ==================== 账号相关 ====================
 
         // 选择账号

@@ -1,3 +1,5 @@
+        /* global handleApiError, hideModal, loadAccountsByGroup, renderFilteredAccountList, selectedTagFilters, showModal, showToast, updateBatchTagTagOptions, updateCurrentGroupHeader */
+
         // ==================== 标签管理 ====================
 
         let allTags = [];
@@ -237,4 +239,3 @@
                 showToast('删除标签失败', 'error');
             }
         }
-

@@ -68,6 +68,31 @@ def record_forward_log(conn, account_id: int, message_id: str, channel: str):
     )
 
 
+def stringify_forward_error(error: Any) -> str:
+    if error is None:
+        return ''
+    if isinstance(error, str):
+        return sanitize_error_details(error)[:500]
+    if isinstance(error, dict):
+        parts = []
+        message = str(error.get('message') or error.get('error') or '').strip()
+        code = str(error.get('code') or '').strip()
+        err_type = str(error.get('type') or '').strip()
+        details = error.get('details')
+        if message:
+            parts.append(message)
+        if code:
+            parts.append(f'code={code}')
+        if err_type:
+            parts.append(f'type={err_type}')
+        if details:
+            details_text = details if isinstance(details, str) else json.dumps(details, ensure_ascii=True)
+            if details_text and details_text not in parts:
+                parts.append(str(details_text))
+        return sanitize_error_details(' | '.join(parts) or str(error))[:500]
+    return sanitize_error_details(str(error))[:500]
+
+
 def send_forward_email(subject: str, body_text: str, body_html: str = '') -> bool:
     recipient = get_setting('email_forward_recipient', '').strip()
     host = get_setting('smtp_host', '').strip()
@@ -195,12 +220,41 @@ def build_forward_payload(account: Dict[str, Any], email_detail: Dict[str, Any])
     return title, plain, html_body, telegram_text
 
 
-def fetch_forward_candidates(account: Dict[str, Any], top: int = 20, folder: str = 'inbox') -> List[Dict[str, Any]]:
+def fetch_forward_candidates(account: Dict[str, Any], top: int = 20, folder: str = 'inbox') -> Dict[str, Any]:
     proxy_url = get_account_proxy_url(account)
     result = fetch_account_folder_emails(account, folder, 0, top, proxy_url)
     if not result.get('success'):
-        return []
-    return result.get('emails', [])
+        return {
+            'success': False,
+            'emails': [],
+            'error': stringify_forward_error(result.get('error') or result.get('details') or '获取邮件失败'),
+        }
+    return {
+        'success': True,
+        'emails': result.get('emails', []),
+        'error': '',
+    }
+
+
+def build_forward_cursor_reset(account: Dict[str, Any], mode: str = 'window', lookback_minutes: Optional[int] = None) -> tuple[Optional[str], str, int]:
+    normalized_mode = str(mode or 'window').strip().lower()
+
+    if lookback_minutes is None:
+        try:
+            lookback_minutes = max(0, min(10080, int(get_setting('forward_email_window_minutes', '0') or '0')))
+        except (TypeError, ValueError):
+            lookback_minutes = 0
+    else:
+        lookback_minutes = max(0, min(10080, int(lookback_minutes or 0)))
+
+    if normalized_mode == 'clear':
+        return None, '已清空转发游标，下次会从当前可拉取到的最近邮件重新扫描', lookback_minutes
+
+    if lookback_minutes > 0:
+        cursor_value = (datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)).isoformat()
+        return cursor_value, f'已回退转发游标，接下来会重扫最近 {lookback_minutes} 分钟内的邮件', lookback_minutes
+
+    return None, '当前未限制转发时间范围，已清空转发游标并准备重扫最近邮件', lookback_minutes
 
 
 def fetch_forward_detail(account: Dict[str, Any], message_id: str, folder: str = 'inbox') -> Optional[Dict[str, Any]]:
@@ -286,13 +340,32 @@ def process_forwarding_job():
                     folders_to_scan.append('junkemail')
                 emails = []
                 for folder_name in folders_to_scan:
-                    emails.extend(fetch_forward_candidates(account, 20, folder_name))
+                    folder_result = fetch_forward_candidates(account, 20, folder_name)
+                    if not folder_result.get('success'):
+                        had_processing_failure = True
+                        error_message = f'{folder_name} 候选邮件拉取失败: {folder_result.get("error") or "未知错误"}'
+                        log_forwarding_result(
+                            account['id'],
+                            account.get('email', ''),
+                            f'folder:{folder_name}',
+                            'fetch_candidates',
+                            'failed',
+                            error_message,
+                            db_conn=conn,
+                        )
+                        app.logger.warning(
+                            '[forward] fetch candidates failed: account=%s folder=%s error=%s',
+                            account.get('email', ''),
+                            folder_name,
+                            folder_result.get('error') or 'unknown',
+                        )
+                        continue
+                    emails.extend(folder_result.get('emails', []))
                 recent_emails = []
                 skipped_before_cursor = 0
                 email_success_count = 0
                 telegram_success_count = 0
                 latest_success_time = cursor_time
-                had_processing_failure = False
                 for item in emails:
                     dt = parse_email_datetime(item.get('date', ''))
                     if forward_window_start and dt and dt < forward_window_start:
@@ -337,6 +410,7 @@ def process_forwarding_job():
                             'detail',
                             'failed',
                             '获取邮件详情失败',
+                            db_conn=conn,
                         )
                         app.logger.warning(
                             '[forward] skip email detail fetch failed: account=%s message_id=%s',
@@ -366,6 +440,7 @@ def process_forwarding_job():
                                         detail.get('id', ''),
                                         FORWARD_CHANNEL_EMAIL,
                                         'success',
+                                        db_conn=conn,
                                     )
                                     email_success_count += 1
                                     message_processed = True
@@ -378,6 +453,7 @@ def process_forwarding_job():
                                         FORWARD_CHANNEL_EMAIL,
                                         'failed',
                                         'SMTP 转发返回失败',
+                                        db_conn=conn,
                                     )
                                     app.logger.warning(
                                         '[forward] send email returned false: account=%s message_id=%s channel=%s',
@@ -394,6 +470,7 @@ def process_forwarding_job():
                                     FORWARD_CHANNEL_EMAIL,
                                     'failed',
                                     str(exc),
+                                    db_conn=conn,
                                 )
                                 app.logger.warning(
                                     '[forward] send email failed: account=%s message_id=%s channel=%s error=%s',
@@ -421,6 +498,7 @@ def process_forwarding_job():
                                         detail.get('id', ''),
                                         FORWARD_CHANNEL_TELEGRAM,
                                         'success',
+                                        db_conn=conn,
                                     )
                                     telegram_success_count += 1
                                     message_processed = True
@@ -433,6 +511,7 @@ def process_forwarding_job():
                                         FORWARD_CHANNEL_TELEGRAM,
                                         'failed',
                                         'Telegram 转发返回失败',
+                                        db_conn=conn,
                                     )
                                     app.logger.warning(
                                         '[forward] send telegram returned false: account=%s message_id=%s channel=%s',
@@ -449,6 +528,7 @@ def process_forwarding_job():
                                     FORWARD_CHANNEL_TELEGRAM,
                                     'failed',
                                     str(exc),
+                                    db_conn=conn,
                                 )
                                 app.logger.warning(
                                     '[forward] send telegram failed: account=%s message_id=%s channel=%s error=%s',
@@ -498,6 +578,47 @@ def api_trigger_forwarding_check():
         return jsonify({'success': True, 'message': '已触发一次转发检查，请查看转发历史或容器日志'})
     except Exception as exc:
         return jsonify({'success': False, 'error': f'触发转发检查失败: {str(exc)}'})
+
+
+@app.route('/api/accounts/<int:account_id>/forwarding/reset-cursor', methods=['POST'])
+@login_required
+def api_reset_account_forward_cursor(account_id):
+    """回退或清空单个账号的转发游标，并可选触发一次重扫。"""
+    account = get_account_by_id(account_id)
+    if not account:
+        return jsonify({'success': False, 'error': '账号不存在'}), 404
+
+    data = request.json or {}
+    mode = str(data.get('mode', 'window') or 'window')
+    lookback_minutes = data.get('lookback_minutes')
+    trigger_check = bool(data.get('trigger_check', True))
+
+    try:
+        cursor_value, reset_message, effective_lookback = build_forward_cursor_reset(account, mode, lookback_minutes)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': '回退时间参数无效'}), 400
+
+    if not set_account_forward_cursor(account_id, cursor_value):
+        return jsonify({'success': False, 'error': '重置转发游标失败'}), 500
+
+    triggered = False
+    if trigger_check:
+        process_forwarding_job()
+        triggered = True
+
+    action_message = reset_message
+    if triggered:
+        action_message += '，并已立即触发一次转发检查'
+
+    return jsonify({
+        'success': True,
+        'message': action_message,
+        'account_id': account_id,
+        'account_email': account.get('email', ''),
+        'forward_last_checked_at': cursor_value,
+        'lookback_minutes': effective_lookback,
+        'triggered': triggered,
+    })
 
 
 @app.route('/api/settings/test-forward-channel', methods=['POST'])
@@ -1005,4 +1126,3 @@ def handle_exception(error):
     import traceback
     traceback.print_exc()
     return jsonify({'success': False, 'error': str(error)}), 500
-

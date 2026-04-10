@@ -751,6 +751,25 @@ def update_accounts_forwarding_by_ids(account_ids: List[int], forward_enabled: b
         return {'success': False, 'error': str(e)}
 
 
+def set_account_forward_cursor(account_id: int, cursor_value: Optional[str]) -> bool:
+    """设置账号转发游标。"""
+    db = get_db()
+    try:
+        db.execute(
+            '''
+            UPDATE accounts
+            SET forward_last_checked_at = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            ''',
+            (cursor_value, account_id)
+        )
+        db.commit()
+        return True
+    except Exception:
+        db.rollback()
+        return False
+
+
 # ==================== 工具函数 ====================
 
 def sanitize_input(text: str, max_length: int = 500) -> str:
@@ -1076,5 +1095,4 @@ def parse_account_import(account_str: str, account_format: str = 'client_id_refr
     if provider_key == 'outlook':
         return parse_outlook_account_string(account_str, account_format)
     return parse_imap_account_string(account_str, provider_key, imap_host, imap_port)
-
 

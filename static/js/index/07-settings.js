@@ -1,3 +1,5 @@
+        /* global accountsCache, closeAllModals, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, setModalVisible, setSelectedForwardChannels, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
+
         // ==================== 设置相关 ====================
 
         // 显示设置模态框
@@ -23,46 +25,6 @@
             const key = Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
             document.getElementById('settingsExternalApiKey').value = key;
             showToast('已生成随机 API Key，请保存设置', 'success');
-        }
-
-        // 加载设置
-        async function loadSettings() {
-            try {
-                const response = await fetch('/api/settings');
-                const data = await response.json();
-
-                if (data.success) {
-                    // 密码不显示，只显示 API Key
-                    document.getElementById('settingsApiKey').value = data.settings.gptmail_api_key || '';
-                    document.getElementById('settingsExternalApiKey').value = data.settings.external_api_key || '';
-                    // DuckMail 设置
-                    document.getElementById('settingsDuckmailBaseUrl').value = data.settings.duckmail_base_url || '';
-                    document.getElementById('settingsDuckmailApiKey').value = data.settings.duckmail_api_key || '';
-                    // Cloudflare 设置
-                    document.getElementById('settingsCloudflareWorkerDomain').value = data.settings.cloudflare_worker_domain || '';
-                    document.getElementById('settingsCloudflareEmailDomains').value = data.settings.cloudflare_email_domains || '';
-                    document.getElementById('settingsCloudflareAdminPassword').value = data.settings.cloudflare_admin_password || '';
-
-                    // 密码框留空
-                    document.getElementById('settingsPassword').value = '';
-
-                    // 加载刷新配置
-                    document.getElementById('refreshIntervalDays').value = data.settings.refresh_interval_days || '30';
-                    document.getElementById('refreshDelaySeconds').value = data.settings.refresh_delay_seconds || '5';
-                    document.getElementById('refreshCron').value = data.settings.refresh_cron || '0 2 * * *';
-
-                    // 设置定时刷新开关
-                    const enableScheduled = data.settings.enable_scheduled_refresh !== 'false';
-                    document.getElementById('enableScheduledRefresh').checked = enableScheduled;
-
-                    // 设置刷新策略单选框
-                    const useCron = data.settings.use_cron_schedule === 'true';
-                    document.querySelector('input[name="refreshStrategy"][value="' + (useCron ? 'cron' : 'days') + '"]').checked = true;
-                    toggleRefreshStrategy();
-                }
-            } catch (error) {
-                showToast('加载设置失败', 'error');
-            }
         }
 
         // 切换刷新策略
@@ -122,84 +84,6 @@
                         ✗ 验证失败: ${error.message}
                     </div>
                 `;
-            }
-        }
-
-        // 保存设置
-        async function saveSettings() {
-            const password = document.getElementById('settingsPassword').value;
-            const apiKey = document.getElementById('settingsApiKey').value.trim();
-            const externalApiKey = document.getElementById('settingsExternalApiKey').value.trim();
-            const refreshDays = document.getElementById('refreshIntervalDays').value;
-            const refreshDelay = document.getElementById('refreshDelaySeconds').value;
-            const refreshCron = document.getElementById('refreshCron').value.trim();
-            const strategy = document.querySelector('input[name="refreshStrategy"]:checked').value;
-            const enableScheduled = document.getElementById('enableScheduledRefresh').checked;
-
-            const settings = {};
-
-            // 只有输入了密码才更新密码
-            if (password) {
-                settings.login_password = password;
-            }
-
-            // API Key 可以为空（清除）
-            settings.gptmail_api_key = apiKey;
-
-            // 对外 API Key
-            settings.external_api_key = externalApiKey;
-
-            // DuckMail 设置
-            settings.duckmail_base_url = document.getElementById('settingsDuckmailBaseUrl').value.trim();
-            settings.duckmail_api_key = document.getElementById('settingsDuckmailApiKey').value.trim();
-            settings.cloudflare_worker_domain = document.getElementById('settingsCloudflareWorkerDomain').value.trim();
-            settings.cloudflare_email_domains = document.getElementById('settingsCloudflareEmailDomains').value.trim();
-            settings.cloudflare_admin_password = document.getElementById('settingsCloudflareAdminPassword').value.trim();
-
-            // 刷新配置
-            const days = parseInt(refreshDays);
-            const delay = parseInt(refreshDelay);
-
-            if (isNaN(days) || days < 1 || days > 90) {
-                showToast('刷新周期必须在 1-90 天之间', 'error');
-                return;
-            }
-
-            if (isNaN(delay) || delay < 0 || delay > 60) {
-                showToast('刷新间隔必须在 0-60 秒之间', 'error');
-                return;
-            }
-
-            settings.refresh_interval_days = days;
-            settings.refresh_delay_seconds = delay;
-            settings.use_cron_schedule = strategy === 'cron';
-            settings.enable_scheduled_refresh = enableScheduled;
-
-            if (strategy === 'cron') {
-                if (!refreshCron) {
-                    showToast('请输入 Cron 表达式', 'error');
-                    return;
-                }
-                settings.refresh_cron = refreshCron;
-            }
-
-            try {
-                const response = await fetch('/api/settings', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(settings)
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    showToast('设置已保存，重启应用后生效', 'success');
-                    hideSettingsModal();
-                } else {
-                    handleApiError(data, '保存设置失败');
-                }
-            } catch (error) {
-                showToast('保存设置失败', 'error');
             }
         }
 
@@ -684,4 +568,3 @@
             if (diffDays < 30) return `${diffDays} 天前`;
             return `${Math.floor(diffDays / 30)} 月前`;
         }
-

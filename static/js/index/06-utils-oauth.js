@@ -1,12 +1,6 @@
-        // ==================== 工具函数 ====================
+        /* global accountsCache, currentGroupId, escapeHtml, groups, hideModal, invalidateRefreshTokenPreview, isTempEmailGroup, loadAccountsByGroup, loadGroups, oauthPreviewAccount, renderRefreshTokenPreview, setModalVisible, showModal, showToast, updateGroupSelects */
 
-        // HTML 转义
-        function escapeHtml(text) {
-            if (!text) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
+        // ==================== 工具函数 ====================
 
         // 格式化日期
         function formatDate(dateStr) {
@@ -282,4 +276,3 @@
                 saveBtn.textContent = '直接保存（自动换取）';
             }
         }
-

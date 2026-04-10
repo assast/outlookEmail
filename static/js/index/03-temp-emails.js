@@ -1,3 +1,5 @@
+        /* global accountsCache, closeMobilePanels, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentMethod, currentGroupId, escapeHtml, formatDate, groups, handleApiError, loadGroups, loadTempEmails, renderEmailDetail, renderEmailList, showEmailList, showMobileEmailDetail, showToast, updateMobileContext, updateCurrentGroupHeader */
+
         // ==================== 临时邮箱相关 ====================
 
         // 加载临时邮箱列表

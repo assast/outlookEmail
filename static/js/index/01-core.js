@@ -1,3 +1,5 @@
+        /* global closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, initColorPicker, initEmailListScroll, loadGroups, loadTags, searchAccounts */
+
         // 全局状态
         let csrfToken = null;
         let currentAccount = null;
@@ -226,6 +228,21 @@
                 if (event.target.closest('.navbar-btn')) {
                     closeNavbarActionsMenu();
                 }
+            });
+            document.getElementById('mobileNavMenuBtn')?.addEventListener('click', function () {
+                toggleNavbarActionsMenu();
+            });
+            document.getElementById('mobileGroupBtn')?.addEventListener('click', function () {
+                toggleMobilePanel('group');
+            });
+            document.getElementById('mobileAccountBtn')?.addEventListener('click', function () {
+                toggleMobilePanel('account');
+            });
+            document.getElementById('mobileListBtn')?.addEventListener('click', function () {
+                showEmailList();
+            });
+            document.getElementById('mobilePanelScrim')?.addEventListener('click', function () {
+                closeMobilePanels();
             });
             window.addEventListener('resize', function () {
                 clearTimeout(responsiveUiResizeTimer);
@@ -629,8 +646,13 @@
         async function loadAccountForwardingLogs() {
             const listEl = document.getElementById('accountForwardingLogsList');
             const failedOnly = !!document.getElementById('accountForwardingLogsFailedOnly')?.checked;
+            const cursorValueEl = document.getElementById('accountForwardingCursorValue');
+            const cursorHintEl = document.getElementById('accountForwardingCursorHint');
             if (!currentForwardingLogAccountId) {
                 listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">未选择账号</div>';
+                if (cursorValueEl) {
+                    cursorValueEl.textContent = '-';
+                }
                 return;
             }
 
@@ -642,6 +664,28 @@
                 const data = await response.json();
                 if (!data.success || !Array.isArray(data.logs)) {
                     throw new Error('加载失败');
+                }
+                let account = data.account || {};
+                if (!Object.keys(account).length) {
+                    try {
+                        const accountResp = await fetch(`/api/accounts/${currentForwardingLogAccountId}`);
+                        const accountData = await accountResp.json();
+                        if (accountData.success && accountData.account) {
+                            account = accountData.account;
+                        }
+                    } catch (fallbackError) {
+                        console.warn('加载账号转发元信息失败:', fallbackError);
+                    }
+                }
+                if (cursorValueEl) {
+                    cursorValueEl.textContent = account.forward_last_checked_at
+                        ? formatDateTime(account.forward_last_checked_at)
+                        : '未设置';
+                }
+                if (cursorHintEl) {
+                    cursorHintEl.textContent = account.forward_enabled
+                        ? '回退游标后，会按当前转发时间范围重新扫描最近邮件；已成功转发过的邮件仍会被去重。'
+                        : '该账号当前未开启转发，回退游标后仍需先开启账号转发。';
                 }
                 if (data.logs.length === 0) {
                     listEl.innerHTML = `<div style="padding: 20px; text-align: center; color: #666;">${failedOnly ? '该账号暂无失败转发日志' : '该账号暂无转发日志'}</div>`;
@@ -669,7 +713,57 @@
                 });
                 listEl.innerHTML = html;
             } catch (error) {
+                if (cursorValueEl) {
+                    cursorValueEl.textContent = '加载失败';
+                }
                 listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #dc3545;">加载账号转发日志失败</div>';
+            }
+        }
+
+        async function resetAccountForwardCursor() {
+            if (!currentForwardingLogAccountId) return;
+
+            const btn = document.getElementById('resetAccountForwardingCursorBtn');
+            const originalText = btn?.textContent || '回退游标并重扫';
+
+            if (!confirm(`确定要回退 ${currentForwardingLogAccountEmail || '该账号'} 的转发游标，并立即重扫最近邮件吗？\n\n已成功转发过的邮件仍会因为去重记录被跳过。`)) {
+                return;
+            }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '处理中...';
+            }
+
+            try {
+                if (!csrfToken) {
+                    await initCSRFToken();
+                }
+
+                const response = await fetch(`/api/accounts/${currentForwardingLogAccountId}/forwarding/reset-cursor`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: 'window',
+                        trigger_check: true
+                    })
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || '重置转发游标失败');
+                }
+
+                showToast(data.message || '已回退转发游标并触发检查', 'success');
+                await loadAccountForwardingLogs();
+                loadForwardingLogs();
+                loadFailedForwardingLogs();
+            } catch (error) {
+                showToast(error.message || '重置转发游标失败', 'error');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                }
             }
         }
 

@@ -1,3 +1,5 @@
+        /* global accountsCache, clearEmailSelection, closeModal, currentGroupId, currentAccount, currentEmailDetail, deleteAccount, getSelectedForwardChannels, handleApiError, hideModal, invalidateAccountCaches, isTempEmailGroup, loadAccountsByGroup, loadGroups, loadTags, refreshVisibleAccountList, renderEmailList, selectedEmailIds, setModalVisible, showModal, showToast, updateBatchActionBar */
+
         // ==================== 批量操作 ====================
 
         // 更新批量操作栏状态

@@ -23,9 +23,10 @@ def log_refresh_result(account_id: int, account_email: str, refresh_type: str, s
 
 
 def log_forwarding_result(account_id: int, account_email: str, message_id: str, channel: str,
-                          status: str, error_message: str = None):
+                          status: str, error_message: str = None, db_conn=None):
     """记录转发结果到数据库"""
-    db = get_db()
+    db = db_conn or get_db()
+    should_commit = db_conn is None
     try:
         db.execute('''
             INSERT INTO forwarding_logs (account_id, account_email, message_id, channel, status, error_message)
@@ -38,9 +39,15 @@ def log_forwarding_result(account_id: int, account_email: str, message_id: str, 
             status,
             sanitize_error_details(error_message)[:500] if error_message else None,
         ))
-        db.commit()
+        if should_commit:
+            db.commit()
         return True
     except Exception as e:
+        if should_commit:
+            try:
+                db.rollback()
+            except Exception:
+                pass
         print(f"记录转发结果失败: {str(e)}")
         return False
 
@@ -757,6 +764,9 @@ def api_get_failed_forwarding_logs():
 def api_get_account_forwarding_logs(account_id):
     """获取单个账号的转发记录"""
     db = get_db()
+    account = get_account_by_id(account_id)
+    if not account:
+        return jsonify({'success': False, 'error': '账号不存在'}), 404
     limit = int(request.args.get('limit', 100))
     offset = int(request.args.get('offset', 0))
     failed_only = str(request.args.get('failed_only', '')).strip().lower() in ('1', 'true', 'yes', 'on')
@@ -790,7 +800,17 @@ def api_get_account_forwarding_logs(account_id):
             'created_at': row['created_at']
         })
 
-    return jsonify({'success': True, 'logs': logs})
+    return jsonify({
+        'success': True,
+        'logs': logs,
+        'account': {
+            'id': account['id'],
+            'email': account.get('email', ''),
+            'status': account.get('status', 'active'),
+            'forward_enabled': bool(account.get('forward_enabled')),
+            'forward_last_checked_at': account.get('forward_last_checked_at', ''),
+        }
+    })
 
 
 @app.route('/api/accounts/refresh-stats', methods=['GET'])
@@ -1077,9 +1097,14 @@ def fetch_account_folder_emails(account: Dict[str, Any], folder: str, skip: int,
     graph_error = graph_result.get('error')
     all_errors['graph'] = graph_error
     if isinstance(graph_error, dict) and graph_error.get('type') in ('ProxyError', 'ConnectionError'):
+        connection_error_message = (
+            '代理连接失败，请检查分组代理设置'
+            if proxy_url
+            else '连接 Microsoft 服务失败，请检查服务器网络、DNS 或上游访问能力'
+        )
         return {
             'success': False,
-            'error': '代理连接失败，请检查分组代理设置',
+            'error': connection_error_message,
             'details': all_errors
         }
 
@@ -1280,5 +1305,3 @@ def api_get_email_detail(email_addr, message_id):
         return jsonify({'success': True, 'email': detail})
 
     return jsonify({'success': False, 'error': '获取邮件详情失败'})
-
-

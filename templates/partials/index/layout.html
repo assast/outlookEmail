@@ -22,7 +22,7 @@
         </div>
         <div class="navbar-actions">
             <button class="mobile-nav-menu-btn" id="mobileNavMenuBtn" type="button" aria-expanded="false"
-                aria-controls="navbarActionsMenu" onclick="toggleNavbarActionsMenu()">
+                aria-controls="navbarActionsMenu">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                     <path d="M2 4h12"></path>
                     <path d="M2 8h12"></path>
@@ -152,15 +152,15 @@
         <!-- 内容区域 -->
         <div class="content-area">
             <div class="mobile-quickbar" id="mobileQuickbar">
-                <button class="mobile-quickbar-btn" id="mobileGroupBtn" type="button" onclick="toggleMobilePanel('group')">
+                <button class="mobile-quickbar-btn" id="mobileGroupBtn" type="button">
                     <span class="mobile-quickbar-label">分组</span>
                     <span class="mobile-quickbar-value" id="mobileCurrentGroup">未选择</span>
                 </button>
-                <button class="mobile-quickbar-btn" id="mobileAccountBtn" type="button" onclick="toggleMobilePanel('account')">
+                <button class="mobile-quickbar-btn" id="mobileAccountBtn" type="button">
                     <span class="mobile-quickbar-label">邮箱</span>
                     <span class="mobile-quickbar-value" id="mobileCurrentAccount">未选择</span>
                 </button>
-                <button class="mobile-quickbar-btn" id="mobileListBtn" type="button" onclick="showEmailList()">
+                <button class="mobile-quickbar-btn" id="mobileListBtn" type="button">
                     <span class="mobile-quickbar-label">邮件</span>
                     <span class="mobile-quickbar-value" id="mobileListButtonHint">当前列表</span>
                 </button>
@@ -242,4 +242,4 @@
             </div>
         </div>
     </div>
-    <div class="mobile-panel-scrim" id="mobilePanelScrim" onclick="closeMobilePanels()"></div>
+    <div class="mobile-panel-scrim" id="mobilePanelScrim"></div>

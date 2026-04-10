@@ -628,6 +628,14 @@
                 <button class="modal-close" onclick="hideAccountForwardingLogs()">&times;</button>
             </div>
             <div class="modal-body">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px; background: #f8fafc;">
+                    <div style="min-width: 0; flex: 1;">
+                        <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">当前转发游标</div>
+                        <div id="accountForwardingCursorValue" style="font-size: 13px; color: #111827; font-weight: 600;">加载中...</div>
+                        <div id="accountForwardingCursorHint" style="font-size: 12px; color: #64748b; margin-top: 6px;">回退游标后，会按当前转发时间范围重新扫描最近邮件；已成功转发过的邮件仍会被去重。</div>
+                    </div>
+                    <button class="btn btn-secondary" type="button" id="resetAccountForwardingCursorBtn" onclick="resetAccountForwardCursor()">回退游标并重扫</button>
+                </div>
                 <label style="display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px; cursor: pointer; font-size: 13px; color: #666;">
                     <input type="checkbox" id="accountForwardingLogsFailedOnly" onchange="toggleAccountForwardingLogFilter()">
                     <span>只看失败</span>
@@ -641,4 +649,3 @@
             </div>
         </div>
     </div>
-

@@ -1,3 +1,5 @@
+        /* global accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, formatRelativeTime, generateTempEmail, groups, handleApiError, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadTempEmails, localStorage, openMobilePanel, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, tempEmailGroupId, updateCurrentGroupHeader, updateMobileContext */
+
         // ==================== 分组相关 ====================
 
         // 加载分组列表
@@ -897,59 +899,6 @@
                 importSelect.onchange = function () {
                     updateImportHint();
                 };
-            }
-        }
-
-        // 更新导入提示文本和渠道选择器
-        function updateImportHint() {
-            const importSelect = document.getElementById('importGroupSelect');
-            const hintEl = document.getElementById('importFormatHint');
-            const inputEl = document.getElementById('accountInput');
-            const channelGroup = document.getElementById('importChannelGroup');
-            const channelSelect = document.getElementById('importChannelSelect');
-            const exampleEl = document.getElementById('importFormatExample');
-            if (!importSelect || !hintEl || !inputEl) return;
-
-            const selectedGroup = groups.find(g => g.id === parseInt(importSelect.value));
-            const isTempGroup = selectedGroup && selectedGroup.name === '临时邮箱';
-
-            if (isTempGroup) {
-                // 显示渠道选择器
-                if (channelGroup) channelGroup.style.display = '';
-
-                const channel = channelSelect ? channelSelect.value : 'gptmail';
-                if (channel === 'duckmail') {
-                    hintEl.textContent = '格式：邮箱----密码，每行一个';
-                    inputEl.placeholder = '邮箱----密码';
-                    if (exampleEl) {
-                        exampleEl.style.display = '';
-                        exampleEl.textContent = '示例：\nuser@duck.com----mypassword\nuser2@duck.com----password2';
-                    }
-                } else if (channel === 'cloudflare') {
-                    hintEl.textContent = '格式：邮箱----JWT，每行一个';
-                    inputEl.placeholder = '邮箱----JWT';
-                    if (exampleEl) {
-                        exampleEl.style.display = '';
-                        exampleEl.textContent = '示例：\nuser@example.com----eyJhbGciOi...\nuser2@example.com----eyJ0eXAiOi...';
-                    }
-                } else {
-                    hintEl.textContent = '格式：每行一个邮箱地址';
-                    inputEl.placeholder = '每行一个邮箱地址';
-                    if (exampleEl) {
-                        exampleEl.style.display = '';
-                        exampleEl.textContent = '示例：\nuser1@gptmail.com\nuser2@gptmail.com';
-                    }
-                }
-            } else {
-                // 隐藏渠道选择器
-                if (channelGroup) channelGroup.style.display = 'none';
-                if (exampleEl) exampleEl.style.display = '';
-                hintEl.textContent = 'Outlook 支持两种格式并自动识别：邮箱----密码----client_id----refresh_token 或 邮箱----密码----refresh_token----client_id';
-                inputEl.placeholder = '邮箱----密码----client_id----refresh_token';
-                if (exampleEl) {
-                    exampleEl.textContent = '示例：\nuser@outlook.com----password123----24d9a0ed-8787-4584-883c-2fd79308940a----0.AXEA...\nuser@outlook.com----password123----0.AXEA...----24d9a0ed-8787-4584-883c-2fd79308940a';
-                }
-                return;
             }
         }
 
