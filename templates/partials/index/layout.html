@@ -218,21 +218,24 @@
             <div class="email-detail-panel">
                 <div class="email-detail-toolbar" id="emailDetailToolbar" style="display:none;">
                     <button class="back-btn email-detail-action-btn email-detail-action-btn--back" type="button"
-                        title="返回邮件列表" aria-label="返回邮件列表" onclick="showEmailList()">← 返回</button>
+                        title="返回邮件列表" aria-label="返回邮件列表" onclick="showEmailList()">
+                        <span class="email-detail-action-btn__text">← 返回</span>
+                    </button>
                     <button class="toggle-list-btn" onclick="toggleEmailList()">
                         <span id="toggleListText">隐藏列表</span>
                     </button>
                     <button class="fullscreen-btn email-detail-action-btn email-detail-action-btn--fullscreen" type="button"
-                        title="全屏查看" aria-label="全屏查看" onclick="openFullscreenEmail()">🔍 全屏查看</button>
+                        title="全屏查看" aria-label="全屏查看" onclick="openFullscreenEmail()">
+                        <span class="email-detail-action-btn__text">🔍 全屏查看</span>
+                    </button>
                     <label class="email-trust-toggle" title="信任此邮件" aria-label="信任此邮件">
                         <input type="checkbox" id="trustEmailCheckbox" onchange="toggleTrustMode(this)">
                         <span style="user-select: none;">信任此邮件</span>
                     </label>
                     <div class="email-detail-toolbar-spacer"></div>
                     <button class="batch-btn danger email-detail-action-btn email-detail-action-btn--delete" type="button"
-                        title="删除邮件" aria-label="删除邮件" onclick="confirmDeleteCurrentEmail()"
-                        style="padding: 4px 8px; font-size: 12px;">
-                        🗑️ 删除
+                        title="删除邮件" aria-label="删除邮件" onclick="confirmDeleteCurrentEmail()" style="padding: 4px 8px; font-size: 12px;">
+                        <span class="email-detail-action-btn__text">🗑️ 删除</span>
                     </button>
                 </div>
                 <div id="emailDetail">

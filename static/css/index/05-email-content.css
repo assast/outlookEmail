@@ -250,6 +250,13 @@
             flex: 1;
         }
 
+        .email-detail-action-btn__text {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
         .email-trust-toggle {
             display: inline-flex;
             align-items: center;

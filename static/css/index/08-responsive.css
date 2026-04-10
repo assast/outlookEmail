@@ -382,9 +382,6 @@
                 align-items: center;
                 justify-content: center;
                 flex: 0 0 auto;
-                font-size: 0;
-                line-height: 1;
-                color: transparent;
             }
 
             .email-detail-action-btn::before,
@@ -404,6 +401,10 @@
 
             .email-detail-action-btn--delete::before {
                 content: '🗑';
+            }
+
+            .email-detail-action-btn__text {
+                display: none;
             }
 
             .fullscreen-btn {
