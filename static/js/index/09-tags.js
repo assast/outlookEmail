@@ -219,7 +219,7 @@
 
         // 删除标签
         async function deleteTag(id) {
-            if (!confirm('确定要删除这个标签吗？')) return;
+            if (!(await showConfirmModal('确定要删除这个标签吗？', { title: '删除标签', confirmText: '确认删除' }))) return;
 
             try {
                 const response = await fetch(`/api/tags/${id}`, { method: 'DELETE' });

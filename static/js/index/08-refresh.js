@@ -103,7 +103,7 @@
 
             if (btn.disabled) return;
 
-            if (!confirm('确定要刷新所有账号的 Token 吗？')) {
+            if (!(await showConfirmModal('确定要刷新所有账号的 Token 吗？', { title: '刷新 Token', confirmText: '确认刷新', danger: false }))) {
                 return;
             }
 

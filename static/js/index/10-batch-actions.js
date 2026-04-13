@@ -137,7 +137,7 @@
                 showToast('所选账号中没有可刷新的 Outlook 账号', 'error');
                 return;
             }
-            if (!confirm(`确定要刷新所选 ${accountIds.length} 个邮箱的 Token 吗？`)) {
+            if (!(await showConfirmModal(`确定要刷新所选 ${accountIds.length} 个邮箱的 Token 吗？`, { title: '批量刷新 Token', confirmText: '确认刷新', danger: false }))) {
                 return;
             }
 
@@ -208,7 +208,7 @@
             const confirmMessage = skippedCount > 0
                 ? `确定要为所选 ${accountIds.length} 个邮箱${actionLabel}吗？其中 ${skippedCount} 个${skippedLabel}账号会自动跳过。`
                 : `确定要为所选 ${accountIds.length} 个邮箱${actionLabel}吗？`;
-            if (!confirm(confirmMessage)) {
+            if (!(await showConfirmModal(confirmMessage, { title: actionLabel, confirmText: '确认', danger: false }))) {
                 return;
             }
 
@@ -269,7 +269,7 @@
                 return;
             }
 
-            if (!confirm(`确定要删除所选 ${accountIds.length} 个邮箱吗？此操作不可恢复。`)) {
+            if (!(await showConfirmModal(`确定要删除所选 ${accountIds.length} 个邮箱吗？此操作不可恢复。`, { title: '批量删除邮箱', confirmText: '确认删除' }))) {
                 return;
             }
 

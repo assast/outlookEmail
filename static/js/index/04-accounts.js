@@ -238,7 +238,7 @@
             const email = document.getElementById('editEmail').value;
             const groupId = parseInt(document.getElementById('editGroupSelect').value);
 
-            if (!confirm(`确定要删除账号 ${email} 吗？`)) {
+            if (!(await showConfirmModal(`确定要删除账号 ${email} 吗？`, { title: '删除账号', confirmText: '确认删除' }))) {
                 return;
             }
 
@@ -317,7 +317,7 @@
 
         // 删除账号（快捷方式）
         async function deleteAccount(accountId, email) {
-            if (!confirm(`确定要删除账号 ${email} 吗？`)) {
+            if (!(await showConfirmModal(`确定要删除账号 ${email} 吗？`, { title: '删除账号', confirmText: '确认删除' }))) {
                 return;
             }
 

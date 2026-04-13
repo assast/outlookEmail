@@ -594,6 +594,36 @@
             return setModalVisible(modalId, false);
         }
 
+        // 通用确认模态框 - 替代原生 confirm()
+        let _genericConfirmResolve = null;
+
+        function showConfirmModal(message, { title = "确认操作", confirmText = "确认", danger = true } = {}) {
+            return new Promise((resolve) => {
+                _genericConfirmResolve = resolve;
+                document.getElementById('genericConfirmTitle').textContent = title;
+                document.getElementById('genericConfirmMsg').textContent = message;
+                const btn = document.getElementById('genericConfirmBtn');
+                btn.textContent = confirmText;
+                btn.className = danger ? 'btn btn-danger' : 'btn btn-primary';
+                showModal('genericConfirmModal');
+            });
+        }
+
+        function resolveGenericConfirm() {
+            hideModal('genericConfirmModal');
+            if (_genericConfirmResolve) {
+                _genericConfirmResolve(true);
+                _genericConfirmResolve = null;
+            }
+        }
+
+        function hideGenericConfirmModal() {
+            hideModal('genericConfirmModal');
+            if (_genericConfirmResolve) {
+                _genericConfirmResolve(false);
+                _genericConfirmResolve = null;
+            }
+        }
         function showModal(modalId) {
             closeNavbarActionsMenu();
             closeMobilePanels();
@@ -739,7 +769,7 @@
             const btn = document.getElementById('resetAccountForwardingCursorBtn');
             const originalText = btn?.textContent || '回退游标并重扫';
 
-            if (!confirm(`确定要回退 ${currentForwardingLogAccountEmail || '该账号'} 的转发游标，并立即重扫最近邮件吗？\n\n已成功转发过的邮件仍会因为去重记录被跳过。`)) {
+            if (!(await showConfirmModal(`确定要回退 ${currentForwardingLogAccountEmail || '该账号'} 的转发游标，并立即重扫最近邮件吗？\n\n已成功转发过的邮件仍会因为去重记录被跳过。`, { title: '回退转发游标', confirmText: '确认回退' }))) {
                 return;
             }
 

@@ -1245,7 +1245,7 @@
 
         // 删除分组
         async function deleteGroup(groupId) {
-            if (!confirm('确定要删除该分组吗？分组下的邮箱将移至默认分组。')) {
+            if (!(await showConfirmModal('确定要删除该分组吗？分组下的邮箱将移至默认分组。', { title: '删除分组', confirmText: '确认删除' }))) {
                 return;
             }
 

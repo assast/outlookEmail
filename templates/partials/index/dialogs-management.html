@@ -508,6 +508,22 @@
         </div>
     </div>
 
+    <!-- 通用确认模态框 -->
+    <div class="modal" id="genericConfirmModal" onclick="if(event.target === this) hideGenericConfirmModal()">
+        <div class="modal-content" style="width: 420px;">
+            <div class="modal-header">
+                <h3 id="genericConfirmTitle">确认操作</h3>
+                <button class="modal-close" onclick="hideGenericConfirmModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="genericConfirmMsg" style="margin: 0; line-height: 1.6; white-space: pre-wrap;"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideGenericConfirmModal()">取消</button>
+                <button class="btn btn-danger" id="genericConfirmBtn" onclick="resolveGenericConfirm()">确认</button>
+            </div>
+        </div>
+    </div>
     <!-- 批量移动分组模态框 -->
     <div class="modal" id="batchMoveGroupModal" onclick="if(event.target === this) hideBatchMoveGroupModal()">
         <div class="modal-content" style="width: 400px;">

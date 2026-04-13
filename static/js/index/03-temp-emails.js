@@ -380,7 +380,7 @@
 
         // 清空临时邮箱的所有邮件
         async function clearTempEmailMessages(email) {
-            if (!confirm(`确定要清空临时邮箱 ${email} 的所有邮件吗？`)) {
+            if (!(await showConfirmModal(`确定要清空临时邮箱 ${email} 的所有邮件吗？`, { title: '清空邮件', confirmText: '确认清空' }))) {
                 return;
             }
 
@@ -422,7 +422,7 @@
 
         // 删除临时邮箱
         async function deleteTempEmail(email) {
-            if (!confirm(`确定要删除临时邮箱 ${email} 吗？\n该邮箱的所有邮件也将被删除。`)) {
+            if (!(await showConfirmModal(`确定要删除临时邮箱 ${email} 吗？\n该邮箱的所有邮件也将被删除。`, { title: '删除临时邮箱', confirmText: '确认删除' }))) {
                 return;
             }
 

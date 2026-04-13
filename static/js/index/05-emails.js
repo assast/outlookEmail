@@ -252,7 +252,7 @@
         async function confirmBatchDeleteEmails() {
             if (selectedEmailIds.size === 0) return;
 
-            if (!confirm(`确定要永久删除选中的 ${selectedEmailIds.size} 封邮件吗？此操作不可恢复！`)) {
+            if (!(await showConfirmModal(`确定要永久删除选中的 ${selectedEmailIds.size} 封邮件吗？此操作不可恢复！`, { title: '批量删除邮件', confirmText: '确认删除' }))) {
                 return;
             }
 
@@ -263,7 +263,7 @@
             if (isTempEmailGroup) return;
             if (!currentEmailDetail || !currentEmailDetail.id) return;
 
-            if (!confirm('确定要永久删除这封邮件吗？此操作不可恢复！')) {
+            if (!(await showConfirmModal('确定要永久删除这封邮件吗？此操作不可恢复！', { title: '删除邮件', confirmText: '确认删除' }))) {
                 return;
             }
 
@@ -640,10 +640,10 @@
             checkbox?.closest('.email-trust-toggle')?.classList.toggle('is-active', !!checkbox?.checked);
         }
 
-        function toggleTrustMode(checkbox) {
+        async function toggleTrustMode(checkbox) {
             updateTrustToggleState(checkbox);
             if (checkbox.checked) {
-                if (confirm('⚠️ 警告：启用信任模式将直接显示邮件原始内容，不进行任何安全过滤。\n\n这可能包含恶意脚本或不安全的内容。您确定要继续吗？')) {
+                if (await showConfirmModal('⚠️ 警告：启用信任模式将直接显示邮件原始内容，不进行任何安全过滤。\n\n这可能包含恶意脚本或不安全的内容。您确定要继续吗？', { title: '启用信任模式', confirmText: '确认启用' })) {
                     isTrustedMode = true;
                     if (currentEmailDetail) {
                         renderEmailDetail(currentEmailDetail);
@@ -772,8 +772,8 @@
         }
 
         // 退出登录
-        function logout() {
-            if (confirm('确定要退出登录吗？')) {
+        async function logout() {
+            if (await showConfirmModal('确定要退出登录吗？', { title: '退出登录', confirmText: '确认退出', danger: false })) {
                 window.location.href = '/logout';
             }
         }
