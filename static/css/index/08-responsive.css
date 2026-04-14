@@ -681,6 +681,19 @@
                 align-items: flex-start;
             }
 
+            .email-top-main {
+                width: 100%;
+            }
+
+            .email-sender-block {
+                flex: 1 1 100%;
+            }
+
+            .email-folder-badge {
+                max-width: 100%;
+                align-self: flex-start;
+            }
+
             .email-date {
                 white-space: normal;
             }
