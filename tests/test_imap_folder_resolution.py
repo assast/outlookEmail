@@ -656,6 +656,7 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
     def setUp(self):
         self.app = web_outlook_app.app
         self.app.config['TESTING'] = True
+        self.app.config['WTF_CSRF_ENABLED'] = False
         self.client = self.app.test_client()
 
         with self.client.session_transaction() as sess:
@@ -777,6 +778,58 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
         self.assertTrue(payload['success'])
         self.assertEqual(payload['group']['fallback_proxy_url_1'], 'socks5://127.0.0.1:2080')
         self.assertEqual(payload['group']['fallback_proxy_url_2'], '直连')
+
+
+class TelegramForwardingProxySettingsTests(unittest.TestCase):
+    def setUp(self):
+        self.app = web_outlook_app.app
+        self.app.config['TESTING'] = True
+        self.app.config['WTF_CSRF_ENABLED'] = False
+        self.client = self.app.test_client()
+
+        with self.client.session_transaction() as sess:
+            sess['logged_in'] = True
+
+    def test_settings_api_persists_telegram_proxy_url(self):
+        response = self.client.put(
+            '/api/settings',
+            json={
+                'telegram_bot_token': '123456:abcdef',
+                'telegram_chat_id': '-1001234567890',
+                'telegram_proxy_url': 'socks5://127.0.0.1:1080',
+            }
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        response = self.client.get('/api/settings')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['settings']['telegram_proxy_url'], 'socks5://127.0.0.1:1080')
+
+    def test_send_forward_telegram_uses_configured_proxy(self):
+        class FakeResponse:
+            ok = True
+
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting_encrypted('telegram_bot_token', '123456:abcdef'))
+            self.assertTrue(web_outlook_app.set_setting('telegram_chat_id', '-1001234567890'))
+            self.assertTrue(web_outlook_app.set_setting('telegram_proxy_url', 'socks5://127.0.0.1:1080'))
+
+        with self.app.app_context():
+            with patch.object(web_outlook_app.requests, 'request', return_value=FakeResponse()) as mocked_request:
+                success = web_outlook_app.send_forward_telegram('telegram proxy test')
+
+        self.assertTrue(success)
+        self.assertEqual(mocked_request.call_count, 1)
+        self.assertEqual(mocked_request.call_args.args[:2], ('post', 'https://api.telegram.org/bot123456:abcdef/sendMessage'))
+        self.assertEqual(
+            mocked_request.call_args.kwargs['proxies'],
+            {'http': 'socks5://127.0.0.1:1080', 'https': 'socks5://127.0.0.1:1080'},
+        )
 
 
 if __name__ == '__main__':

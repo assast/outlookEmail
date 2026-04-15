@@ -180,16 +180,18 @@ def send_forward_email_with_config(config: Dict[str, Any], subject: str, body_te
 def send_forward_telegram(text: str) -> bool:
     bot_token = get_setting_decrypted('telegram_bot_token', '').strip()
     chat_id = get_setting('telegram_chat_id', '').strip()
+    proxy_url = get_setting('telegram_proxy_url', '').strip()
     if not bot_token or not chat_id:
         return False
-    response = requests.post(
+    response = post_with_proxy_fallback(
         f'https://api.telegram.org/bot{bot_token}/sendMessage',
         json={
             'chat_id': chat_id,
             'text': text[:4000],
             'disable_web_page_preview': True,
         },
-        timeout=15
+        timeout=15,
+        proxy_url=proxy_url,
     )
     return response.ok
 
@@ -197,16 +199,18 @@ def send_forward_telegram(text: str) -> bool:
 def send_forward_telegram_with_config(config: Dict[str, Any], text: str) -> bool:
     bot_token = str(config.get('bot_token', '') or '').strip()
     chat_id = str(config.get('chat_id', '') or '').strip()
+    proxy_url = str(config.get('proxy_url', '') or '').strip()
     if not bot_token or not chat_id:
         return False
-    response = requests.post(
+    response = post_with_proxy_fallback(
         f'https://api.telegram.org/bot{bot_token}/sendMessage',
         json={
             'chat_id': chat_id,
             'text': text[:4000],
             'disable_web_page_preview': True,
         },
-        timeout=15
+        timeout=15,
+        proxy_url=proxy_url,
     )
     return response.ok
 

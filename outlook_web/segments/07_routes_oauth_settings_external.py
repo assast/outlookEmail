@@ -170,6 +170,7 @@ def api_get_settings():
     settings['smtp_use_ssl'] = get_setting('smtp_use_ssl', 'true')
     settings['telegram_bot_token'] = get_setting_decrypted('telegram_bot_token', '')
     settings['telegram_chat_id'] = get_setting('telegram_chat_id', '')
+    settings['telegram_proxy_url'] = get_setting('telegram_proxy_url', '')
     return jsonify({'success': True, 'settings': settings})
 
 
@@ -433,6 +434,12 @@ def api_update_settings():
             updated.append('Telegram Chat ID')
         else:
             errors.append('保存 Telegram Chat ID 失败')
+
+    if 'telegram_proxy_url' in data:
+        if set_setting('telegram_proxy_url', data['telegram_proxy_url'].strip()):
+            updated.append('Telegram 代理')
+        else:
+            errors.append('保存 Telegram 代理失败')
 
     if errors:
         return jsonify({'success': False, 'error': '；'.join(errors)})

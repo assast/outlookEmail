@@ -1097,6 +1097,10 @@ def init_db():
         INSERT OR IGNORE INTO settings (key, value)
         VALUES ('telegram_chat_id', '')
     ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('telegram_proxy_url', '')
+    ''')
 
     # 创建索引以优化查询性能
     cursor.execute('''
