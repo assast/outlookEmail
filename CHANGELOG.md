@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project follows Semantic Versioning (`MAJOR.MINOR.PATCH`).
 
 ## [Unreleased]
+- 修改发布流程，支持推送 `vX.Y.Z` 版本标签后自动触发 GitHub Release 工作流，手动触发改为兜底方案。
 
 
 ## [2.0.16] - 2026-04-15

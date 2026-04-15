@@ -6,6 +6,7 @@
 
 - 日常开发分支：`dev`
 - 稳定发布分支：`main`
+- 版本标签自动发布：`git push origin vX.Y.Z`
 - 手动发布工作流：`Create GitHub Release`
 
 ## 版本号规则
@@ -17,13 +18,14 @@
 
 约定：
 
+- 推送形如 `v2.0.16` 的 Git 标签会自动触发发布工作流
 - GitHub Actions 手动发版时，输入的是不带 `v` 的版本号，例如 `2.0.15`
 - 工作流会自动创建对应标签 `v2.0.15`
 - `CHANGELOG.md` 中的版本标题也必须写成 `## [2.0.15] - 2026-04-15`
 
 ## 发版产物
 
-手动触发 `Create GitHub Release` 工作流后，会自动生成以下产物：
+推送版本标签或手动触发 `Create GitHub Release` 工作流后，会自动生成以下产物：
 
 - Git 标签：`vX.Y.Z`
 - GitHub Release：标题为 `vX.Y.Z`
@@ -33,7 +35,7 @@
 补充说明：
 
 - `latest` / `main` / `dev` 标签来自分支推送触发的 Docker 工作流
-- 手动发版工作流只负责发布版本镜像 `vX.Y.Z`
+- Release 工作流负责发布版本镜像 `vX.Y.Z`
 - GitHub Release 正文优先从 `CHANGELOG.md` 中提取对应版本条目
 
 ## 发版前检查
@@ -83,9 +85,18 @@ git push origin main
 
 如果本次发版还包含代码变更，请把代码文件一并提交。
 
-### 5. 手动触发 GitHub Release 工作流
+### 5. 推送版本标签触发自动发布
 
-进入 GitHub Actions：
+```bash
+git tag -a v2.0.16 -m "Release v2.0.16"
+git push origin v2.0.16
+```
+
+推送后，`Create GitHub Release` 工作流会自动运行并发布该版本。
+
+### 6. 手动触发 GitHub Release 工作流（兜底）
+
+如果你不想通过推送 tag 触发，或者需要补发某个版本，也可以进入 GitHub Actions 手动运行：
 
 - 工作流名称：`Create GitHub Release`
 - 输入参数：`version`
@@ -105,7 +116,8 @@ git push origin main
 
 ### 2. 创建并推送标签
 
-- 自动创建 `vX.Y.Z`
+- 手动触发时会自动创建 `vX.Y.Z`
+- tag push 触发时会直接复用当前推送的 `vX.Y.Z`
 - 如果同名标签已经存在且指向当前提交，会跳过创建
 - 如果同名标签存在但指向别的提交，工作流会失败并停止发布
 
@@ -163,11 +175,11 @@ docker pull ghcr.io/assast/outlookemail:v2.0.15
 
 ### 为什么没有刷新 `latest` 镜像？
 
-因为手动发版工作流只发布 `vX.Y.Z` 镜像。`latest` / `main` / `dev` 来自分支推送触发的 Docker 工作流，而不是 Release 工作流。
+因为 Release 工作流只发布 `vX.Y.Z` 镜像。`latest` / `main` / `dev` 来自分支推送触发的 Docker 工作流，而不是 Release 工作流。
 
 ## 建议的发版节奏
 
 1. 平时在 `dev` 累积开发与修复。
 2. 准备发布时合并到 `main`。
-3. 先补齐 `CHANGELOG.md` 和相关文档，再执行手动发版。
+3. 先补齐 `CHANGELOG.md` 和相关文档，再推送 `vX.Y.Z` 标签触发自动发版。
 4. 发版后用 `vX.Y.Z` 镜像做一次实际部署验证。

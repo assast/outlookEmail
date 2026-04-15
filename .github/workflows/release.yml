@@ -1,6 +1,9 @@
 name: Create GitHub Release
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
@@ -9,7 +12,36 @@ on:
         type: string
 
 jobs:
+  resolve-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      ref: ${{ steps.resolve.outputs.ref }}
+
+    steps:
+      - name: Resolve release context
+        id: resolve
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          if [ -z "$VERSION" ]; then
+            echo "::error::Unable to resolve release version."
+            exit 1
+          fi
+
+          TAG="v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "ref=refs/tags/$TAG" >> "$GITHUB_OUTPUT"
+
   build-windows-exe:
+    needs: resolve-release
     runs-on: windows-latest
     permissions:
       contents: read
@@ -37,7 +69,7 @@ jobs:
         id: package
         shell: pwsh
         run: |
-          $version = "${{ inputs.version }}"
+          $version = "${{ needs.resolve-release.outputs.version }}"
           $assetName = "OutlookEmail-windows-x64-$version.zip"
           Compress-Archive -Path "dist/OutlookEmail.exe", "README.md" -DestinationPath $assetName -Force
           "asset_name=$assetName" >> $env:GITHUB_OUTPUT
@@ -49,7 +81,9 @@ jobs:
           path: ${{ steps.package.outputs.asset_name }}
 
   prepare-release:
-    needs: build-windows-exe
+    needs:
+      - resolve-release
+      - build-windows-exe
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -63,8 +97,9 @@ jobs:
           fetch-depth: 0
 
       - name: Create and push tag
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          TAG="v${{ inputs.version }}"
+          TAG="${{ needs.resolve-release.outputs.tag }}"
           HEAD_SHA="$(git rev-parse HEAD)"
 
           git config user.name "github-actions[bot]"
@@ -87,8 +122,8 @@ jobs:
         id: notes
         shell: bash
         run: |
-          VERSION="${{ inputs.version }}"
-          TAG="v${VERSION}"
+          VERSION="${{ needs.resolve-release.outputs.version }}"
+          TAG="${{ needs.resolve-release.outputs.tag }}"
           export VERSION TAG GITHUB_OUTPUT
           python3 - <<'PY'
           from pathlib import Path
@@ -115,17 +150,20 @@ jobs:
           PY
 
   docker-release:
-    needs: prepare-release
+    needs:
+      - resolve-release
+      - prepare-release
     uses: ./.github/workflows/docker-build-push.yml
     permissions:
       contents: read
       packages: write
     with:
-      ref: refs/tags/v${{ inputs.version }}
-      version: ${{ inputs.version }}
+      ref: ${{ needs.resolve-release.outputs.ref }}
+      version: ${{ needs.resolve-release.outputs.version }}
 
   publish-release:
     needs:
+      - resolve-release
       - build-windows-exe
       - prepare-release
       - docker-release
@@ -143,8 +181,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ inputs.version }}
-          name: v${{ inputs.version }}
+          tag_name: ${{ needs.resolve-release.outputs.tag }}
+          name: ${{ needs.resolve-release.outputs.tag }}
           body: ${{ needs.prepare-release.outputs.body }}
           draft: false
           prerelease: false
