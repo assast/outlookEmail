@@ -921,6 +921,42 @@
                 .replace(/'/g, '&#39;');
         }
 
+        function renderEmptyStateMarkup(icon, text, options = {}) {
+            const {
+                allowHtml = false,
+                actionLabel = '刷新',
+                actionTitle = '刷新列表',
+                onAction = ''
+            } = options;
+
+            const content = allowHtml ? String(text || '') : escapeHtml(text || '');
+            const hasAction = typeof onAction === 'string' && onAction.trim() !== '';
+
+            return `
+                <div class="empty-state">
+                    <div class="empty-state-icon">${icon}</div>
+                    <div class="empty-state-text">${content}</div>
+                    ${hasAction ? `
+                        <button
+                            class="empty-state-refresh-btn"
+                            type="button"
+                            onclick="${onAction}"
+                            title="${escapeHtml(actionTitle)}"
+                            aria-label="${escapeHtml(actionTitle)}"
+                        >
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                <path d="M13.5 3.5v3h-3"></path>
+                                <path d="M2.5 12.5v-3h3"></path>
+                                <path d="M4 6.25A4.75 4.75 0 0 1 12.05 4"></path>
+                                <path d="M12 9.75A4.75 4.75 0 0 1 3.95 12"></path>
+                            </svg>
+                            <span>${escapeHtml(actionLabel)}</span>
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+        }
+
         function parseJsonLike(value) {
             if (typeof value !== 'string') return value;
             const text = value.trim();

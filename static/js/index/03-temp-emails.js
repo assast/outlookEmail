@@ -1,4 +1,4 @@
-        /* global accountsCache, closeMobilePanels, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentMethod, currentGroupId, escapeHtml, formatDate, groups, handleApiError, loadGroups, loadTempEmails, renderEmailDetail, renderEmailList, showEmailList, showMobileEmailDetail, showToast, updateMobileContext, updateCurrentGroupHeader */
+        /* global accountsCache, closeMobilePanels, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentMethod, currentGroupId, escapeHtml, formatDate, groups, handleApiError, loadGroups, loadTempEmails, refreshEmails, renderEmailDetail, renderEmailList, renderEmptyStateMarkup, showEmailList, showMobileEmailDetail, showToast, updateMobileContext, updateCurrentGroupHeader */
 
         // ==================== 临时邮箱相关 ====================
 
@@ -26,9 +26,17 @@
                         group.account_count = data.emails.length;
                         renderGroupList(groups);
                     }
+                } else {
+                    container.innerHTML = renderEmptyStateMarkup('⚠️', data.error || '加载失败', {
+                        onAction: 'loadTempEmails(true)',
+                        actionTitle: '刷新临时邮箱列表'
+                    });
                 }
             } catch (error) {
-                container.innerHTML = '<div class="empty-state"><div class="empty-state-text">加载失败</div></div>';
+                container.innerHTML = renderEmptyStateMarkup('⚠️', '加载失败', {
+                    onAction: 'loadTempEmails(true)',
+                    actionTitle: '刷新临时邮箱列表'
+                });
             }
         }
 
@@ -44,12 +52,11 @@
             if (filtered.length === 0) {
                 const providerName = filter === 'duckmail' ? 'DuckMail' : (filter === 'cloudflare' ? 'Cloudflare' : 'GPTMail');
                 const hint = filter === 'all' ? '暂无临时邮箱<br>点击下方按钮生成' : `暂无 ${providerName} 邮箱`;
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">⚡</div>
-                        <div class="empty-state-text">${hint}</div>
-                    </div>
-                `;
+                container.innerHTML = renderEmptyStateMarkup('⚡', hint, {
+                    allowHtml: true,
+                    onAction: 'loadTempEmails(true)',
+                    actionTitle: '刷新临时邮箱列表'
+                });
                 return;
             }
 
@@ -503,20 +510,16 @@
                     renderEmailList(data.emails);
                 } else {
                     handleApiError(data, '加载临时邮件失败');
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-state-icon">⚠️</div>
-                            <div class="empty-state-text">${data.error && data.error.message ? data.error.message : '加载失败'}</div>
-                        </div>
-                    `;
+                    container.innerHTML = renderEmptyStateMarkup('⚠️', data.error && data.error.message ? data.error.message : '加载失败', {
+                        onAction: 'refreshEmails()',
+                        actionTitle: '刷新邮件列表'
+                    });
                 }
             } catch (error) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">⚠️</div>
-                        <div class="empty-state-text">网络错误，请重试</div>
-                    </div>
-                `;
+                container.innerHTML = renderEmptyStateMarkup('⚠️', '网络错误，请重试', {
+                    onAction: 'refreshEmails()',
+                    actionTitle: '刷新邮件列表'
+                });
             } finally {
                 // 启用按钮
                 if (refreshBtn) {

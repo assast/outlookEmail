@@ -1,4 +1,4 @@
-        /* global EMAIL_DETAIL_REQUEST_TIMEOUT_MS, EMAIL_LIST_REQUEST_TIMEOUT_MS, adjustIframeHeight, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, emailListCache, escapeHtml, fetchWithTimeout, formatDate, getFolderDisplayName, handleApiError, isTempEmailGroup, isTimeoutAbortError, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
+        /* global EMAIL_DETAIL_REQUEST_TIMEOUT_MS, EMAIL_LIST_REQUEST_TIMEOUT_MS, adjustIframeHeight, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, emailListCache, escapeHtml, fetchWithTimeout, formatDate, getFolderDisplayName, handleApiError, isTempEmailGroup, isTimeoutAbortError, renderEmptyStateMarkup, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
 
         // ==================== 邮件相关 ====================
 
@@ -84,24 +84,25 @@
                     } else {
                         handleApiError(data, '获取邮件失败');
                     }
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-state-icon">⚠️</div>
-                            <div class="empty-state-text">获取邮件失败，<a href="javascript:void(0)" onclick="showEmailFetchErrorModal(window._lastFetchErrorDetails)" style="color:#409eff;text-decoration:underline;">点击查看详情</a></div>
-                        </div>
-                    `;
+                    container.innerHTML = renderEmptyStateMarkup(
+                        '⚠️',
+                        '获取邮件失败，<a href="javascript:void(0)" onclick="showEmailFetchErrorModal(window._lastFetchErrorDetails)" style="color:#409eff;text-decoration:underline;">点击查看详情</a>',
+                        {
+                            allowHtml: true,
+                            onAction: 'refreshEmails()',
+                            actionTitle: '刷新邮件列表'
+                        }
+                    );
                     window._lastFetchErrorDetails = fetchErrorDetails;
                 }
             } catch (error) {
                 const errorMessage = isTimeoutAbortError(error)
                     ? '获取邮件超时，请重试'
                     : '网络错误，请重试';
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">⚠️</div>
-                        <div class="empty-state-text">${errorMessage}</div>
-                    </div>
-                `;
+                container.innerHTML = renderEmptyStateMarkup('⚠️', errorMessage, {
+                    onAction: 'refreshEmails()',
+                    actionTitle: '刷新邮件列表'
+                });
             } finally {
                 // 启用按钮
                 if (refreshBtn) {
@@ -154,12 +155,10 @@
                 const emptyStateText = isTempEmailGroup
                     ? '暂无邮件'
                     : `${getFolderDisplayName(currentFolder)}为空`;
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📭</div>
-                        <div class="empty-state-text">${emptyStateText}</div>
-                    </div>
-                `;
+                container.innerHTML = renderEmptyStateMarkup('📭', emptyStateText, {
+                    onAction: 'refreshEmails()',
+                    actionTitle: '刷新邮件列表'
+                });
                 // Reset selection
                 selectedEmailIds.clear();
                 currentEmailId = null;

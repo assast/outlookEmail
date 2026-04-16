@@ -1,4 +1,4 @@
-        /* global accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, formatRelativeTime, generateTempEmail, groups, handleApiError, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadTempEmails, localStorage, openMobilePanel, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, tempEmailGroupId, updateCurrentGroupHeader, updateMobileContext */
+        /* global accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, formatRelativeTime, generateTempEmail, groups, handleApiError, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadTempEmails, localStorage, openMobilePanel, renderEmptyStateMarkup, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, tempEmailGroupId, updateCurrentGroupHeader, updateMobileContext */
 
         // ==================== 分组相关 ====================
 
@@ -54,9 +54,17 @@
                     }
 
                     updateMobileContext();
+                } else {
+                    container.innerHTML = renderEmptyStateMarkup('⚠️', data.error || '加载失败', {
+                        onAction: 'loadGroups()',
+                        actionTitle: '刷新分组列表'
+                    });
                 }
             } catch (error) {
-                container.innerHTML = '<div class="empty-state"><div class="empty-state-text">加载失败</div></div>';
+                container.innerHTML = renderEmptyStateMarkup('⚠️', '加载失败', {
+                    onAction: 'loadGroups()',
+                    actionTitle: '刷新分组列表'
+                });
                 showToast('加载分组失败', 'error');
             }
         }
@@ -66,11 +74,10 @@
             const container = document.getElementById('groupList');
 
             if (groups.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state" style="padding: 40px 20px;">
-                        <div class="empty-state-text">暂无分组</div>
-                    </div>
-                `;
+                container.innerHTML = renderEmptyStateMarkup('📁', '暂无分组', {
+                    onAction: 'loadGroups()',
+                    actionTitle: '刷新分组列表'
+                });
                 return;
             }
 
@@ -510,9 +517,17 @@
                     // 缓存数据
                     accountsCache[groupId] = data.accounts;
                     renderFilteredAccountList(data.accounts);
+                } else {
+                    container.innerHTML = renderEmptyStateMarkup('⚠️', data.error || '加载失败', {
+                        onAction: `loadAccountsByGroup(${Number(groupId)}, true)`,
+                        actionTitle: '刷新账号列表'
+                    });
                 }
             } catch (error) {
-                container.innerHTML = '<div class="empty-state"><div class="empty-state-text">加载失败</div></div>';
+                container.innerHTML = renderEmptyStateMarkup('⚠️', '加载失败', {
+                    onAction: `loadAccountsByGroup(${Number(groupId)}, true)`,
+                    actionTitle: '刷新账号列表'
+                });
             }
         }
 
@@ -590,14 +605,18 @@
         function renderAccountList(accounts) {
             const container = document.getElementById('accountList');
             const isSearchMode = !!(document.getElementById('globalSearch')?.value || '').trim();
+            const normalizedGroupId = Number(currentGroupId);
+            const refreshAction = Number.isFinite(normalizedGroupId) && normalizedGroupId > 0
+                ? `loadAccountsByGroup(${normalizedGroupId}, true)`
+                : '';
 
             if (accounts.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📭</div>
-                        <div class="empty-state-text">${isSearchMode ? '未找到匹配邮箱' : '该分组暂无邮箱'}</div>
-                    </div>
-                `;
+                container.innerHTML = isSearchMode
+                    ? renderEmptyStateMarkup('📭', '未找到匹配邮箱')
+                    : renderEmptyStateMarkup('📭', '该分组暂无邮箱', {
+                        onAction: refreshAction,
+                        actionTitle: '刷新账号列表'
+                    });
                 updateBatchActionBar();
                 return;
             }

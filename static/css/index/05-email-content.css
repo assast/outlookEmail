@@ -532,6 +532,36 @@
             text-align: center;
         }
 
+        .empty-state-refresh-btn {
+            margin-top: 16px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 14px;
+            border: 1px solid #d7dce5;
+            border-radius: 999px;
+            background: #ffffff;
+            color: #374151;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s, background-color 0.15s;
+            box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+        }
+
+        .empty-state-refresh-btn:hover {
+            border-color: #111827;
+            background-color: #f8fafc;
+            transform: translateY(-1px);
+            box-shadow: 0 10px 20px rgba(15, 23, 42, 0.1);
+        }
+
+        .empty-state-refresh-btn svg {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+        }
+
         /* 加载状态 */
         .loading {
             display: flex;
