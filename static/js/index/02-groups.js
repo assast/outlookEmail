@@ -79,7 +79,8 @@
                 const isTempGroup = group.name === '临时邮箱';
                 const isDefault = group.id === 1;
                 const isDragging = groupDragState.isDragging && groupDragState.groupId === group.id;
-                const groupDisplayText = formatGroupDisplayText(group.id, group.name);
+                const groupName = normalizeGroupName(group.name);
+                const groupIdBadgeText = formatGroupIdBadgeText(group.id);
 
                 return `
                     <div class="group-item ${currentGroupId === group.id ? 'active' : ''} ${isTempGroup ? 'temp-email-group' : ''} ${!isTempGroup ? 'draggable' : ''} ${isDragging ? 'dragging' : ''}"
@@ -88,10 +89,11 @@
                          onclick="handleGroupClick(event, ${group.id})">
                         <div class="group-row-1">
                             <div class="group-color" style="background-color: ${group.color || '#666'}"></div>
-                            <span class="group-name">${escapeHtml(groupDisplayText)}${isTempGroup ? ' ⚡' : ''}</span>
+                            <span class="group-name">${escapeHtml(groupName)}${isTempGroup ? ' ⚡' : ''}</span>
                         </div>
                         <div class="group-row-2">
                             <div class="group-meta">
+                                ${groupIdBadgeText ? `<span class="group-id-badge">${escapeHtml(groupIdBadgeText)}</span>` : ''}
                                 <span class="group-count">${group.account_count || 0} 个邮箱</span>
                             </div>
                             <div class="group-actions">
@@ -553,11 +555,13 @@
             if (!showGroupInfo) return '';
 
             const groupColor = account.group_color || '#666666';
-            const groupDisplayText = formatGroupDisplayText(account.group_id, account.group_name, '默认分组');
+            const groupName = normalizeGroupName(account.group_name, '默认分组');
+            const groupIdBadgeText = formatGroupIdBadgeText(account.group_id);
             return `
-                <div class="account-group-summary" title="所属分组: ${escapeHtml(groupDisplayText)}">
+                <div class="account-group-summary" title="所属分组: ${escapeHtml(groupName)}">
                     <span class="account-group-dot" style="background-color: ${escapeHtml(groupColor)}"></span>
-                    <span class="account-group-name">${escapeHtml(groupDisplayText)}</span>
+                    <span class="account-group-name">${escapeHtml(groupName)}</span>
+                    ${groupIdBadgeText ? `<span class="group-id-badge account-group-id-badge">${escapeHtml(groupIdBadgeText)}</span>` : ''}
                 </div>
             `;
         }
@@ -890,7 +894,7 @@
                         : groups;
 
                     select.innerHTML = filteredGroups.map(g =>
-                        `<option value="${g.id}">${escapeHtml(formatGroupDisplayText(g.id, g.name))}</option>`
+                        `<option value="${g.id}">${escapeHtml(normalizeGroupName(g.name))}</option>`
                     ).join('');
                     // 恢复之前的选择
                     if (currentValue && filteredGroups.find(g => g.id === parseInt(currentValue))) {

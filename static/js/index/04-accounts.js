@@ -367,7 +367,10 @@
                             <input type="checkbox" class="export-group-checkbox" value="${group.id}" style="width: 16px; height: 16px;">
                             <span style="display: flex; align-items: center; gap: 8px; flex: 1;">
                                 <span style="width: 12px; height: 12px; border-radius: 3px; background-color: ${group.color || '#666'}"></span>
-                                <span style="font-size: 14px; color: #1a1a1a;">${escapeHtml(formatGroupDisplayText(group.id, group.name))}</span>
+                                <span style="display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+                                    <span style="font-size: 14px; color: #1a1a1a; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(normalizeGroupName(group.name))}</span>
+                                    ${formatGroupIdBadgeText(group.id) ? `<span class="group-id-badge">${escapeHtml(formatGroupIdBadgeText(group.id))}</span>` : ''}
+                                </span>
                             </span>
                             <span style="font-size: 12px; color: #999; background-color: #f0f0f0; padding: 2px 8px; border-radius: 10px;">${group.account_count || 0}</span>
                         </label>

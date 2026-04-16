@@ -120,12 +120,9 @@
             return normalizedName || fallbackName;
         }
 
-        function formatGroupDisplayText(groupId, groupName, fallbackName = '未命名分组') {
+        function formatGroupIdBadgeText(groupId) {
             const normalizedId = Number.parseInt(String(groupId ?? ''), 10);
-            const normalizedName = normalizeGroupName(groupName, fallbackName);
-            return Number.isFinite(normalizedId)
-                ? `${normalizedId}-${normalizedName}`
-                : normalizedName;
+            return Number.isFinite(normalizedId) ? String(normalizedId) : '';
         }
 
         function updateMobileQuickbarState() {
@@ -151,7 +148,7 @@
 
             if (groupText) {
                 groupText.textContent = currentGroup
-                    ? formatGroupDisplayText(currentGroup.id, currentGroup.name)
+                    ? normalizeGroupName(currentGroup.name)
                     : '未选择';
             }
 
@@ -1191,7 +1188,8 @@ ${details}
                 return;
             }
 
-            nameEl.textContent = formatGroupDisplayText(group.id, group.name);
-            idBadgeEl.textContent = '';
-            idBadgeEl.style.display = 'none';
+            const badgeText = formatGroupIdBadgeText(group.id);
+            nameEl.textContent = normalizeGroupName(group.name);
+            idBadgeEl.textContent = badgeText;
+            idBadgeEl.style.display = badgeText ? 'inline-flex' : 'none';
         }
