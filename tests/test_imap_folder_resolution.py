@@ -474,6 +474,7 @@ class ExternalAccountsApiTests(unittest.TestCase):
     def setUp(self):
         self.app = web_outlook_app.app
         self.app.config['TESTING'] = True
+        self.app.config['WTF_CSRF_ENABLED'] = False
         self.client = self.app.test_client()
 
         with self.app.app_context():
@@ -531,6 +532,40 @@ class ExternalAccountsApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertFalse(payload['success'])
         self.assertIn('API Key', payload['error'])
+
+    def test_external_emails_requires_api_key(self):
+        response = self.client.get('/api/external/emails?email=user@outlook.com&folder=inbox')
+
+        self.assertEqual(response.status_code, 401)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertIn('API Key', payload['error'])
+
+    def test_internal_emails_requires_login(self):
+        response = self.client.get('/api/emails/user@outlook.com?folder=inbox')
+
+        self.assertEqual(response.status_code, 401)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertTrue(payload['need_login'])
+        self.assertEqual(payload['error'], '请先登录')
+
+    def test_update_account_requires_login(self):
+        response = self.client.put(
+            '/api/accounts/1',
+            json={'remark': 'updated without login'}
+        )
+
+        self.assertEqual(response.status_code, 401)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertTrue(payload['need_login'])
+        self.assertEqual(payload['error'], '请先登录')
+
+    def test_dynamic_endpoint_overrides_keep_required_guards(self):
+        self.assertTrue(getattr(self.app.view_functions['api_update_account'], '_requires_login', False))
+        self.assertTrue(getattr(self.app.view_functions['api_get_emails'], '_requires_login', False))
+        self.assertTrue(getattr(self.app.view_functions['api_external_get_emails'], '_requires_api_key', False))
 
     def test_external_accounts_returns_sanitized_accounts(self):
         with self.app.app_context():

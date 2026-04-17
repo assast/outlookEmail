@@ -7,6 +7,13 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ## [Unreleased]
 
 
+## [2.0.22] - 2026-04-17
+
+### Fixed
+- 修复动态覆盖后的 `PUT /api/accounts/<id>`、`GET /api/emails/<email>`、`GET /api/external/emails` 丢失鉴权装饰器的问题，避免未登录或未携带 API Key 时绕过访问控制。
+- 为动态路由覆盖增加启动期保护断言，若关键 endpoint 被未包装函数替换会在应用启动时直接报错，防止鉴权再次静默失效。
+- 补充外部邮件接口、内部邮件接口、账号更新接口和动态 endpoint 保护标记的回归测试，覆盖实际 401 行为与路由注册状态。
+
 ## [2.0.21] - 2026-04-17
 
 ### Added

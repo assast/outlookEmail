@@ -1259,9 +1259,13 @@ def email_matches_filters(account: Dict[str, Any], item: Dict[str, Any],
     return keyword in strip_html_content(body).lower()
 
 
-app.view_functions['api_update_account'] = api_update_account_v2
-app.view_functions['api_get_emails'] = api_get_emails_v2
-app.view_functions['api_external_get_emails'] = api_external_get_emails_v2
+app.view_functions['api_update_account'] = login_required(api_update_account_v2)
+app.view_functions['api_get_emails'] = login_required(api_get_emails_v2)
+app.view_functions['api_external_get_emails'] = api_key_required(api_external_get_emails_v2)
+
+assert_endpoint_protection('api_update_account', '_requires_login', 'login_required')
+assert_endpoint_protection('api_get_emails', '_requires_login', 'login_required')
+assert_endpoint_protection('api_external_get_emails', '_requires_api_key', 'api_key_required')
 
 
 @app.errorhandler(400)

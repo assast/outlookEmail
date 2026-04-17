@@ -1685,6 +1685,7 @@ def login_required(f):
                 return jsonify({'success': False, 'error': '请先登录', 'need_login': True}), 401
             return redirect(url_for('login'))
         return f(*args, **kwargs)
+    decorated_function._requires_login = True
     return decorated_function
 
 
@@ -1706,7 +1707,17 @@ def api_key_required(f):
             return jsonify({'success': False, 'error': 'API Key 无效'}), 401
 
         return f(*args, **kwargs)
+    decorated_function._requires_api_key = True
     return decorated_function
+
+
+def assert_endpoint_protection(endpoint: str, protection_attr: str, protection_name: str):
+    """确保动态替换后的 endpoint 仍然保留必须的鉴权保护。"""
+    view_func = app.view_functions.get(endpoint)
+    if view_func is None:
+        raise RuntimeError(f'Endpoint 未注册: {endpoint}')
+    if not getattr(view_func, protection_attr, False):
+        raise RuntimeError(f'Endpoint {endpoint} 缺少 {protection_name} 保护')
 
 
 # ==================== Flask 路由 ====================
