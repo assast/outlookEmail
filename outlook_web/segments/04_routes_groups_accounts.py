@@ -102,7 +102,11 @@ def bundled_index_css():
 @login_required
 def index():
     """主页"""
-    return render_template('index.html')
+    return render_template(
+        'index.html',
+        app_version=APP_VERSION,
+        changelog_url='https://github.com/assast/outlookEmail/blob/main/CHANGELOG.md',
+    )
 
 
 @app.route('/api/csrf-token', methods=['GET'])

@@ -218,6 +218,53 @@
             document.getElementById('mobileNavMenuBtn')?.setAttribute('aria-expanded', 'false');
         }
 
+        function closeVersionPopover() {
+            const versionRoot = document.getElementById('appVersion');
+            const versionPopover = document.getElementById('appVersionPopover');
+            if (!versionRoot || !versionPopover) return;
+
+            versionRoot.classList.remove('is-open');
+            document.getElementById('appVersionChip')?.setAttribute('aria-expanded', 'false');
+            versionPopover.setAttribute('aria-hidden', 'true');
+            versionPopover.hidden = true;
+        }
+
+        function toggleVersionPopover() {
+            const versionRoot = document.getElementById('appVersion');
+            const versionPopover = document.getElementById('appVersionPopover');
+            if (!versionRoot || !versionPopover) return false;
+
+            const willOpen = !versionRoot.classList.contains('is-open');
+            closeNavbarActionsMenu();
+            versionRoot.classList.toggle('is-open', willOpen);
+            document.getElementById('appVersionChip')?.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            versionPopover.setAttribute('aria-hidden', willOpen ? 'false' : 'true');
+            versionPopover.hidden = !willOpen;
+            return false;
+        }
+
+        function copyAppVersion() {
+            const versionText = document.getElementById('appVersionValue')?.textContent?.trim();
+            if (!versionText) return;
+
+            if (typeof copyTextToClipboard === 'function') {
+                Promise.resolve(copyTextToClipboard(versionText, '版本号已复制')).finally(closeVersionPopover);
+                return;
+            }
+
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                navigator.clipboard.writeText(versionText).then(() => {
+                    showToast('版本号已复制', 'success');
+                    closeVersionPopover();
+                }).catch(() => {
+                    showToast('复制失败，请手动复制', 'error');
+                });
+            }
+        }
+
+        window.toggleVersionPopover = toggleVersionPopover;
+        window.copyAppVersion = copyAppVersion;
+
         function toggleNavbarActionsMenu() {
             if (!isMobileLayout()) return;
 
@@ -226,6 +273,7 @@
 
             const willOpen = !container.classList.contains('is-open');
             closeMobilePanels();
+            closeVersionPopover();
             container.classList.toggle('is-open', willOpen);
             document.getElementById('mobileNavMenuBtn')?.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
         }
@@ -233,6 +281,9 @@
         function handleGlobalChromeClick(event) {
             if (!event.target.closest('.navbar-actions')) {
                 closeNavbarActionsMenu();
+            }
+            if (!event.target.closest('.app-version')) {
+                closeVersionPopover();
             }
         }
 
@@ -308,7 +359,7 @@
         // 初始化
         document.addEventListener('DOMContentLoaded', async function () {
             // 初始化 CSRF Token
-            await initCSRFToken();
+            initCSRFToken();
             ensureForwardingSettingsUI();
             bindPersistentButtonHandlers();
             document.addEventListener('click', closeAccountActionMenus);
@@ -342,6 +393,11 @@
             window.addEventListener('resize', function () {
                 clearTimeout(responsiveUiResizeTimer);
                 responsiveUiResizeTimer = window.setTimeout(syncResponsiveUI, 120);
+            });
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape') {
+                    closeVersionPopover();
+                }
             });
 
             closeAllModals(); // 修复：应用启动时关闭所有模态框，防止浏览器缓存导致残留的模态框背景层

@@ -5,15 +5,47 @@
                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                 <polyline points="22,6 12,13 2,6"></polyline>
             </svg>
-            Outlook 邮件
-            <a href="https://github.com/assast/outlookEmail" target="_blank" class="github-star-btn"
-                style="margin-left: 16px;">
-                <svg viewBox="0 0 16 16" fill="currentColor">
-                    <path
-                        d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z" />
-                </svg>
-                Star on GitHub
-            </a>
+            <span class="navbar-brand-title">Outlook 邮件</span>
+            <div class="navbar-brand-meta">
+                <div class="app-version" id="appVersion">
+                    <button class="app-version-chip" id="appVersionChip" type="button" aria-expanded="false"
+                        aria-controls="appVersionPopover" onclick="return toggleVersionPopover()">
+                        <span class="app-version-chip__label">版本</span>
+                        <span class="app-version-chip__value" id="appVersionValue">v{{ app_version }}</span>
+                    </button>
+                    <div class="app-version-popover" id="appVersionPopover" role="dialog" aria-label="版本信息"
+                        aria-hidden="true" hidden>
+                        <div class="app-version-popover__eyebrow">当前版本</div>
+                        <div class="app-version-popover__value">v{{ app_version }}</div>
+                        <div class="app-version-popover__meta">
+                            <span class="app-version-status">稳定版</span>
+                            <span class="app-version-popover__hint">与仓库发布版本同步</span>
+                        </div>
+                        <div class="app-version-popover__actions">
+                            <button class="app-version-link" id="copyAppVersionBtn" type="button"
+                                onclick="copyAppVersion()">复制版本号</button>
+                            <a href="{{ changelog_url }}" target="_blank" rel="noreferrer" class="app-version-link">
+                                查看更新日志
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <a href="https://github.com/assast/outlookEmail" target="_blank" rel="noreferrer noopener"
+                    class="github-star-btn" aria-label="前往 GitHub 为 outlookEmail 点 Star">
+                    <span class="github-star-btn__badge" aria-hidden="true">
+                        <svg viewBox="0 0 16 16" fill="currentColor">
+                            <path
+                                d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z" />
+                        </svg>
+                    </span>
+                    <span class="github-star-btn__text">GitHub Star</span>
+                    <svg class="github-star-btn__arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                        stroke-width="1.6" aria-hidden="true">
+                        <path d="M5 11L11 5"></path>
+                        <path d="M6 5h5v5"></path>
+                    </svg>
+                </a>
+            </div>
         </div>
         <div class="navbar-center">
             <div class="current-account" id="currentAccount" onclick="copyCurrentEmail()" title="点击复制邮箱地址">

@@ -43,8 +43,23 @@
             }
 
             .navbar-center,
-            .github-star-btn {
+            .github-star-btn,
+            .app-version-chip__label {
                 display: none;
+            }
+
+            .navbar-brand-meta {
+                gap: 8px;
+            }
+
+            .app-version-popover {
+                left: 0;
+                width: min(240px, calc(100vw - 24px));
+            }
+
+            .app-version-chip {
+                min-height: 30px;
+                padding: 0 10px;
             }
 
             .mobile-nav-menu-btn {

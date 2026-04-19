@@ -7,6 +7,18 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ## [Unreleased]
 
 
+## [2.0.23] - 2026-04-19
+
+### Added
+- 顶部导航新增版本信息展示，支持查看当前版本、复制版本号并跳转到更新日志。
+
+### Changed
+- 调整导航品牌区布局，将版本信息与 GitHub 入口整理为更统一的产品元信息区域。
+- 重绘 GitHub Star 按钮样式，改为更贴合当前控制台风格的胶囊按钮，并补充 hover、active、focus 反馈。
+
+### Fixed
+- 修复顶部版本信息在部分浏览器环境下点击无响应的问题，改为更稳定的全局触发方式。
+
 ## [2.0.22] - 2026-04-17
 
 ### Fixed
