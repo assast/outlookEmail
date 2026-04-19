@@ -101,6 +101,57 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertTrue(payload['success'])
         return payload['data']['accounts']
 
+    def test_version_status_reports_update_when_remote_repository_is_newer(self):
+        with patch.object(
+            web_outlook_app,
+            'fetch_remote_version_snapshot',
+            return_value={
+                'release_version': 'v2.0.24',
+                'release_url': 'https://example.com/releases/v2.0.24',
+                'repository_version': 'v2.0.24',
+                'errors': [],
+            },
+        ), patch.object(web_outlook_app, 'APP_VERSION', '2.0.23'):
+            with self.app.app_context():
+                web_outlook_app.VERSION_CHECK_CACHE['payload'] = None
+                web_outlook_app.VERSION_CHECK_CACHE['expires_at'] = 0.0
+
+            response = self.client.get('/api/version-status?refresh=1')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        version_status = payload['version_status']
+        self.assertEqual(version_status['status'], 'update_available')
+        self.assertEqual(version_status['badge_label'], '可更新')
+        self.assertEqual(version_status['latest_version'], 'v2.0.24')
+        self.assertIn('v2.0.24', version_status['hint'])
+
+    def test_version_status_reports_up_to_date_when_release_matches(self):
+        with patch.object(
+            web_outlook_app,
+            'fetch_remote_version_snapshot',
+            return_value={
+                'release_version': 'v2.0.24',
+                'release_url': 'https://example.com/releases/v2.0.24',
+                'repository_version': 'v2.0.24',
+                'errors': [],
+            },
+        ), patch.object(web_outlook_app, 'APP_VERSION', '2.0.24'):
+            with self.app.app_context():
+                web_outlook_app.VERSION_CHECK_CACHE['payload'] = None
+                web_outlook_app.VERSION_CHECK_CACHE['expires_at'] = 0.0
+
+            response = self.client.get('/api/version-status?refresh=1')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        version_status = payload['version_status']
+        self.assertEqual(version_status['status'], 'up_to_date')
+        self.assertEqual(version_status['badge_label'], '稳定版')
+        self.assertEqual(version_status['hint'], '与仓库发布版本同步')
+
     def test_start_project_all_scope_creates_project_and_accounts(self):
         self._insert_account('alpha@example.com')
         self._insert_account('beta@example.com')

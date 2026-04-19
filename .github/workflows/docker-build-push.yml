@@ -18,6 +18,8 @@ on:
       - dev
     paths:
       - '**.py'
+      - 'VERSION'
+      - 'CHANGELOG.md'
       - 'requirements.txt'
       - 'Dockerfile'
       - '.dockerignore'

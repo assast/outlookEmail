@@ -128,6 +128,229 @@ try:
 except Exception:
     APP_VERSION = '1.0.0'
 
+REPOSITORY_OWNER = os.getenv('REPOSITORY_OWNER', 'assast')
+REPOSITORY_NAME = os.getenv('REPOSITORY_NAME', 'outlookEmail')
+CHANGELOG_URL = os.getenv(
+    'CHANGELOG_URL',
+    f'https://github.com/{REPOSITORY_OWNER}/{REPOSITORY_NAME}/blob/main/CHANGELOG.md',
+)
+REPOSITORY_URL = os.getenv(
+    'REPOSITORY_URL',
+    f'https://github.com/{REPOSITORY_OWNER}/{REPOSITORY_NAME}',
+)
+REPOSITORY_VERSION_URL = os.getenv(
+    'REPOSITORY_VERSION_URL',
+    f'https://github.com/{REPOSITORY_OWNER}/{REPOSITORY_NAME}/blob/main/VERSION',
+)
+LATEST_RELEASE_API_URL = os.getenv(
+    'LATEST_RELEASE_API_URL',
+    f'https://api.github.com/repos/{REPOSITORY_OWNER}/{REPOSITORY_NAME}/releases/latest',
+)
+RAW_VERSION_URL = os.getenv(
+    'RAW_VERSION_URL',
+    f'https://raw.githubusercontent.com/{REPOSITORY_OWNER}/{REPOSITORY_NAME}/main/VERSION',
+)
+VERSION_CHECK_TIMEOUT = max(2, int(os.getenv('VERSION_CHECK_TIMEOUT', '5')))
+VERSION_CHECK_CACHE_TTL = max(60, int(os.getenv('VERSION_CHECK_CACHE_TTL', '900')))
+VERSION_CHECK_CACHE_LOCK = threading.Lock()
+VERSION_CHECK_CACHE = {
+    'expires_at': 0.0,
+    'payload': None,
+}
+
+
+def normalize_version_label(version: str) -> str:
+    value = str(version or '').strip()
+    if not value:
+        return ''
+    return value if value.lower().startswith('v') else f'v{value}'
+
+
+def parse_version_parts(version: str) -> Optional[tuple[int, int, int]]:
+    normalized = normalize_version_label(version)
+    if not normalized:
+        return None
+
+    match = re.match(r'^v(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$', normalized)
+    if not match:
+        return None
+
+    return tuple(int(part) for part in match.groups())
+
+
+def compare_version_labels(left: str, right: str) -> Optional[int]:
+    left_parts = parse_version_parts(left)
+    right_parts = parse_version_parts(right)
+    if left_parts is None or right_parts is None:
+        return None
+    if left_parts < right_parts:
+        return -1
+    if left_parts > right_parts:
+        return 1
+    return 0
+
+
+def _version_request_headers() -> Dict[str, str]:
+    return {
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': f'OutlookEmail/{normalize_version_label(APP_VERSION) or "v1.0.0"}',
+    }
+
+
+def _safe_response_json(response: requests.Response) -> Dict[str, Any]:
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            return payload
+    except Exception:
+        pass
+    return {}
+
+
+def fetch_remote_version_snapshot() -> Dict[str, Any]:
+    release_version = ''
+    release_url = ''
+    repository_version = ''
+    errors = []
+
+    try:
+        release_response = requests.get(
+            LATEST_RELEASE_API_URL,
+            headers=_version_request_headers(),
+            timeout=VERSION_CHECK_TIMEOUT,
+        )
+        release_response.raise_for_status()
+        release_payload = _safe_response_json(release_response)
+        release_version = normalize_version_label(release_payload.get('tag_name', ''))
+        release_url = str(release_payload.get('html_url', '')).strip()
+    except Exception as exc:
+        errors.append(f'release:{exc}')
+
+    try:
+        repository_response = requests.get(
+            RAW_VERSION_URL,
+            headers=_version_request_headers(),
+            timeout=VERSION_CHECK_TIMEOUT,
+        )
+        repository_response.raise_for_status()
+        repository_version = normalize_version_label(repository_response.text)
+    except Exception as exc:
+        errors.append(f'repository:{exc}')
+
+    return {
+        'release_version': release_version,
+        'release_url': release_url,
+        'repository_version': repository_version,
+        'errors': errors,
+    }
+
+
+def build_version_status_payload() -> Dict[str, Any]:
+    current_version = normalize_version_label(APP_VERSION) or 'v1.0.0'
+    current_parts = parse_version_parts(current_version)
+    snapshot = fetch_remote_version_snapshot()
+
+    release_version = snapshot['release_version']
+    repository_version = snapshot['repository_version']
+    latest_version = ''
+    latest_source = ''
+    latest_url = ''
+
+    release_parts = parse_version_parts(release_version)
+    repository_parts = parse_version_parts(repository_version)
+    valid_candidates = []
+    if release_parts is not None:
+        valid_candidates.append(('release', release_version, release_parts, snapshot['release_url'] or REPOSITORY_URL))
+    if repository_parts is not None:
+        valid_candidates.append(('repository', repository_version, repository_parts, REPOSITORY_VERSION_URL))
+
+    if valid_candidates:
+        latest_source, latest_version, _latest_parts, latest_url = max(valid_candidates, key=lambda item: item[2])
+
+    payload = {
+        'current_version': current_version,
+        'latest_version': latest_version,
+        'latest_release_version': release_version,
+        'latest_repository_version': repository_version,
+        'status': 'unknown',
+        'badge_label': '检查失败',
+        'hint': '暂时无法获取仓库版本信息',
+        'source': latest_source,
+        'update_url': latest_url or CHANGELOG_URL,
+        'release_url': snapshot['release_url'] or REPOSITORY_URL,
+        'repository_url': REPOSITORY_VERSION_URL,
+        'changelog_url': CHANGELOG_URL,
+        'checked_at': datetime.now(timezone.utc).isoformat(),
+        'errors': snapshot['errors'],
+    }
+
+    if current_parts is None:
+        payload['hint'] = f'当前版本号 {current_version} 无法参与比较'
+        return payload
+
+    if not latest_version:
+        return payload
+
+    current_vs_latest = compare_version_labels(current_version, latest_version)
+    current_vs_release = compare_version_labels(current_version, release_version) if release_version else None
+    current_vs_repository = compare_version_labels(current_version, repository_version) if repository_version else None
+
+    if current_vs_latest is None:
+        payload['hint'] = f'当前版本号 {current_version} 无法参与比较'
+        return payload
+
+    if current_vs_latest < 0:
+        payload['status'] = 'update_available'
+        payload['badge_label'] = '可更新'
+        if latest_source == 'release':
+            payload['hint'] = f'发现新版本 {latest_version}'
+        else:
+            payload['hint'] = f'仓库最新版本为 {latest_version}'
+        return payload
+
+    if current_vs_release is not None and current_vs_release > 0:
+        payload['status'] = 'ahead'
+        payload['badge_label'] = '开发版'
+        payload['hint'] = '当前版本高于已发布版本'
+        payload['update_url'] = CHANGELOG_URL
+        return payload
+
+    if current_vs_repository is not None and current_vs_repository > 0:
+        payload['status'] = 'ahead'
+        payload['badge_label'] = '开发版'
+        payload['hint'] = '当前版本高于仓库主分支版本'
+        payload['update_url'] = CHANGELOG_URL
+        return payload
+
+    payload['status'] = 'up_to_date'
+    payload['badge_label'] = '稳定版'
+    if current_vs_release == 0:
+        payload['hint'] = '与仓库发布版本同步'
+        payload['source'] = 'release'
+        payload['update_url'] = CHANGELOG_URL
+    elif current_vs_repository == 0:
+        payload['hint'] = '与仓库当前版本同步'
+        payload['source'] = 'repository'
+        payload['update_url'] = CHANGELOG_URL
+    else:
+        payload['hint'] = '当前版本已是最新'
+        payload['update_url'] = CHANGELOG_URL
+    return payload
+
+
+def get_version_status_payload(force_refresh: bool = False) -> Dict[str, Any]:
+    now = time.time()
+    with VERSION_CHECK_CACHE_LOCK:
+        cached_payload = VERSION_CHECK_CACHE.get('payload')
+        expires_at = float(VERSION_CHECK_CACHE.get('expires_at', 0.0) or 0.0)
+        if not force_refresh and cached_payload and expires_at > now:
+            return dict(cached_payload)
+
+        payload = build_version_status_payload()
+        VERSION_CHECK_CACHE['payload'] = payload
+        VERSION_CHECK_CACHE['expires_at'] = now + VERSION_CHECK_CACHE_TTL
+        return dict(payload)
+
 IMAP_IDENTITY_FIELDS = {
     'name': os.getenv('IMAP_ID_NAME', 'outlookEmail'),
     'version': os.getenv('IMAP_ID_VERSION', APP_VERSION),

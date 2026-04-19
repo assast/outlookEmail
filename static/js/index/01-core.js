@@ -37,6 +37,8 @@
         const BULK_REFRESH_PER_ACCOUNT_TIMEOUT_MS = 35000;
         const BULK_REFRESH_MAX_TIMEOUT_MS = 180000;
         const REFRESH_STREAM_STALL_TIMEOUT_MS = 70000;
+        const VERSION_STATUS_REQUEST_TIMEOUT_MS = 12000;
+        let versionStatusRequest = null;
 
         function isMobileLayout() {
             return window.matchMedia('(max-width: 768px)').matches;
@@ -262,6 +264,71 @@
             }
         }
 
+        function applyVersionStatus(versionStatus = {}) {
+            const statusBadge = document.getElementById('appVersionStatus');
+            const hintEl = document.getElementById('appVersionHint');
+            const actionLink = document.getElementById('appVersionActionLink');
+            const state = String(versionStatus.status || 'unknown').trim() || 'unknown';
+            const badgeLabel = String(versionStatus.badge_label || '检查失败').trim() || '检查失败';
+            const hint = String(versionStatus.hint || '暂时无法获取仓库版本信息').trim() || '暂时无法获取仓库版本信息';
+            const updateUrl = String(versionStatus.update_url || '').trim();
+            const defaultLabel = actionLink?.dataset.defaultLabel || '查看更新日志';
+
+            if (statusBadge) {
+                statusBadge.dataset.state = state;
+                statusBadge.textContent = badgeLabel;
+            }
+
+            if (hintEl) {
+                hintEl.textContent = hint;
+            }
+
+            if (actionLink) {
+                actionLink.href = updateUrl || actionLink.href;
+                actionLink.textContent = state === 'update_available' ? '前往更新' : defaultLabel;
+            }
+        }
+
+        async function loadVersionStatus(forceRefresh = false) {
+            if (versionStatusRequest && !forceRefresh) {
+                return versionStatusRequest;
+            }
+
+            applyVersionStatus({
+                status: 'checking',
+                badge_label: '检查中',
+                hint: '正在检查仓库版本...',
+            });
+
+            const requestUrl = forceRefresh ? '/api/version-status?refresh=1' : '/api/version-status';
+            versionStatusRequest = fetchWithTimeout(requestUrl, {
+                timeoutMs: VERSION_STATUS_REQUEST_TIMEOUT_MS,
+                timeoutMessage: '检查更新超时',
+            })
+                .then(async (response) => {
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.success || !payload.version_status) {
+                        throw new Error(payload.error || '版本状态获取失败');
+                    }
+                    applyVersionStatus(payload.version_status);
+                    return payload.version_status;
+                })
+                .catch(() => {
+                    const fallbackStatus = {
+                        status: 'unknown',
+                        badge_label: '检查失败',
+                        hint: '暂时无法获取仓库版本信息',
+                    };
+                    applyVersionStatus(fallbackStatus);
+                    return fallbackStatus;
+                })
+                .finally(() => {
+                    versionStatusRequest = null;
+                });
+
+            return versionStatusRequest;
+        }
+
         window.toggleVersionPopover = toggleVersionPopover;
         window.copyAppVersion = copyAppVersion;
 
@@ -401,6 +468,7 @@
             });
 
             closeAllModals(); // 修复：应用启动时关闭所有模态框，防止浏览器缓存导致残留的模态框背景层
+            loadVersionStatus();
             loadGroups();
             if (typeof loadTags === 'function') {
                 loadTags();

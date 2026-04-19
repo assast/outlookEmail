@@ -147,6 +147,31 @@
             font-weight: 700;
         }
 
+        .app-version-status[data-state="checking"] {
+            background: #e2e8f0;
+            color: #475569;
+        }
+
+        .app-version-status[data-state="up_to_date"] {
+            background: #eef2ff;
+            color: #3730a3;
+        }
+
+        .app-version-status[data-state="update_available"] {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .app-version-status[data-state="ahead"] {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .app-version-status[data-state="unknown"] {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
         .app-version-popover__hint {
             font-size: 12px;
             color: #64748b;

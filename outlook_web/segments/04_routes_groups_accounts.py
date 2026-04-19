@@ -105,8 +105,19 @@ def index():
     return render_template(
         'index.html',
         app_version=APP_VERSION,
-        changelog_url='https://github.com/assast/outlookEmail/blob/main/CHANGELOG.md',
+        changelog_url=CHANGELOG_URL,
     )
+
+
+@app.route('/api/version-status', methods=['GET'])
+@login_required
+def api_get_version_status():
+    """获取当前版本与仓库版本状态"""
+    refresh = str(request.args.get('refresh', '')).strip().lower() in {'1', 'true', 'yes'}
+    return jsonify({
+        'success': True,
+        'version_status': get_version_status_payload(force_refresh=refresh),
+    })
 
 
 @app.route('/api/csrf-token', methods=['GET'])

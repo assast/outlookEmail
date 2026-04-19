@@ -16,15 +16,16 @@
                     <div class="app-version-popover" id="appVersionPopover" role="dialog" aria-label="版本信息"
                         aria-hidden="true" hidden>
                         <div class="app-version-popover__eyebrow">当前版本</div>
-                        <div class="app-version-popover__value">v{{ app_version }}</div>
+                        <div class="app-version-popover__value" id="appVersionPopoverValue">v{{ app_version }}</div>
                         <div class="app-version-popover__meta">
-                            <span class="app-version-status">稳定版</span>
-                            <span class="app-version-popover__hint">与仓库发布版本同步</span>
+                            <span class="app-version-status" id="appVersionStatus" data-state="checking">检查中</span>
+                            <span class="app-version-popover__hint" id="appVersionHint">正在检查仓库版本...</span>
                         </div>
                         <div class="app-version-popover__actions">
                             <button class="app-version-link" id="copyAppVersionBtn" type="button"
                                 onclick="copyAppVersion()">复制版本号</button>
-                            <a href="{{ changelog_url }}" target="_blank" rel="noreferrer" class="app-version-link">
+                            <a href="{{ changelog_url }}" target="_blank" rel="noreferrer" class="app-version-link"
+                                id="appVersionActionLink" data-default-label="查看更新日志">
                                 查看更新日志
                             </a>
                         </div>
