@@ -7,6 +7,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ## [Unreleased]
 
 
+## [2.0.26] - 2026-04-19
+
+### Fixed
+- 修复桌面端邮件列表滚动到末尾后未继续加载下一页邮件的问题，补强分页偏移计算与列表重渲染后的自动续加载检查。
+
 ## [2.0.25] - 2026-04-19
 
 ### Added
