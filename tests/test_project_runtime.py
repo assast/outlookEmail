@@ -1,5 +1,6 @@
 import importlib
 import os
+import pathlib
 import sys
 import tempfile
 import unittest
@@ -479,6 +480,92 @@ class ProjectRuntimeTests(unittest.TestCase):
             self.assertEqual(download_response.status_code, 200)
             self.assertEqual(download_response.data, b'attachment body')
             self.assertIn("filename*=UTF-8''report.txt", download_response.headers.get('Content-Disposition', ''))
+
+
+class FrontendTimezoneBootstrapTests(unittest.TestCase):
+    def test_settings_js_no_longer_updates_timezone_in_add_account_flow(self):
+        settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')
+
+        self.assertEqual(settings_js.count('setAppTimeZone(appTimeZone);'), 2)
+        self.assertIn("settings.app_timezone = appTimeZone;", settings_js)
+
+    def test_frontend_bootstraps_saved_timezone_before_loading_groups(self):
+        core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
+        oauth_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '06-utils-oauth.js').read_text(encoding='utf-8')
+        refresh_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '08-refresh.js').read_text(encoding='utf-8')
+
+        self.assertIn('async function loadAppTimeZoneFromSettings()', core_js)
+        self.assertIn("fetch('/api/settings'", core_js)
+        self.assertIn('await loadAppTimeZoneFromSettings();', core_js)
+        self.assertLess(core_js.index('await loadAppTimeZoneFromSettings();'), core_js.index('loadGroups();'))
+        self.assertIn('const timeZone = getAppTimeZone();', oauth_js)
+        self.assertIn('timeZone: getAppTimeZone()', refresh_js)
+
+
+class SchedulerTimezoneMigrationTests(unittest.TestCase):
+    def setUp(self):
+        self.app = web_outlook_app.app
+        self.app.config['TESTING'] = True
+
+        with self.app.app_context():
+            web_outlook_app.init_db()
+            db = web_outlook_app.get_db()
+            db.execute("DELETE FROM settings WHERE key = 'app_timezone'")
+            db.execute("UPDATE settings SET value = 'true' WHERE key = 'enable_scheduled_refresh'")
+            db.execute("UPDATE settings SET value = 'false' WHERE key = 'use_cron_schedule'")
+            db.commit()
+
+        web_outlook_app.shutdown_scheduler()
+
+    def tearDown(self):
+        web_outlook_app.shutdown_scheduler()
+
+    def test_init_db_restores_default_timezone_for_legacy_database(self):
+        with self.app.app_context():
+            web_outlook_app.init_db()
+
+            self.assertEqual(
+                web_outlook_app.get_setting('app_timezone'),
+                web_outlook_app.DEFAULT_APP_TIMEZONE,
+            )
+            self.assertEqual(
+                web_outlook_app.get_app_timezone(),
+                web_outlook_app.DEFAULT_APP_TIMEZONE,
+            )
+
+    def test_scheduler_uses_default_timezone_when_legacy_database_lacks_setting(self):
+        class FakeScheduler:
+            def __init__(self, timezone=None):
+                self.timezone = timezone
+                self.jobs = []
+                self.started = False
+
+            def add_job(self, func=None, trigger=None, **kwargs):
+                self.jobs.append({'func': func, 'trigger': trigger, **kwargs})
+
+            def start(self):
+                self.started = True
+
+            def shutdown(self, wait=True):
+                self.started = False
+
+        def fake_cron_trigger(**kwargs):
+            return {'trigger': 'cron', 'kwargs': kwargs}
+
+        with self.app.app_context():
+            web_outlook_app.init_db()
+            self.assertEqual(web_outlook_app.get_setting('app_timezone'), web_outlook_app.DEFAULT_APP_TIMEZONE)
+
+        with patch('apscheduler.schedulers.background.BackgroundScheduler', FakeScheduler), \
+             patch('apscheduler.triggers.cron.CronTrigger', side_effect=fake_cron_trigger), \
+             patch('atexit.register'), \
+             patch('builtins.print'):
+            scheduler = web_outlook_app.init_scheduler()
+
+        self.assertIsInstance(scheduler, FakeScheduler)
+        self.assertTrue(scheduler.started)
+        self.assertEqual(str(scheduler.timezone), web_outlook_app.DEFAULT_APP_TIMEZONE)
+        self.assertTrue(any(job.get('id') == 'token_refresh' for job in scheduler.jobs))
 
 
 if __name__ == '__main__':

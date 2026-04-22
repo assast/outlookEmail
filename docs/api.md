@@ -1125,9 +1125,12 @@ curl -H "X-API-Key: your-api-key" \
 
 ```json
 {
-  "cron_expression": "0 */6 * * *"
+  "cron_expression": "0 */6 * * *",
+  "time_zone": "America/Los_Angeles"
 }
 ```
+
+可选字段 `time_zone` 用于按指定 IANA 时区预览下一次执行时间；未传时使用当前系统设置中的 `app_timezone`。
 
 ### GET `/api/settings`
 
@@ -1144,6 +1147,7 @@ curl -H "X-API-Key: your-api-key" \
 | `cloudflare_worker_domain` | Cloudflare Worker 域名 |
 | `cloudflare_email_domains` | Cloudflare 邮箱域名列表，逗号分隔字符串 |
 | `cloudflare_admin_password` | Cloudflare 管理密码 |
+| `app_timezone` | 当前系统时区，IANA 时区名，例如 `Asia/Shanghai` |
 | `forward_channels` | 当前启用的转发渠道 |
 | `forward_check_interval_minutes` | 转发检查间隔 |
 | `forward_email_window_minutes` | 转发时间窗口 |
@@ -1175,6 +1179,7 @@ curl -H "X-API-Key: your-api-key" \
 | `refresh_cron` | string | Cron 表达式 |
 | `use_cron_schedule` | bool | 是否使用 Cron 调度 |
 | `enable_scheduled_refresh` | bool | 是否开启定时刷新 |
+| `app_timezone` | string | 系统时区，使用 IANA 时区名，例如 `Asia/Shanghai` |
 | `external_api_key` | string | 对外 API Key，可传空字符串清空 |
 
 #### 临时邮箱服务相关字段

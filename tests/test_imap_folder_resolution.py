@@ -1228,6 +1228,60 @@ class TelegramForwardingProxySettingsTests(unittest.TestCase):
         )
 
 
+class AppTimezoneSettingsTests(unittest.TestCase):
+    def setUp(self):
+        self.app = web_outlook_app.app
+        self.app.config['TESTING'] = True
+        self.app.config['WTF_CSRF_ENABLED'] = False
+        self.client = self.app.test_client()
+
+        with self.client.session_transaction() as sess:
+            sess['logged_in'] = True
+
+    def test_settings_api_persists_app_timezone(self):
+        response = self.client.put(
+            '/api/settings',
+            json={'app_timezone': 'America/Los_Angeles'}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        response = self.client.get('/api/settings')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['settings']['app_timezone'], 'America/Los_Angeles')
+
+    def test_settings_api_rejects_invalid_app_timezone(self):
+        response = self.client.put(
+            '/api/settings',
+            json={'app_timezone': 'Mars/Olympus_Mons'}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertIn('Invalid time zone', payload['error'])
+
+    def test_validate_cron_uses_requested_timezone(self):
+        response = self.client.post(
+            '/api/settings/validate-cron',
+            json={
+                'cron_expression': '0 2 * * *',
+                'time_zone': 'UTC',
+            }
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertTrue(payload['valid'])
+        self.assertEqual(payload['time_zone'], 'UTC')
+        self.assertTrue(payload['next_run'].endswith('+00:00'))
+
+
 class MultiChannelForwardingTests(unittest.TestCase):
     def setUp(self):
         self.app = web_outlook_app.app

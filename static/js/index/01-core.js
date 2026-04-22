@@ -39,11 +39,77 @@
         const BULK_REFRESH_MAX_TIMEOUT_MS = 180000;
         const REFRESH_STREAM_STALL_TIMEOUT_MS = 70000;
         const VERSION_STATUS_REQUEST_TIMEOUT_MS = 12000;
+        const DEFAULT_APP_TIME_ZONE = 'Asia/Shanghai';
+        const FALLBACK_APP_TIME_ZONES = [
+            'Asia/Shanghai',
+            'UTC',
+            'Asia/Tokyo',
+            'Asia/Singapore',
+            'Europe/London',
+            'America/Los_Angeles',
+            'America/New_York',
+        ];
         let versionStatusRequest = null;
         let emailListLoadCheckTimer = null;
+        let appTimeZone = DEFAULT_APP_TIME_ZONE;
 
         function isMobileLayout() {
             return window.matchMedia('(max-width: 768px)').matches;
+        }
+
+        function isValidAppTimeZone(timeZone) {
+            const candidate = String(timeZone || '').trim();
+            if (!candidate) {
+                return false;
+            }
+
+            try {
+                Intl.DateTimeFormat('zh-CN', { timeZone: candidate }).format(new Date());
+                return true;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        function normalizeAppTimeZone(timeZone) {
+            const candidate = String(timeZone || '').trim();
+            if (isValidAppTimeZone(candidate)) {
+                return candidate;
+            }
+            if (isValidAppTimeZone(DEFAULT_APP_TIME_ZONE)) {
+                return DEFAULT_APP_TIME_ZONE;
+            }
+            return 'UTC';
+        }
+
+        function setAppTimeZone(timeZone) {
+            appTimeZone = normalizeAppTimeZone(timeZone);
+            return appTimeZone;
+        }
+
+        function getAppTimeZone() {
+            return normalizeAppTimeZone(appTimeZone);
+        }
+
+        function getAvailableAppTimeZones() {
+            const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const supportedTimeZones = typeof Intl.supportedValuesOf === 'function'
+                ? Intl.supportedValuesOf('timeZone')
+                : [];
+            const merged = [...FALLBACK_APP_TIME_ZONES, browserTimeZone, ...supportedTimeZones];
+            const unique = [];
+            const seen = new Set();
+
+            merged.forEach(timeZone => {
+                const candidate = String(timeZone || '').trim();
+                if (!candidate || seen.has(candidate) || !isValidAppTimeZone(candidate)) {
+                    return;
+                }
+                seen.add(candidate);
+                unique.push(candidate);
+            });
+
+            return unique;
         }
 
         function isTimeoutAbortError(error) {
@@ -566,10 +632,33 @@
             return fetchWithCSRF(url, options);
         };
 
+        async function loadAppTimeZoneFromSettings() {
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'GET',
+                    cache: 'no-store',
+                    credentials: 'same-origin'
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data?.success) {
+                    return null;
+                }
+
+                const timeZone = data?.settings?.app_timezone;
+                if (timeZone) {
+                    setAppTimeZone(timeZone);
+                }
+                return data?.settings || null;
+            } catch (error) {
+                return null;
+            }
+        }
+
         // 初始化
         document.addEventListener('DOMContentLoaded', async function () {
             // 初始化 CSRF Token
             await initCSRFToken();
+            await loadAppTimeZoneFromSettings();
             ensureForwardingSettingsUI();
             bindPersistentButtonHandlers();
             document.addEventListener('click', closeAccountActionMenus);

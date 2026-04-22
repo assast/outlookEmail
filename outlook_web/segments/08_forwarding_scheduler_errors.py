@@ -802,9 +802,10 @@ def init_scheduler():
             from apscheduler.triggers.cron import CronTrigger
             import atexit
 
-            scheduler = BackgroundScheduler()
-
             with app.app_context():
+                app_timezone = get_app_timezone()
+                app_tzinfo = get_app_timezone_info()
+                scheduler = BackgroundScheduler(timezone=app_tzinfo)
                 enable_scheduled = get_setting('enable_scheduled_refresh', 'true').lower() == 'true'
 
                 if not enable_scheduled:
@@ -818,7 +819,7 @@ def init_scheduler():
                     try:
                         from croniter import croniter
                         from datetime import datetime
-                        croniter(cron_expr, datetime.now())
+                        croniter(cron_expr, datetime.now(app_tzinfo))
 
                         parts = cron_expr.split()
                         if len(parts) == 5:
@@ -828,7 +829,8 @@ def init_scheduler():
                                 hour=hour,
                                 day=day,
                                 month=month,
-                                day_of_week=day_of_week
+                                day_of_week=day_of_week,
+                                timezone=app_tzinfo
                             )
                             scheduler.add_job(
                                 func=scheduled_refresh_task,
@@ -840,7 +842,7 @@ def init_scheduler():
                             forward_interval = max(1, min(60, int(get_setting('forward_check_interval_minutes', '5') or '5')))
                             scheduler.add_job(
                                 func=process_forwarding_job,
-                                trigger=CronTrigger(minute=f'*/{forward_interval}'),
+                                trigger=CronTrigger(minute=f'*/{forward_interval}', timezone=app_tzinfo),
                                 id='forward_mail',
                                 name='邮件转发轮询',
                                 replace_existing=True
@@ -858,7 +860,7 @@ def init_scheduler():
                 refresh_interval_days = int(get_setting('refresh_interval_days', '30'))
                 scheduler.add_job(
                     func=scheduled_refresh_task,
-                    trigger=CronTrigger(hour=2, minute=0),
+                    trigger=CronTrigger(hour=2, minute=0, timezone=app_tzinfo),
                     id='token_refresh',
                     name='Token 定时刷新',
                     replace_existing=True
@@ -867,7 +869,7 @@ def init_scheduler():
                 forward_interval = max(1, min(60, int(get_setting('forward_check_interval_minutes', '5') or '5')))
                 scheduler.add_job(
                     func=process_forwarding_job,
-                    trigger=CronTrigger(minute=f'*/{forward_interval}'),
+                    trigger=CronTrigger(minute=f'*/{forward_interval}', timezone=app_tzinfo),
                     id='forward_mail',
                     name='邮件转发轮询',
                     replace_existing=True

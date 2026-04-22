@@ -16,22 +16,29 @@
                 if (isNaN(date.getTime())) return dateStr;
 
                 const now = new Date();
-                const isToday = date.toDateString() === now.toDateString();
+                const timeZone = getAppTimeZone();
+                const dateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
+                    timeZone,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                });
+                const isToday = dateKeyFormatter.format(date) === dateKeyFormatter.format(now);
 
                 if (isToday) {
                     return '今天 ' + date.toLocaleTimeString('zh-CN', {
-                        timeZone: 'Asia/Shanghai',
+                        timeZone,
                         hour: '2-digit',
                         minute: '2-digit'
                     });
                 } else {
                     return date.toLocaleDateString('zh-CN', {
-                        timeZone: 'Asia/Shanghai',
+                        timeZone,
                         year: 'numeric',
                         month: 'long',
                         day: 'numeric'
                     }) + ' ' + date.toLocaleTimeString('zh-CN', {
-                        timeZone: 'Asia/Shanghai',
+                        timeZone,
                         hour: '2-digit',
                         minute: '2-digit'
                     });

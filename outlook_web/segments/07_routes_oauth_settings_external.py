@@ -104,28 +104,41 @@ def api_validate_cron():
     except ImportError:
         return jsonify({'success': False, 'error': 'croniter 库未安装，请运行: pip install croniter'})
 
-    data = request.json
+    data = request.json or {}
     cron_expr = data.get('cron_expression', '').strip()
+    requested_timezone = str(data.get('time_zone', '')).strip()
 
     if not cron_expr:
         return jsonify({'success': False, 'error': 'Cron 表达式不能为空'})
 
+    if requested_timezone and not is_valid_app_timezone_name(requested_timezone):
+        return jsonify({'success': False, 'error': 'Invalid time zone'})
+
+    preview_timezone = normalize_app_timezone_name(requested_timezone, get_app_timezone())
+    tzinfo = ZoneInfo(preview_timezone)
+
     try:
-        base_time = datetime.now()
+        base_time = datetime.now(tzinfo)
         cron = croniter(cron_expr, base_time)
 
         next_run = cron.get_next(datetime)
+        if next_run.tzinfo is None:
+            next_run = next_run.replace(tzinfo=tzinfo)
 
         future_runs = []
         temp_cron = croniter(cron_expr, base_time)
         for _ in range(5):
-            future_runs.append(temp_cron.get_next(datetime).isoformat())
+            future_run = temp_cron.get_next(datetime)
+            if future_run.tzinfo is None:
+                future_run = future_run.replace(tzinfo=tzinfo)
+            future_runs.append(future_run.isoformat())
 
         return jsonify({
             'success': True,
             'valid': True,
             'next_run': next_run.isoformat(),
-            'future_runs': future_runs
+            'future_runs': future_runs,
+            'time_zone': preview_timezone
         })
     except Exception as e:
         return jsonify({
@@ -155,6 +168,7 @@ def api_get_settings():
     settings['cloudflare_worker_domain'] = get_cloudflare_worker_domain()
     settings['cloudflare_email_domains'] = ', '.join(get_cloudflare_email_domains())
     settings['cloudflare_admin_password'] = get_cloudflare_admin_password()
+    settings['app_timezone'] = get_app_timezone()
     settings['forward_channels'] = get_forward_channels()
     settings['forward_check_interval_minutes'] = get_setting('forward_check_interval_minutes', '5')
     settings['forward_email_window_minutes'] = get_setting('forward_email_window_minutes', '0')
@@ -179,7 +193,7 @@ def api_get_settings():
 @login_required
 def api_update_settings():
     """更新设置"""
-    data = request.json
+    data = request.json or {}
     updated = []
     errors = []
 
@@ -270,6 +284,15 @@ def api_update_settings():
                 errors.append('更新定时刷新开关失败')
         else:
             errors.append('定时刷新开关必须是 true 或 false')
+
+    if 'app_timezone' in data:
+        app_timezone = str(data['app_timezone']).strip()
+        if not is_valid_app_timezone_name(app_timezone):
+            errors.append('Invalid time zone')
+        elif set_setting('app_timezone', app_timezone):
+            updated.append('Time zone')
+        else:
+            errors.append('Failed to save time zone')
 
     # 更新对外 API Key
     if 'external_api_key' in data:

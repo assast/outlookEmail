@@ -578,7 +578,7 @@
             if (days < 7) return `${days}天前`;
 
             return date.toLocaleString('zh-CN', {
-                timeZone: 'Asia/Shanghai',
+                timeZone: getAppTimeZone(),
                 year: 'numeric',
                 month: '2-digit',
                 day: '2-digit',

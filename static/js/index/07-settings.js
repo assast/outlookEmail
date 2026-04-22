@@ -9,11 +9,39 @@
                 || document.querySelector('#settingsModal .settings-modal-content');
         }
 
+        function populateTimeZoneOptions(selectedTimeZone = getAppTimeZone()) {
+            const select = document.getElementById('settingsAppTimezone');
+            if (!select) {
+                return;
+            }
+
+            const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const normalizedTimeZone = isValidAppTimeZone(selectedTimeZone)
+                ? selectedTimeZone
+                : getAppTimeZone();
+            const availableTimeZones = getAvailableAppTimeZones();
+            if (!availableTimeZones.includes(normalizedTimeZone)) {
+                availableTimeZones.unshift(normalizedTimeZone);
+            }
+
+            select.innerHTML = '';
+            availableTimeZones.forEach(timeZone => {
+                const option = document.createElement('option');
+                option.value = timeZone;
+                option.textContent = timeZone === browserTimeZone
+                    ? `${timeZone} (System)`
+                    : timeZone;
+                option.selected = timeZone === normalizedTimeZone;
+                select.appendChild(option);
+            });
+        }
+
         // 显示设置模态框
         async function showSettingsModal() {
             ensureSettingsScrollSync();
             showModal('settingsModal');
             scrollSettingsSection('settingsAccessSection');
+            populateTimeZoneOptions(getAppTimeZone());
             await loadSettings();
             scheduleSettingsSidebarSync();
         }
@@ -171,17 +199,39 @@
                 return;
             }
 
+            const selectedTimeZone = document.getElementById('settingsAppTimezone')?.value || getAppTimeZone();
+            if (!isValidAppTimeZone(selectedTimeZone)) {
+                resultEl.style.display = 'block';
+                resultEl.innerHTML = `
+                    <div style="color: #dc3545;">
+                        Invalid time zone
+                    </div>
+                `;
+                return;
+            }
+
             try {
                 const response = await fetch('/api/settings/validate-cron', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cron_expression: cronExpr })
+                    body: JSON.stringify({
+                        cron_expression: cronExpr,
+                        time_zone: selectedTimeZone
+                    })
                 });
 
                 const data = await response.json();
 
                 if (data.success && data.valid) {
-                    const nextRun = new Date(data.next_run).toLocaleString('zh-CN');
+                    const previewTimeZone = data.time_zone || selectedTimeZone;
+                    const nextRun = new Date(data.next_run).toLocaleString('zh-CN', {
+                        timeZone: previewTimeZone,
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
                     resultEl.style.display = 'block';
                     resultEl.innerHTML = `
                         <div style="color: #28a745;">
@@ -415,6 +465,9 @@
                 const data = await response.json();
 
                 if (data.success) {
+                    const appTimeZone = data.settings.app_timezone || getAppTimeZone();
+                    setAppTimeZone(appTimeZone);
+                    populateTimeZoneOptions(appTimeZone);
                     document.getElementById('settingsApiKey').value = data.settings.gptmail_api_key || '';
                     document.getElementById('settingsExternalApiKey').value = data.settings.external_api_key || '';
                     document.getElementById('settingsDuckmailBaseUrl').value = data.settings.duckmail_base_url || '';
@@ -422,6 +475,7 @@
                     document.getElementById('settingsCloudflareWorkerDomain').value = data.settings.cloudflare_worker_domain || '';
                     document.getElementById('settingsCloudflareEmailDomains').value = data.settings.cloudflare_email_domains || '';
                     document.getElementById('settingsCloudflareAdminPassword').value = data.settings.cloudflare_admin_password || '';
+                    document.getElementById('settingsAppTimezone').value = appTimeZone;
                     document.getElementById('settingsPassword').value = '';
 
                     document.getElementById('refreshIntervalDays').value = data.settings.refresh_interval_days || '30';
@@ -464,6 +518,7 @@
             const refreshDays = document.getElementById('refreshIntervalDays').value;
             const refreshDelay = document.getElementById('refreshDelaySeconds').value;
             const refreshCron = document.getElementById('refreshCron').value.trim();
+            const appTimeZone = document.getElementById('settingsAppTimezone').value.trim();
             const strategy = document.querySelector('input[name="refreshStrategy"]:checked').value;
             const enableScheduled = document.getElementById('enableScheduledRefresh').checked;
             const settings = {};
@@ -504,6 +559,10 @@
             }
             if (Number.isNaN(delay) || delay < 0 || delay > 60) {
                 showToast('刷新间隔必须在 0-60 秒之间', 'error');
+                return;
+            }
+            if (!isValidAppTimeZone(appTimeZone)) {
+                showToast('Invalid time zone', 'error');
                 return;
             }
             if (Number.isNaN(forwardMinutes) || forwardMinutes < 1 || forwardMinutes > 60) {
@@ -547,6 +606,7 @@
             settings.refresh_delay_seconds = delay;
             settings.use_cron_schedule = strategy === 'cron';
             settings.enable_scheduled_refresh = enableScheduled;
+            settings.app_timezone = appTimeZone;
             settings.forward_channels = forwardChannels;
             settings.forward_check_interval_minutes = forwardMinutes;
             settings.forward_email_window_minutes = forwardWindowMinutes;
@@ -582,6 +642,11 @@
 
                 const data = await response.json();
                 if (data.success) {
+                    setAppTimeZone(appTimeZone);
+                    loadGroups();
+                    if (currentGroupId) {
+                        loadAccountsByGroup(currentGroupId, true);
+                    }
                     showToast('设置已保存，重启应用后生效', 'success');
                     hideSettingsModal();
                 } else {

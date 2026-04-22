@@ -30,6 +30,7 @@ from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from typing import Optional, List, Dict, Any
 from urllib.parse import quote, urlparse, unquote
+from zoneinfo import ZoneInfo
 from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for, Response, make_response
 from functools import wraps
 import requests
@@ -118,6 +119,8 @@ IMAP_SERVER_NEW = "outlook.live.com"
 IMAP_PORT = 993
 HTTP_REQUEST_TIMEOUT = int(os.getenv("HTTP_REQUEST_TIMEOUT", "30"))
 IMAP_TIMEOUT = int(os.getenv("IMAP_TIMEOUT", "45"))
+DEFAULT_APP_TIMEZONE = (os.getenv("APP_TIMEZONE", "Asia/Shanghai") or "Asia/Shanghai").strip()
+FALLBACK_APP_TIMEZONE = "UTC"
 MAIL_FETCH_OVERALL_TIMEOUT = int(
     os.getenv("MAIL_FETCH_OVERALL_TIMEOUT", str(max(HTTP_REQUEST_TIMEOUT, IMAP_TIMEOUT) + 5))
 )
@@ -1483,6 +1486,11 @@ def init_db():
 
     cursor.execute('''
         INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('app_timezone', ?)
+    ''', (DEFAULT_APP_TIMEZONE or 'Asia/Shanghai',))
+
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
         VALUES ('forward_check_interval_minutes', '5')
     ''')
     cursor.execute('''
@@ -1707,6 +1715,37 @@ def get_setting_decrypted(key: str, default: str = '') -> str:
         return decrypt_data(value)
     except Exception:
         return value
+
+
+def is_valid_app_timezone_name(value: str) -> bool:
+    candidate = str(value or '').strip()
+    if not candidate:
+        return False
+    try:
+        ZoneInfo(candidate)
+        return True
+    except Exception:
+        return False
+
+
+def normalize_app_timezone_name(value: str, default: str = DEFAULT_APP_TIMEZONE) -> str:
+    candidate = str(value or '').strip()
+    if is_valid_app_timezone_name(candidate):
+        return candidate
+
+    fallback = str(default or '').strip()
+    if is_valid_app_timezone_name(fallback):
+        return fallback
+
+    return FALLBACK_APP_TIMEZONE
+
+
+def get_app_timezone() -> str:
+    return normalize_app_timezone_name(get_setting('app_timezone', DEFAULT_APP_TIMEZONE))
+
+
+def get_app_timezone_info():
+    return ZoneInfo(get_app_timezone())
 
 
 def get_all_settings() -> Dict[str, str]:
