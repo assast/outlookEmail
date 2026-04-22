@@ -647,7 +647,7 @@
                     if (currentGroupId) {
                         loadAccountsByGroup(currentGroupId, true);
                     }
-                    showToast('设置已保存，重启应用后生效', 'success');
+                    showToast('时间展示已生效，定时任务重启后生效', 'success');
                     hideSettingsModal();
                 } else {
                     handleApiError(data, '保存设置失败');

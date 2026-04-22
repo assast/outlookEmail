@@ -488,6 +488,7 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
 
         self.assertEqual(settings_js.count('setAppTimeZone(appTimeZone);'), 2)
         self.assertIn("settings.app_timezone = appTimeZone;", settings_js)
+        self.assertIn("showToast('时间展示已生效，定时任务重启后生效', 'success');", settings_js)
 
     def test_frontend_bootstraps_saved_timezone_before_loading_groups(self):
         core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')

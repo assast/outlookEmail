@@ -7,6 +7,23 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ## [Unreleased]
 
 
+## [2.0.28] - 2026-04-22
+
+### Added
+- 系统设置新增应用时区选择，支持按保存的时区预览 Cron 下次运行时间，并统一日志与 OAuth 相关时间展示。
+- 页面初始化阶段会主动读取 `/api/settings` 恢复全局时区，不再依赖先打开设置弹窗。
+
+### Changed
+- 定时刷新与邮件转发调度器改为基于 `app_timezone` 创建触发器；旧库升级时默认回退到 `Asia/Shanghai`。
+- 新增 `main` 推送后自动合并到 `dev` 的 GitHub Actions 工作流，减少发布后分支偏移。
+
+### Fixed
+- 修复添加账号流程里误插入的时区更新语句，避免保存账号成功后前端报错。
+- 修正设置保存成功提示，明确“时间展示立即生效，定时任务需重启后生效”。
+- 补齐前端启动时区加载、非默认时区保存后刷新展示，以及旧库无 `app_timezone` 升级默认行为的回归验证。
+- 同步更新 `docs/api.md` 中设置接口的 `app_timezone` 与 `time_zone` 字段说明。
+
+
 ## [2.0.27] - 2026-04-20
 
 ### Added
