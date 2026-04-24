@@ -27,6 +27,7 @@
         let currentEmailDetail = null; // 当前查看的邮件详细数据
         let isTrustedMode = false; // 是否处于信任模式（不过滤 HTML）
         let oauthPreviewAccount = null;
+        const UNTAGGED_TAG_FILTER_KEY = '__untagged__';
         let selectedTagFilters = new Set();
         let tagFilterKeyword = '';
         let responsiveUiResizeTimer = null;
@@ -52,6 +53,34 @@
         let versionStatusRequest = null;
         let emailListLoadCheckTimer = null;
         let appTimeZone = DEFAULT_APP_TIME_ZONE;
+
+        function isUntaggedTagFilterValue(value) {
+            return String(value || '').trim() === UNTAGGED_TAG_FILTER_KEY;
+        }
+
+        function normalizeTagFilterSelectionValue(value) {
+            if (isUntaggedTagFilterValue(value)) {
+                return UNTAGGED_TAG_FILTER_KEY;
+            }
+            const normalized = Number.parseInt(String(value ?? '').trim(), 10);
+            return Number.isFinite(normalized) ? normalized : null;
+        }
+
+        function matchesSelectedTagFilters(tags) {
+            if (!selectedTagFilters.size) {
+                return true;
+            }
+
+            const safeTags = Array.isArray(tags) ? tags : [];
+            const includeUntagged = selectedTagFilters.has(UNTAGGED_TAG_FILTER_KEY);
+            const selectedRealTagIds = Array.from(selectedTagFilters).filter(value => !isUntaggedTagFilterValue(value));
+
+            const matchesRealTag = selectedRealTagIds.length > 0
+                && safeTags.some(tag => selectedRealTagIds.includes(normalizeTagFilterSelectionValue(tag?.id)));
+            const matchesUntagged = includeUntagged && safeTags.length === 0;
+
+            return matchesRealTag || matchesUntagged;
+        }
 
         function isMobileLayout() {
             return window.matchMedia('(max-width: 768px)').matches;

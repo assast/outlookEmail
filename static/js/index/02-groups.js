@@ -1,4 +1,4 @@
-        /* global accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, formatRelativeTime, generateTempEmail, groups, handleApiError, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadTempEmails, localStorage, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, tempEmailGroupId, updateCurrentGroupHeader, updateMobileContext */
+        /* global accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, formatRelativeTime, generateTempEmail, groups, handleApiError, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, tempEmailGroupId, updateCurrentGroupHeader, updateMobileContext */
 
         // ==================== 分组相关 ====================
 
@@ -828,12 +828,8 @@
             }
 
             // 1. Tag 筛选
-            const selectedTagIds = Array.from(selectedTagFilters);
-            if (selectedTagIds.length > 0) {
-                result = result.filter(acc => {
-                    if (!acc.tags) return false;
-                    return acc.tags.some(t => selectedTagIds.includes(t.id));
-                });
+            if (selectedTagFilters.size > 0) {
+                result = result.filter(acc => matchesSelectedTagFilters(acc.tags));
             }
 
             // 2. 排序
@@ -857,8 +853,8 @@
             const selected = document.querySelectorAll('.tag-filter-checkbox:checked');
             selectedTagFilters = new Set(
                 Array.from(selected)
-                    .map(cb => parseInt(cb.value, 10))
-                    .filter(Number.isFinite)
+                    .map(cb => normalizeTagFilterSelectionValue(cb.value))
+                    .filter(value => value !== null)
             );
             document.querySelectorAll('.tag-filter-option').forEach(option => {
                 const checkbox = option.querySelector('.tag-filter-checkbox');

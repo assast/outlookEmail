@@ -7,6 +7,12 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ## [Unreleased]
 
 
+## [2.0.32] - 2026-04-24
+
+### Added
+- 标签筛选新增“无标签”虚拟项，支持单独筛选未打标签的账号和临时邮箱，并保持与现有标签的 OR 过滤语义。
+
+
 ## [2.0.31] - 2026-04-24
 
 ### Fixed

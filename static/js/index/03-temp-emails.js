@@ -1,4 +1,4 @@
-        /* global accountsCache, closeMobilePanels, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentMethod, currentGroupId, escapeHtml, escapeJs, formatDate, groups, handleApiError, loadGroups, loadTempEmails, refreshEmails, renderAccountTagSummary, renderEmailDetail, renderEmailList, renderEmptyStateMarkup, selectedTagFilters, showEmailList, showMobileEmailDetail, showToast, updateBatchActionBar, updateMobileContext, updateCurrentGroupHeader */
+        /* global accountsCache, closeMobilePanels, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentMethod, currentGroupId, escapeHtml, escapeJs, formatDate, groups, handleApiError, loadGroups, loadTempEmails, matchesSelectedTagFilters, refreshEmails, renderAccountTagSummary, renderEmailDetail, renderEmailList, renderEmptyStateMarkup, selectedTagFilters, showEmailList, showMobileEmailDetail, showToast, updateBatchActionBar, updateMobileContext, updateCurrentGroupHeader */
 
         // ==================== 临时邮箱相关 ====================
 
@@ -48,7 +48,6 @@
             // 渠道筛选
             const filter = localStorage.getItem('outlook_temp_email_filter') || 'all';
             const searchQuery = (document.getElementById('globalSearch')?.value || '').trim().toLowerCase();
-            const selectedTagIds = Array.from(selectedTagFilters);
             let filtered = filter === 'all'
                 ? [...currentAccountListSource]
                 : currentAccountListSource.filter(e => e.provider === filter);
@@ -63,9 +62,8 @@
                 });
             }
 
-            if (selectedTagIds.length > 0) {
-                filtered = filtered.filter(email => Array.isArray(email.tags)
-                    && email.tags.some(tag => selectedTagIds.includes(tag.id)));
+            if (selectedTagFilters.size > 0) {
+                filtered = filtered.filter(email => matchesSelectedTagFilters(email.tags));
             }
 
             const currentGroup = groups.find(group => group.id === currentGroupId);
