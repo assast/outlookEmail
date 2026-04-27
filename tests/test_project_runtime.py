@@ -635,6 +635,26 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn("document.getElementById('settingsShowAccountCreatedAt').checked = String(data.settings.show_account_created_at) !== 'false';", settings_js)
         self.assertIn('settings.show_account_created_at = showAccountCreatedAt;', settings_js)
 
+    def test_refresh_management_ui_uses_account_workbench_layout(self):
+        settings_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'dialogs-management.html').read_text(encoding='utf-8')
+        refresh_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '08-refresh.js').read_text(encoding='utf-8')
+        batch_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '10-batch-actions.js').read_text(encoding='utf-8')
+        modal_css = pathlib.Path(ROOT_DIR, 'static', 'css', 'index', '06-modals-toast.css').read_text(encoding='utf-8')
+
+        self.assertIn('id="refreshSearchInput"', settings_html)
+        self.assertIn('id="refreshAccountList"', settings_html)
+        self.assertIn('data-status="never"', settings_html)
+        self.assertNotIn('onclick="loadFailedLogs()"', settings_html)
+        self.assertNotIn('onclick="loadRefreshLogs()"', settings_html)
+        self.assertIn('async function loadRefreshStatusList()', refresh_js)
+        self.assertIn("function setRefreshStatusFilter(status, triggerEl = null)", refresh_js)
+        self.assertIn("async function openRefreshModalWithStatus(status = 'all')", refresh_js)
+        self.assertNotIn('showFailedListFromData', refresh_js)
+        self.assertNotIn('loadRefreshLogs', refresh_js)
+        self.assertIn("await openRefreshModalWithStatus('failed');", batch_js)
+        self.assertIn('.refresh-account-list', modal_css)
+        self.assertIn('.refresh-filter-chip', modal_css)
+
 
 class SchedulerTimezoneMigrationTests(unittest.TestCase):
     def setUp(self):

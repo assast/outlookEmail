@@ -246,8 +246,7 @@
                 );
 
                 if (data.failed_count > 0) {
-                    await showRefreshModal(false);
-                    showFailedListFromData(data.failed_list || []);
+                    await openRefreshModalWithStatus('failed');
                 } else {
                     loadRefreshStats();
                 }

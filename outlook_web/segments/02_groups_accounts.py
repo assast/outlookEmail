@@ -237,6 +237,13 @@ def parse_account_sort_order_input(sort_order: Any) -> Optional[int]:
     return value if value > 0 else None
 
 
+def normalize_account_refresh_status(status: Any) -> str:
+    normalized = str(status or '').strip().lower()
+    if normalized in {'success', 'failed', 'never'}:
+        return normalized
+    return 'never'
+
+
 # ==================== 标签管理 ====================
 
 def get_tags() -> List[Dict]:
@@ -582,11 +589,42 @@ def get_latest_account_refresh_log(account_id: int, db=None) -> Optional[Dict[st
     return dict(row) if row else None
 
 
+def resolve_account_refresh_state(account: Dict[str, Any],
+                                  last_refresh_log: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    status = normalize_account_refresh_status(account.get('last_refresh_status'))
+    refresh_error = account.get('last_refresh_error')
+    refresh_at = account.get('last_refresh_at', '')
+
+    if last_refresh_log is None and account.get('id') and (
+        status == 'never' or not refresh_at or (status == 'failed' and not refresh_error)
+    ):
+        try:
+            last_refresh_log = get_latest_account_refresh_log(account['id'])
+        except Exception:
+            last_refresh_log = None
+
+    if last_refresh_log and status == 'never':
+        status = normalize_account_refresh_status(last_refresh_log.get('status'))
+    if last_refresh_log and not refresh_at:
+        refresh_at = last_refresh_log.get('created_at', '')
+    if status == 'failed':
+        refresh_error = refresh_error or (last_refresh_log.get('error_message') if last_refresh_log else None)
+    else:
+        refresh_error = None
+
+    return {
+        'last_refresh_at': refresh_at or '',
+        'last_refresh_status': status,
+        'last_refresh_error': refresh_error or None,
+    }
+
+
 def serialize_account_summary(account: Dict[str, Any], last_refresh_log: Optional[Dict[str, Any]] = None,
                               include_client_meta: bool = True,
                               include_imap_meta: bool = True) -> Dict[str, Any]:
     """序列化账号摘要，默认隐藏敏感字段"""
     client_id = account.get('client_id') or ''
+    refresh_state = resolve_account_refresh_state(account, last_refresh_log)
     payload = {
         'id': account['id'],
         'email': account['email'],
@@ -601,9 +639,9 @@ def serialize_account_summary(account: Dict[str, Any], last_refresh_log: Optiona
         'account_type': account.get('account_type', 'outlook'),
         'provider': account.get('provider', 'outlook'),
         'forward_enabled': bool(account.get('forward_enabled')),
-        'last_refresh_at': account.get('last_refresh_at', ''),
-        'last_refresh_status': last_refresh_log['status'] if last_refresh_log else None,
-        'last_refresh_error': last_refresh_log['error_message'] if last_refresh_log else None,
+        'last_refresh_at': refresh_state['last_refresh_at'],
+        'last_refresh_status': refresh_state['last_refresh_status'],
+        'last_refresh_error': refresh_state['last_refresh_error'],
         'created_at': account.get('created_at', ''),
         'updated_at': account.get('updated_at', ''),
         'tags': account.get('tags', [])

@@ -457,113 +457,82 @@
 
     <!-- Token 刷新管理模态框 -->
     <div class="modal" id="refreshModal" onmousedown="if(event.target === this) hideRefreshModal()">
-        <div class="modal-content" style="width: 800px; max-width: 90vw;">
+        <div class="modal-content refresh-modal-content">
             <div class="modal-header">
                 <h3>🔄 Token 刷新管理</h3>
                 <button class="modal-close" onclick="hideRefreshModal()">&times;</button>
             </div>
-            <div class="modal-body">
-                <!-- 刷新统计 -->
-                <div
-                    style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-                    <div
-                        style="font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #333; display: flex; align-items: center; gap: 8px;">
-                        <span>📊</span>
-                        <span>刷新统计</span>
-                    </div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;">
-                        <div
-                            style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-                            <div
-                                style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-                                <span>🕐</span>
-                                <span>上次刷新</span>
+            <div class="modal-body refresh-modal-body">
+                <div class="refresh-workbench">
+                    <section class="refresh-snapshot-grid">
+                        <article class="refresh-snapshot-card refresh-snapshot-card--wide">
+                            <span class="refresh-snapshot-card__label">最近一次全量刷新</span>
+                            <div class="refresh-snapshot-card__value" id="lastRefreshTime">-</div>
+                            <div class="refresh-snapshot-card__meta">
+                                <span class="refresh-status-pill" id="lastRefreshStatusLabel">未执行</span>
                             </div>
-                            <div style="font-size: 13px; font-weight: 600; color: #333;" id="lastRefreshTime">-</div>
-                        </div>
-                        <div
-                            style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-                            <div
-                                style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-                                <span>📝</span>
-                                <span>总邮箱数</span>
-                            </div>
-                            <div style="font-size: 18px; font-weight: 700; color: #333;" id="totalRefreshCount">0</div>
-                        </div>
-                        <div
-                            style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-                            <div
-                                style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-                                <span>✅</span>
-                                <span>成功邮箱</span>
-                            </div>
-                            <div style="font-size: 18px; font-weight: 700; color: #28a745;" id="successRefreshCount">0
-                            </div>
-                        </div>
-                        <div
-                            style="background-color: white; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-                            <div
-                                style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-                                <span>❌</span>
-                                <span>失败邮箱</span>
-                            </div>
-                            <div style="font-size: 18px; font-weight: 700; color: #dc3545;" id="failedRefreshCount">0
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                        </article>
+                        <article class="refresh-snapshot-card">
+                            <span class="refresh-snapshot-card__label">总邮箱数</span>
+                            <div class="refresh-snapshot-card__value" id="totalRefreshCount">0</div>
+                        </article>
+                        <article class="refresh-snapshot-card">
+                            <span class="refresh-snapshot-card__label">成功邮箱</span>
+                            <div class="refresh-snapshot-card__value refresh-snapshot-card__value--success" id="successRefreshCount">0</div>
+                        </article>
+                        <article class="refresh-snapshot-card">
+                            <span class="refresh-snapshot-card__label">失败邮箱</span>
+                            <div class="refresh-snapshot-card__value refresh-snapshot-card__value--danger" id="failedRefreshCount">0</div>
+                        </article>
+                    </section>
 
-                <!-- 操作按钮 -->
-                <div
-                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 16px;">
-                    <button class="btn btn-primary" onclick="refreshAllAccounts()" id="refreshAllBtn">
-                        🔄 全量刷新
-                    </button>
-                    <button class="btn btn-warning" onclick="retryFailedAccounts()" id="retryFailedBtn">
-                        🔁 重试失败
-                    </button>
-                    <button class="btn btn-secondary" onclick="loadFailedLogs()">
-                        ❌ 失败邮箱
-                    </button>
-                    <button class="btn btn-secondary" onclick="loadRefreshLogs()">
-                        📋 刷新历史
-                    </button>
-                </div>
+                    <div class="refresh-progress-banner" id="refreshProgressBanner" hidden>
+                        <div class="refresh-progress-banner__title">正在刷新</div>
+                        <div class="refresh-progress-banner__text" id="refreshProgressText">请稍候</div>
+                    </div>
 
-                <!-- 刷新进度 -->
-                <div id="refreshProgress"
-                    style="display: none; background-color: #e3f2fd; padding: 16px; border-radius: 6px; margin-bottom: 16px; border-left: 4px solid #2196f3;">
-                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #1976d2;">正在刷新...</div>
-                    <div style="font-size: 13px; line-height: 1.8;" id="refreshProgressText">请稍候</div>
-                </div>
+                    <section class="refresh-toolbar">
+                        <div class="refresh-toolbar__search">
+                            <input type="search" class="form-input" id="refreshSearchInput"
+                                placeholder="搜索邮箱、备注或分组" oninput="handleRefreshSearchInput(this.value)">
+                        </div>
+                        <div class="refresh-toolbar__filters">
+                            <button type="button" class="refresh-filter-chip is-active" data-status="all"
+                                onclick="setRefreshStatusFilter('all', this)">
+                                <span>全部</span>
+                                <strong id="refreshFilterCountAll">0</strong>
+                            </button>
+                            <button type="button" class="refresh-filter-chip" data-status="success"
+                                onclick="setRefreshStatusFilter('success', this)">
+                                <span>成功</span>
+                                <strong id="refreshFilterCountSuccess">0</strong>
+                            </button>
+                            <button type="button" class="refresh-filter-chip" data-status="failed"
+                                onclick="setRefreshStatusFilter('failed', this)">
+                                <span>失败</span>
+                                <strong id="refreshFilterCountFailed">0</strong>
+                            </button>
+                            <button type="button" class="refresh-filter-chip" data-status="never"
+                                onclick="setRefreshStatusFilter('never', this)">
+                                <span>从未刷新</span>
+                                <strong id="refreshFilterCountNever">0</strong>
+                            </button>
+                        </div>
+                        <div class="refresh-toolbar__actions">
+                            <button class="btn btn-primary" onclick="refreshAllAccounts()" id="refreshAllBtn">全量刷新</button>
+                            <button class="btn btn-warning" onclick="retryFailedAccounts()" id="retryFailedBtn">重试失败</button>
+                        </div>
+                    </section>
 
-                <!-- 失败邮箱列表 -->
-                <div id="failedListContainer" style="display: none;">
-                    <div
-                        style="font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-                        <span>当前失败状态的邮箱</span>
-                        <button class="btn btn-sm btn-secondary" onclick="hideFailedList()">隐藏</button>
-                    </div>
-                    <div id="failedList"
-                        style="max-height: 300px; overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 6px;">
-                        <!-- 失败列表将通过 JS 动态加载 -->
-                    </div>
-                </div>
-
-                <!-- 刷新历史 -->
-                <div id="refreshLogsContainer" style="display: none;">
-                    <div
-                        style="font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; padding: 10px; background-color: #f8f9fa; border-radius: 6px;">
-                        <span style="display: flex; align-items: center; gap: 6px;">
-                            <span>📋</span>
-                            <span>刷新历史</span>
-                        </span>
-                        <button class="btn btn-sm btn-secondary" onclick="hideRefreshLogs()">隐藏</button>
-                    </div>
-                    <div id="refreshLogsList"
-                        style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 6px; background-color: white;">
-                        <!-- 刷新历史将通过 JS 动态加载 -->
-                    </div>
+                    <section class="refresh-list-panel">
+                        <div class="refresh-list-panel__head">
+                            <span class="refresh-list-panel__title">邮箱列表</span>
+                            <span class="refresh-list-panel__meta" id="refreshListSummary">共 0 项</span>
+                        </div>
+                        <div class="refresh-account-list" id="refreshAccountList">
+                            <!-- 刷新状态列表将通过 JS 动态加载 -->
+                        </div>
+                    </section>
                 </div>
             </div>
             <div class="modal-footer">

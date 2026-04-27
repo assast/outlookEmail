@@ -540,6 +540,284 @@
             font-weight: 500;
         }
 
+        .refresh-modal-content {
+            width: min(1180px, calc(100vw - 32px));
+            max-width: calc(100vw - 24px);
+            max-height: min(92vh, 960px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .refresh-modal-body {
+            padding: 20px;
+            background: linear-gradient(180deg, #f8fafc 0%, #f4f6fb 100%);
+            overflow-y: auto;
+        }
+
+        .refresh-workbench {
+            display: grid;
+            gap: 16px;
+        }
+
+        .refresh-snapshot-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .refresh-snapshot-card {
+            padding: 16px;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+            display: grid;
+            gap: 8px;
+        }
+
+        .refresh-snapshot-card--wide {
+            align-content: start;
+        }
+
+        .refresh-snapshot-card__label {
+            font-size: 12px;
+            color: #6b7280;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+        }
+
+        .refresh-snapshot-card__value {
+            font-size: 24px;
+            line-height: 1.15;
+            color: #111827;
+            font-weight: 700;
+        }
+
+        .refresh-snapshot-card__value--success {
+            color: #15803d;
+        }
+
+        .refresh-snapshot-card__value--danger {
+            color: #b42318;
+        }
+
+        .refresh-snapshot-card__meta {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .refresh-status-pill {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 0 10px;
+            border-radius: 999px;
+            background: #eef2f7;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .refresh-status-pill.success {
+            background: #e7f8ee;
+            color: #137333;
+        }
+
+        .refresh-status-pill.failed {
+            background: #fdebec;
+            color: #b42318;
+        }
+
+        .refresh-status-pill.never {
+            background: #f1f3f5;
+            color: #6b7280;
+        }
+
+        .refresh-status-pill.running {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+
+        .refresh-status-pill.partial-failed {
+            background: #fff4e5;
+            color: #b45309;
+        }
+
+        .refresh-progress-banner {
+            padding: 14px 16px;
+            border: 1px solid #bfdbfe;
+            border-left: 4px solid #2563eb;
+            border-radius: 14px;
+            background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
+            display: grid;
+            gap: 6px;
+        }
+
+        .refresh-progress-banner[hidden] {
+            display: none !important;
+        }
+
+        .refresh-progress-banner__title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1d4ed8;
+        }
+
+        .refresh-progress-banner__text {
+            font-size: 13px;
+            line-height: 1.7;
+            color: #334155;
+        }
+
+        .refresh-toolbar {
+            display: grid;
+            grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) auto;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .refresh-toolbar__filters {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .refresh-toolbar__actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .refresh-filter-chip {
+            min-height: 38px;
+            padding: 0 12px;
+            border: 1px solid #d9dce3;
+            border-radius: 999px;
+            background: #ffffff;
+            color: #475569;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: border-color 0.16s, background-color 0.16s, box-shadow 0.16s, color 0.16s;
+        }
+
+        .refresh-filter-chip strong {
+            font-size: 11px;
+        }
+
+        .refresh-filter-chip:hover {
+            border-color: #c4c9d4;
+            background: #f8fafc;
+            color: #111827;
+        }
+
+        .refresh-filter-chip.is-active {
+            border-color: #111827;
+            background: linear-gradient(180deg, #ffffff 0%, #f3f4f6 100%);
+            color: #111827;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+        }
+
+        .refresh-list-panel {
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            background: #ffffff;
+            overflow: hidden;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+        }
+
+        .refresh-list-panel__head {
+            padding: 14px 16px;
+            border-bottom: 1px solid #eef2f7;
+            background: linear-gradient(180deg, #fbfcfe 0%, #f6f8fb 100%);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .refresh-list-panel__title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .refresh-list-panel__meta {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .refresh-account-list {
+            max-height: 520px;
+            overflow-y: auto;
+            display: grid;
+        }
+
+        .refresh-account-empty {
+            padding: 32px 20px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 13px;
+        }
+
+        .refresh-account-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.8fr) 150px 130px auto;
+            gap: 12px;
+            padding: 14px 16px;
+            border-bottom: 1px solid #eef2f7;
+            align-items: center;
+        }
+
+        .refresh-account-row:last-child {
+            border-bottom: none;
+        }
+
+        .refresh-account-row.is-refreshing {
+            background: linear-gradient(180deg, #f8fbff 0%, #f2f8ff 100%);
+        }
+
+        .refresh-account-main {
+            min-width: 0;
+            display: grid;
+            gap: 6px;
+        }
+
+        .refresh-account-email {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 14px;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .refresh-account-remark,
+        .refresh-account-group,
+        .refresh-account-time {
+            font-size: 12px;
+            color: #6b7280;
+            line-height: 1.6;
+        }
+
+        .refresh-account-error {
+            font-size: 12px;
+            color: #b42318;
+            line-height: 1.6;
+            word-break: break-word;
+        }
+
+        .refresh-account-action {
+            display: flex;
+            justify-content: flex-end;
+        }
+
         .forwarding-console {
             gap: 14px;
         }
@@ -906,6 +1184,7 @@
         }
 
         @media (max-width: 860px) {
+            .refresh-snapshot-grid,
             .forwarding-toolbar__controls,
             .settings-panel-grid,
             .settings-grid,
@@ -920,11 +1199,17 @@
                 align-items: stretch;
             }
 
+            .refresh-toolbar,
             .forwarding-channel-group__head,
             .forward-channel-panel__header,
             .settings-log-drawer__summary {
                 flex-direction: column;
                 align-items: stretch;
+            }
+
+            .refresh-toolbar {
+                display: grid;
+                grid-template-columns: 1fr;
             }
 
             .settings-action-row--toolbar {
@@ -941,6 +1226,15 @@
         @media (max-width: 979px) {
             .settings-modal-content {
                 width: min(920px, calc(100vw - 28px));
+            }
+
+            .refresh-account-row {
+                grid-template-columns: 1fr;
+                align-items: start;
+            }
+
+            .refresh-account-action {
+                justify-content: flex-start;
             }
 
             .settings-sidebar {

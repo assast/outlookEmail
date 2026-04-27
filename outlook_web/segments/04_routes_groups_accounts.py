@@ -555,14 +555,10 @@ def api_get_accounts():
     group_id = request.args.get('group_id', type=int)
     accounts = load_accounts(group_id)
 
-    # 获取每个账号的最后刷新状态
-    db = get_db()
-
     # 返回时隐藏敏感信息
     safe_accounts = []
     for acc in accounts:
-        last_refresh_log = get_latest_account_refresh_log(acc['id'], db)
-        safe_accounts.append(serialize_account_summary(acc, last_refresh_log))
+        safe_accounts.append(serialize_account_summary(acc))
     return jsonify({'success': True, 'accounts': safe_accounts})
 
 
@@ -573,15 +569,13 @@ def api_external_get_accounts():
     """对外 API：通过 API Key 获取邮箱账号列表"""
     group_id = request.args.get('group_id', type=int)
     accounts = load_accounts(group_id)
-    db = get_db()
 
     safe_accounts = []
     for acc in accounts:
-        last_refresh_log = get_latest_account_refresh_log(acc['id'], db)
         safe_accounts.append(
             serialize_account_summary(
                 acc,
-                last_refresh_log,
+                None,
                 include_client_meta=False,
                 include_imap_meta=False
             )
@@ -951,8 +945,7 @@ def api_search_accounts():
     for row in rows:
         acc = resolve_account_record(row)
         acc['tags'] = get_account_tags(acc['id'])
-        last_refresh_log = get_latest_account_refresh_log(acc['id'], db)
-        safe_accounts.append(serialize_account_summary(acc, last_refresh_log))
+        safe_accounts.append(serialize_account_summary(acc))
 
     return jsonify({'success': True, 'accounts': safe_accounts})
 
