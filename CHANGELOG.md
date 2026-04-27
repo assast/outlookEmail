@@ -16,6 +16,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ### Fixed
 - 修复账号更新动态覆盖路由未同步透传 `sort_order` 的问题，避免编辑保存后自定义排序失效。
 - 统一账号列表、搜索结果和详情接口中的 `sort_order` 返回结构，并补齐对应回归测试。
+- 修复邮件转发轮询间隔设置为 `60` 分钟时生成非法 `*/60` Cron 表达式的问题，改为按整点触发并补充对应回归测试。
 
 ## [2.0.32] - 2026-04-24
 

@@ -789,6 +789,14 @@ def api_test_forward_channel():
         return jsonify({'success': False, 'error': f'测试失败: {str(exc)}'})
 
 
+def build_forwarding_poll_trigger(cron_trigger_cls, interval_minutes: int, timezone):
+    """构建转发轮询触发器，兼容 60 分钟整点轮询。"""
+    normalized_interval = max(1, min(60, int(interval_minutes or 5)))
+    if normalized_interval >= 60:
+        return cron_trigger_cls(minute=0, timezone=timezone)
+    return cron_trigger_cls(minute=f'*/{normalized_interval}', timezone=timezone)
+
+
 def init_scheduler():
     """初始化定时任务调度器"""
     global scheduler_instance
@@ -842,7 +850,7 @@ def init_scheduler():
                             forward_interval = max(1, min(60, int(get_setting('forward_check_interval_minutes', '5') or '5')))
                             scheduler.add_job(
                                 func=process_forwarding_job,
-                                trigger=CronTrigger(minute=f'*/{forward_interval}', timezone=app_tzinfo),
+                                trigger=build_forwarding_poll_trigger(CronTrigger, forward_interval, app_tzinfo),
                                 id='forward_mail',
                                 name='邮件转发轮询',
                                 replace_existing=True
@@ -869,7 +877,7 @@ def init_scheduler():
                 forward_interval = max(1, min(60, int(get_setting('forward_check_interval_minutes', '5') or '5')))
                 scheduler.add_job(
                     func=process_forwarding_job,
-                    trigger=CronTrigger(minute=f'*/{forward_interval}', timezone=app_tzinfo),
+                    trigger=build_forwarding_poll_trigger(CronTrigger, forward_interval, app_tzinfo),
                     id='forward_mail',
                     name='邮件转发轮询',
                     replace_existing=True

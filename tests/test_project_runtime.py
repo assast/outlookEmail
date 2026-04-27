@@ -701,6 +701,42 @@ class SchedulerTimezoneMigrationTests(unittest.TestCase):
         self.assertEqual(str(scheduler.timezone), web_outlook_app.DEFAULT_APP_TIMEZONE)
         self.assertTrue(any(job.get('id') == 'token_refresh' for job in scheduler.jobs))
 
+    def test_scheduler_supports_forward_interval_sixty_minutes(self):
+        class FakeScheduler:
+            def __init__(self, timezone=None):
+                self.timezone = timezone
+                self.jobs = []
+                self.started = False
+
+            def add_job(self, func=None, trigger=None, **kwargs):
+                self.jobs.append({'func': func, 'trigger': trigger, **kwargs})
+
+            def start(self):
+                self.started = True
+
+            def shutdown(self, wait=True):
+                self.started = False
+
+        def fake_cron_trigger(**kwargs):
+            return {'trigger': 'cron', 'kwargs': kwargs}
+
+        with self.app.app_context():
+            web_outlook_app.init_db()
+            self.assertTrue(web_outlook_app.set_setting('forward_check_interval_minutes', '60'))
+            web_outlook_app.shutdown_scheduler()
+
+        with patch('apscheduler.schedulers.background.BackgroundScheduler', FakeScheduler), \
+             patch('apscheduler.triggers.cron.CronTrigger', side_effect=fake_cron_trigger), \
+             patch('atexit.register'), \
+             patch('builtins.print'):
+            scheduler = web_outlook_app.init_scheduler()
+
+        self.assertIsInstance(scheduler, FakeScheduler)
+        self.assertTrue(scheduler.started)
+        forward_job = next(job for job in scheduler.jobs if job.get('id') == 'forward_mail')
+        self.assertEqual(forward_job['trigger']['kwargs']['minute'], 0)
+        self.assertNotIn('*/60', str(forward_job['trigger']['kwargs']))
+
 
 if __name__ == '__main__':
     unittest.main()
