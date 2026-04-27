@@ -914,8 +914,18 @@ curl -H "X-API-Key: your-api-key" \
 | --- | --- | --- | --- |
 | GET | `/api/accounts/refresh-logs` | Query: `limit`、`offset` | 获取所有刷新日志 |
 | GET | `/api/accounts/<account_id>/refresh-logs` | Query: `limit`、`offset` | 获取单个账号刷新日志 |
-| GET | `/api/accounts/refresh-logs/failed` | 无 | 获取最近失败刷新记录 |
-| GET | `/api/accounts/refresh-stats` | 无 | 获取刷新统计汇总 |
+| GET | `/api/accounts/refresh-logs/failed` | 无 | 获取当前失败状态邮箱快照 |
+| GET | `/api/accounts/refresh-stats` | 无 | 获取当前刷新统计快照 |
+| GET | `/api/accounts/refresh-status-list` | Query: `q`、`status`、`page`、`page_size` | 获取 Token 刷新管理邮箱列表 |
+
+`GET /api/accounts/refresh-logs/failed` 返回的是“当前仍处于失败状态的邮箱快照”，不再是历史失败日志列表。
+
+`GET /api/accounts/refresh-status-list` 查询参数：
+
+- `q`
+- `status=all|success|failed|never`
+- `page`
+- `page_size`
 
 ### 转发日志与触发
 

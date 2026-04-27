@@ -555,14 +555,10 @@ def api_get_accounts():
     group_id = request.args.get('group_id', type=int)
     accounts = load_accounts(group_id)
 
-    # 获取每个账号的最后刷新状态
-    db = get_db()
-
     # 返回时隐藏敏感信息
     safe_accounts = []
     for acc in accounts:
-        last_refresh_log = get_latest_account_refresh_log(acc['id'], db)
-        safe_accounts.append(serialize_account_summary(acc, last_refresh_log))
+        safe_accounts.append(serialize_account_summary(acc))
     return jsonify({'success': True, 'accounts': safe_accounts})
 
 
@@ -573,15 +569,13 @@ def api_external_get_accounts():
     """对外 API：通过 API Key 获取邮箱账号列表"""
     group_id = request.args.get('group_id', type=int)
     accounts = load_accounts(group_id)
-    db = get_db()
 
     safe_accounts = []
     for acc in accounts:
-        last_refresh_log = get_latest_account_refresh_log(acc['id'], db)
         safe_accounts.append(
             serialize_account_summary(
                 acc,
-                last_refresh_log,
+                None,
                 include_client_meta=False,
                 include_imap_meta=False
             )
@@ -949,42 +943,9 @@ def api_search_accounts():
     rows = cursor.fetchall()
     safe_accounts = []
     for row in rows:
-        acc = dict(row)
-        aliases = get_account_aliases(acc['id'])
-        # 加载账号标签
+        acc = resolve_account_record(row)
         acc['tags'] = get_account_tags(acc['id'])
-        
-        # 查询该账号最后一次刷新记录
-        refresh_cursor = db.execute('''
-            SELECT status, error_message, created_at
-            FROM account_refresh_logs
-            WHERE account_id = ?
-            ORDER BY created_at DESC
-            LIMIT 1
-        ''', (acc['id'],))
-        last_refresh_log = refresh_cursor.fetchone()
-
-        safe_accounts.append({
-            'id': acc['id'],
-            'email': acc['email'],
-            'aliases': aliases,
-            'alias_count': len(aliases),
-            'client_id': acc['client_id'][:8] + '...' if len(acc['client_id']) > 8 else acc['client_id'],
-            'group_id': acc['group_id'],
-            'group_name': acc['group_name'] if acc['group_name'] else '默认分组',
-            'group_color': acc['group_color'] if acc['group_color'] else '#666666',
-            'remark': acc['remark'] if acc['remark'] else '',
-            'status': acc['status'] if acc['status'] else 'active',
-            'account_type': acc.get('account_type', 'outlook'),
-            'provider': acc.get('provider', 'outlook'),
-            'forward_enabled': bool(acc.get('forward_enabled')),
-            'created_at': acc['created_at'] if acc['created_at'] else '',
-            'updated_at': acc['updated_at'] if acc['updated_at'] else '',
-            'tags': acc['tags'],
-            'last_refresh_at': acc.get('last_refresh_at', ''),
-            'last_refresh_status': last_refresh_log['status'] if last_refresh_log else None,
-            'last_refresh_error': last_refresh_log['error_message'] if last_refresh_log else None
-        })
+        safe_accounts.append(serialize_account_summary(acc))
 
     return jsonify({'success': True, 'accounts': safe_accounts})
 
@@ -1017,6 +978,7 @@ def api_get_account(account_id):
             'forward_last_checked_at': account.get('forward_last_checked_at', ''),
             'group_id': account.get('group_id'),
             'group_name': account.get('group_name', '默认分组'),
+            'sort_order': normalize_account_sort_order(account.get('sort_order', 0)),
             'remark': account.get('remark', ''),
             'status': account.get('status', 'active'),
             'created_at': account.get('created_at', ''),
@@ -1082,6 +1044,7 @@ def api_add_account():
     account_format = data.get('account_format', 'client_id_refresh_token')
     provider = data.get('provider', 'outlook')
     forward_enabled = bool(data.get('forward_enabled', False))
+    sort_order = parse_account_sort_order_input(data.get('sort_order')) if 'sort_order' in data else None
     imap_host = (data.get('imap_host', '') or '').strip()
     try:
         imap_port = int(data.get('imap_port', 993) or 993)
@@ -1114,7 +1077,8 @@ def api_add_account():
                 parsed.get('imap_host', ''),
                 parsed.get('imap_port', 993),
                 parsed.get('imap_password', ''),
-                forward_enabled
+                forward_enabled,
+                sort_order
             ):
                 added += 1
     
@@ -1145,6 +1109,7 @@ def api_update_account(account_id):
     imap_port = data.get('imap_port', 993)
     imap_password = data.get('imap_password', '')
     group_id = data.get('group_id', 1)
+    sort_order = parse_account_sort_order_input(data.get('sort_order')) if 'sort_order' in data else None
     remark = sanitize_input(data.get('remark', ''), max_length=200)
     status = data.get('status', 'active')
     forward_enabled = bool(data.get('forward_enabled', False))
@@ -1183,7 +1148,7 @@ def api_update_account(account_id):
             return jsonify({'success': False, 'error': '；'.join(alias_errors), 'errors': alias_errors})
 
     if update_account(
-        account_id, email_addr, password, client_id, refresh_token, group_id, remark, status,
+        account_id, email_addr, password, client_id, refresh_token, group_id, sort_order, remark, status,
         account_type, provider, imap_host, imap_port, imap_password, forward_enabled
     ):
         cleaned_aliases = get_account_aliases(account_id)

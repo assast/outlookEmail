@@ -440,15 +440,6 @@
             min-width: 0;
         }
 
-        .account-email-index {
-            min-width: 18px;
-            font-size: 11px;
-            color: #9aa0aa;
-            font-weight: 700;
-            line-height: 1.8;
-            flex-shrink: 0;
-        }
-
         .account-remark {
             font-size: 12px;
             color: #5b6472;
@@ -589,6 +580,12 @@
             align-items: center;
             justify-content: space-between;
             flex-wrap: wrap;
+        }
+
+        .account-created-at {
+            font-size: 11px;
+            color: #6b7280;
+            line-height: 1.4;
         }
 
         .account-refresh-meta {

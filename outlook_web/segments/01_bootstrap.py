@@ -79,6 +79,7 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 scheduler_instance = None
 scheduler_lock = threading.Lock()
+token_refresh_run_lock = threading.Lock()
 proxy_socket_lock = threading.RLock()
 
 
@@ -1016,6 +1017,7 @@ def init_db():
             client_id TEXT DEFAULT '',
             refresh_token TEXT DEFAULT '',
             group_id INTEGER,
+            sort_order INTEGER DEFAULT 0,
             remark TEXT,
             status TEXT DEFAULT 'active',
             account_type TEXT DEFAULT 'outlook',
@@ -1026,6 +1028,9 @@ def init_db():
             forward_enabled INTEGER DEFAULT 0,
             forward_last_checked_at TIMESTAMP,
             last_refresh_at TIMESTAMP,
+            last_refresh_status TEXT DEFAULT 'never',
+            last_refresh_error TEXT,
+            refresh_token_updated_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (group_id) REFERENCES groups (id)
@@ -1072,6 +1077,21 @@ def init_db():
             error_message TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE CASCADE
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS token_refresh_state (
+            scope_key TEXT PRIMARY KEY,
+            trigger_type TEXT DEFAULT '',
+            status TEXT DEFAULT 'idle',
+            started_at TIMESTAMP,
+            finished_at TIMESTAMP,
+            total_count INTEGER DEFAULT 0,
+            success_count INTEGER DEFAULT 0,
+            failed_count INTEGER DEFAULT 0,
+            error_summary TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 
@@ -1264,6 +1284,8 @@ def init_db():
 
     if 'group_id' not in columns:
         cursor.execute('ALTER TABLE accounts ADD COLUMN group_id INTEGER DEFAULT 1')
+    if 'sort_order' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN sort_order INTEGER DEFAULT 0')
     if 'remark' not in columns:
         cursor.execute('ALTER TABLE accounts ADD COLUMN remark TEXT')
     if 'status' not in columns:
@@ -1272,6 +1294,12 @@ def init_db():
         cursor.execute('ALTER TABLE accounts ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
     if 'last_refresh_at' not in columns:
         cursor.execute('ALTER TABLE accounts ADD COLUMN last_refresh_at TIMESTAMP')
+    if 'last_refresh_status' not in columns:
+        cursor.execute("ALTER TABLE accounts ADD COLUMN last_refresh_status TEXT DEFAULT 'never'")
+    if 'last_refresh_error' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN last_refresh_error TEXT')
+    if 'refresh_token_updated_at' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN refresh_token_updated_at TIMESTAMP')
     if 'account_type' not in columns:
         cursor.execute("ALTER TABLE accounts ADD COLUMN account_type TEXT DEFAULT 'outlook'")
     if 'provider' not in columns:
@@ -1488,6 +1516,10 @@ def init_db():
         INSERT OR IGNORE INTO settings (key, value)
         VALUES ('app_timezone', ?)
     ''', (DEFAULT_APP_TIMEZONE or 'Asia/Shanghai',))
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('show_account_created_at', 'true')
+    ''')
 
     cursor.execute('''
         INSERT OR IGNORE INTO settings (key, value)
@@ -1565,13 +1597,100 @@ def init_db():
     ''')
 
     cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_accounts_last_refresh_status
+        ON accounts(last_refresh_status)
+    ''')
+
+    cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_accounts_status
         ON accounts(status)
     ''')
 
     cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_accounts_sort_order
+        ON accounts(sort_order)
+    ''')
+
+    cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_account_refresh_logs_account_id
         ON account_refresh_logs(account_id)
+    ''')
+
+    cursor.execute('''
+        INSERT OR IGNORE INTO token_refresh_state (
+            scope_key, trigger_type, status, total_count, success_count, failed_count, updated_at
+        )
+        VALUES ('all_outlook', '', 'idle', 0, 0, 0, CURRENT_TIMESTAMP)
+    ''')
+
+    cursor.execute('''
+        UPDATE accounts
+        SET last_refresh_status = COALESCE(
+            NULLIF(last_refresh_status, ''),
+            (
+                SELECT l.status
+                FROM account_refresh_logs l
+                WHERE l.account_id = accounts.id
+                ORDER BY l.created_at DESC, l.id DESC
+                LIMIT 1
+            ),
+            CASE
+                WHEN last_refresh_at IS NOT NULL THEN 'success'
+                ELSE 'never'
+            END
+        )
+        WHERE last_refresh_status IS NULL OR last_refresh_status = ''
+    ''')
+
+    cursor.execute('''
+        UPDATE accounts
+        SET last_refresh_error = (
+            SELECT l.error_message
+            FROM account_refresh_logs l
+            WHERE l.account_id = accounts.id
+            ORDER BY l.created_at DESC, l.id DESC
+            LIMIT 1
+        )
+        WHERE COALESCE(last_refresh_status, 'never') = 'failed'
+          AND (last_refresh_error IS NULL OR last_refresh_error = '')
+          AND EXISTS (
+              SELECT 1
+              FROM account_refresh_logs l
+              WHERE l.account_id = accounts.id
+          )
+    ''')
+
+    cursor.execute('''
+        UPDATE accounts
+        SET last_refresh_error = NULL
+        WHERE COALESCE(last_refresh_status, 'never') != 'failed'
+          AND last_refresh_error IS NOT NULL
+    ''')
+
+    cursor.execute('''
+        UPDATE accounts
+        SET last_refresh_at = (
+            SELECT l.created_at
+            FROM account_refresh_logs l
+            WHERE l.account_id = accounts.id
+            ORDER BY l.created_at DESC, l.id DESC
+            LIMIT 1
+        )
+        WHERE EXISTS (
+            SELECT 1
+            FROM account_refresh_logs l
+            WHERE l.account_id = accounts.id
+        )
+          AND (
+              last_refresh_at IS NULL OR
+              last_refresh_at < (
+                  SELECT l.created_at
+                  FROM account_refresh_logs l
+                  WHERE l.account_id = accounts.id
+                  ORDER BY l.created_at DESC, l.id DESC
+                  LIMIT 1
+              )
+          )
     ''')
 
     cursor.execute('''

@@ -169,6 +169,7 @@ def api_get_settings():
     settings['cloudflare_email_domains'] = ', '.join(get_cloudflare_email_domains())
     settings['cloudflare_admin_password'] = get_cloudflare_admin_password()
     settings['app_timezone'] = get_app_timezone()
+    settings['show_account_created_at'] = get_setting('show_account_created_at', 'true')
     settings['forward_channels'] = get_forward_channels()
     settings['forward_check_interval_minutes'] = get_setting('forward_check_interval_minutes', '5')
     settings['forward_email_window_minutes'] = get_setting('forward_email_window_minutes', '0')
@@ -293,6 +294,16 @@ def api_update_settings():
             updated.append('Time zone')
         else:
             errors.append('Failed to save time zone')
+
+    if 'show_account_created_at' in data:
+        show_created_at = str(data['show_account_created_at']).lower()
+        if show_created_at in ('true', 'false'):
+            if set_setting('show_account_created_at', show_created_at):
+                updated.append('创建时间展示')
+            else:
+                errors.append('更新创建时间展示失败')
+        else:
+            errors.append('创建时间展示必须是 true 或 false')
 
     # 更新对外 API Key
     if 'external_api_key' in data:

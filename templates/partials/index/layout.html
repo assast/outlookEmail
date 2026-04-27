@@ -140,11 +140,14 @@
                 <div class="sort-control toolbar-row">
                     <span class="toolbar-label">排序</span>
                     <div class="toolbar-chip-group">
-                        <button class="sort-btn active" data-sort="refresh_time" onclick="sortAccounts('refresh_time')">
-                            最近刷新
+                        <button class="sort-btn active" data-sort="sort_order" onclick="sortAccounts('sort_order')">
+                            排序值
+                        </button>
+                        <button class="sort-btn" data-sort="created_at" onclick="sortAccounts('created_at')">
+                            创建时间
                         </button>
                         <button class="sort-btn" data-sort="email" onclick="sortAccounts('email')">
-                            邮箱名称
+                            邮箱名
                         </button>
                     </div>
                 </div>

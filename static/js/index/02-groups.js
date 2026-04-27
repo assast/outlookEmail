@@ -1,4 +1,4 @@
-        /* global accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, formatRelativeTime, generateTempEmail, groups, handleApiError, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, tempEmailGroupId, updateCurrentGroupHeader, updateMobileContext */
+        /* global accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, formatAbsoluteDateTime, generateTempEmail, groups, handleApiError, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, shouldShowAccountCreatedAt, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, tempEmailGroupId, updateCurrentGroupHeader, updateMobileContext */
 
         // ==================== 分组相关 ====================
 
@@ -631,7 +631,7 @@
                 return;
             }
 
-            container.innerHTML = accounts.map((acc, index) => `
+            container.innerHTML = accounts.map(acc => `
                 <div class="account-item ${currentAccount === acc.email ? 'active' : ''} ${acc.status === 'inactive' ? 'inactive' : ''}"
                      onclick="handleAccountItemClick(event, '${escapeJs(acc.email)}')">
                     <input type="checkbox" class="account-select-checkbox" value="${acc.id}" 
@@ -643,7 +643,6 @@
                     <div class="account-body">
                         <div class="account-title-row">
                             <div class="account-email-wrap">
-                                <span class="account-email-index">${index + 1}.</span>
                                 <div class="account-email" title="${escapeHtml(acc.email)}" style="${acc.last_refresh_status === 'failed' ? 'color: #b42318;' : ''}">
                                     ${escapeHtml(acc.email)}
                                 </div>
@@ -662,12 +661,7 @@
                         ${renderAccountAliasSummary(acc.aliases)}
                         ${acc.remark && acc.remark.trim() ? `<div class="account-remark" title="${escapeHtml(acc.remark)}">${escapeHtml(acc.remark)}</div>` : ''}
                         ${(acc.tags || []).length ? `<div class="account-tags">${renderAccountTagSummary(acc.tags)}</div>` : ''}
-                        <div class="account-refresh-row">
-                            <span class="account-refresh-meta ${acc.last_refresh_status === 'failed' ? 'failed' : ''}">
-                                ${formatRelativeTime(acc.last_refresh_at)}
-                            </span>
-                            ${acc.last_refresh_status === 'failed' ? '<button class="account-error-btn" onclick="event.stopPropagation(); showRefreshError(' + acc.id + ', \'' + escapeJs(acc.last_refresh_error || '未知错误') + '\', \'' + escapeJs(acc.email) + '\')">查看错误</button>' : ''}
-                        </div>
+                        ${renderAccountFooter(acc)}
                     </div>
                     <div class="account-menu-wrap">
                         <button class="account-menu-trigger" type="button" data-account-menu-toggle="true" title="更多操作">⋯</button>
@@ -685,8 +679,13 @@
         }
 
         // 排序相关变量
-        let currentSortBy = 'refresh_time';
-        let currentSortOrder = 'asc';
+        const ACCOUNT_SORT_DEFAULT_ORDERS = {
+            sort_order: 'asc',
+            created_at: 'desc',
+            email: 'asc'
+        };
+        let currentSortBy = 'sort_order';
+        let currentSortOrder = ACCOUNT_SORT_DEFAULT_ORDERS[currentSortBy];
         let suppressGroupClickUntil = 0;
         function createGroupDragState() {
             return {
@@ -705,6 +704,44 @@
         }
         let groupDragState = createGroupDragState();
 
+        function renderAccountFooter(acc) {
+            const footerParts = [];
+            if (shouldShowAccountCreatedAt() && acc.created_at) {
+                footerParts.push(`<span class="account-created-at" title="${escapeHtml(acc.created_at || '')}">${escapeHtml(formatAbsoluteDateTime(acc.created_at))}</span>`);
+            }
+            if (acc.last_refresh_status === 'failed') {
+                footerParts.push('<button class="account-error-btn" onclick="event.stopPropagation(); showRefreshError(' + acc.id + ', \'' + escapeJs(acc.last_refresh_error || '未知错误') + '\', \'' + escapeJs(acc.email) + '\')">查看错误</button>');
+            }
+            if (!footerParts.length) {
+                return '';
+            }
+            return `<div class="account-refresh-row">${footerParts.join('')}</div>`;
+        }
+
+        function getAccountSortOrderValue(account) {
+            const value = parseInt(account?.sort_order, 10);
+            return Number.isFinite(value) && value > 0 ? value : null;
+        }
+
+        function getAccountCreatedAtValue(account) {
+            const value = Date.parse(account?.created_at || '');
+            return Number.isNaN(value) ? 0 : value;
+        }
+
+        function compareAccountsByCreatedAt(a, b, order = 'desc') {
+            const createdA = getAccountCreatedAtValue(a);
+            const createdB = getAccountCreatedAtValue(b);
+            return order === 'asc' ? createdA - createdB : createdB - createdA;
+        }
+
+        function compareAccountsByEmail(a, b, order = 'asc') {
+            const emailA = String(a?.email || '').toLowerCase();
+            const emailB = String(b?.email || '').toLowerCase();
+            return order === 'asc'
+                ? emailA.localeCompare(emailB)
+                : emailB.localeCompare(emailA);
+        }
+
         // 排序账号列表
         function sortAccounts(sortBy) {
             // 如果点击同一个排序按钮，切换排序顺序
@@ -712,7 +749,7 @@
                 currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
             } else {
                 currentSortBy = sortBy;
-                currentSortOrder = sortBy === 'refresh_time' ? 'asc' : 'asc';
+                currentSortOrder = ACCOUNT_SORT_DEFAULT_ORDERS[sortBy] || 'asc';
             }
 
             // 更新按钮状态
@@ -834,17 +871,40 @@
 
             // 2. 排序
             return result.sort((a, b) => {
-                if (currentSortBy === 'refresh_time') {
-                    const timeA = a.last_refresh_at ? new Date(a.last_refresh_at) : new Date(0);
-                    const timeB = b.last_refresh_at ? new Date(b.last_refresh_at) : new Date(0);
-                    return currentSortOrder === 'asc' ? timeA - timeB : timeB - timeA;
-                } else {
-                    const emailA = a.email.toLowerCase();
-                    const emailB = b.email.toLowerCase();
-                    return currentSortOrder === 'asc'
-                        ? emailA.localeCompare(emailB)
-                        : emailB.localeCompare(emailA);
+                if (currentSortBy === 'sort_order') {
+                    const sortA = getAccountSortOrderValue(a);
+                    const sortB = getAccountSortOrderValue(b);
+                    const hasSortA = sortA !== null;
+                    const hasSortB = sortB !== null;
+
+                    if (hasSortA !== hasSortB) {
+                        return hasSortA ? -1 : 1;
+                    }
+
+                    if (hasSortA && hasSortB && sortA !== sortB) {
+                        return currentSortOrder === 'asc' ? sortA - sortB : sortB - sortA;
+                    }
+
+                    const createdCompare = compareAccountsByCreatedAt(a, b, 'desc');
+                    if (createdCompare !== 0) {
+                        return createdCompare;
+                    }
+                    return compareAccountsByEmail(a, b, 'asc');
                 }
+
+                if (currentSortBy === 'created_at') {
+                    const createdCompare = compareAccountsByCreatedAt(a, b, currentSortOrder);
+                    if (createdCompare !== 0) {
+                        return createdCompare;
+                    }
+                    return compareAccountsByEmail(a, b, 'asc');
+                }
+
+                const emailCompare = compareAccountsByEmail(a, b, currentSortOrder);
+                if (emailCompare !== 0) {
+                    return emailCompare;
+                }
+                return compareAccountsByCreatedAt(a, b, 'desc');
             });
         }
 

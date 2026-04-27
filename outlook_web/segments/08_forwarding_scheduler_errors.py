@@ -789,6 +789,14 @@ def api_test_forward_channel():
         return jsonify({'success': False, 'error': f'测试失败: {str(exc)}'})
 
 
+def build_forwarding_poll_trigger(cron_trigger_cls, interval_minutes: int, timezone):
+    """构建转发轮询触发器，兼容 60 分钟整点轮询。"""
+    normalized_interval = max(1, min(60, int(interval_minutes or 5)))
+    if normalized_interval >= 60:
+        return cron_trigger_cls(minute=0, timezone=timezone)
+    return cron_trigger_cls(minute=f'*/{normalized_interval}', timezone=timezone)
+
+
 def init_scheduler():
     """初始化定时任务调度器"""
     global scheduler_instance
@@ -842,7 +850,7 @@ def init_scheduler():
                             forward_interval = max(1, min(60, int(get_setting('forward_check_interval_minutes', '5') or '5')))
                             scheduler.add_job(
                                 func=process_forwarding_job,
-                                trigger=CronTrigger(minute=f'*/{forward_interval}', timezone=app_tzinfo),
+                                trigger=build_forwarding_poll_trigger(CronTrigger, forward_interval, app_tzinfo),
                                 id='forward_mail',
                                 name='邮件转发轮询',
                                 replace_existing=True
@@ -869,7 +877,7 @@ def init_scheduler():
                 forward_interval = max(1, min(60, int(get_setting('forward_check_interval_minutes', '5') or '5')))
                 scheduler.add_job(
                     func=process_forwarding_job,
-                    trigger=CronTrigger(minute=f'*/{forward_interval}', timezone=app_tzinfo),
+                    trigger=build_forwarding_poll_trigger(CronTrigger, forward_interval, app_tzinfo),
                     id='forward_mail',
                     name='邮件转发轮询',
                     replace_existing=True
@@ -932,19 +940,7 @@ def scheduled_refresh_task():
                 return
 
             refresh_interval_days = int(get_setting('refresh_interval_days', '30'))
-
-        conn = sqlite3.connect(DATABASE)
-        conn.execute('PRAGMA foreign_keys = ON')
-        conn.row_factory = sqlite3.Row
-        cursor = conn.execute('''
-            SELECT MAX(created_at) as last_refresh
-            FROM account_refresh_logs
-            WHERE refresh_type = 'scheduled'
-        ''')
-        row = cursor.fetchone()
-        conn.close()
-
-        last_refresh = row['last_refresh'] if row and row['last_refresh'] else None
+            last_refresh = build_refresh_stats().get('last_refresh_time')
 
         if last_refresh:
             last_refresh_time = datetime.fromisoformat(last_refresh)
@@ -966,92 +962,19 @@ ensure_scheduler_started()
 
 def trigger_refresh_internal():
     """内部触发刷新（不通过 HTTP）"""
-    conn = sqlite3.connect(DATABASE)
-    conn.execute('PRAGMA foreign_keys = ON')
-    conn.row_factory = sqlite3.Row
-
     try:
-        # 获取刷新间隔配置
-        cursor_settings = conn.execute("SELECT value FROM settings WHERE key = 'refresh_delay_seconds'")
-        delay_row = cursor_settings.fetchone()
-        delay_seconds = int(delay_row['value']) if delay_row else 5
-
-        # 清理超过半年的刷新记录
-        conn.execute("DELETE FROM account_refresh_logs WHERE created_at < datetime('now', '-6 months')")
-        conn.commit()
-
-        cursor = conn.execute("SELECT id, email, client_id, refresh_token, group_id FROM accounts WHERE status = 'active' AND COALESCE(account_type, 'outlook') = 'outlook'")
-        accounts = cursor.fetchall()
-
-        total = len(accounts)
-        success_count = 0
-        failed_count = 0
-
-        for index, account in enumerate(accounts, 1):
-            account_id = account['id']
-            account_email = account['email']
-            client_id = account['client_id']
-            encrypted_refresh_token = account['refresh_token']
-
-            try:
-                refresh_token = decrypt_data(encrypted_refresh_token) if encrypted_refresh_token else encrypted_refresh_token
-            except Exception as e:
-                failed_count += 1
-                error_msg = f"解密 token 失败: {str(e)}"
-                conn.execute('''
-                    INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (account_id, account_email, 'scheduled', 'failed', error_msg))
-                conn.commit()
-                continue
-
-            # 获取分组代理设置
-            proxy_url = ''
-            group_id = account['group_id']
-            if group_id:
-                group_cursor = conn.execute(
-                    'SELECT proxy_url, fallback_proxy_url_1, fallback_proxy_url_2 FROM groups WHERE id = ?',
-                    (group_id,)
-                )
-                group_row = group_cursor.fetchone()
-                if group_row:
-                    proxy_url = group_row['proxy_url'] or ''
-            fallback_proxy_urls = get_group_proxy_failover_urls(dict(group_row) if group_row else None)
-
-            success, error_msg, rotated_refresh_token = test_refresh_token(
-                client_id,
-                refresh_token,
-                proxy_url,
-                fallback_proxy_urls,
-            )
-
-            if success and rotated_refresh_token and rotated_refresh_token != refresh_token:
-                persist_rotated_refresh_token(account_id, rotated_refresh_token, conn)
-
-            conn.execute('''
-                INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (account_id, account_email, 'scheduled', 'success' if success else 'failed', error_msg))
-
-            if success:
-                conn.execute('''
-                    UPDATE accounts
-                    SET last_refresh_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                ''', (account_id,))
-                success_count += 1
-            else:
-                failed_count += 1
-
-            conn.commit()
-
-            if index < total and delay_seconds > 0:
-                time.sleep(delay_seconds)
-
-        print(f"[定时任务] 刷新结果：总计 {total}，成功 {success_count}，失败 {failed_count}")
-
-    finally:
-        conn.close()
+        result = run_full_refresh('scheduled', 'scheduled')
+    except TokenRefreshInProgressError as exc:
+        print(f"[定时任务] 跳过执行：{str(exc)}")
+        return {
+            'type': 'conflict',
+            'total': 0,
+            'success_count': 0,
+            'failed_count': 0,
+            'message': str(exc),
+        }
+    print(f"[定时任务] 刷新结果：总计 {result['total']}，成功 {result['success_count']}，失败 {result['failed_count']}")
+    return result
 
 
 # ==================== 错误处理 ====================
@@ -1071,6 +994,7 @@ def api_update_account_v2(account_id):
     imap_host = (data.get('imap_host', '') or '').strip()
     imap_password = data.get('imap_password', '') or ''
     group_id = data.get('group_id', 1)
+    sort_order = parse_account_sort_order_input(data.get('sort_order')) if 'sort_order' in data else None
     remark = sanitize_input(data.get('remark', ''), max_length=200)
     status = data.get('status', 'active')
     forward_enabled = bool(data.get('forward_enabled', False))
@@ -1125,6 +1049,7 @@ def api_update_account_v2(account_id):
         client_id,
         refresh_token,
         group_id,
+        sort_order,
         remark,
         status,
         account_type,

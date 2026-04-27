@@ -53,6 +53,7 @@
         let versionStatusRequest = null;
         let emailListLoadCheckTimer = null;
         let appTimeZone = DEFAULT_APP_TIME_ZONE;
+        let showAccountCreatedAt = true;
 
         function isUntaggedTagFilterValue(value) {
             return String(value || '').trim() === UNTAGGED_TAG_FILTER_KEY;
@@ -118,6 +119,59 @@
 
         function getAppTimeZone() {
             return normalizeAppTimeZone(appTimeZone);
+        }
+
+        function setShowAccountCreatedAt(enabled) {
+            showAccountCreatedAt = enabled !== false;
+            return showAccountCreatedAt;
+        }
+
+        function shouldShowAccountCreatedAt() {
+            return showAccountCreatedAt !== false;
+        }
+
+        function parseDateInput(dateInput) {
+            if (!dateInput) {
+                return null;
+            }
+
+            if (dateInput instanceof Date) {
+                return Number.isNaN(dateInput.getTime()) ? null : dateInput;
+            }
+
+            if (typeof dateInput === 'number' || /^\d+$/.test(String(dateInput))) {
+                const timestamp = Number(dateInput);
+                const parsed = new Date(timestamp < 1000000000000 ? timestamp * 1000 : timestamp);
+                return Number.isNaN(parsed.getTime()) ? null : parsed;
+            }
+
+            let normalizedInput = String(dateInput).trim();
+            if (!normalizedInput) {
+                return null;
+            }
+
+            if (!normalizedInput.includes('Z') && !normalizedInput.includes('+') && !normalizedInput.includes('-', 10)) {
+                normalizedInput += 'Z';
+            }
+
+            const parsed = new Date(normalizedInput);
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+
+        function formatAbsoluteDateTime(dateInput) {
+            const date = parseDateInput(dateInput);
+            if (!date) {
+                return '-';
+            }
+
+            return date.toLocaleString('zh-CN', {
+                timeZone: getAppTimeZone(),
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
         }
 
         function getAvailableAppTimeZones() {
@@ -677,6 +731,7 @@
                 if (timeZone) {
                     setAppTimeZone(timeZone);
                 }
+                setShowAccountCreatedAt(String(data?.settings?.show_account_created_at) !== 'false');
                 return data?.settings || null;
             } catch (error) {
                 return null;

@@ -1187,6 +1187,216 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
         self.assertIsNotNone(refreshed)
         self.assertEqual(refreshed['refresh_token'], '0.AXEA_rotated_scheduled')
 
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            account_row = db.execute(
+                '''
+                SELECT last_refresh_status, last_refresh_error, last_refresh_at, refresh_token_updated_at
+                FROM accounts
+                WHERE id = ?
+                ''',
+                (self.account_id,),
+            ).fetchone()
+            snapshot_row = db.execute(
+                '''
+                SELECT trigger_type, status, total_count, success_count, failed_count, finished_at
+                FROM token_refresh_state
+                WHERE scope_key = 'all_outlook'
+                '''
+            ).fetchone()
+
+        self.assertEqual(account_row['last_refresh_status'], 'success')
+        self.assertIsNone(account_row['last_refresh_error'])
+        self.assertIsNotNone(account_row['last_refresh_at'])
+        self.assertIsNotNone(account_row['refresh_token_updated_at'])
+        self.assertEqual(snapshot_row['trigger_type'], 'scheduled')
+        self.assertEqual(snapshot_row['status'], 'success')
+        self.assertEqual(snapshot_row['total_count'], 1)
+        self.assertEqual(snapshot_row['success_count'], 1)
+        self.assertEqual(snapshot_row['failed_count'], 0)
+        self.assertIsNotNone(snapshot_row['finished_at'])
+
+    def test_run_full_refresh_marks_failed_snapshot_on_unexpected_exception(self):
+        with self.assertRaises(RuntimeError):
+            with patch.object(web_outlook_app, 'refresh_outlook_account_token', side_effect=RuntimeError('boom')):
+                web_outlook_app.run_full_refresh('scheduled', 'scheduled')
+
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            account_row = db.execute(
+                '''
+                SELECT last_refresh_status, last_refresh_error
+                FROM accounts
+                WHERE id = ?
+                ''',
+                (self.account_id,),
+            ).fetchone()
+            snapshot_row = db.execute(
+                '''
+                SELECT status, total_count, success_count, failed_count, error_summary
+                FROM token_refresh_state
+                WHERE scope_key = 'all_outlook'
+                '''
+            ).fetchone()
+
+        self.assertEqual(account_row['last_refresh_status'], 'failed')
+        self.assertEqual(account_row['last_refresh_error'], 'boom')
+        self.assertEqual(snapshot_row['status'], 'failed')
+        self.assertEqual(snapshot_row['total_count'], 1)
+        self.assertEqual(snapshot_row['success_count'], 0)
+        self.assertEqual(snapshot_row['failed_count'], 1)
+        self.assertIn('boom', snapshot_row['error_summary'])
+
+    def test_run_full_refresh_rejects_when_another_full_refresh_is_running(self):
+        web_outlook_app.token_refresh_run_lock.acquire()
+        try:
+            with self.assertRaises(web_outlook_app.TokenRefreshInProgressError):
+                web_outlook_app.run_full_refresh('scheduled', 'scheduled')
+        finally:
+            web_outlook_app.token_refresh_run_lock.release()
+
+    def test_stream_full_refresh_events_yields_conflict_when_locked(self):
+        web_outlook_app.token_refresh_run_lock.acquire()
+        stream = web_outlook_app.stream_full_refresh_events('manual_all', 'manual')
+        try:
+            first_event = next(stream)
+        finally:
+            stream.close()
+            web_outlook_app.token_refresh_run_lock.release()
+
+        payload = json.loads(first_event.removeprefix('data: ').strip())
+        self.assertEqual(payload['type'], 'conflict')
+        self.assertIn('已有 Token 全量刷新任务在执行', payload['message'])
+
+    def test_cleanup_refresh_logs_removes_entries_older_than_six_months(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM account_refresh_logs')
+            db.execute(
+                '''
+                INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message, created_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now', '-8 months'))
+                ''',
+                (self.account_id, 'proxy-refresh@outlook.com', 'manual', 'failed', 'old failure')
+            )
+            db.execute(
+                '''
+                INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message, created_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now', '-2 months'))
+                ''',
+                (self.account_id, 'proxy-refresh@outlook.com', 'manual', 'success', None)
+            )
+            db.commit()
+
+            deleted_count = web_outlook_app.cleanup_refresh_logs()
+
+            remaining_rows = db.execute(
+                '''
+                SELECT status, error_message
+                FROM account_refresh_logs
+                ORDER BY created_at ASC, id ASC
+                '''
+            ).fetchall()
+
+        self.assertEqual(deleted_count, 1)
+        self.assertEqual(len(remaining_rows), 1)
+        self.assertEqual(remaining_rows[0]['status'], 'success')
+        self.assertIsNone(remaining_rows[0]['error_message'])
+
+    def test_refresh_status_list_filters_by_latest_status(self):
+        with self.app.app_context():
+            self.assertTrue(
+                web_outlook_app.add_account(
+                    'success-status@example.com',
+                    'password123',
+                    '24d9a0ed-8787-4584-883c-2fd79308940a',
+                    '0.AXEA_success',
+                    group_id=self.group_id,
+                    remark='成功账号',
+                    forward_enabled=False,
+                )
+            )
+            self.assertTrue(
+                web_outlook_app.add_account(
+                    'never-status@example.com',
+                    'password123',
+                    '24d9a0ed-8787-4584-883c-2fd79308940a',
+                    '0.AXEA_never',
+                    group_id=self.group_id,
+                    remark='从未刷新账号',
+                    forward_enabled=False,
+                )
+            )
+            self.assertTrue(
+                web_outlook_app.add_account(
+                    'imap-hidden@example.com',
+                    'password123',
+                    '',
+                    '',
+                    group_id=self.group_id,
+                    remark='不应出现在刷新列表',
+                    account_type='imap',
+                    provider='custom',
+                    imap_host='imap.example.com',
+                    imap_port=993,
+                    imap_password='imap-secret',
+                    forward_enabled=False,
+                )
+            )
+
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                UPDATE accounts
+                SET last_refresh_status = 'failed',
+                    last_refresh_error = 'proxy timeout',
+                    last_refresh_at = '2026-04-27 10:00:00'
+                WHERE id = ?
+                ''',
+                (self.account_id,),
+            )
+            db.execute(
+                '''
+                UPDATE accounts
+                SET last_refresh_status = 'success',
+                    last_refresh_error = NULL,
+                    last_refresh_at = '2026-04-27 11:00:00'
+                WHERE email = ?
+                ''',
+                ('success-status@example.com',),
+            )
+            db.execute(
+                '''
+                UPDATE token_refresh_state
+                SET trigger_type = 'manual_all',
+                    status = 'partial_failed',
+                    finished_at = '2026-04-27 11:30:00',
+                    total_count = 3,
+                    success_count = 1,
+                    failed_count = 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE scope_key = 'all_outlook'
+                '''
+            )
+            db.commit()
+
+        response = self.client.get('/api/accounts/refresh-status-list?status=failed&q=proxy&page=1&page_size=20')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['total'], 1)
+        self.assertEqual(len(payload['items']), 1)
+        self.assertEqual(payload['items'][0]['email'], 'proxy-refresh@outlook.com')
+        self.assertEqual(payload['items'][0]['last_refresh_status'], 'failed')
+        self.assertEqual(payload['items'][0]['last_refresh_error'], 'proxy timeout')
+        self.assertEqual(payload['stats']['total'], 3)
+        self.assertEqual(payload['stats']['success_count'], 1)
+        self.assertEqual(payload['stats']['failed_count'], 1)
+        self.assertEqual(payload['stats']['never_count'], 1)
+        self.assertEqual(payload['stats']['last_refresh_status'], 'partial_failed')
+        self.assertEqual(payload['stats']['last_refresh_time'], '2026-04-27 11:30:00')
+
     def test_group_api_persists_proxy_failover_fields(self):
         response = self.client.put(
             f'/api/groups/{self.group_id}',
@@ -1349,6 +1559,22 @@ class AppTimezoneSettingsTests(unittest.TestCase):
         payload = response.get_json()
         self.assertFalse(payload['success'])
         self.assertIn('Invalid time zone', payload['error'])
+
+    def test_settings_api_persists_show_account_created_at(self):
+        response = self.client.put(
+            '/api/settings',
+            json={'show_account_created_at': False}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        response = self.client.get('/api/settings')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['settings']['show_account_created_at'], 'false')
 
     def test_validate_cron_uses_requested_timezone(self):
         response = self.client.post(

@@ -1,4 +1,4 @@
-        /* global accountsCache, closeAllModals, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, setModalVisible, setSelectedForwardChannels, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
+        /* global accountsCache, closeAllModals, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, refreshVisibleAccountList, setAppTimeZone, setModalVisible, setSelectedForwardChannels, setShowAccountCreatedAt, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
 
         // ==================== 设置相关 ====================
         let settingsScrollSyncBound = false;
@@ -40,7 +40,7 @@
         async function showSettingsModal() {
             ensureSettingsScrollSync();
             showModal('settingsModal');
-            scrollSettingsSection('settingsAccessSection');
+            scrollSettingsSection('settingsGeneralSection');
             populateTimeZoneOptions(getAppTimeZone());
             await loadSettings();
             scheduleSettingsSidebarSync();
@@ -370,6 +370,7 @@
                     document.getElementById('editImapHost').value = acc.imap_host || '';
                     document.getElementById('editImapPort').value = acc.imap_port || 993;
                     document.getElementById('editGroupSelect').value = acc.group_id || 1;
+                    document.getElementById('editSortOrder').value = Number(acc.sort_order || 0);
                     document.getElementById('editRemark').value = acc.remark || '';
                     document.getElementById('editAliases').value = Array.isArray(acc.aliases) ? acc.aliases.join('\n') : '';
                     document.getElementById('editStatus').value = acc.status || 'active';
@@ -394,6 +395,7 @@
             const provider = document.getElementById('editProviderSelect')?.value || 'outlook';
             const isOutlook = provider === 'outlook';
             const imapPort = parseInt(document.getElementById('editImapPort')?.value || '993', 10);
+            const sortOrder = parseInt(document.getElementById('editSortOrder')?.value || '0', 10);
 
             const data = {
                 email: document.getElementById('editEmail').value.trim(),
@@ -406,6 +408,7 @@
                 imap_port: Number.isFinite(imapPort) ? imapPort : 993,
                 imap_password: document.getElementById('editImapPassword')?.value || '',
                 group_id: newGroupId,
+                sort_order: Number.isFinite(sortOrder) ? Math.max(0, sortOrder) : 0,
                 remark: document.getElementById('editRemark').value.trim(),
                 aliases: document.getElementById('editAliases')?.value
                     .split('\n')
@@ -429,6 +432,10 @@
                     showToast('自定义 IMAP 必须填写服务器地址', 'error');
                     return;
                 }
+            }
+            if (!Number.isFinite(sortOrder) || sortOrder < 0) {
+                showToast('排序值不能小于 0', 'error');
+                return;
             }
 
             try {
@@ -482,6 +489,7 @@
                     document.getElementById('refreshDelaySeconds').value = data.settings.refresh_delay_seconds || '5';
                     document.getElementById('refreshCron').value = data.settings.refresh_cron || '0 2 * * *';
                     document.getElementById('enableScheduledRefresh').checked = data.settings.enable_scheduled_refresh !== 'false';
+                    document.getElementById('settingsShowAccountCreatedAt').checked = String(data.settings.show_account_created_at) !== 'false';
                     document.getElementById('forwardCheckIntervalMinutes').value = data.settings.forward_check_interval_minutes || '5';
                     document.getElementById('forwardEmailWindowMinutes').value = data.settings.forward_email_window_minutes || '0';
                     document.getElementById('forwardIncludeJunkemail').checked = String(data.settings.forward_include_junkemail) === 'true';
@@ -521,6 +529,7 @@
             const appTimeZone = document.getElementById('settingsAppTimezone').value.trim();
             const strategy = document.querySelector('input[name="refreshStrategy"]:checked').value;
             const enableScheduled = document.getElementById('enableScheduledRefresh').checked;
+            const showAccountCreatedAt = !!document.getElementById('settingsShowAccountCreatedAt')?.checked;
             const settings = {};
             const forwardChannels = getSelectedForwardChannels();
 
@@ -607,6 +616,7 @@
             settings.use_cron_schedule = strategy === 'cron';
             settings.enable_scheduled_refresh = enableScheduled;
             settings.app_timezone = appTimeZone;
+            settings.show_account_created_at = showAccountCreatedAt;
             settings.forward_channels = forwardChannels;
             settings.forward_check_interval_minutes = forwardMinutes;
             settings.forward_email_window_minutes = forwardWindowMinutes;
@@ -643,10 +653,9 @@
                 const data = await response.json();
                 if (data.success) {
                     setAppTimeZone(appTimeZone);
-                    loadGroups();
-                    if (currentGroupId) {
-                        loadAccountsByGroup(currentGroupId, true);
-                    }
+                    setShowAccountCreatedAt(showAccountCreatedAt);
+                    await loadGroups();
+                    await refreshVisibleAccountList(false);
                     showToast('时间展示已生效，定时任务重启后生效', 'success');
                     hideSettingsModal();
                 } else {

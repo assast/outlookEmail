@@ -405,6 +405,116 @@ class ProjectRuntimeTests(unittest.TestCase):
             [0, 1, 2, 3]
         )
 
+    def test_init_db_adds_account_sort_order_column(self):
+        with self.app.app_context():
+            columns = [
+                row[1]
+                for row in web_outlook_app.get_db().execute("PRAGMA table_info(accounts)").fetchall()
+            ]
+
+        self.assertIn('sort_order', columns)
+
+    def test_account_sort_order_roundtrips_through_account_apis(self):
+        account_id = self._insert_account('sort@example.com')
+
+        update_response = self.client.put(
+            f'/api/accounts/{account_id}',
+            json={
+                'email': 'sort@example.com',
+                'password': '',
+                'client_id': 'client-id',
+                'refresh_token': 'refresh-token',
+                'account_type': 'outlook',
+                'provider': 'outlook',
+                'group_id': 1,
+                'sort_order': 7,
+                'remark': 'ordered',
+                'aliases': [],
+                'status': 'active',
+                'forward_enabled': False,
+            }
+        )
+        self.assertEqual(update_response.status_code, 200)
+        update_payload = update_response.get_json()
+        self.assertTrue(update_payload['success'])
+
+        detail_response = self.client.get(f'/api/accounts/{account_id}')
+        self.assertEqual(detail_response.status_code, 200)
+        detail_payload = detail_response.get_json()
+        self.assertTrue(detail_payload['success'])
+        self.assertEqual(detail_payload['account']['sort_order'], 7)
+
+        list_response = self.client.get('/api/accounts?group_id=1')
+        self.assertEqual(list_response.status_code, 200)
+        list_payload = list_response.get_json()
+        self.assertTrue(list_payload['success'])
+        listed_account = next(item for item in list_payload['accounts'] if item['id'] == account_id)
+        self.assertEqual(listed_account['sort_order'], 7)
+
+        search_response = self.client.get('/api/accounts/search?q=sort@example.com')
+        self.assertEqual(search_response.status_code, 200)
+        search_payload = search_response.get_json()
+        self.assertTrue(search_payload['success'])
+        self.assertEqual(search_payload['accounts'][0]['sort_order'], 7)
+
+    def test_add_account_without_sort_order_uses_created_at_fallback(self):
+        response = self.client.post(
+            '/api/accounts',
+            json={
+                'account_string': 'created-sort@example.com----password----client-id----refresh-token',
+                'group_id': 1,
+                'provider': 'outlook',
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        with self.app.app_context():
+            row = web_outlook_app.get_db().execute(
+                'SELECT sort_order FROM accounts WHERE email = ?',
+                ('created-sort@example.com',)
+            ).fetchone()
+
+        self.assertIsNotNone(row)
+        self.assertIsNone(row['sort_order'])
+
+    def test_update_account_without_sort_order_clears_custom_sort(self):
+        account_id = self._insert_account('clear-sort@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('UPDATE accounts SET sort_order = 9 WHERE id = ?', (account_id,))
+            db.commit()
+
+        response = self.client.put(
+            f'/api/accounts/{account_id}',
+            json={
+                'email': 'clear-sort@example.com',
+                'password': '',
+                'client_id': 'client-id',
+                'refresh_token': 'refresh-token',
+                'account_type': 'outlook',
+                'provider': 'outlook',
+                'group_id': 1,
+                'remark': '',
+                'aliases': [],
+                'status': 'active',
+                'forward_enabled': False,
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        with self.app.app_context():
+            row = web_outlook_app.get_db().execute(
+                'SELECT sort_order FROM accounts WHERE id = ?',
+                (account_id,)
+            ).fetchone()
+
+        self.assertIsNotNone(row)
+        self.assertIsNone(row['sort_order'])
+
     def test_imap_attachment_detail_and_download_route(self):
         with self.app.app_context():
             db = web_outlook_app.get_db()
@@ -499,8 +609,54 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn("fetch('/api/settings'", core_js)
         self.assertIn('await loadAppTimeZoneFromSettings();', core_js)
         self.assertLess(core_js.index('await loadAppTimeZoneFromSettings();'), core_js.index('loadGroups();'))
+        self.assertIn('setShowAccountCreatedAt(String(data?.settings?.show_account_created_at) !== \'false\');', core_js)
         self.assertIn('const timeZone = getAppTimeZone();', oauth_js)
         self.assertIn('timeZone: getAppTimeZone()', refresh_js)
+
+    def test_account_sort_ui_uses_sort_order_and_created_at(self):
+        layout_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'layout.html').read_text(encoding='utf-8')
+        settings_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'dialogs-management.html').read_text(encoding='utf-8')
+        dialog_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'dialogs-primary.html').read_text(encoding='utf-8')
+        groups_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '02-groups.js').read_text(encoding='utf-8')
+        settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')
+
+        self.assertNotIn('data-sort="refresh_time"', layout_html)
+        self.assertIn('data-sort="sort_order"', layout_html)
+        self.assertIn('data-sort="created_at"', layout_html)
+        self.assertIn('id="settingsShowAccountCreatedAt"', settings_html)
+        self.assertIn('id="editSortOrder"', dialog_html)
+        self.assertIn("let currentSortBy = 'sort_order';", groups_js)
+        self.assertIn("currentSortBy === 'sort_order'", groups_js)
+        self.assertIn("currentSortBy === 'created_at'", groups_js)
+        self.assertNotIn("currentSortBy === 'refresh_time'", groups_js)
+        self.assertIn('shouldShowAccountCreatedAt()', groups_js)
+        self.assertIn('formatAbsoluteDateTime(acc.created_at)', groups_js)
+        self.assertIn("document.getElementById('editSortOrder').value = Number(acc.sort_order || 0);", settings_js)
+        self.assertIn("document.getElementById('settingsShowAccountCreatedAt').checked = String(data.settings.show_account_created_at) !== 'false';", settings_js)
+        self.assertIn('settings.show_account_created_at = showAccountCreatedAt;', settings_js)
+
+    def test_refresh_management_ui_uses_account_workbench_layout(self):
+        settings_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'dialogs-management.html').read_text(encoding='utf-8')
+        refresh_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '08-refresh.js').read_text(encoding='utf-8')
+        batch_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '10-batch-actions.js').read_text(encoding='utf-8')
+        modal_css = pathlib.Path(ROOT_DIR, 'static', 'css', 'index', '06-modals-toast.css').read_text(encoding='utf-8')
+
+        self.assertIn('id="refreshSearchInput"', settings_html)
+        self.assertIn('id="refreshAccountList"', settings_html)
+        self.assertIn('class="refresh-account-table-wrap"', settings_html)
+        self.assertIn('data-status="never"', settings_html)
+        self.assertNotIn('onclick="loadFailedLogs()"', settings_html)
+        self.assertNotIn('onclick="loadRefreshLogs()"', settings_html)
+        self.assertIn('async function loadRefreshStatusList()', refresh_js)
+        self.assertIn('<table class="refresh-account-table">', refresh_js)
+        self.assertIn("function setRefreshStatusFilter(status, triggerEl = null)", refresh_js)
+        self.assertIn("async function openRefreshModalWithStatus(status = 'all')", refresh_js)
+        self.assertNotIn('showFailedListFromData', refresh_js)
+        self.assertNotIn('loadRefreshLogs', refresh_js)
+        self.assertIn("await openRefreshModalWithStatus('failed');", batch_js)
+        self.assertIn('.refresh-account-table-wrap', modal_css)
+        self.assertIn('.refresh-account-table', modal_css)
+        self.assertIn('.refresh-filter-chip', modal_css)
 
 
 class SchedulerTimezoneMigrationTests(unittest.TestCase):
@@ -567,6 +723,42 @@ class SchedulerTimezoneMigrationTests(unittest.TestCase):
         self.assertTrue(scheduler.started)
         self.assertEqual(str(scheduler.timezone), web_outlook_app.DEFAULT_APP_TIMEZONE)
         self.assertTrue(any(job.get('id') == 'token_refresh' for job in scheduler.jobs))
+
+    def test_scheduler_supports_forward_interval_sixty_minutes(self):
+        class FakeScheduler:
+            def __init__(self, timezone=None):
+                self.timezone = timezone
+                self.jobs = []
+                self.started = False
+
+            def add_job(self, func=None, trigger=None, **kwargs):
+                self.jobs.append({'func': func, 'trigger': trigger, **kwargs})
+
+            def start(self):
+                self.started = True
+
+            def shutdown(self, wait=True):
+                self.started = False
+
+        def fake_cron_trigger(**kwargs):
+            return {'trigger': 'cron', 'kwargs': kwargs}
+
+        with self.app.app_context():
+            web_outlook_app.init_db()
+            self.assertTrue(web_outlook_app.set_setting('forward_check_interval_minutes', '60'))
+            web_outlook_app.shutdown_scheduler()
+
+        with patch('apscheduler.schedulers.background.BackgroundScheduler', FakeScheduler), \
+             patch('apscheduler.triggers.cron.CronTrigger', side_effect=fake_cron_trigger), \
+             patch('atexit.register'), \
+             patch('builtins.print'):
+            scheduler = web_outlook_app.init_scheduler()
+
+        self.assertIsInstance(scheduler, FakeScheduler)
+        self.assertTrue(scheduler.started)
+        forward_job = next(job for job in scheduler.jobs if job.get('id') == 'forward_mail')
+        self.assertEqual(forward_job['trigger']['kwargs']['minute'], 0)
+        self.assertNotIn('*/60', str(forward_job['trigger']['kwargs']))
 
 
 if __name__ == '__main__':

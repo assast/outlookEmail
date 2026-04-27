@@ -88,7 +88,7 @@
                 return;
             }
 
-            container.innerHTML = filtered.map((email, index) => `
+            container.innerHTML = filtered.map(email => `
                 <div class="account-item ${currentAccount === email.email ? 'active' : ''}"
                      onclick="handleAccountItemClick(event, '${escapeJs(email.email)}', true)">
                     <input type="checkbox" class="account-select-checkbox" value="${email.id}"
@@ -100,7 +100,6 @@
                     <div class="account-body">
                         <div class="account-title-row">
                             <div class="account-email-wrap">
-                                <span class="account-email-index">${index + 1}.</span>
                                 <div class="account-email" title="${escapeHtml(email.email)}">${escapeHtml(email.email)}</div>
                             </div>
                         </div>
