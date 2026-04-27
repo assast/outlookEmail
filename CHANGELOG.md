@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.33] - 2026-04-28
+
 ### Added
 - 账号新增可持久化的自定义排序值 `sort_order`，列表支持按排序值、创建时间或邮箱名查看。
 - 系统设置新增“展示创建时间”开关，默认开启；邮箱列表左下角可按应用时区展示账号创建时间。
