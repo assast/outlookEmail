@@ -35,7 +35,6 @@ def _load_segmented_app():
         code = compile(segment_path.read_text(encoding="utf-8"), str(segment_path), "exec")
         exec(code, globals())
 
-
 _load_segmented_app()
 
 
