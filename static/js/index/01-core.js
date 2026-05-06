@@ -669,10 +669,11 @@
             const running = dockerUpdateStatus?.state?.running === true;
             const updateAvailable = currentVersionStatusState === 'update_available';
             const defaultLabel = updateButton.dataset.defaultLabel || 'Docker 更新';
+            const unavailableLabel = updateButton.dataset.unavailableLabel || '不可更新';
 
             updateButton.hidden = !(enabled && updateAvailable);
             updateButton.disabled = !available || running;
-            updateButton.textContent = running ? '更新中...' : defaultLabel;
+            updateButton.textContent = running ? '更新中...' : (available ? defaultLabel : unavailableLabel);
             updateButton.title = available
                 ? '启动 Docker 在线更新'
                 : (dockerUpdateStatus?.reason || 'Docker 更新不可用');
@@ -710,6 +711,35 @@
             return dockerUpdateStatusRequest;
         }
 
+        async function monitorDockerUpdateResult(attempt = 0) {
+            const status = await loadDockerUpdateStatus(true);
+            const state = status?.state || {};
+
+            if (state.running) {
+                if (attempt < 20) {
+                    window.setTimeout(() => monitorDockerUpdateResult(attempt + 1), 2000);
+                }
+                return;
+            }
+
+            if (state.success === null || typeof state.success === 'undefined') {
+                showToast(
+                    state.message || '服务可能已重启，请刷新并核对当前版本/镜像',
+                    'warning'
+                );
+                return;
+            }
+
+            if (state.success === false) {
+                showToast(state.error || state.message || 'Docker 更新未完成', 'error');
+                return;
+            }
+
+            if (state.success === true) {
+                showToast(state.message || 'Docker 更新已完成', 'success');
+            }
+        }
+
         async function startDockerUpdate() {
             const updateButton = document.getElementById('appVersionDockerUpdateBtn');
             if (updateButton?.disabled) return;
@@ -735,8 +765,8 @@
                 }
                 dockerUpdateStatus = payload.docker_update || dockerUpdateStatus;
                 refreshDockerUpdateButton();
-                showToast('Docker 更新已启动，服务可能会自动重启', 'success');
-                window.setTimeout(() => loadDockerUpdateStatus(true), 2000);
+                showToast(payload.message || 'Docker 更新任务已启动，正在等待结果', 'info');
+                window.setTimeout(() => monitorDockerUpdateResult(0), 2000);
             } catch (error) {
                 await loadDockerUpdateStatus(true);
                 showToast(error?.message || 'Docker 更新启动失败', 'error');

@@ -3,6 +3,7 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import re
 import socket
 import threading
 import time
@@ -14,8 +15,9 @@ if TYPE_CHECKING:
     from web_outlook_app import *  # noqa: F403
 
 
+DOCKER_UPDATE_STATE_FILE_NAME = 'docker_update_state.json'
 DOCKER_UPDATE_STATE_LOCK = threading.Lock()
-DOCKER_UPDATE_STATE: Dict[str, Any] = {
+DEFAULT_DOCKER_UPDATE_STATE: Dict[str, Any] = {
     'running': False,
     'started_at': None,
     'finished_at': None,
@@ -23,7 +25,9 @@ DOCKER_UPDATE_STATE: Dict[str, Any] = {
     'message': '',
     'error': '',
     'container_id': '',
+    'log_excerpt': '',
 }
+DOCKER_UPDATE_STATE: Dict[str, Any] = dict(DEFAULT_DOCKER_UPDATE_STATE)
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -47,7 +51,7 @@ def _docker_update_container_name() -> str:
     if configured:
         return configured
     hostname = os.getenv('HOSTNAME', '').strip()
-    return hostname or 'outlook-mail-reader'
+    return hostname or ''
 
 
 def _docker_update_watchtower_image() -> str:
@@ -62,6 +66,70 @@ def _docker_update_timeout_seconds() -> int:
     return min(max(timeout, 30), 1800)
 
 
+def _docker_update_status_timeout_seconds() -> int:
+    try:
+        timeout = int(os.getenv('DOCKER_UPDATE_STATUS_TIMEOUT', '10'))
+    except ValueError:
+        timeout = 10
+    return min(max(timeout, 2), 120)
+
+
+def _docker_update_state_file_path() -> str:
+    override = os.getenv('DOCKER_UPDATE_STATE_FILE', '').strip()
+    if override:
+        target_path = os.path.abspath(override)
+    else:
+        database_path = os.path.abspath(str(DATABASE or ''))
+        data_dir = os.path.dirname(database_path) if database_path else str(runtime_root())
+        target_path = os.path.join(data_dir, DOCKER_UPDATE_STATE_FILE_NAME)
+
+    parent_dir = os.path.dirname(target_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+    return target_path
+
+
+def _persist_docker_update_state(state: Dict[str, Any]) -> None:
+    target_path = _docker_update_state_file_path()
+    temp_path = f'{target_path}.tmp'
+    with open(temp_path, 'w', encoding='utf-8') as state_file:
+        json.dump(state, state_file, ensure_ascii=False, indent=2)
+    os.replace(temp_path, target_path)
+
+
+def _load_persisted_docker_update_state() -> Dict[str, Any]:
+    target_path = _docker_update_state_file_path()
+    if not os.path.exists(target_path):
+        return dict(DEFAULT_DOCKER_UPDATE_STATE)
+
+    try:
+        with open(target_path, 'r', encoding='utf-8') as state_file:
+            payload = json.load(state_file)
+    except Exception:
+        return dict(DEFAULT_DOCKER_UPDATE_STATE)
+
+    if not isinstance(payload, dict):
+        return dict(DEFAULT_DOCKER_UPDATE_STATE)
+
+    restored_state = dict(DEFAULT_DOCKER_UPDATE_STATE)
+    for key in DEFAULT_DOCKER_UPDATE_STATE:
+        if key in payload:
+            restored_state[key] = payload[key]
+
+    # If the process restarted mid-update, convert the stale in-memory "running"
+    # state into an unknown final result so the UI can prompt for a manual refresh.
+    if restored_state.get('running'):
+        restored_state.update({
+            'running': False,
+            'success': None,
+            'finished_at': restored_state.get('finished_at') or datetime.now(timezone.utc).isoformat(),
+            'message': 'Docker update status is unknown. The service may have restarted.',
+            'error': '',
+        })
+
+    return restored_state
+
+
 def get_docker_update_config() -> Dict[str, Any]:
     socket_path = _docker_update_socket_path()
     socket_supported = hasattr(socket, 'AF_UNIX')
@@ -69,6 +137,7 @@ def get_docker_update_config() -> Dict[str, Any]:
     enabled = _env_flag('DOCKER_UPDATE_ENABLED', False)
     container_name = _docker_update_container_name()
     reason = ''
+    current_image = ''
     if not enabled:
         reason = 'Docker update is disabled'
     elif not socket_supported:
@@ -77,13 +146,29 @@ def get_docker_update_config() -> Dict[str, Any]:
         reason = f'Docker socket not found: {socket_path}'
     elif not container_name:
         reason = 'Docker update container name is empty'
+    else:
+        inspect_config = {
+            'socket_path': socket_path,
+            'api_version': _docker_update_api_version(),
+            'timeout_seconds': _docker_update_status_timeout_seconds(),
+        }
+        try:
+            container_info = _inspect_docker_container(inspect_config, container_name)
+            container_name = _normalize_container_name(str(container_info.get('Name') or container_name))
+            current_image = str((container_info.get('Config') or {}).get('Image') or '').strip()
+            image_supported, image_reason = _docker_image_supports_online_update(current_image)
+            if not image_supported:
+                reason = image_reason
+        except Exception as exc:
+            reason = str(exc)
 
     return {
         'enabled': enabled,
-        'available': enabled and socket_exists and bool(container_name),
+        'available': enabled and socket_exists and bool(container_name) and not reason,
         'reason': reason,
         'socket_path': socket_path,
         'container': container_name,
+        'current_image': current_image,
         'watchtower_image': _docker_update_watchtower_image(),
         'api_version': _docker_update_api_version(),
         'timeout_seconds': _docker_update_timeout_seconds(),
@@ -98,7 +183,13 @@ def get_docker_update_state() -> Dict[str, Any]:
 def _update_docker_update_state(**changes: Any) -> Dict[str, Any]:
     with DOCKER_UPDATE_STATE_LOCK:
         DOCKER_UPDATE_STATE.update(changes)
-        return dict(DOCKER_UPDATE_STATE)
+        state_snapshot = dict(DOCKER_UPDATE_STATE)
+        _persist_docker_update_state(state_snapshot)
+        return state_snapshot
+
+
+with DOCKER_UPDATE_STATE_LOCK:
+    DOCKER_UPDATE_STATE.update(_load_persisted_docker_update_state())
 
 
 class _DockerUnixHTTPConnection(http.client.HTTPConnection):
@@ -153,6 +244,56 @@ def _split_image_reference(image_ref: str) -> Tuple[str, str]:
     return image_ref, 'latest'
 
 
+def _normalize_container_name(name: str) -> str:
+    return str(name or '').strip().lstrip('/')
+
+
+def _inspect_docker_container(config: Dict[str, Any], container_ref: str) -> Dict[str, Any]:
+    normalized_ref = str(container_ref or '').strip()
+    if not normalized_ref:
+        raise RuntimeError('Docker update container name is empty')
+
+    status, body = _docker_api_request(
+        'GET',
+        f'/containers/{quote(normalized_ref, safe="")}/json',
+        socket_path=config['socket_path'],
+        api_version=config['api_version'],
+        timeout=config['timeout_seconds'],
+    )
+    if status == 404:
+        raise RuntimeError(f'Docker update target container not found: {normalized_ref}')
+    if status < 200 or status >= 300:
+        raise RuntimeError(f'Failed to inspect docker container: HTTP {status} {body}')
+
+    try:
+        payload = json.loads(body or '{}')
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f'Invalid docker inspect response: {body}') from exc
+
+    if not isinstance(payload, dict):
+        raise RuntimeError(f'Invalid docker inspect response: {body}')
+    return payload
+
+
+def _docker_image_supports_online_update(image_ref: str) -> Tuple[bool, str]:
+    normalized_ref = str(image_ref or '').strip()
+    if not normalized_ref:
+        return False, 'Docker update current image is empty'
+
+    if '@' in normalized_ref:
+        return False, f'Docker online update does not support digest-pinned images: {normalized_ref}'
+
+    _repository, image_tag = _split_image_reference(normalized_ref)
+    normalized_tag = str(image_tag or '').strip()
+    if re.fullmatch(r'v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?', normalized_tag):
+        return False, (
+            'Docker online update requires a mutable image tag like latest/main/dev; '
+            f'current image is pinned to {normalized_ref}'
+        )
+
+    return True, ''
+
+
 def build_watchtower_create_payload(
     *,
     container_name: str,
@@ -162,6 +303,7 @@ def build_watchtower_create_payload(
     return {
         'Image': watchtower_image,
         'Cmd': ['--run-once', '--cleanup', container_name],
+        'Tty': True,
         'Env': [f'DOCKER_HOST=unix://{socket_path}'],
         'HostConfig': {
             'AutoRemove': True,
@@ -192,6 +334,60 @@ def _docker_pull_stream_error(body: str) -> str:
             return error_message or detail_message
 
     return ''
+
+
+def _docker_log_excerpt(body: str, max_lines: int = 12, max_chars: int = 2000) -> str:
+    lines = [line.rstrip() for line in str(body or '').splitlines() if line.strip()]
+    if not lines:
+        return ''
+
+    excerpt = '\n'.join(lines[-max_lines:])
+    if len(excerpt) > max_chars:
+        excerpt = excerpt[-max_chars:]
+    return excerpt.strip()
+
+
+def _read_watchtower_logs(config: Dict[str, Any], container_id: str) -> str:
+    path = (
+        f'/containers/{quote(container_id, safe="")}/logs?'
+        + urlencode({
+            'stdout': 1,
+            'stderr': 1,
+            'follow': 1,
+            'timestamps': 0,
+            'tail': 200,
+        })
+    )
+    connection = _DockerUnixHTTPConnection(config['socket_path'], timeout=config['timeout_seconds'])
+    try:
+        connection.request('GET', f'/{config["api_version"]}{path}', headers={'Host': 'docker'})
+        response = connection.getresponse()
+        body = _read_docker_api_body(response)
+        if response.status < 200 or response.status >= 300:
+            raise RuntimeError(f'Failed to read watchtower logs: HTTP {response.status} {body}')
+        return body
+    finally:
+        connection.close()
+
+
+def _classify_watchtower_logs(logs: str, current_image: str) -> Tuple[Optional[bool], str]:
+    normalized_logs = str(logs or '').lower()
+    if not normalized_logs.strip():
+        return None, ''
+
+    if 'no new images found' in normalized_logs:
+        return False, (
+            'No new image found for the current tag. If you use latest/main/dev, '
+            'wait for the registry image to finish publishing and retry.'
+        )
+
+    if 'no running containers to watch' in normalized_logs or 'no running containers to update' in normalized_logs:
+        return False, 'Watchtower did not find a matching running target container.'
+
+    if 'unable to update container' in normalized_logs or 'failed' in normalized_logs or 'error' in normalized_logs:
+        return False, f'Watchtower reported an update failure for {current_image or "the current image"}.'
+
+    return True, 'Docker image update completed. Service restart should begin shortly.'
 
 
 def _ensure_watchtower_image(config: Dict[str, Any]) -> None:
@@ -262,6 +458,7 @@ def run_docker_update_job(config: Dict[str, Any]) -> None:
         message='Pulling watchtower image',
         error='',
         container_id='',
+        log_excerpt='',
     )
     try:
         _ensure_watchtower_image(config)
@@ -272,6 +469,32 @@ def run_docker_update_job(config: Dict[str, Any]) -> None:
             container_id=container_id,
         )
         _start_watchtower_container(config, container_id)
+        _update_docker_update_state(message='Watching update task output')
+        logs = _read_watchtower_logs(config, container_id)
+        excerpt = _docker_log_excerpt(logs)
+        classified_success, classified_message = _classify_watchtower_logs(logs, str(config.get('current_image') or ''))
+        if classified_success is False:
+            _update_docker_update_state(
+                running=False,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+                success=False,
+                message=classified_message,
+                error=classified_message,
+                container_id=container_id,
+                log_excerpt=excerpt,
+            )
+            return
+        if classified_success is True:
+            _update_docker_update_state(
+                running=False,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+                success=True,
+                message=classified_message,
+                error='',
+                container_id=container_id,
+                log_excerpt=excerpt,
+            )
+            return
         _update_docker_update_state(
             running=False,
             finished_at=datetime.now(timezone.utc).isoformat(),
@@ -279,6 +502,7 @@ def run_docker_update_job(config: Dict[str, Any]) -> None:
             message='Docker update task started. The service may restart shortly.',
             error='',
             container_id=container_id,
+            log_excerpt=excerpt,
         )
     except Exception as exc:
         _update_docker_update_state(
@@ -287,6 +511,7 @@ def run_docker_update_job(config: Dict[str, Any]) -> None:
             success=False,
             message='Docker update failed',
             error=str(exc),
+            log_excerpt='',
         )
 
 
@@ -302,7 +527,9 @@ def start_docker_update_job(config: Dict[str, Any]) -> Tuple[bool, str]:
             'message': 'Docker update queued',
             'error': '',
             'container_id': '',
+            'log_excerpt': '',
         })
+        _persist_docker_update_state(dict(DOCKER_UPDATE_STATE))
 
     thread = threading.Thread(
         target=run_docker_update_job,
