@@ -6,8 +6,19 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.39] - 2026-05-06
+
 ### Added
 - 邮件详情附件区新增“全部下载”，可将同一封邮件的多个附件打包为 ZIP 下载。
+- 版本弹层新增 Docker 在线更新入口，可在启用 `DOCKER_UPDATE_ENABLED` 后从界面触发容器更新。
+- 新增 `/api/docker-update/status` 与 `/api/docker-update`，用于查询 Docker 更新能力并启动受登录和 CSRF 保护的更新任务。
+
+### Changed
+- Docker 在线更新改为通过一次性 Watchtower 容器执行，并为自定义 `DOCKER_UPDATE_SOCKET` 注入对应 `DOCKER_HOST`。
+- README 将 Docker 在线更新配置移入可选小节，并提供完整 `docker-compose.yml` 示例，避免默认示例直接挂载 Docker socket。
+
+### Fixed
+- 完整读取 Docker pull 响应流并检测 `error` / `errorDetail.message`，避免 Watchtower 镜像拉取失败时误判为更新任务已启动。
 
 ## [2.0.38] - 2026-05-03
 
