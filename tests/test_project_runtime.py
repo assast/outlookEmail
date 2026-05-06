@@ -878,6 +878,7 @@ class ProjectRuntimeTests(unittest.TestCase):
             self.assertEqual(zip_response.status_code, 200)
             self.assertEqual(zip_response.mimetype, 'application/zip')
             self.assertIn("filename*=UTF-8''attachments.zip", zip_response.headers.get('Content-Disposition', ''))
+            self.assertIsNone(zip_response.headers.get('Content-Length'))
             with zipfile.ZipFile(io.BytesIO(zip_response.data)) as archive:
                 self.assertEqual(set(archive.namelist()), {'report.txt', 'invoice.txt'})
                 self.assertEqual(archive.read('report.txt'), b'attachment body')

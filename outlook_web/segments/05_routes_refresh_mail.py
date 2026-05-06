@@ -2452,6 +2452,108 @@ def build_zip_attachment_name(filename, used_names):
     return candidate
 
 
+ZIP_STREAM_CHUNK_SIZE = 64 * 1024
+
+
+class StreamingZipBuffer:
+    def __init__(self):
+        self._position = 0
+        self._chunks = []
+
+    def write(self, data):
+        if not data:
+            return 0
+        chunk = bytes(data)
+        self._chunks.append(chunk)
+        self._position += len(chunk)
+        return len(chunk)
+
+    def tell(self):
+        return self._position
+
+    def seek(self, *_args, **_kwargs):
+        raise OSError('streaming zip buffer does not support seek')
+
+    def flush(self):
+        pass
+
+    def drain(self):
+        chunks = self._chunks
+        self._chunks = []
+        return chunks
+
+
+def iter_zip_content_chunks(content, chunk_size=ZIP_STREAM_CHUNK_SIZE):
+    if isinstance(content, str):
+        content = content.encode('utf-8')
+    content = content or b''
+    for offset in range(0, len(content), chunk_size):
+        yield content[offset:offset + chunk_size]
+
+
+def drain_streaming_zip_buffer(zip_buffer):
+    for chunk in zip_buffer.drain():
+        if chunk:
+            yield chunk
+
+
+def stringify_attachment_download_error(error):
+    if isinstance(error, dict):
+        return str(error.get('message') or error.get('code') or error)
+    return str(error or '获取附件失败')
+
+
+def stream_email_attachments_zip(account, method, message_id, attachments, folder, proxy_url, fallback_proxy_urls):
+    import zipfile
+
+    zip_buffer = StreamingZipBuffer()
+    used_names = set()
+    error_lines = []
+
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
+        for attachment in attachments:
+            result = download_email_attachment_for_account(
+                account,
+                method,
+                message_id,
+                attachment.get('id'),
+                folder,
+                proxy_url,
+                fallback_proxy_urls,
+            )
+            if not result.get('success'):
+                attachment_name = sanitize_attachment_filename(
+                    attachment.get('name', ''),
+                    str(attachment.get('id') or 'attachment')
+                )
+                error_lines.append(f"{attachment_name}: {stringify_attachment_download_error(result.get('error'))}")
+                continue
+
+            zip_name = build_zip_attachment_name(
+                result.get('filename') or attachment.get('name') or 'attachment',
+                used_names
+            )
+            content = result.get('content', b'') or b''
+            with archive.open(zip_name, 'w') as entry:
+                yield from drain_streaming_zip_buffer(zip_buffer)
+                for chunk in iter_zip_content_chunks(content):
+                    entry.write(chunk)
+                    yield from drain_streaming_zip_buffer(zip_buffer)
+            yield from drain_streaming_zip_buffer(zip_buffer)
+
+        if error_lines:
+            error_name = build_zip_attachment_name('download-errors.txt', used_names)
+            error_content = '\n'.join(error_lines)
+            with archive.open(error_name, 'w') as entry:
+                yield from drain_streaming_zip_buffer(zip_buffer)
+                for chunk in iter_zip_content_chunks(error_content):
+                    entry.write(chunk)
+                    yield from drain_streaming_zip_buffer(zip_buffer)
+            yield from drain_streaming_zip_buffer(zip_buffer)
+
+    yield from drain_streaming_zip_buffer(zip_buffer)
+
+
 @app.route('/api/email/<email_addr>/<path:message_id>/attachments/download-all')
 @login_required
 def api_download_all_email_attachments(email_addr, message_id):
@@ -2479,39 +2581,20 @@ def api_download_all_email_attachments(email_addr, message_id):
     if not attachments:
         return jsonify({'success': False, 'error': '没有可下载附件'})
 
-    from io import BytesIO
-    import zipfile
-
-    zip_buffer = BytesIO()
-    used_names = set()
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for attachment in attachments:
-            result = download_email_attachment_for_account(
-                account,
-                method,
-                message_id,
-                attachment.get('id'),
-                folder,
-                proxy_url,
-                fallback_proxy_urls,
-            )
-            if not result.get('success'):
-                return jsonify({
-                    'success': False,
-                    'error': result.get('error', '获取附件失败'),
-                    'attachment': attachment.get('name', ''),
-                })
-
-            content = result.get('content', b'') or b''
-            if isinstance(content, str):
-                content = content.encode('utf-8')
-            archive.writestr(
-                build_zip_attachment_name(result.get('filename') or attachment.get('name') or 'attachment', used_names),
-                content
-            )
-
-    response = Response(zip_buffer.getvalue(), mimetype='application/zip')
+    response = Response(
+        stream_email_attachments_zip(
+            account,
+            method,
+            message_id,
+            attachments,
+            folder,
+            proxy_url,
+            fallback_proxy_urls,
+        ),
+        mimetype='application/zip'
+    )
     response.headers['Content-Disposition'] = "attachment; filename*=UTF-8''attachments.zip"
+    response.headers['Cache-Control'] = 'no-store'
     return response
 
 
