@@ -623,8 +623,17 @@
 
                     <section class="refresh-list-panel">
                         <div class="refresh-list-panel__head">
-                            <span class="refresh-list-panel__title">邮箱列表</span>
-                            <span class="refresh-list-panel__meta" id="refreshListSummary">共 0 项</span>
+                            <div class="refresh-list-panel__heading">
+                                <span class="refresh-list-panel__title">邮箱列表</span>
+                                <span class="refresh-list-panel__meta" id="refreshListSummary">共 0 项</span>
+                            </div>
+                            <div class="refresh-batch-actions">
+                                <span class="refresh-batch-actions__summary" id="refreshSelectedSummary">未选择账号</span>
+                                <button class="btn btn-sm btn-secondary" type="button" id="refreshSelectVisibleBtn" onclick="toggleRefreshVisibleSelection()">全选当前列表</button>
+                                <button class="btn btn-sm btn-secondary" type="button" id="refreshClearSelectionBtn" onclick="clearRefreshSelection()">清空</button>
+                                <button class="btn btn-sm btn-primary" type="button" id="refreshSelectedBtn" onclick="refreshSelectedRefreshAccounts()">刷新已选</button>
+                                <button class="btn btn-sm btn-danger" type="button" id="refreshDeleteSelectedBtn" onclick="deleteSelectedRefreshAccounts()">删除</button>
+                            </div>
                         </div>
                         <div class="refresh-account-table-wrap" id="refreshAccountList">
                             <!-- 刷新状态列表将通过 JS 动态加载 -->

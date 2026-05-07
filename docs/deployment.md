@@ -67,6 +67,18 @@ python web_outlook_app.py
 访问 `http://localhost:5000` 即可使用。
 服务器部署建议始终显式设置固定 `SECRET_KEY`。
 
+## 运行模式说明
+
+服务需要保持单 worker 运行。Token 刷新管理里的流式任务、导出验证等短期任务使用进程内状态保存；如果自定义部署成多个 worker，POST 初始化任务和后续 SSE 订阅可能落到不同进程，导致任务不存在或过期。
+
+官方 Docker 镜像已固定为 Gunicorn 单 worker，并通过线程处理慢请求：
+
+```bash
+gunicorn -k gthread -w 1 --threads ${GUNICORN_THREADS:-4} ...
+```
+
+如需调整并发，请优先调整 `GUNICORN_THREADS`，不要增加 worker 数。
+
 ## 使用 Docker Compose
 
 ```yaml

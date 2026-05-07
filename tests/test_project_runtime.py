@@ -107,6 +107,61 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertTrue(payload['success'])
         return payload['data']['accounts']
 
+    def test_refresh_selected_stream_processes_selected_active_outlook_accounts(self):
+        first_account_id = self._insert_account('first-selected@example.com')
+        second_account_id = self._insert_account('second-selected@example.com')
+        inactive_account_id = self._insert_account('inactive-selected@example.com', status='inactive')
+
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute("UPDATE settings SET value = '0' WHERE key = 'refresh_delay_seconds'")
+            db.commit()
+
+        task_response = self.client.post('/api/accounts/refresh-selected-stream', json={
+            'account_ids': [second_account_id, inactive_account_id, first_account_id],
+        })
+        task_payload = task_response.get_json()
+        self.assertEqual(task_response.status_code, 200)
+        self.assertTrue(task_payload['success'])
+        self.assertIn('/api/accounts/refresh-selected-stream/', task_payload['stream_url'])
+        self.assertNotIn('account_ids', task_payload['stream_url'])
+
+        with patch.object(web_outlook_app, 'test_refresh_token', return_value=(True, None, '')) as token_mock:
+            response = self.client.get(task_payload['stream_url'])
+            body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/event-stream', response.content_type)
+        self.assertEqual(token_mock.call_count, 2)
+        self.assertIn('"refresh_type": "manual_selected"', body)
+        self.assertIn(f'"account_id": {second_account_id}', body)
+        self.assertIn(f'"account_id": {first_account_id}', body)
+        self.assertNotIn(f'"account_id": {inactive_account_id}', body)
+
+        with patch.object(web_outlook_app, 'test_refresh_token', return_value=(True, None, '')) as legacy_token_mock:
+            legacy_response = self.client.get(
+                f'/api/accounts/refresh-selected-stream?account_ids={first_account_id}'
+            )
+            legacy_body = legacy_response.get_data(as_text=True)
+        self.assertEqual(legacy_response.status_code, 200)
+        self.assertEqual(legacy_token_mock.call_count, 0)
+        self.assertIn('"type": "error"', legacy_body)
+        self.assertIn('"refresh_type": "manual_selected"', legacy_body)
+
+        with self.app.app_context():
+            rows = web_outlook_app.get_db().execute(
+                '''
+                SELECT id, last_refresh_status
+                FROM accounts
+                WHERE id IN (?, ?, ?)
+                ''',
+                (first_account_id, second_account_id, inactive_account_id)
+            ).fetchall()
+        status_by_id = {row['id']: row['last_refresh_status'] for row in rows}
+        self.assertEqual(status_by_id[first_account_id], 'success')
+        self.assertEqual(status_by_id[second_account_id], 'success')
+        self.assertEqual(status_by_id[inactive_account_id], 'never')
+
     def test_csrf_token_endpoint_requires_login(self):
         anonymous_client = self.app.test_client()
         response = anonymous_client.get('/api/csrf-token')
@@ -1067,6 +1122,10 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('id="refreshAccountList"', settings_html)
         self.assertIn('id="stopRefreshBtn"', settings_html)
         self.assertIn('id="refreshLogsList"', settings_html)
+        self.assertIn('id="refreshSelectedSummary"', settings_html)
+        self.assertIn('id="refreshSelectVisibleBtn"', settings_html)
+        self.assertIn('id="refreshSelectedBtn"', settings_html)
+        self.assertIn('id="refreshDeleteSelectedBtn"', settings_html)
         self.assertIn('class="refresh-account-table-wrap"', settings_html)
         self.assertIn('data-status="never"', settings_html)
         self.assertNotIn('id="refreshProgressBanner"', settings_html)
@@ -1080,7 +1139,20 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn("data.type === 'account_result'", refresh_js)
         self.assertIn("data.type === 'stopped'", refresh_js)
         self.assertIn('/api/accounts/refresh-failed-stream', refresh_js)
+        self.assertIn("selectedAccountIds: new Set()", refresh_js)
+        self.assertIn("function toggleRefreshVisibleSelection()", refresh_js)
+        self.assertIn("function clearRefreshSelectionForScopeChange()", refresh_js)
+        self.assertIn("if (nextQuery !== refreshModalState.query)", refresh_js)
+        self.assertIn("if (nextStatus !== refreshModalState.status)", refresh_js)
+        self.assertIn("async function refreshSelectedRefreshAccounts()", refresh_js)
+        self.assertIn("async function deleteSelectedRefreshAccounts()", refresh_js)
+        self.assertIn("await refreshVisibleAccountList(true);", refresh_js)
+        self.assertIn("fetch('/api/accounts/refresh-selected-stream'", refresh_js)
+        self.assertIn('data.stream_url', refresh_js)
+        self.assertNotIn('/api/accounts/refresh-selected-stream?', refresh_js)
+        self.assertIn("fetch('/api/accounts/batch-delete'", refresh_js)
         self.assertIn('<table class="refresh-account-table">', refresh_js)
+        self.assertIn('class="refresh-account-select-checkbox"', refresh_js)
         self.assertIn("function setRefreshStatusFilter(status, triggerEl = null)", refresh_js)
         self.assertIn("async function openRefreshModalWithStatus(status = 'all')", refresh_js)
         self.assertNotIn('showFailedListFromData', refresh_js)
@@ -1091,9 +1163,10 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('.refresh-log-list', modal_css)
         self.assertIn('.refresh-account-table-wrap', modal_css)
         self.assertIn('.refresh-account-table', modal_css)
+        self.assertIn('.refresh-batch-actions', modal_css)
+        self.assertIn('.refresh-account-select-checkbox', modal_css)
         self.assertIn('.refresh-filter-chip', modal_css)
         self.assertNotIn('.refresh-progress-banner', modal_css)
-
 
 class SchedulerTimezoneMigrationTests(unittest.TestCase):
     def setUp(self):

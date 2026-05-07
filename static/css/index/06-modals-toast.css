@@ -788,6 +788,12 @@
             gap: 12px;
         }
 
+        .refresh-list-panel__heading {
+            display: grid;
+            gap: 4px;
+            min-width: 0;
+        }
+
         .refresh-list-panel__title {
             font-size: 14px;
             font-weight: 700;
@@ -799,6 +805,21 @@
             color: #6b7280;
         }
 
+        .refresh-batch-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .refresh-batch-actions__summary {
+            font-size: 12px;
+            font-weight: 700;
+            color: #111827;
+            white-space: nowrap;
+        }
+
         .refresh-account-table-wrap {
             max-height: 520px;
             overflow: auto;
@@ -806,7 +827,7 @@
 
         .refresh-account-table {
             width: 100%;
-            min-width: 780px;
+            min-width: 840px;
             border-collapse: separate;
             border-spacing: 0;
         }
@@ -841,6 +862,25 @@
             padding: 14px 16px;
             border-bottom: 1px solid #eef2f7;
             vertical-align: top;
+        }
+
+        .refresh-account-select-head,
+        .refresh-account-select-cell {
+            width: 42px;
+            text-align: center;
+        }
+
+        .refresh-account-select-head input,
+        .refresh-account-select-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #111827;
+        }
+
+        .refresh-account-select-checkbox:disabled,
+        .refresh-account-select-head input:disabled {
+            cursor: not-allowed;
         }
 
         .refresh-account-row.is-refreshing {
@@ -1270,6 +1310,7 @@
             }
 
             .refresh-toolbar,
+            .refresh-list-panel__head,
             .forwarding-channel-group__head,
             .forward-channel-panel__header,
             .settings-log-drawer__summary {
@@ -1280,6 +1321,10 @@
             .refresh-toolbar {
                 display: grid;
                 grid-template-columns: 1fr;
+            }
+
+            .refresh-batch-actions {
+                justify-content: flex-start;
             }
 
             .settings-action-row--toolbar {

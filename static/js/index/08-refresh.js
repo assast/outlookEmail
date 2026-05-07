@@ -1,4 +1,4 @@
-        /* global closeAccountActionMenus, closeFullscreenEmail, closeMobilePanels, closeNavbarActionsMenu, closeTagFilterDropdown, escapeHtml, formatDate, handleApiError, hideModal, showEditAccountModal, showModal, showToast, updateModalBodyState */
+        /* global closeAccountActionMenus, closeFullscreenEmail, closeMobilePanels, closeNavbarActionsMenu, closeTagFilterDropdown, currentGroupId, escapeHtml, formatDate, handleApiError, hideModal, invalidateAccountCaches, loadGroups, loadAccountsByGroup, refreshVisibleAccountList, resetSelectedAccountViewIfDeleted, showEditAccountModal, showModal, showToast, updateModalBodyState */
 
         // ==================== Token 刷新管理 ====================
 
@@ -16,6 +16,7 @@
             isRunning: false,
             stopRequested: false,
             runtimeLogs: [],
+            selectedAccountIds: new Set(),
         };
 
         function getRefreshStatusMeta(status) {
@@ -91,6 +92,8 @@
                 retryFailedBtn.disabled = refreshModalState.isRunning;
                 retryFailedBtn.textContent = '重试失败';
             }
+
+            syncRefreshBatchControls();
         }
 
         function updateRefreshLogSummary(text = '暂无任务日志') {
@@ -170,6 +173,123 @@
             document.getElementById('refreshFilterCountNever').textContent = String(stats?.never_count ?? 0);
         }
 
+        function getVisibleRefreshAccountIds() {
+            return refreshModalState.items
+                .map(item => Number(item.id))
+                .filter(Number.isFinite);
+        }
+
+        function getSelectedRefreshAccountIds() {
+            return Array.from(refreshModalState.selectedAccountIds)
+                .map(accountId => Number(accountId))
+                .filter(Number.isFinite);
+        }
+
+        function syncRefreshBatchControls() {
+            const selectedIds = getSelectedRefreshAccountIds();
+            const visibleIds = getVisibleRefreshAccountIds();
+            const visibleSelectedCount = visibleIds.filter(accountId => refreshModalState.selectedAccountIds.has(accountId)).length;
+            const hiddenSelectedCount = Math.max(0, selectedIds.length - visibleSelectedCount);
+            const hasVisibleItems = visibleIds.length > 0;
+            const hasSelection = selectedIds.length > 0;
+            const allVisibleSelected = hasVisibleItems && visibleSelectedCount === visibleIds.length;
+
+            const summaryEl = document.getElementById('refreshSelectedSummary');
+            if (summaryEl) {
+                summaryEl.textContent = hasSelection
+                    ? (hiddenSelectedCount > 0 ? `已选 ${selectedIds.length} 项，当前筛选外 ${hiddenSelectedCount} 项` : `已选 ${selectedIds.length} 项`)
+                    : '未选择账号';
+            }
+
+            const selectVisibleBtn = document.getElementById('refreshSelectVisibleBtn');
+            if (selectVisibleBtn) {
+                selectVisibleBtn.disabled = !hasVisibleItems || refreshModalState.isRunning;
+                selectVisibleBtn.textContent = allVisibleSelected ? '取消当前列表' : '全选当前列表';
+            }
+
+            const clearSelectionBtn = document.getElementById('refreshClearSelectionBtn');
+            if (clearSelectionBtn) {
+                clearSelectionBtn.disabled = !hasSelection || refreshModalState.isRunning;
+            }
+
+            const refreshSelectedBtn = document.getElementById('refreshSelectedBtn');
+            if (refreshSelectedBtn) {
+                refreshSelectedBtn.disabled = !hasSelection || refreshModalState.isRunning;
+                refreshSelectedBtn.textContent = hasSelection ? `刷新已选 (${selectedIds.length})` : '刷新已选';
+            }
+
+            const deleteSelectedBtn = document.getElementById('refreshDeleteSelectedBtn');
+            if (deleteSelectedBtn) {
+                const isDeleting = deleteSelectedBtn.dataset.loading === 'true';
+                deleteSelectedBtn.disabled = !hasSelection || refreshModalState.isRunning || isDeleting;
+                if (!isDeleting) {
+                    deleteSelectedBtn.textContent = hasSelection ? `删除 (${selectedIds.length})` : '删除';
+                }
+            }
+
+            const selectVisibleCheckbox = document.getElementById('refreshSelectVisibleCheckbox');
+            if (selectVisibleCheckbox) {
+                selectVisibleCheckbox.disabled = !hasVisibleItems || refreshModalState.isRunning;
+                selectVisibleCheckbox.checked = allVisibleSelected;
+                selectVisibleCheckbox.indeterminate = hasVisibleItems && visibleSelectedCount > 0 && !allVisibleSelected;
+            }
+
+            document.querySelectorAll('#refreshAccountList .refresh-account-select-checkbox').forEach(checkbox => {
+                const accountId = Number(checkbox.value);
+                checkbox.checked = refreshModalState.selectedAccountIds.has(accountId);
+                checkbox.disabled = refreshModalState.isRunning;
+            });
+        }
+
+        function setRefreshAccountSelected(accountId, selected) {
+            const normalizedId = Number(accountId);
+            if (!Number.isFinite(normalizedId) || refreshModalState.isRunning) {
+                syncRefreshBatchControls();
+                return;
+            }
+            if (selected) {
+                refreshModalState.selectedAccountIds.add(normalizedId);
+            } else {
+                refreshModalState.selectedAccountIds.delete(normalizedId);
+            }
+            syncRefreshBatchControls();
+        }
+
+        function toggleRefreshVisibleSelection() {
+            if (refreshModalState.isRunning) {
+                return;
+            }
+            const visibleIds = getVisibleRefreshAccountIds();
+            if (!visibleIds.length) {
+                return;
+            }
+            const shouldClear = visibleIds.every(accountId => refreshModalState.selectedAccountIds.has(accountId));
+            visibleIds.forEach(accountId => {
+                if (shouldClear) {
+                    refreshModalState.selectedAccountIds.delete(accountId);
+                } else {
+                    refreshModalState.selectedAccountIds.add(accountId);
+                }
+            });
+            syncRefreshBatchControls();
+        }
+
+        function clearRefreshSelection() {
+            if (refreshModalState.isRunning) {
+                return;
+            }
+            refreshModalState.selectedAccountIds.clear();
+            syncRefreshBatchControls();
+        }
+
+        function clearRefreshSelectionForScopeChange() {
+            if (!refreshModalState.selectedAccountIds.size) {
+                return;
+            }
+            refreshModalState.selectedAccountIds.clear();
+            syncRefreshBatchControls();
+        }
+
         function renderRefreshAccountList(items, total) {
             const container = document.getElementById('refreshAccountList');
             const summaryEl = document.getElementById('refreshListSummary');
@@ -183,6 +303,7 @@
 
             if (!refreshModalState.items.length) {
                 container.innerHTML = '<div class="refresh-account-empty">当前筛选条件下暂无邮箱</div>';
+                syncRefreshBatchControls();
                 return;
             }
 
@@ -200,6 +321,11 @@
 
                 return `
                     <tr class="refresh-account-row ${isRunning ? 'is-refreshing' : ''}">
+                        <td class="refresh-account-select-cell">
+                            <input type="checkbox" class="refresh-account-select-checkbox" value="${item.id}"
+                                ${refreshModalState.selectedAccountIds.has(Number(item.id)) ? 'checked' : ''}
+                                onchange="setRefreshAccountSelected(${item.id}, this.checked)">
+                        </td>
                         <td class="refresh-account-main">
                             <div class="refresh-account-email" title="${escapeHtml(item.email)}">${escapeHtml(item.email)}</div>
                             ${remarkHtml}
@@ -221,6 +347,9 @@
                 <table class="refresh-account-table">
                     <thead>
                         <tr>
+                            <th class="refresh-account-select-head">
+                                <input type="checkbox" id="refreshSelectVisibleCheckbox" onchange="toggleRefreshVisibleSelection()">
+                            </th>
                             <th>邮箱</th>
                             <th>分组</th>
                             <th>最近刷新</th>
@@ -231,6 +360,7 @@
                     <tbody>${rowsHtml}</tbody>
                 </table>
             `;
+            syncRefreshBatchControls();
         }
 
         async function loadRefreshStats() {
@@ -273,6 +403,7 @@
                 refreshModalState.query = '';
                 refreshModalState.status = 'all';
                 refreshModalState.page = 1;
+                refreshModalState.selectedAccountIds.clear();
             }
 
             showModal('refreshModal');
@@ -295,6 +426,7 @@
             refreshModalState.query = '';
             refreshModalState.status = String(status || 'all').toLowerCase();
             refreshModalState.page = 1;
+            refreshModalState.selectedAccountIds.clear();
             await showRefreshModal();
         }
 
@@ -306,7 +438,11 @@
         }
 
         function handleRefreshSearchInput(value) {
-            refreshModalState.query = String(value || '').trim();
+            const nextQuery = String(value || '').trim();
+            if (nextQuery !== refreshModalState.query) {
+                clearRefreshSelectionForScopeChange();
+            }
+            refreshModalState.query = nextQuery;
             refreshModalState.page = 1;
             if (refreshModalState.searchTimer) {
                 window.clearTimeout(refreshModalState.searchTimer);
@@ -318,7 +454,11 @@
         }
 
         function setRefreshStatusFilter(status, triggerEl = null) {
-            refreshModalState.status = String(status || 'all').toLowerCase();
+            const nextStatus = String(status || 'all').toLowerCase();
+            if (nextStatus !== refreshModalState.status) {
+                clearRefreshSelectionForScopeChange();
+            }
+            refreshModalState.status = nextStatus;
             refreshModalState.page = 1;
             if (triggerEl?.dataset?.status) {
                 document.querySelectorAll('#refreshModal .refresh-filter-chip').forEach(btn => {
@@ -363,8 +503,10 @@
 
         async function reloadRefreshWorkbenchData() {
             await loadRefreshStatusList();
-            if (currentGroupId) {
-                loadAccountsByGroup(currentGroupId, true);
+            if (typeof refreshVisibleAccountList === 'function') {
+                await refreshVisibleAccountList(true);
+            } else if (currentGroupId && typeof loadAccountsByGroup === 'function') {
+                await loadAccountsByGroup(currentGroupId, true);
             }
         }
 
@@ -379,6 +521,7 @@
             const startLogDetail = options.startLogDetail || '正在建立刷新连接';
             const requestErrorToast = options.requestErrorToast || `${taskLabel}请求失败`;
             const emptyToast = options.emptyToast || '没有需要处理的账号';
+            const clearSelectionOnComplete = options.clearSelectionOnComplete === true;
 
             beginRefreshTaskRuntime(startSummary, startLogTitle, startLogDetail);
 
@@ -483,6 +626,10 @@
                             failedCount = Math.max(0, Number(data.failed_count || failedCount));
                             setRefreshSnapshotCounts(totalCount, successCount, failedCount);
                             finishRefreshTaskRuntime(eventSource);
+                            if (clearSelectionOnComplete) {
+                                refreshModalState.selectedAccountIds.clear();
+                                syncRefreshBatchControls();
+                            }
 
                             if (totalCount <= 0) {
                                 updateRefreshLogSummary('本次没有需要处理的账号');
@@ -632,6 +779,115 @@
                 requestErrorToast: '重试请求失败',
                 emptyToast: '没有需要重试的失败账号',
             });
+        }
+
+        async function refreshSelectedRefreshAccounts() {
+            const btn = document.getElementById('refreshSelectedBtn');
+            if (btn?.disabled || refreshModalState.isRunning) {
+                return;
+            }
+
+            const accountIds = getSelectedRefreshAccountIds();
+            if (!accountIds.length) {
+                showToast('请先选择要刷新的账号', 'error');
+                return;
+            }
+            if (!(await showConfirmModal(`确定要刷新选中的 ${accountIds.length} 个账号 Token 吗？`, { title: '刷新已选 Token', confirmText: '确认刷新', danger: false }))) {
+                return;
+            }
+
+            let data = null;
+            try {
+                const response = await fetch('/api/accounts/refresh-selected-stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ account_ids: accountIds })
+                });
+                data = await response.json();
+
+                if (!response.ok || !data.success || !data.stream_url) {
+                    handleApiError(data, '批量刷新任务初始化失败');
+                    return;
+                }
+            } catch (error) {
+                handleApiError({
+                    success: false,
+                    error: {
+                        message: '批量刷新任务初始化失败',
+                        details: error.message,
+                        code: 'NETWORK_ERROR',
+                        type: 'Frontend'
+                    }
+                });
+                return;
+            }
+
+            await startRefreshEventStream(data.stream_url, {
+                taskLabel: '批量刷新',
+                startSummary: '正在准备批量刷新任务',
+                startLogTitle: '已提交批量刷新任务',
+                startLogDetail: `已选择 ${accountIds.length} 个账号`,
+                requestErrorToast: '批量刷新请求失败',
+                emptyToast: '没有可刷新的选中账号',
+                clearSelectionOnComplete: true,
+            });
+        }
+
+        async function deleteSelectedRefreshAccounts() {
+            const btn = document.getElementById('refreshDeleteSelectedBtn');
+            if (btn?.disabled || refreshModalState.isRunning) {
+                return;
+            }
+
+            const accountIds = getSelectedRefreshAccountIds();
+            if (!accountIds.length) {
+                showToast('请先选择要删除的账号', 'error');
+                return;
+            }
+            if (!(await showConfirmModal(`确定要删除选中的 ${accountIds.length} 个账号吗？此操作不可恢复。`, { title: '删除已选账号', confirmText: '确认删除' }))) {
+                return;
+            }
+
+            btn.disabled = true;
+            btn.dataset.loading = 'true';
+            btn.textContent = '删除中...';
+
+            try {
+                const response = await fetch('/api/accounts/batch-delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ account_ids: accountIds })
+                });
+                const data = await response.json();
+
+                if (!data.success) {
+                    handleApiError(data, '批量删除失败');
+                    return;
+                }
+
+                const deletedAccounts = Array.isArray(data.deleted_accounts) ? data.deleted_accounts : [];
+                const deletedEmails = deletedAccounts.map(account => account.email).filter(Boolean);
+                accountIds.forEach(accountId => refreshModalState.selectedAccountIds.delete(accountId));
+                updateRefreshLogSummary(data.message || `已删除 ${deletedAccounts.length} 个账号`);
+                appendRefreshRuntimeLog('warn', '批量删除账号', data.message || `已删除 ${deletedAccounts.length} 个账号`);
+                showToast(data.message || `已删除 ${deletedAccounts.length} 个账号`, 'success');
+
+                if (typeof invalidateAccountCaches === 'function') {
+                    invalidateAccountCaches();
+                }
+                if (typeof resetSelectedAccountViewIfDeleted === 'function') {
+                    resetSelectedAccountViewIfDeleted(deletedEmails);
+                }
+                if (typeof loadGroups === 'function') {
+                    await loadGroups();
+                }
+                await reloadRefreshWorkbenchData();
+            } catch (error) {
+                showToast('批量删除失败', 'error');
+            } finally {
+                btn.dataset.loading = 'false';
+                syncRefreshBatchControls();
+            }
         }
 
         // 单个账号重试

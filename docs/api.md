@@ -83,6 +83,8 @@
 | --- | --- | --- | --- | --- |
 | POST | `/api/accounts/<account_id>/refresh` | Session + CSRF | JSON | 刷新单个 Outlook 账号 |
 | POST | `/api/accounts/refresh-selected` | Session + CSRF | JSON | 刷新选中账号 |
+| POST | `/api/accounts/refresh-selected-stream` | Session + CSRF | JSON | 初始化选中账号流式刷新任务 |
+| GET | `/api/accounts/refresh-selected-stream/<task_id>` | Session | `text/event-stream` | 订阅选中账号流式刷新任务 |
 | GET | `/api/accounts/refresh-all` | Session | `text/event-stream` | 全量刷新账号 |
 | POST | `/api/accounts/<account_id>/retry-refresh` | Session + CSRF | JSON | 重试单个失败账号 |
 | GET | `/api/accounts/refresh-failed-stream` | Session | `text/event-stream` | 流式重试失败账号 |
@@ -1085,6 +1087,8 @@ curl -H "X-API-Key: your-api-key" \
 | --- | --- | --- | --- |
 | POST | `/api/accounts/<account_id>/refresh` | 路径参数 `account_id` | 刷新单个 Outlook 账号 Token |
 | POST | `/api/accounts/refresh-selected` | JSON: `account_ids: number[]` | 刷新选中的 Outlook 账号，自动跳过 IMAP 或不存在的账号 |
+| POST | `/api/accounts/refresh-selected-stream` | JSON: `account_ids: number[]` | 初始化选中账号流式刷新任务，返回 `task_id` 和 `stream_url` |
+| GET | `/api/accounts/refresh-selected-stream/<task_id>` | 路径参数 `task_id` | 订阅选中账号流式刷新任务，返回 `text/event-stream` |
 | GET | `/api/accounts/refresh-all` | 无 | 刷新全部 Outlook 账号，返回 `text/event-stream` |
 | POST | `/api/accounts/<account_id>/retry-refresh` | 路径参数 `account_id` | 重试单个失败账号刷新 |
 | GET | `/api/accounts/refresh-failed-stream` | 无 | 流式重试当前失败账号，返回 `text/event-stream` |
@@ -1092,12 +1096,32 @@ curl -H "X-API-Key: your-api-key" \
 | GET | `/api/accounts/trigger-scheduled-refresh` | Query: `force=true/false` | 手动触发一次“定时刷新”逻辑，返回 `text/event-stream` |
 | POST | `/api/accounts/stop-full-refresh` | 无 | 请求停止当前全量刷新任务 |
 
-`/api/accounts/refresh-all`、`/api/accounts/refresh-failed-stream`、`/api/accounts/trigger-scheduled-refresh` 都会返回 SSE 事件流，常见事件类型包括：
+`/api/accounts/refresh-all`、`/api/accounts/refresh-failed-stream`、`/api/accounts/refresh-selected-stream/<task_id>`、`/api/accounts/trigger-scheduled-refresh` 都会返回 SSE 事件流，常见事件类型包括：
 
 - `start`
 - `progress`
 - `delay`
 - `complete`
+
+选中账号流式刷新需先初始化任务：
+
+```json
+{
+  "account_ids": [1, 2, 3]
+}
+```
+
+`POST /api/accounts/refresh-selected-stream` 成功时返回：
+
+```json
+{
+  "success": true,
+  "task_id": "task-token",
+  "stream_url": "/api/accounts/refresh-selected-stream/task-token"
+}
+```
+
+随后使用 `EventSource` 订阅 `stream_url`。该任务使用进程内短期状态保存，服务部署需保持单 worker；如果任务不存在或已过期，SSE 会返回 `type=error` 事件。
 
 `POST /api/accounts/stop-full-refresh` 成功时返回：
 

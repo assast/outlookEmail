@@ -6,6 +6,19 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.43] - 2026-05-08
+
+### Added
+- Token 刷新管理新增当前列表选择、清空选择、刷新已选和删除已选批量操作。
+- 新增选中账号流式刷新任务接口：先通过 `POST /api/accounts/refresh-selected-stream` 初始化任务，再通过返回的 `stream_url` 订阅 SSE 进度。
+
+### Changed
+- Token 刷新管理里的“刷新已选”不再把 `account_ids` 放入 SSE GET query，改为 POST 初始化任务后再订阅任务流。
+- 部署文档明确服务需保持单 worker 运行；官方 Docker 镜像继续使用 Gunicorn 单 worker + 多线程模式。
+
+### Fixed
+- 批量删除账号后会同步刷新 Token 刷新管理列表、主账号列表和相关本地缓存，避免界面仍显示已删除账号。
+
 ## [2.0.42] - 2026-05-07
 
 ### Added
