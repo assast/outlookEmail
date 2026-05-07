@@ -434,7 +434,7 @@ curl -H "X-API-Key: your-api-key" \
 | [🚀 部署指南](docs/deployment.md) | Docker、Docker Compose、Nginx/Caddy 部署、环境变量配置 |
 | [⬆️ 升级指南](docs/upgrade.md) | Windows、Docker、Python 直跑升级与回滚建议 |
 | [🔐 安全配置](docs/security.md) | XSS/CSRF 防护、数据加密、速率限制、审计日志 |
-| [📡 API 文档](docs/api.md) | 对外 API、内部 API 端点、代理配置 |
+| [📡 API 文档](docs/api.md) | 对外简易API、完整API、代理配置 |
 | [🛠️ 故障排查](docs/troubleshooting.md) | 常见问题、故障排查步骤 |
 | [📋 更新日志](CHANGELOG.md) | 版本更新历史 |
 | [🚢 发版说明](RELEASE.md) | 标准发版步骤、版本号规则、GitHub Release 说明 |
