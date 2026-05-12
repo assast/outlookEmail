@@ -6,6 +6,16 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.45] - 2026-05-12
+
+### Added
+- 邮件详情新增“显示邮件源”入口，可按需查看原始 MIME 邮件源码。
+- 原始邮件查看器支持复制源码和下载 `.eml` 文件，并提示完整邮件头包含敏感路由信息。
+- 后端新增 `/api/email/<email>/<message_id>/raw` 接口，支持 Graph `$value`、Outlook IMAP `RFC822` 和自定义 IMAP 账号获取邮件源。
+
+### Changed
+- 邮件详情工具栏将信任模式文案恢复为“信任此邮件”，并将原始邮件入口命名为“显示邮件源”。
+
 ## [2.0.44] - 2026-05-08
 
 ### Added
