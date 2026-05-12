@@ -693,6 +693,70 @@
             background-color: #f0f0f0;
         }
 
+        .raw-email-btn {
+            background: none;
+            border: 1px solid #e5e5e5;
+            color: #666;
+            cursor: pointer;
+            font-size: 13px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.15s;
+        }
+
+        .raw-email-btn:hover {
+            background-color: #f0f0f0;
+        }
+
+        .raw-email-header {
+            gap: 16px;
+        }
+
+        .raw-email-warning {
+            margin-top: 4px;
+            color: #fbbf24;
+            font-size: 12px;
+            font-weight: 400;
+        }
+
+        .raw-email-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .raw-email-action-btn {
+            border: 1px solid rgba(255, 255, 255, 0.24);
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            border-radius: 6px;
+            padding: 7px 12px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background-color 0.15s, border-color 0.15s;
+        }
+
+        .raw-email-action-btn:hover {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .raw-email-content {
+            flex: 1;
+            margin: 0;
+            padding: 24px;
+            overflow: auto;
+            background: #0f172a;
+            color: #e5e7eb;
+            font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+            -webkit-overflow-scrolling: touch;
+        }
+
         /* 空状态 */
         .empty-state {
             display: flex;

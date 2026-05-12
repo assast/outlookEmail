@@ -2522,6 +2522,78 @@ def api_delete_emails():
 
 
 
+@app.route('/api/email/<email_addr>/<path:message_id>/raw')
+@login_required
+def api_get_raw_email(email_addr, message_id):
+    """获取原始 MIME 邮件源码。"""
+    account = get_account_by_email(email_addr)
+
+    if not account:
+        return jsonify({'success': False, 'error': '账号不存在'})
+
+    method = request.args.get('method', 'graph')
+    folder = normalize_folder_name(request.args.get('folder', 'inbox'))
+    proxy_url = get_account_proxy_url(account)
+    fallback_proxy_urls = get_account_proxy_failover_urls(account)
+
+    raw_content = None
+    if account.get('account_type') == 'imap':
+        raw_content = get_raw_email_imap_generic(
+            account['email'],
+            account.get('imap_password', ''),
+            account.get('imap_host', ''),
+            account.get('imap_port', 993),
+            message_id,
+            folder,
+            account.get('provider', 'custom'),
+            proxy_url
+        )
+    elif method == 'graph':
+        raw_content = get_raw_email_graph(
+            account['client_id'],
+            account['refresh_token'],
+            message_id,
+            proxy_url,
+            fallback_proxy_urls,
+        )
+        if raw_content is None:
+            raw_content = get_raw_email_imap(
+                account['email'],
+                account['client_id'],
+                account['refresh_token'],
+                message_id,
+                folder,
+                proxy_url,
+                fallback_proxy_urls,
+            )
+    else:
+        raw_content = get_raw_email_imap(
+            account['email'],
+            account['client_id'],
+            account['refresh_token'],
+            message_id,
+            folder,
+            proxy_url,
+            fallback_proxy_urls,
+        )
+
+    if raw_content is None:
+        return jsonify({'success': False, 'error': '获取原始邮件失败'})
+
+    if isinstance(raw_content, str):
+        raw_text = raw_content
+    else:
+        raw_text = bytes(raw_content).decode('utf-8', errors='replace')
+
+    safe_message_id = re.sub(r'[^A-Za-z0-9_.-]+', '_', str(message_id)).strip('_') or 'message'
+    return jsonify({
+        'success': True,
+        'raw': raw_text,
+        'filename': f'{safe_message_id}.eml',
+        'warning': '原始邮件包含完整邮件头和路由信息，请谨慎分享。'
+    })
+
+
 @app.route('/api/email/<email_addr>/<path:message_id>')
 @login_required
 def api_get_email_detail(email_addr, message_id):

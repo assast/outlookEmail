@@ -929,6 +929,8 @@
 
         // 全屏查看邮件
         let currentFullscreenEmail = null;
+        let currentRawEmailSource = '';
+        let currentRawEmailFilename = 'message.eml';
 
         function openFullscreenEmail() {
             const emailDetail = document.getElementById('emailDetail');
@@ -1020,6 +1022,93 @@
             if (!modal) return;
             modal.classList.remove('show');
             updateModalBodyState();
+        }
+
+        async function openRawEmailModal() {
+            if (!currentEmailDetail || !currentEmailDetail.id || !currentAccount) {
+                showToast('请先选择一封邮件', 'warning');
+                return;
+            }
+
+            const modal = document.getElementById('rawEmailModal');
+            const content = document.getElementById('rawEmailContent');
+            const title = document.getElementById('rawEmailTitle');
+            const warning = document.getElementById('rawEmailWarning');
+            if (!modal || !content) return;
+
+            currentRawEmailSource = '';
+            currentRawEmailFilename = `${currentEmailDetail.id || 'message'}.eml`;
+            title.textContent = currentEmailDetail.subject ? `原始邮件：${currentEmailDetail.subject}` : '原始邮件';
+            warning.textContent = '原始邮件包含完整邮件头和路由信息，请谨慎分享。';
+            content.textContent = '正在加载原始邮件源码...';
+            modal.classList.add('show');
+            updateModalBodyState();
+
+            const folder = encodeURIComponent(currentEmailDetail.folder || currentFolder || 'inbox');
+            const method = encodeURIComponent(currentMethod || 'graph');
+            try {
+                const response = await fetchWithTimeout(
+                    `/api/email/${encodeURIComponent(currentAccount)}/${encodeURIComponent(currentEmailDetail.id)}/raw?method=${method}&folder=${folder}`,
+                    {
+                        timeoutMs: EMAIL_DETAIL_REQUEST_TIMEOUT_MS,
+                        timeoutMessage: '加载原始邮件超时，请稍后重试'
+                    }
+                );
+                const data = await response.json();
+                if (!data.success) {
+                    handleApiError(data, '加载原始邮件失败');
+                    content.textContent = data.error && data.error.message ? data.error.message : (data.error || '加载原始邮件失败');
+                    return;
+                }
+                currentRawEmailSource = data.raw || '';
+                currentRawEmailFilename = data.filename || currentRawEmailFilename;
+                if (data.warning) {
+                    warning.textContent = data.warning;
+                }
+                content.textContent = currentRawEmailSource || '原始邮件为空';
+            } catch (error) {
+                const errorMessage = isTimeoutAbortError(error)
+                    ? '加载原始邮件超时，请重试'
+                    : '网络错误，请重试';
+                content.textContent = errorMessage;
+                showToast(errorMessage, 'error');
+            }
+        }
+
+        function closeRawEmailModal() {
+            const modal = document.getElementById('rawEmailModal');
+            if (!modal) return;
+            modal.classList.remove('show');
+            updateModalBodyState();
+        }
+
+        function closeRawEmailOnBackdrop(event) {
+            if (event.target.id === 'rawEmailModal') {
+                closeRawEmailModal();
+            }
+        }
+
+        async function copyRawEmailSource() {
+            if (!currentRawEmailSource) {
+                showToast('暂无可复制的原始邮件内容', 'warning');
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(currentRawEmailSource);
+                showToast('原始邮件已复制');
+            } catch (error) {
+                showToast('复制失败，请手动选择复制', 'error');
+            }
+        }
+
+        function downloadRawEmailSource() {
+            if (!currentRawEmailSource) {
+                showToast('暂无可下载的原始邮件内容', 'warning');
+                return;
+            }
+            const blob = new Blob([currentRawEmailSource], { type: 'message/rfc822;charset=utf-8' });
+            triggerAttachmentDownload(blob, currentRawEmailFilename || 'message.eml');
+            showToast('原始邮件下载已开始');
         }
 
         function closeFullscreenEmailOnBackdrop(event) {

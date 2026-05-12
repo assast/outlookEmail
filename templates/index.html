@@ -41,6 +41,22 @@
             <!-- 邮件内容将在这里显示 -->
         </div>
     </div>
+
+    <!-- 原始邮件源码模态框 -->
+    <div id="rawEmailModal" class="fullscreen-email-modal raw-email-modal" onmousedown="closeRawEmailOnBackdrop(event)">
+        <div class="fullscreen-email-header raw-email-header">
+            <div>
+                <div class="fullscreen-email-title" id="rawEmailTitle">原始邮件</div>
+                <div class="raw-email-warning" id="rawEmailWarning">原始邮件包含完整邮件头和路由信息，请谨慎分享。</div>
+            </div>
+            <div class="raw-email-actions">
+                <button class="raw-email-action-btn" type="button" onclick="copyRawEmailSource()">复制</button>
+                <button class="raw-email-action-btn" type="button" onclick="downloadRawEmailSource()">下载 .eml</button>
+                <button class="fullscreen-close-btn" onclick="closeRawEmailModal()">×</button>
+            </div>
+        </div>
+        <pre class="raw-email-content" id="rawEmailContent">点击“显示原始邮件”加载 MIME 源码。</pre>
+    </div>
 </body>
 
 </html>
