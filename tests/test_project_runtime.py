@@ -211,6 +211,38 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertEqual(status_by_id[second_account_id], 'success')
         self.assertEqual(status_by_id[inactive_account_id], 'never')
 
+    def test_raw_email_endpoint_returns_graph_mime_source_as_text(self):
+        account_id = self._insert_account('raw-graph@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                "UPDATE accounts SET client_id = ?, refresh_token = ? WHERE id = ?",
+                ('client-id', 'refresh-token', account_id),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'get_raw_email_graph', return_value=b'From: sender@example.com\r\nSubject: Raw Source\r\n\r\nHello'):
+            response = self.client.get('/api/email/raw-graph@example.com/message-1/raw?method=graph&folder=inbox')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['filename'], 'message-1.eml')
+        self.assertIn('Subject: Raw Source', payload['raw'])
+        self.assertIn('原始邮件包含完整邮件头', payload['warning'])
+
+    def test_raw_email_endpoint_returns_imap_mime_source_as_text(self):
+        self._insert_account('raw-imap@example.com')
+
+        with patch.object(web_outlook_app, 'get_raw_email_imap', return_value='From: sender@example.com\r\nSubject: IMAP Raw\r\n\r\nHello'):
+            response = self.client.get('/api/email/raw-imap@example.com/42/raw?method=imap&folder=inbox')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['filename'], '42.eml')
+        self.assertIn('Subject: IMAP Raw', payload['raw'])
+
     def test_csrf_token_endpoint_requires_login(self):
         anonymous_client = self.app.test_client()
         response = anonymous_client.get('/api/csrf-token')

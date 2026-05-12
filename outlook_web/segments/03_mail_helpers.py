@@ -323,6 +323,32 @@ def get_emails_graph(client_id: str, refresh_token: str, folder: str = 'inbox', 
         }
 
 
+def get_raw_email_graph(client_id: str, refresh_token: str, message_id: str, proxy_url: str = None,
+                        fallback_proxy_urls: Optional[List[str]] = None) -> Optional[bytes]:
+    """使用 Graph API 获取原始 MIME 邮件源码。"""
+    access_token = get_access_token_graph(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    if not access_token:
+        return None
+
+    try:
+        url = f"https://graph.microsoft.com/v1.0/me/messages/{message_id}/$value"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+        }
+        res = get_with_proxy_fallback(
+            url,
+            headers=headers,
+            timeout=HTTP_REQUEST_TIMEOUT,
+            proxy_url=proxy_url,
+            fallback_proxy_urls=fallback_proxy_urls,
+        )
+        if res.status_code != 200:
+            return None
+        return res.content
+    except Exception:
+        return None
+
+
 def get_email_detail_graph(client_id: str, refresh_token: str, message_id: str, proxy_url: str = None,
                            fallback_proxy_urls: Optional[List[str]] = None) -> Optional[Dict]:
     """使用 Graph API 获取邮件详情"""
@@ -797,6 +823,39 @@ def get_emails_imap_with_server(account: str, client_id: str, refresh_token: str
                 pass
 
 
+def get_raw_email_imap(account: str, client_id: str, refresh_token: str, message_id: str,
+                       folder: str = 'inbox', proxy_url: str = None,
+                       fallback_proxy_urls: Optional[List[str]] = None) -> Optional[bytes]:
+    """使用 Outlook IMAP 获取原始 MIME 邮件源码。"""
+    access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    if not access_token:
+        return None
+
+    connection = None
+    try:
+        with proxy_socket_context(proxy_url):
+            connection = imaplib.IMAP4_SSL(IMAP_SERVER_NEW, IMAP_PORT, timeout=IMAP_TIMEOUT)
+        auth_string = f"user={account}\1auth=Bearer {access_token}\1\1".encode('utf-8')
+        connection.authenticate('XOAUTH2', lambda x: auth_string)
+
+        selected_folder, _ = resolve_imap_folder(connection, 'outlook', folder, readonly=True)
+        if not selected_folder:
+            return None
+
+        status, msg_data = connection.fetch(message_id.encode() if isinstance(message_id, str) else message_id, '(RFC822)')
+        if status != 'OK' or not msg_data or not msg_data[0]:
+            return None
+        return msg_data[0][1]
+    except Exception:
+        return None
+    finally:
+        if connection:
+            try:
+                connection.logout()
+            except Exception:
+                pass
+
+
 def get_email_detail_imap(account: str, client_id: str, refresh_token: str, message_id: str,
                           folder: str = 'inbox', proxy_url: str = None,
                           fallback_proxy_urls: Optional[List[str]] = None) -> Optional[Dict]:
@@ -948,6 +1007,40 @@ def get_message_attachment_by_id(msg, attachment_id: str) -> Optional[Dict[str, 
         if attachment.get('id') == attachment_id:
             return attachment
     return None
+
+
+def get_raw_email_imap_generic(email_addr: str, imap_password: str, imap_host: str,
+                               imap_port: int, message_id: str, folder: str = 'inbox',
+                               provider: str = 'custom', proxy_url: str = '') -> Optional[bytes]:
+    """使用通用 IMAP 获取原始 MIME 邮件源码。"""
+    if not message_id:
+        return None
+
+    connection = None
+    try:
+        connection = create_imap_connection(imap_host, imap_port, proxy_url)
+        connection.login(email_addr, imap_password)
+        selected_folder, search_mode = resolve_imap_folder(connection, provider, folder, readonly=True)
+        if not selected_folder:
+            return None
+
+        status, msg_data = fetch_imap_message_by_id(
+            connection,
+            str(message_id),
+            '(RFC822)',
+            preferred_mode='uid' if search_mode == 'uid' else (search_mode or 'uid')
+        )
+        if status != 'OK' or not msg_data or not msg_data[0]:
+            return None
+        return msg_data[0][1]
+    except Exception:
+        return None
+    finally:
+        if connection:
+            try:
+                connection.logout()
+            except Exception:
+                pass
 
 
 def build_email_detail_from_message(msg, message_id: str, date_value: str = '') -> Dict[str, Any]:

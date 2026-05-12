@@ -300,6 +300,10 @@
                         title="全屏查看" aria-label="全屏查看" onclick="openFullscreenEmail()">
                         <span class="email-detail-action-btn__text">🔍 全屏查看</span>
                     </button>
+                    <button class="raw-email-btn email-detail-action-btn email-detail-action-btn--raw" type="button"
+                        title="显示原始邮件源码" aria-label="显示原始邮件源码" onclick="openRawEmailModal()">
+                        <span class="email-detail-action-btn__text">📄 显示原始邮件</span>
+                    </button>
                     <label class="email-trust-toggle" title="信任此邮件/显示原始邮件" aria-label="信任此邮件/显示原始邮件">
                         <input type="checkbox" id="trustEmailCheckbox" onchange="toggleTrustMode(this)">
                         <span style="user-select: none;">信任此邮件/显示原始邮件</span>
