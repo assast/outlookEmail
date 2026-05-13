@@ -156,18 +156,8 @@
             const groupId = parseInt(document.getElementById('tokenSaveGroupSelect')?.value || '0', 10);
             const forwardEnabled = !!document.getElementById('oauthForwardEnabled')?.checked;
 
-            if (!email || !password) {
-                showToast('请先输入邮箱账号和密码', 'error');
-                return;
-            }
-
             if (!redirectUrl) {
                 showToast('请先粘贴授权后的完整 URL', 'error');
-                return;
-            }
-
-            if (!groupId) {
-                showToast('请选择目标分组', 'error');
                 return;
             }
 
@@ -240,6 +230,16 @@
                 if (!exchanged || !oauthPreviewAccount) {
                     return;
                 }
+            }
+
+            if (!oauthPreviewAccount.email || !oauthPreviewAccount.password) {
+                showToast('保存账号前请先填写邮箱账号和密码', 'error');
+                return;
+            }
+
+            if (!oauthPreviewAccount.group_id) {
+                showToast('保存账号前请选择目标分组', 'error');
+                return;
             }
 
             const saveBtn = document.getElementById('saveTokenAccountBtn');
