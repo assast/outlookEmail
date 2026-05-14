@@ -1,4 +1,4 @@
-        /* global closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, initAccountListScroll, initAccountPageSizeSelect, initColorPicker, initEmailListScroll, loadGroups, loadTags, renderEmailList, scheduleEmailListLoadCheck, searchAccounts */
+        /* global closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, initAccountListScroll, initAccountPageSizeSelect, initAccountSearchScopeSelect, initColorPicker, initEmailListScroll, loadGroups, loadTags, renderEmailList, scheduleEmailListLoadCheck, searchAccounts */
 
         // 全局状态
         let csrfToken = null;
@@ -1129,6 +1129,7 @@
             initEmailListScroll();
             initAccountListScroll();
             initAccountPageSizeSelect();
+            initAccountSearchScopeSelect();
             window.addEventListener('pointermove', handleGlobalGroupPointerMove, { passive: false });
             window.addEventListener('pointerup', handleGlobalGroupPointerUp);
             window.addEventListener('pointercancel', handleGlobalGroupPointerUp);

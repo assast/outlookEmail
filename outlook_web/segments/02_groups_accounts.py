@@ -429,10 +429,12 @@ def count_accounts(group_id: int = None, query: str = '',
 
 def search_account_records(query: str, limit: Any = None, offset: Any = 0,
                            sort_by: Any = 'created_at', sort_order: Any = 'desc',
-                           tag_ids: Any = None, include_untagged: bool = False) -> List[Dict]:
+                           tag_ids: Any = None, include_untagged: bool = False,
+                           group_id: int = None) -> List[Dict]:
     db = get_db()
     normalized_limit, normalized_offset = normalize_account_pagination(limit, offset)
     where_clause, params = build_account_where_clause(
+        group_id=group_id,
         query=query,
         tag_ids=tag_ids,
         include_untagged=include_untagged
