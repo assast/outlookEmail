@@ -200,6 +200,11 @@
                 font-size: 16px;
             }
 
+            .search-scope-select {
+                min-height: 44px;
+                font-size: 14px;
+            }
+
             .tag-filter-trigger,
             .tag-filter-search-input,
             .tag-filter-clear-btn {

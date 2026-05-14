@@ -506,6 +506,7 @@ curl -H "X-API-Key: your-api-key" \
 | `offset` | int | 否 | 分页偏移量，默认 `0` |
 | `sort_by` | string | 否 | 排序字段，支持 `created_at`、`email`、`sort_order` |
 | `sort_order` | string | 否 | 排序方向，`asc` 或 `desc`，默认 `desc` |
+| `group_id` | int | 否 | 仅搜索指定分组下的账号，不传则搜索全部分组 |
 | `tag_ids` | string | 否 | 逗号分隔的标签 ID，仅搜索包含任一标签的账号 |
 | `include_untagged` | bool | 否 | 与 `tag_ids` 配合使用，是否包含未打标签账号 |
 

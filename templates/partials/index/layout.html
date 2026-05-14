@@ -130,6 +130,13 @@
                 <div class="search-container">
                     <input type="text" id="globalSearch" class="search-input" placeholder="搜索邮箱地址、别名、备注或标签..."
                         autocomplete="off">
+                    <div class="search-scope-wrap" id="accountSearchScopeWrap">
+                        <select id="accountSearchScopeSelect" class="search-scope-select" aria-label="筛选范围"
+                            onchange="handleAccountSearchScopeChange(this.value)">
+                            <option value="all" selected>所有分组</option>
+                            <option value="group">当前分组</option>
+                        </select>
+                    </div>
                 </div>
                 <!-- 临时邮箱渠道筛选 -->
                 <div id="tempEmailProviderFilter" class="toolbar-row" style="display: none;">

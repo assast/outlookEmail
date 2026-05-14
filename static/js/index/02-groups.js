@@ -453,6 +453,7 @@
                 document.getElementById('tempEmailProviderFilter').style.display = 'flex';
                 document.querySelector('.sort-control').style.display = 'none';
                 document.getElementById('accountPageSizeContainer').style.display = 'none';
+                syncAccountSearchScopeVisibility();
                 updateTagFilter();
                 // 同步筛选按钮样式
                 const currentFilter = localStorage.getItem('outlook_temp_email_filter') || 'all';
@@ -481,6 +482,7 @@
                 document.getElementById('tempEmailProviderFilter').style.display = 'none';
                 document.querySelector('.sort-control').style.display = 'flex';
                 document.getElementById('accountPageSizeContainer').style.display = 'flex';
+                syncAccountSearchScopeVisibility();
                 syncAccountPageSizeSelect();
                 updateTagFilter();
                 if (searchInput) {
@@ -556,6 +558,52 @@
                 localStorage.getItem('outlook_account_page_size') || ACCOUNT_LIST_DEFAULT_PAGE_SIZE
             );
             syncAccountPageSizeSelect();
+        }
+
+        function getAccountSearchScope() {
+            const select = document.getElementById('accountSearchScopeSelect');
+            return select?.value === 'group' ? 'group' : 'all';
+        }
+
+        function getAccountSearchScopeKey() {
+            return getAccountSearchScope() === 'group' && currentGroupId
+                ? `group:${currentGroupId}`
+                : 'all';
+        }
+
+        function initAccountSearchScopeSelect() {
+            const select = document.getElementById('accountSearchScopeSelect');
+            if (!select) {
+                return;
+            }
+            const savedScope = localStorage.getItem('outlook_account_search_scope');
+            select.value = savedScope === 'group' ? 'group' : 'all';
+        }
+
+        function syncAccountSearchScopeVisibility() {
+            const container = document.querySelector('.search-container');
+            const wrap = document.getElementById('accountSearchScopeWrap');
+            const select = document.getElementById('accountSearchScopeSelect');
+            const hidden = !!isTempEmailGroup;
+
+            if (container) {
+                container.classList.toggle('search-container--single', hidden);
+            }
+            if (wrap) {
+                wrap.hidden = hidden;
+            }
+            if (select) {
+                select.disabled = hidden;
+            }
+        }
+
+        function handleAccountSearchScopeChange(value) {
+            const normalizedScope = value === 'group' ? 'group' : 'all';
+            localStorage.setItem('outlook_account_search_scope', normalizedScope);
+            const searchQuery = (document.getElementById('globalSearch')?.value || '').trim();
+            if (searchQuery && !isTempEmailGroup) {
+                searchAccounts(searchQuery, true);
+            }
         }
 
         function handleAccountPageSizeChange(value) {
@@ -815,6 +863,7 @@
         function renderAccountList(accounts) {
             const container = document.getElementById('accountList');
             const isSearchMode = !!(document.getElementById('globalSearch')?.value || '').trim();
+            const showSearchGroupInfo = isSearchMode && getAccountSearchScope() === 'all';
             const normalizedGroupId = Number(currentGroupId);
             const refreshAction = Number.isFinite(normalizedGroupId) && normalizedGroupId > 0
                 ? `loadAccountsByGroup(${normalizedGroupId}, true)`
@@ -861,7 +910,7 @@
                             ${acc.status === 'inactive' ? '<span class="account-status-pill muted">已停用</span>' : ''}
                             ${acc.last_refresh_status === 'failed' ? '<span class="account-status-pill danger">刷新失败</span>' : ''}
                         </div>
-                        ${renderAccountGroupSummary(acc, isSearchMode)}
+                        ${renderAccountGroupSummary(acc, showSearchGroupInfo)}
                         ${renderAccountAliasSummary(acc.aliases)}
                         ${acc.remark && acc.remark.trim() ? `<div class="account-remark" title="${escapeHtml(acc.remark)}">${escapeHtml(acc.remark)}</div>` : ''}
                         ${(acc.tags || []).length ? `<div class="account-tags">${renderAccountTagSummary(acc.tags)}</div>` : ''}
@@ -1001,7 +1050,13 @@
             const searchQuery = (document.getElementById('globalSearch')?.value || '').trim();
             if (searchQuery) {
                 const total = Number(accountPaginationState.total) || filteredAccounts.length;
-                updateCurrentGroupHeader(null, `搜索结果 (${filteredAccounts.length}/${total})`);
+                if (getAccountSearchScope() === 'group') {
+                    const currentGroup = groups.find(group => group.id === currentGroupId);
+                    const groupName = currentGroup ? normalizeGroupName(currentGroup.name) : '当前分组';
+                    updateCurrentGroupHeader(currentGroup || null, `${groupName} 搜索 (${filteredAccounts.length}/${total})`);
+                } else {
+                    updateCurrentGroupHeader(null, `搜索结果 (${filteredAccounts.length}/${total})`);
+                }
             } else {
                 const currentGroup = groups.find(group => group.id === currentGroupId);
                 if (currentGroup && Number(accountPaginationState.total) > 0) {
@@ -1215,6 +1270,9 @@
                 q: query,
                 offset: String(offset)
             }));
+            if (getAccountSearchScope() === 'group' && currentGroupId) {
+                params.set('group_id', String(currentGroupId));
+            }
             const requestId = ++accountListRequestSeq;
 
             try {
@@ -1228,7 +1286,7 @@
                     const nextAccounts = append
                         ? currentAccountListSource.concat(data.accounts || [])
                         : (data.accounts || []);
-                    updateAccountPaginationState('search', query, data, nextAccounts.length);
+                    updateAccountPaginationState('search', `${getAccountSearchScopeKey()}:${query}`, data, nextAccounts.length);
                     renderFilteredAccountList(nextAccounts);
                 } else {
                     container.innerHTML = '<div class="empty-state"><div class="empty-state-text">搜索失败</div></div>';

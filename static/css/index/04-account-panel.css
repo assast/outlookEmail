@@ -78,6 +78,14 @@
         .search-container {
             padding: 0;
             border-bottom: none;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 104px;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .search-container.search-container--single {
+            grid-template-columns: minmax(0, 1fr);
         }
 
         .search-input {
@@ -95,6 +103,28 @@
             border-color: #1a1a1a;
             box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.08);
             background-color: #ffffff;
+        }
+
+        .search-scope-wrap {
+            min-width: 0;
+        }
+
+        .search-scope-select {
+            width: 100%;
+            min-height: 38px;
+            padding: 0 8px;
+            border: 1px solid #d9dce3;
+            border-radius: 10px;
+            background: #ffffff;
+            color: #374151;
+            font-size: 12px;
+            font-weight: 600;
+            outline: none;
+        }
+
+        .search-scope-select:focus {
+            border-color: #1a1a1a;
+            box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.08);
         }
 
         .toolbar-row {

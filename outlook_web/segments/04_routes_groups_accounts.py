@@ -990,8 +990,9 @@ def api_batch_update_account_forwarding():
 @app.route('/api/accounts/search', methods=['GET'])
 @login_required
 def api_search_accounts():
-    """全局搜索账号"""
+    """搜索账号"""
     query = request.args.get('q', '').strip()
+    group_id = request.args.get('group_id', type=int)
     list_args = get_account_list_request_args()
 
     if not query:
@@ -999,6 +1000,7 @@ def api_search_accounts():
 
     accounts = search_account_records(
         query,
+        group_id=group_id,
         limit=list_args['limit'],
         offset=list_args['offset'],
         sort_by=list_args['sort_by'],
@@ -1011,6 +1013,7 @@ def api_search_accounts():
         safe_accounts.append(serialize_account_summary(acc, {}))
 
     total = count_accounts(
+        group_id,
         query=query,
         tag_ids=list_args['tag_ids'],
         include_untagged=list_args['include_untagged'],

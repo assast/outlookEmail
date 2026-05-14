@@ -6,6 +6,15 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.46] - 2026-05-14
+
+### Added
+- 邮箱列表搜索框新增范围选择，可在“所有分组”和“当前分组”之间切换筛选范围。
+- 账号搜索接口 `/api/accounts/search` 新增可选 `group_id` 参数，支持仅搜索指定分组下的账号。
+
+### Changed
+- 当前分组搜索结果标题会标明分组范围，全局搜索结果继续展示账号所属分组信息。
+
 ## [2.0.45] - 2026-05-12
 
 ### Added

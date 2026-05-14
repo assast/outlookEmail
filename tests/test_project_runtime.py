@@ -598,6 +598,30 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertTrue(search_payload['success'])
         self.assertEqual(search_payload['accounts'][0]['sort_order'], 7)
 
+    def test_account_search_can_filter_to_group(self):
+        target_group_id = self._create_group('搜索分组')
+        self._insert_account('scope-filter-default@example.com', group_id=1)
+        self._insert_account('scope-filter-target@example.com', group_id=target_group_id)
+        self._insert_account('scope-filter-other@example.com', group_id=1)
+
+        group_response = self.client.get(
+            f'/api/accounts/search?q=scope-filter&group_id={target_group_id}&sort_by=email&sort_order=asc'
+        )
+        self.assertEqual(group_response.status_code, 200)
+        group_payload = group_response.get_json()
+        self.assertTrue(group_payload['success'])
+        self.assertEqual(group_payload['total'], 1)
+        self.assertEqual(
+            [account['email'] for account in group_payload['accounts']],
+            ['scope-filter-target@example.com']
+        )
+
+        all_response = self.client.get('/api/accounts/search?q=scope-filter&sort_by=email&sort_order=asc')
+        self.assertEqual(all_response.status_code, 200)
+        all_payload = all_response.get_json()
+        self.assertTrue(all_payload['success'])
+        self.assertEqual(all_payload['total'], 3)
+
     def test_add_account_without_sort_order_uses_created_at_fallback(self):
         response = self.client.post(
             '/api/accounts',
