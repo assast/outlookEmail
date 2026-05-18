@@ -732,14 +732,41 @@ def build_plus_fallback_emails(email_addr: str) -> List[str]:
     return fallbacks
 
 
-def resolve_account_for_email_api(email_addr: str) -> Optional[Dict]:
-    account = resolve_account_by_address(email_addr)
-    if account:
-        return account
+def build_email_query_candidates(email_addr: str, include_gmail_suffix: bool = True) -> List[str]:
+    """构建邮箱查询候选：完整地址、plus 回退、Gmail/Googlemail 后缀回退。"""
+    normalized = normalize_email_address(email_addr)
+    if not normalized or '@' not in normalized:
+        return []
 
-    for fallback_email in build_plus_fallback_emails(email_addr):
-        account = resolve_account_by_address(fallback_email)
+    _local_part, domain = normalized.split('@', 1)
+    original_candidates = [normalized] + build_plus_fallback_emails(normalized)
+    candidates: List[str] = []
+
+    for candidate in original_candidates:
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    if include_gmail_suffix and domain in {'gmail.com', 'googlemail.com'}:
+        alternate_domain = 'googlemail.com' if domain == 'gmail.com' else 'gmail.com'
+        for candidate in original_candidates:
+            candidate_local = candidate.rsplit('@', 1)[0]
+            alternate_candidate = f"{candidate_local}@{alternate_domain}"
+            if alternate_candidate not in candidates:
+                candidates.append(alternate_candidate)
+
+    return candidates
+
+
+def resolve_account_for_email_api(email_addr: str) -> Optional[Dict]:
+    requested = normalize_email_address(email_addr)
+    for candidate in build_email_query_candidates(email_addr):
+        account = resolve_account_by_address(candidate)
         if account:
+            fallback_used = bool(requested and candidate != requested)
+            account['requested_query_email'] = requested
+            account['resolved_query_email'] = candidate
+            account['fallback_used'] = fallback_used
+            account['fallback_email'] = candidate if fallback_used else ''
             return account
     return None
 

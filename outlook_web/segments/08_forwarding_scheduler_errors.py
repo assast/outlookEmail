@@ -1373,6 +1373,10 @@ def api_get_emails_v2(email_addr):
             ]
         result['requested_email'] = requested_email
         result['resolved_email'] = account.get('email', '')
+        if account.get('resolved_query_email'):
+            result['resolved_query_email'] = account.get('resolved_query_email')
+            result['fallback_used'] = bool(account.get('fallback_used'))
+            result['fallback_email'] = account.get('fallback_email', '')
         if account.get('matched_alias'):
             result['matched_alias'] = account.get('matched_alias')
     return jsonify(result)
@@ -1409,6 +1413,10 @@ def api_external_get_emails_v2():
             ]
         result['requested_email'] = email_addr
         result['resolved_email'] = account.get('email', '')
+        if account.get('resolved_query_email'):
+            result['resolved_query_email'] = account.get('resolved_query_email')
+            result['fallback_used'] = bool(account.get('fallback_used'))
+            result['fallback_email'] = account.get('fallback_email', '')
         if account.get('matched_alias'):
             result['matched_alias'] = account.get('matched_alias')
     return jsonify(result)

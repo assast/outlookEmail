@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     # These segmented files are executed into the shared `web_outlook_app`
@@ -188,6 +188,134 @@ def cloudflare_get_messages(jwt: str, limit: int = 50, offset: int = 0) -> Optio
     if result and isinstance(result.get('results'), list):
         return result['results']
     return None
+
+
+def normalize_cloudflare_admin_mail_limit(value: Any, default: int = 50, maximum: int = 100) -> int:
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(limit, maximum))
+
+
+def normalize_cloudflare_admin_mail_offset(value: Any) -> int:
+    try:
+        offset = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, offset)
+
+
+def cloudflare_get_admin_messages(limit: int = 50, offset: int = 0, address: str = '') -> Dict[str, Any]:
+    """通过 Cloudflare 管理员接口获取全局邮件列表"""
+    params = {'limit': limit, 'offset': offset}
+    if address:
+        params['address'] = address
+
+    result = cloudflare_temp_request('GET', '/admin/mails', admin_auth=True, params=params)
+    if not result:
+        return {'success': False, 'error': '获取 Cloudflare 全局邮件失败'}
+    if isinstance(result, list):
+        return {'success': True, 'messages': result, 'count': len(result)}
+    if not isinstance(result, dict):
+        return {'success': False, 'error': 'Cloudflare API 响应格式不支持'}
+    if result.get('success') is False:
+        return {'success': False, 'error': result.get('error', '获取 Cloudflare 全局邮件失败')}
+
+    if isinstance(result.get('results'), list):
+        messages = result['results']
+    elif isinstance(result.get('mails'), list):
+        messages = result['mails']
+    elif isinstance(result.get('emails'), list):
+        messages = result['emails']
+    elif isinstance(result.get('data'), dict) and isinstance(result['data'].get('results'), list):
+        messages = result['data']['results']
+    elif isinstance(result.get('data'), list):
+        messages = result['data']
+    else:
+        return {'success': False, 'error': 'Cloudflare API 响应缺少邮件列表'}
+
+    count = result.get('count')
+    if count is None and isinstance(result.get('data'), dict):
+        count = result['data'].get('count')
+    try:
+        count = int(count)
+    except (TypeError, ValueError):
+        count = len(messages)
+
+    return {'success': True, 'messages': messages, 'count': count}
+
+
+def parse_cloudflare_mail_timestamp(item: Dict[str, Any]) -> int:
+    for key in ('created_at', 'createdAt', 'date', 'timestamp'):
+        raw_value = item.get(key)
+        if not raw_value:
+            continue
+        if isinstance(raw_value, (int, float)):
+            return int(raw_value)
+        try:
+            return int(datetime.fromisoformat(str(raw_value).replace('Z', '+00:00')).timestamp())
+        except Exception:
+            continue
+    return 0
+
+
+def get_cloudflare_mail_recipient(item: Dict[str, Any], fallback_address: str = '') -> str:
+    for key in ('address', 'to', 'recipient', 'email_address'):
+        value = str(item.get(key, '') or '').strip()
+        if value:
+            return value
+    return fallback_address
+
+
+def normalize_cloudflare_admin_mail_item(item: Dict[str, Any], index: int,
+                                         fallback_address: str = '') -> Optional[Dict[str, Any]]:
+    raw_email = item.get('raw') or item.get('raw_content') or item.get('source_raw')
+    if not raw_email:
+        return None
+
+    recipient = get_cloudflare_mail_recipient(item, fallback_address)
+    raw_text = raw_email if isinstance(raw_email, str) else raw_email.decode('utf-8', 'replace')
+    upstream_id = item.get('id') or item.get('mail_id')
+    fallback_id = (
+        f"cf-admin-{upstream_id}"
+        if upstream_id
+        else f"cf-admin-{index}-{hashlib.sha256(raw_text.encode('utf-8', 'replace')).hexdigest()}"
+    )
+    parsed = parse_raw_email_to_temp_message(
+        recipient or fallback_address or 'cloudflare-admin',
+        raw_text,
+        fallback_id,
+        parse_cloudflare_mail_timestamp(item)
+    )
+    body = parsed.get('html_content') if parsed.get('has_html') else parsed.get('content', '')
+    return {
+        'id': parsed.get('id'),
+        'message_id': item.get('message_id') or parsed.get('id'),
+        'upstream_id': upstream_id,
+        'from': parsed.get('from_address', item.get('source') or '未知'),
+        'to': recipient,
+        'subject': parsed.get('subject', '无主题'),
+        'body_preview': (parsed.get('content', '') or '')[:200],
+        'body': body,
+        'body_type': 'html' if parsed.get('has_html') else 'text',
+        'date': parsed.get('timestamp', 0),
+        'timestamp': parsed.get('timestamp', 0),
+        'has_html': 1 if parsed.get('has_html') else 0,
+        'folder': 'cloudflare',
+        'provider': 'cloudflare',
+    }
+
+
+def format_cloudflare_admin_messages(messages: List[Dict[str, Any]], fallback_address: str = '') -> List[Dict[str, Any]]:
+    formatted = []
+    for index, item in enumerate(messages):
+        if not isinstance(item, dict):
+            continue
+        normalized = normalize_cloudflare_admin_mail_item(item, index, fallback_address)
+        if normalized:
+            formatted.append(normalized)
+    return formatted
 
 
 def cloudflare_delete_address(address_id: str) -> bool:
@@ -780,6 +908,73 @@ def api_get_cloudflare_domains():
     return jsonify({
         'success': True,
         'domains': [{'domain': domain} for domain in domains]
+    })
+
+
+@app.route('/api/cloudflare/messages', methods=['GET'])
+@login_required
+def api_get_cloudflare_admin_messages():
+    """获取 Cloudflare Temp Email 全局邮件列表"""
+    limit = normalize_cloudflare_admin_mail_limit(request.args.get('limit', 50))
+    offset = normalize_cloudflare_admin_mail_offset(request.args.get('offset', 0))
+    requested_address = (
+        get_query_arg_preserve_plus('address', '').strip()
+        or get_query_arg_preserve_plus('email', '').strip()
+    )
+    normalized_requested_address = normalize_email_address(requested_address)
+
+    if requested_address and not normalized_requested_address:
+        return jsonify({'success': False, 'error': 'address 参数无效'}), 400
+
+    address_candidates = build_email_query_candidates(normalized_requested_address) if normalized_requested_address else ['']
+    if requested_address and not address_candidates:
+        return jsonify({'success': False, 'error': 'address 参数无效'}), 400
+
+    selected_result: Optional[Dict[str, Any]] = None
+    selected_address = ''
+    fallback_attempted = False
+
+    for index, candidate_address in enumerate(address_candidates):
+        if index > 0:
+            fallback_attempted = True
+
+        admin_result = cloudflare_get_admin_messages(
+            limit=limit,
+            offset=offset,
+            address=candidate_address
+        )
+        if not admin_result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': admin_result.get('error', '获取 Cloudflare 全局邮件失败'),
+                'requested_email': normalized_requested_address,
+                'queried_email': candidate_address,
+            })
+
+        selected_result = admin_result
+        selected_address = candidate_address
+        raw_messages = admin_result.get('messages', [])
+        if not normalized_requested_address or raw_messages or index == len(address_candidates) - 1:
+            break
+
+    raw_messages = selected_result.get('messages', []) if selected_result else []
+    formatted = format_cloudflare_admin_messages(raw_messages, selected_address)
+    total_count = selected_result.get('count', len(raw_messages)) if selected_result else 0
+    fallback_used = bool(normalized_requested_address and selected_address != normalized_requested_address)
+
+    return jsonify({
+        'success': True,
+        'emails': formatted,
+        'count': len(formatted),
+        'total_count': total_count,
+        'limit': limit,
+        'offset': offset,
+        'has_more': total_count > offset + limit if isinstance(total_count, int) else len(raw_messages) >= limit,
+        'method': 'Cloudflare Admin',
+        'requested_email': normalized_requested_address,
+        'queried_email': selected_address,
+        'fallback_used': fallback_used,
+        'fallback_attempted': fallback_attempted,
     })
 
 

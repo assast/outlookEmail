@@ -111,6 +111,63 @@
             padding-bottom: 88px;
         }
 
+        .cloudflare-global-filter {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
+            gap: 8px;
+            margin: 0 12px 10px;
+            padding: 10px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: #ffffff;
+        }
+
+        .cloudflare-global-filter-input {
+            min-width: 0;
+            height: 34px;
+            padding: 0 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #111827;
+            background: #ffffff;
+        }
+
+        .cloudflare-global-filter-input:focus {
+            outline: none;
+            border-color: #f48120;
+            box-shadow: 0 0 0 2px rgba(244, 129, 32, 0.14);
+        }
+
+        .cloudflare-global-filter-btn {
+            height: 34px;
+            padding: 0 12px;
+            border: 1px solid #f48120;
+            border-radius: 6px;
+            background: #f48120;
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .cloudflare-global-filter-btn.secondary {
+            background: #ffffff;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+
+        .cloudflare-global-account-item {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .cloudflare-global-account-title {
+            overflow: visible;
+            text-overflow: clip;
+            white-space: nowrap;
+        }
+
         .email-item {
             margin: 0 12px 10px;
             padding: 14px;

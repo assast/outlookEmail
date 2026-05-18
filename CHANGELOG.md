@@ -6,6 +6,16 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.47] - 2026-05-18
+
+### Added
+- Cloudflare Temp Email 新增“Cloudflare所有邮件”视图，可通过管理员接口查看 Worker 全部邮件，并支持按收件地址过滤和触底分页加载。
+- 邮件查询支持 `gmail.com` 与 `googlemail.com` 后缀互相回退；当原地址未命中时，会自动尝试另一个后缀。
+
+### Changed
+- Cloudflare 所有邮件列表复用现有邮件列表详情渲染，并在列表中展示收件地址和来源标识。
+- 邮件查询响应新增稳定的 `resolved_query_email`、`fallback_used`、`fallback_email` 字段，用于说明实际命中的查询地址。
+
 ## [2.0.46] - 2026-05-14
 
 ### Added
