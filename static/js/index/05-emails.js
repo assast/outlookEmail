@@ -1,4 +1,4 @@
-        /* global EMAIL_DETAIL_REQUEST_TIMEOUT_MS, EMAIL_LIST_REQUEST_TIMEOUT_MS, adjustIframeHeight, applyEmailListCache, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, currentSkip, emailListCache, escapeHtml, fetchWithTimeout, formatDate, getEmailListCacheEntry, getFolderDisplayName, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, invalidateEmailListCache, isTempEmailGroup, isTimeoutAbortError, normalizeFolderSummaries, renderEmptyStateMarkup, scheduleEmailListLoadCheck, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
+        /* global EMAIL_DETAIL_REQUEST_TIMEOUT_MS, EMAIL_LIST_REQUEST_TIMEOUT_MS, adjustIframeHeight, applyEmailListCache, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, currentSkip, emailListCache, escapeHtml, fetchWithTimeout, formatDate, getEmailListCacheEntry, getFolderDisplayName, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, invalidateEmailListCache, isTempEmailGroup, isTimeoutAbortError, loadCloudflareGlobalMessages, normalizeFolderSummaries, renderCloudflareGlobalFilterBar, renderEmptyStateMarkup, scheduleEmailListLoadCheck, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
 
         // ==================== 邮件相关 ====================
 
@@ -116,7 +116,7 @@
         let isBatchSelectMode = false;
 
         function getRecipientDisplayLabel(emailItem) {
-            if (isTempEmailGroup) {
+            if (isTempEmailGroup && currentMethod !== 'cloudflare-admin') {
                 return '';
             }
 
@@ -139,6 +139,9 @@
         }
 
         function getEmailSourceLabel(emailItem) {
+            if (currentMethod === 'cloudflare-admin') {
+                return 'Cloudflare';
+            }
             if (isTempEmailGroup || currentFolder !== 'all' || !emailItem?.folder) {
                 return '';
             }
@@ -311,7 +314,10 @@
                 const emptyStateText = isTempEmailGroup
                     ? '暂无邮件'
                     : `${getFolderDisplayName(currentFolder)}为空`;
-                container.innerHTML = renderEmptyStateMarkup('📭', emptyStateText, {
+                const emptyPrefix = currentMethod === 'cloudflare-admin' && typeof renderCloudflareGlobalFilterBar === 'function'
+                    ? renderCloudflareGlobalFilterBar()
+                    : '';
+                container.innerHTML = emptyPrefix + renderEmptyStateMarkup('📭', emptyStateText, {
                     onAction: 'refreshEmails()',
                     actionTitle: '刷新邮件列表'
                 });
@@ -323,9 +329,14 @@
             }
 
             // 根据是否是临时邮箱选择不同的点击处理函数
-            const clickHandler = isTempEmailGroup ? 'getTempEmailDetail' : 'selectEmail';
+            const clickHandler = currentMethod === 'cloudflare-admin'
+                ? 'getCloudflareGlobalMessageDetail'
+                : (isTempEmailGroup ? 'getTempEmailDetail' : 'selectEmail');
+            const listPrefix = currentMethod === 'cloudflare-admin' && typeof renderCloudflareGlobalFilterBar === 'function'
+                ? renderCloudflareGlobalFilterBar()
+                : '';
 
-            container.innerHTML = emails.map((email, index) => {
+            container.innerHTML = listPrefix + emails.map((email, index) => {
                 const isChecked = selectedEmailIds.has(email.id);
                 const isActive = currentEmailId === email.id;
                 const recipientDisplayLabel = getRecipientDisplayLabel(email);
@@ -1181,7 +1192,11 @@
         function refreshEmails() {
             if (currentAccount) {
                 if (isTempEmailGroup) {
-                    loadTempEmailMessages(currentAccount);
+                    if (currentMethod === 'cloudflare-admin') {
+                        loadCloudflareGlobalMessages();
+                    } else {
+                        loadTempEmailMessages(currentAccount);
+                    }
                 } else {
                     // 清除当前缓存并强制刷新
                     invalidateEmailListCache(currentAccount, currentFolder);

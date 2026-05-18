@@ -167,7 +167,7 @@ services:
 - 🎨 **现代化 UI** - 四栏布局，账号列表、邮件列表、邮件详情分区清晰
 - ⚡ **性能优化** - 邮件列表与账号列表缓存，分组切换和账号切换更快
 - 📄 **分页加载** - 滚动到底部自动加载下一页（每页20封）
-- 🔥 **临时邮箱** - 集成 GPTMail + DuckMail + Cloudflare Temp Email，多提供商生成、导入、读取和查看详情
+- 🔥 **临时邮箱** - 集成 GPTMail + DuckMail + Cloudflare Temp Email，多提供商生成、导入、读取、查看详情，并支持 Cloudflare 全部邮件视图
 - ⚙️ **系统设置** - 在线修改密码、API Key 等
 - 🔄 **OAuth2 助手** - 内置授权流程，快速获取 Refresh Token
 - 💾 **邮件缓存** - 智能缓存邮件列表，切换即时展示
@@ -401,6 +401,7 @@ user@example.com----app-password----imap.example.com----993
 - `folder=all` 一次聚合收件箱和垃圾邮件并按标准化后的邮件时间倒序排序，`top` 按每个文件夹分别计算
 - 支持按主题、发件人、关键词筛选列表
 - 支持特殊字符别名，例如 `user+alias@example.com`
+- 查询 `@gmail.com` / `@googlemail.com` 地址时，原后缀未命中会自动回退到另一个后缀
 - 默认 `top=1`
 
 **配置步骤：**

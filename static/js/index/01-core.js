@@ -1,4 +1,4 @@
-        /* global closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, initAccountListScroll, initAccountPageSizeSelect, initAccountSearchScopeSelect, initColorPicker, initEmailListScroll, loadGroups, loadTags, renderEmailList, scheduleEmailListLoadCheck, searchAccounts */
+        /* global closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, initAccountListScroll, initAccountPageSizeSelect, initAccountSearchScopeSelect, initColorPicker, initEmailListScroll, loadGroups, loadMoreCloudflareGlobalMessages, loadTags, renderEmailList, scheduleEmailListLoadCheck, searchAccounts */
 
         // 全局状态
         let csrfToken = null;
@@ -417,7 +417,8 @@
         }
 
         function canLoadMoreEmails() {
-            if (isLoadingMore || !hasMoreEmails || !currentAccount || isTempEmailGroup) {
+            const isCloudflareGlobalList = currentMethod === 'cloudflare-admin';
+            if (isLoadingMore || !hasMoreEmails || !currentAccount || (isTempEmailGroup && !isCloudflareGlobalList)) {
                 return false;
             }
 
@@ -1238,6 +1239,12 @@
         // 加载更多邮件
         async function loadMoreEmails() {
             if (isLoadingMore || !hasMoreEmails) return;
+            if (currentMethod === 'cloudflare-admin') {
+                if (typeof loadMoreCloudflareGlobalMessages === 'function') {
+                    return loadMoreCloudflareGlobalMessages();
+                }
+                return;
+            }
 
             isLoadingMore = true;
             const nextSkip = Math.max(Number(currentSkip) || 0, Array.isArray(currentEmails) ? currentEmails.length : 0);
