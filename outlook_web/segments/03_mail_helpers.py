@@ -186,8 +186,10 @@ def is_graph_token_scope_retryable_response(response) -> bool:
         return True
     return any(marker in details_text for marker in (
         'aadsts90023',
+        'aadsts70000',
         'aadsts70011',
         'no applicable permissions',
+        'requested are unauthorized or expired',
         'consent',
         'invalid scope',
     ))
@@ -721,22 +723,30 @@ def download_email_attachment_graph_result(client_id: str, refresh_token: str, m
 
 # ==================== IMAP 方式 ====================
 
+IMAP_TOKEN_SCOPE = "https://outlook.office.com/IMAP.AccessAsUser.All offline_access"
+
+
+def request_imap_token_response(client_id: str, refresh_token: str, proxy_url: str = None,
+                                fallback_proxy_urls: Optional[List[str]] = None):
+    return post_with_proxy_fallback(
+        TOKEN_URL_IMAP,
+        data={
+            "client_id": client_id,
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "scope": IMAP_TOKEN_SCOPE
+        },
+        timeout=HTTP_REQUEST_TIMEOUT,
+        proxy_url=proxy_url,
+        fallback_proxy_urls=fallback_proxy_urls,
+    )
+
+
 def get_access_token_imap_result(client_id: str, refresh_token: str, proxy_url: str = None,
                                  fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
     """获取 IMAP access_token（包含错误详情）"""
     try:
-        res = post_with_proxy_fallback(
-            TOKEN_URL_IMAP,
-            data={
-                "client_id": client_id,
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-                "scope": "https://outlook.office.com/IMAP.AccessAsUser.All offline_access"
-            },
-            timeout=HTTP_REQUEST_TIMEOUT,
-            proxy_url=proxy_url,
-            fallback_proxy_urls=fallback_proxy_urls,
-        )
+        res = request_imap_token_response(client_id, refresh_token, proxy_url, fallback_proxy_urls)
 
         if res.status_code != 200:
             details = get_response_details(res)
