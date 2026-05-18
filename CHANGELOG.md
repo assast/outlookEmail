@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.48] - 2026-05-18
+
+### Fixed
+- 修复部分 Outlook Refresh Token 在 `.default` Graph scope 下刷新失败并返回 `AADSTS90023` 的问题；Graph token 获取现在优先使用授权时的显式委托 scope，并在刷新检测中保留无 scope 兼容回退。
+
 ## [2.0.47] - 2026-05-18
 
 ### Added
