@@ -134,6 +134,96 @@ def post_with_proxy_fallback(url: str, *, proxy_url: str = None,
     )
 
 
+GRAPH_DEFAULT_TOKEN_SCOPE = "https://graph.microsoft.com/.default"
+
+
+def build_graph_refresh_scope(graph_scopes: List[str]) -> str:
+    scopes = [scope for scope in graph_scopes if scope]
+    if 'offline_access' in OAUTH_SCOPES:
+        scopes.append('offline_access')
+    return ' '.join(scopes)
+
+
+def get_graph_token_scope_candidates(include_original_scope_fallback: bool = False) -> List[tuple[str, str]]:
+    configured_graph_scopes = [
+        scope for scope in OAUTH_SCOPES
+        if str(scope or '').startswith('https://graph.microsoft.com/')
+    ]
+    read_graph_scopes = [
+        scope for scope in configured_graph_scopes
+        if scope != 'https://graph.microsoft.com/Mail.ReadWrite'
+    ]
+    raw_candidates = [
+        ('configured', build_graph_refresh_scope(configured_graph_scopes)),
+        ('read', build_graph_refresh_scope(read_graph_scopes)),
+        ('default', GRAPH_DEFAULT_TOKEN_SCOPE),
+    ]
+    if include_original_scope_fallback:
+        raw_candidates.append(('original', ''))
+
+    candidates = []
+    seen_scopes = set()
+    for label, scope in raw_candidates:
+        if scope in seen_scopes:
+            continue
+        seen_scopes.add(scope)
+        candidates.append((label, scope))
+    return candidates
+
+
+def is_graph_token_scope_retryable_response(response) -> bool:
+    if response.status_code not in {400, 401, 403}:
+        return False
+    details = get_response_details(response)
+    if isinstance(details, dict):
+        error_code = str(details.get('error') or '').strip().lower()
+        details_text = json.dumps(details, ensure_ascii=True).lower()
+    else:
+        error_code = ''
+        details_text = str(details or '').lower()
+
+    if error_code in {'invalid_scope', 'consent_required', 'interaction_required'}:
+        return True
+    return any(marker in details_text for marker in (
+        'aadsts90023',
+        'aadsts70011',
+        'no applicable permissions',
+        'consent',
+        'invalid scope',
+    ))
+
+
+def request_graph_token_response(client_id: str, refresh_token: str, proxy_url: str = None,
+                                 fallback_proxy_urls: Optional[List[str]] = None,
+                                 include_original_scope_fallback: bool = False):
+    """请求 Graph token，优先使用授权时的显式委托 scope，避免 .default 依赖应用预配置权限。"""
+    last_response = None
+    candidates = get_graph_token_scope_candidates(include_original_scope_fallback)
+    for index, (_label, scope) in enumerate(candidates):
+        data = {
+            "client_id": client_id,
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        }
+        if scope:
+            data["scope"] = scope
+
+        response = post_with_proxy_fallback(
+            TOKEN_URL_GRAPH,
+            data=data,
+            timeout=HTTP_REQUEST_TIMEOUT,
+            proxy_url=proxy_url,
+            fallback_proxy_urls=fallback_proxy_urls,
+        )
+        last_response = response
+        if response.status_code == 200:
+            return response
+        if index == len(candidates) - 1 or not is_graph_token_scope_retryable_response(response):
+            return response
+
+    return last_response
+
+
 def get_with_proxy_fallback(url: str, *, proxy_url: str = None,
                             fallback_proxy_urls: Optional[List[str]] = None, **kwargs):
     return request_with_proxy_failover(
@@ -191,17 +281,11 @@ def get_access_token_graph_result(client_id: str, refresh_token: str, proxy_url:
                                   fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
     """获取 Graph API access_token（包含错误详情）"""
     try:
-        res = post_with_proxy_fallback(
-            TOKEN_URL_GRAPH,
-            data={
-                "client_id": client_id,
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-                "scope": "https://graph.microsoft.com/.default"
-            },
-            timeout=HTTP_REQUEST_TIMEOUT,
-            proxy_url=proxy_url,
-            fallback_proxy_urls=fallback_proxy_urls,
+        res = request_graph_token_response(
+            client_id,
+            refresh_token,
+            proxy_url,
+            fallback_proxy_urls,
         )
 
         if res.status_code != 200:

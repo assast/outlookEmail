@@ -1525,6 +1525,90 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
         self.assertEqual(log_row['status'], 'success')
         self.assertIsNone(log_row['error_message'])
 
+    def test_refresh_account_uses_delegated_graph_scope_before_default_scope(self):
+        class FakeResponse:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {'access_token': 'access-token'}
+
+        with patch.object(web_outlook_app.requests, 'request', return_value=FakeResponse()) as mocked_request:
+            response = self.client.post(f'/api/accounts/{self.account_id}/refresh')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        request_data = mocked_request.call_args.kwargs['data']
+        self.assertIn('https://graph.microsoft.com/Mail.Read', request_data['scope'])
+        self.assertIn('https://graph.microsoft.com/Mail.ReadWrite', request_data['scope'])
+        self.assertIn('offline_access', request_data['scope'])
+        self.assertNotEqual(request_data['scope'], 'https://graph.microsoft.com/.default')
+
+    def test_refresh_account_falls_back_to_original_scope_after_aadsts90023(self):
+        class FakeResponse:
+            def __init__(self, status_code, payload):
+                self.status_code = status_code
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        no_permissions_response = FakeResponse(400, {
+            'error': 'invalid_request',
+            'error_description': 'AADSTS90023: No applicable permissions were found for this user.',
+        })
+        success_response = FakeResponse(200, {
+            'access_token': 'access-token',
+            'refresh_token': 'M.C556_SN1.0.U.rotated',
+        })
+
+        with patch.object(
+            web_outlook_app.requests,
+            'request',
+            side_effect=[
+                no_permissions_response,
+                no_permissions_response,
+                no_permissions_response,
+                success_response,
+            ],
+        ) as mocked_request:
+            response = self.client.post(f'/api/accounts/{self.account_id}/refresh')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        request_data = [call.kwargs['data'] for call in mocked_request.call_args_list]
+        self.assertIn('scope', request_data[0])
+        self.assertIn('scope', request_data[1])
+        self.assertEqual(request_data[2]['scope'], 'https://graph.microsoft.com/.default')
+        self.assertNotIn('scope', request_data[3])
+
+        with self.app.app_context():
+            refreshed = web_outlook_app.get_account_by_id(self.account_id)
+
+        self.assertIsNotNone(refreshed)
+        self.assertEqual(refreshed['refresh_token'], 'M.C556_SN1.0.U.rotated')
+
+    def test_graph_access_token_uses_delegated_scope_before_default_scope(self):
+        class FakeResponse:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {'access_token': 'access-token'}
+
+        with patch.object(web_outlook_app.requests, 'request', return_value=FakeResponse()) as mocked_request:
+            result = web_outlook_app.get_access_token_graph_result('client-id', 'refresh-token')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['access_token'], 'access-token')
+        request_data = mocked_request.call_args.kwargs['data']
+        self.assertIn('https://graph.microsoft.com/Mail.Read', request_data['scope'])
+        self.assertIn('https://graph.microsoft.com/Mail.ReadWrite', request_data['scope'])
+        self.assertNotEqual(request_data['scope'], 'https://graph.microsoft.com/.default')
+
     def test_refresh_account_persists_rotated_refresh_token(self):
         class FakeResponse:
             status_code = 200

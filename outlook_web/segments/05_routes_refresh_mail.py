@@ -627,19 +627,12 @@ def test_refresh_token(client_id: str, refresh_token: str, proxy_url: str = None
                        fallback_proxy_urls: List[str] = None) -> tuple[bool, Optional[str], str]:
     """测试 refresh token 是否有效，返回 (是否成功, 错误信息, 新 refresh_token)"""
     try:
-        # 尝试使用 Graph API 获取 access token
-        # 使用与 get_access_token_graph 相同的 scope，确保一致性
-        res = post_with_proxy_fallback(
-            TOKEN_URL_GRAPH,
-            data={
-                "client_id": client_id,
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-                "scope": "https://graph.microsoft.com/.default"
-            },
-            timeout=HTTP_REQUEST_TIMEOUT,
+        res = request_graph_token_response(
+            client_id,
+            refresh_token,
             proxy_url=proxy_url,
             fallback_proxy_urls=fallback_proxy_urls,
+            include_original_scope_fallback=True,
         )
 
         if res.status_code == 200:
