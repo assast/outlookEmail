@@ -849,14 +849,14 @@ def build_webdav_upload_error_message(action: str, status_code: int) -> str:
         message += (
             '。目标目录不存在或不允许写入该路径；请先创建专用备份目录，并填写该目录的 WebDAV URL。'
             '如果使用坚果云，不要只填写 https://dav.jianguoyun.com/dav，'
-            '建议填写类似 https://dav.jianguoyun.com/dav/OutlookEmailBackup 的已存在目录'
+            '建议填写类似 https://dav.jianguoyun.com/dav/mailBackup 的已存在目录'
         )
     elif status_code == 409:
         message += (
             '。目标路径冲突，通常是上级目录不存在或目录路径写错；请先在 WebDAV 服务中创建专用备份目录，'
             '再填写该目录的 WebDAV URL。'
-            '如果使用坚果云，请先创建 OutlookEmailBackup 文件夹，'
-            '然后填写 https://dav.jianguoyun.com/dav/OutlookEmailBackup，注意大小写一致'
+            '如果使用坚果云，请先创建 mailBackup 文件夹，'
+            '然后填写 https://dav.jianguoyun.com/dav/mailBackup，注意大小写一致'
         )
     return message
 

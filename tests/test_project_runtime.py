@@ -920,7 +920,7 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertFalse(payload['success'])
         self.assertEqual(payload['status_code'], 404)
         self.assertIn('目标目录不存在', payload['error'])
-        self.assertIn('https://dav.jianguoyun.com/dav/OutlookEmailBackup', payload['error'])
+        self.assertIn('https://dav.jianguoyun.com/dav/mailBackup', payload['error'])
 
     def test_webdav_backup_test_409_explains_path_conflict(self):
         class PutResponseStub:
@@ -931,7 +931,7 @@ class ProjectRuntimeTests(unittest.TestCase):
                 '/api/settings/test-webdav-backup',
                 json={
                     'config': {
-                        'url': 'https://dav.jianguoyun.com/dav/OutlookEmailBackup',
+                        'url': 'https://dav.jianguoyun.com/dav/mailBackup',
                         'username': 'dav-user',
                         'password': 'dav-pass',
                     }
@@ -943,7 +943,7 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertFalse(payload['success'])
         self.assertEqual(payload['status_code'], 409)
         self.assertIn('目标路径冲突', payload['error'])
-        self.assertIn('先创建 OutlookEmailBackup 文件夹', payload['error'])
+        self.assertIn('先创建 mailBackup 文件夹', payload['error'])
 
     def test_manual_webdav_upload_requires_login_password(self):
         self._insert_account('manual-upload@example.com', group_id=1)
@@ -1125,7 +1125,7 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('id="uploadWebdavBackupBtn"', settings_html)
         self.assertIn('id="webdavBackupTestResult"', settings_html)
         self.assertIn('请先在 WebDAV 服务中创建目录', settings_html)
-        self.assertIn('https://dav.jianguoyun.com/dav/OutlookEmailBackup', settings_html)
+        self.assertIn('https://dav.jianguoyun.com/dav/mailBackup', settings_html)
         self.assertLess(settings_html.index('id="webdavBackupPassword"'), settings_html.index('id="testWebdavBackupBtn"'))
         self.assertLess(settings_html.index('id="testWebdavBackupBtn"'), settings_html.index('id="webdavBackupCron"'))
         self.assertIn('selectWebdavBackupCronExample', settings_html)
