@@ -1841,7 +1841,7 @@ def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
             'success': True,
             'emails': emails_data,
             'method': 'IMAP (Generic)',
-            'has_more': total > end_idx
+            'has_more': start_idx > 0
         }
     except Exception as exc:
         return {

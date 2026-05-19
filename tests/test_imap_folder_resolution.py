@@ -207,6 +207,57 @@ class ImapFolderResolutionTests(unittest.TestCase):
         self.assertEqual(result['emails'][0]['date'], '14-Apr-2026 10:00:00 +0000')
         self.assertTrue(mail.logged_out)
 
+    def test_custom_imap_has_more_tracks_older_pages(self):
+        class PaginatedMail(FakeMail):
+            def uid(self, command, *args, **kwargs):
+                if command == 'SEARCH':
+                    return 'OK', [b' '.join(str(index).encode('utf-8') for index in range(1, 46))]
+                if command == 'FETCH':
+                    uid = args[0]
+                    uid_text = uid.decode('utf-8') if isinstance(uid, (bytes, bytearray)) else str(uid)
+                    minute = int(uid_text) % 60
+                    internal_date = f'14-Apr-2026 08:{minute:02d}:00 +0000'
+                    raw_email = (
+                        f"Subject: page message {uid_text}\r\n"
+                        "From: sender@example.com\r\n"
+                        "To: user@example.com\r\n"
+                        f"Date: Tue, 14 Apr 2026 08:{minute:02d}:00 +0000\r\n"
+                        "\r\n"
+                        "hello\r\n"
+                    ).encode('utf-8')
+                    return 'OK', [(
+                        f'{uid_text} (FLAGS () INTERNALDATE "{internal_date}" RFC822 {{{len(raw_email)}}}'.encode('utf-8'),
+                        raw_email,
+                    )]
+                return super().uid(command, *args, **kwargs)
+
+        def fetch_page(skip):
+            mail = PaginatedMail(selectable={'INBOX'})
+            with patch.object(web_outlook_app, 'create_imap_connection', return_value=mail):
+                result = web_outlook_app.get_emails_imap_generic(
+                    email_addr='user@example.com',
+                    imap_password='secret',
+                    imap_host='imap.example.com',
+                    provider='custom',
+                    folder='inbox',
+                    skip=skip,
+                    top=20,
+                )
+            self.assertTrue(result['success'])
+            self.assertTrue(mail.logged_out)
+            return result
+
+        first_page = fetch_page(0)
+        middle_page = fetch_page(20)
+        final_page = fetch_page(40)
+
+        self.assertEqual(first_page['emails'][0]['id'], '45')
+        self.assertTrue(first_page['has_more'])
+        self.assertEqual(middle_page['emails'][0]['id'], '25')
+        self.assertTrue(middle_page['has_more'])
+        self.assertEqual(final_page['emails'][0]['id'], '5')
+        self.assertFalse(final_page['has_more'])
+
     def test_gmail_imap_list_reads_seen_flag_from_split_fetch_response(self):
         raw_email = (
             b"Subject: seen-mail\r\n"
