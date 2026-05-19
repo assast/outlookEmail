@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.51] - 2026-05-19
+
 ### Fixed
 - 修复自定义 IMAP 邮件列表首屏误判没有下一页的问题，确保下拉触底能继续触发分页加载，并补充分页边界回归测试。
 
