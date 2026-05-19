@@ -208,7 +208,7 @@
                             <div class="form-group">
                                 <label class="form-label">WebDAV 目录 URL</label>
                                 <input type="text" class="form-input" id="webdavBackupUrl" placeholder="https://dav.example.com/backups">
-                                <div class="form-hint">填写目录地址，系统会自动追加备份文件名。</div>
+                                <div class="form-hint">填写目录地址，系统会自动追加备份文件名。请先在 WebDAV 服务中创建目录；例如坚果云创建 OutlookEmailBackup 后，这里填写 https://dav.jianguoyun.com/dav/OutlookEmailBackup。</div>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">用户名</label>
@@ -217,6 +217,13 @@
                             <div class="form-group">
                                 <label class="form-label">密码 / App Password</label>
                                 <input type="password" class="form-input" id="webdavBackupPassword" placeholder="可选">
+                            </div>
+                            <div class="form-group settings-form-span-full">
+                                <div class="settings-action-row">
+                                    <button class="btn btn-secondary" type="button" id="testWebdavBackupBtn" onclick="testWebdavBackup()">测试 WebDAV</button>
+                                    <div class="form-hint">测试只上传小文件，不需要输入登录密码。</div>
+                                </div>
+                                <div id="webdavBackupTestResult" class="settings-note" style="display: none;"></div>
                             </div>
                         </div>
 
@@ -248,11 +255,9 @@
                         </div>
 
                         <div class="settings-action-row settings-action-row--toolbar">
-                            <button class="btn btn-secondary" type="button" id="testWebdavBackupBtn" onclick="testWebdavBackup()">测试 WebDAV</button>
                             <button class="btn btn-primary" type="button" id="uploadWebdavBackupBtn" onclick="uploadWebdavBackupNow()">手动上传</button>
-                            <div class="form-hint">测试只上传小文件；手动上传会立即上传“导出全部分组”的真实备份。</div>
+                            <div class="form-hint">手动上传会立即上传“导出全部分组”的真实备份。</div>
                         </div>
-                        <div id="webdavBackupTestResult" class="settings-note" style="display: none;"></div>
 
                         <div id="webdavBackupStatus" class="settings-note" style="display: none; white-space: pre-line;"></div>
                     </div>

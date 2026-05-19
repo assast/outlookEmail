@@ -899,6 +899,52 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertEqual(put_mock.call_args.kwargs['auth'], ('dav-user', 'dav-pass'))
         self.assertEqual(delete_mock.call_args.kwargs['auth'], ('dav-user', 'dav-pass'))
 
+    def test_webdav_backup_test_404_explains_missing_directory(self):
+        class PutResponseStub:
+            status_code = 404
+
+        with patch.object(web_outlook_app.requests, 'put', return_value=PutResponseStub()):
+            response = self.client.post(
+                '/api/settings/test-webdav-backup',
+                json={
+                    'config': {
+                        'url': 'https://dav.jianguoyun.com/dav',
+                        'username': 'dav-user',
+                        'password': 'dav-pass',
+                    }
+                }
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertEqual(payload['status_code'], 404)
+        self.assertIn('目标目录不存在', payload['error'])
+        self.assertIn('https://dav.jianguoyun.com/dav/OutlookEmailBackup', payload['error'])
+
+    def test_webdav_backup_test_409_explains_path_conflict(self):
+        class PutResponseStub:
+            status_code = 409
+
+        with patch.object(web_outlook_app.requests, 'put', return_value=PutResponseStub()):
+            response = self.client.post(
+                '/api/settings/test-webdav-backup',
+                json={
+                    'config': {
+                        'url': 'https://dav.jianguoyun.com/dav/OutlookEmailBackup',
+                        'username': 'dav-user',
+                        'password': 'dav-pass',
+                    }
+                }
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertEqual(payload['status_code'], 409)
+        self.assertIn('目标路径冲突', payload['error'])
+        self.assertIn('先创建 OutlookEmailBackup 文件夹', payload['error'])
+
     def test_manual_webdav_upload_requires_login_password(self):
         self._insert_account('manual-upload@example.com', group_id=1)
         with self.app.app_context():
@@ -1078,6 +1124,10 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('id="testWebdavBackupBtn"', settings_html)
         self.assertIn('id="uploadWebdavBackupBtn"', settings_html)
         self.assertIn('id="webdavBackupTestResult"', settings_html)
+        self.assertIn('请先在 WebDAV 服务中创建目录', settings_html)
+        self.assertIn('https://dav.jianguoyun.com/dav/OutlookEmailBackup', settings_html)
+        self.assertLess(settings_html.index('id="webdavBackupPassword"'), settings_html.index('id="testWebdavBackupBtn"'))
+        self.assertLess(settings_html.index('id="testWebdavBackupBtn"'), settings_html.index('id="webdavBackupCron"'))
         self.assertIn('selectWebdavBackupCronExample', settings_html)
         self.assertIn('async function validateWebdavBackupCronExpression()', settings_js)
         self.assertIn('async function testWebdavBackup()', settings_js)
