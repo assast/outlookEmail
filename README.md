@@ -388,6 +388,7 @@ user@example.com----app-password----imap.example.com----993
 补充说明：
 
 - 定时备份会上传与“导出全部分组”一致的文本文件，文件名形如 `all_groups_backup_YYYYMMDD_HHMMSS.txt`
+- 坚果云需要先创建专用目录，再填写该目录 URL，例如 `https://dav.jianguoyun.com/dav/OutlookEmailBackup`；不要只填写 `https://dav.jianguoyun.com/dav`
 - 「手动上传」会立即上传真实备份文件，需要输入登录密码
 - WebDAV 备份涉及账号、令牌、临时邮箱凭据等敏感数据，建议使用专用 WebDAV 目录并控制访问权限
 

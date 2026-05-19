@@ -6,9 +6,16 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.49] - 2026-05-19
+
+### Changed
+- WebDAV 备份设置页将“测试 WebDAV”按钮移动到 URL、用户名、密码配置区域旁，减少测试连接时跨屏操作。
+- WebDAV 目录 URL 提示补充“需先创建目录”的说明，并给出坚果云 `OutlookEmailBackup` 示例路径。
+
 ### Fixed
 - 修复 Outlook Refresh Token 遇到 `AADSTS70000` scope 未授权/过期响应时未继续回退到旧 `.default` 或无 scope 刷新方式的问题。
 - Outlook Refresh Token 在 Graph 刷新失败后会继续尝试 IMAP OAuth 刷新，并保存 IMAP 返回的轮换 `refresh_token`。
+- WebDAV 测试和手动上传遇到 HTTP 404/409 时会返回可操作的目录创建和路径检查提示，避免只显示状态码。
 
 ## [2.0.48] - 2026-05-18
 
