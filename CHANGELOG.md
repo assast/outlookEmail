@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.50] - 2026-05-19
+
+### Changed
+- 设置弹层左侧“设置导航”在桌面宽度下支持独立滚动，避免设置项增多时导航超出一屏。
+
 ## [2.0.49] - 2026-05-19
 
 ### Changed

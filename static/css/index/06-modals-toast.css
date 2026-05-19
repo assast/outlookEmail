@@ -1271,6 +1271,22 @@
             .settings-sidebar {
                 position: sticky;
                 top: 0;
+                max-height: calc(92vh - 120px);
+                min-height: 0;
+            }
+
+            .settings-sidebar-card {
+                max-height: inherit;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .settings-sidebar-list {
+                overflow-y: auto;
+                overscroll-behavior: contain;
+                scrollbar-width: thin;
+                padding-right: 4px;
             }
         }
 
