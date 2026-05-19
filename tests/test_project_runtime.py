@@ -1116,6 +1116,7 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
     def test_webdav_backup_settings_ui_is_present(self):
         settings_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'dialogs-management.html').read_text(encoding='utf-8')
         settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')
+        settings_css = pathlib.Path(ROOT_DIR, 'static', 'css', 'index', '06-modals-toast.css').read_text(encoding='utf-8')
 
         self.assertIn('id="settingsWebdavBackupSection"', settings_html)
         self.assertIn('id="webdavBackupEnabled"', settings_html)
@@ -1136,6 +1137,9 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn("fetch('/api/settings/upload-webdav-backup'", settings_js)
         self.assertIn('expected_fields: 5', settings_js)
         self.assertIn('settings.webdav_backup_verify_password = webdavBackupVerifyPassword;', settings_js)
+        self.assertIn('.settings-sidebar-list', settings_css)
+        self.assertIn('overflow-y: auto;', settings_css)
+        self.assertIn('scrollbar-width: thin;', settings_css)
 
     def test_temp_email_list_uses_selected_tag_filters(self):
         temp_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '03-temp-emails.js').read_text(encoding='utf-8')
