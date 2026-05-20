@@ -538,6 +538,9 @@ curl -H "X-API-Key: your-api-key" \
 | `imap_host` | string | 否 | `provider=custom` 时的 IMAP 服务器 |
 | `imap_port` | int | 否 | `provider=custom` 时的 IMAP 端口 |
 | `forward_enabled` | bool | 否 | 导入后是否默认启用转发 |
+| `remark` | string | 否 | 本次新增账号统一备注，不改变 `account_string` 每行格式 |
+| `status` | string | 否 | 本次新增账号统一状态：`active` 或 `inactive` |
+| `tag_ids` | array | 否 | 本次新增账号统一绑定的标签 ID 列表 |
 
 #### 响应重点字段
 
@@ -546,6 +549,7 @@ curl -H "X-API-Key: your-api-key" \
 | `added_count` | 本次新增账号数量 |
 | `skipped_count` | 因重复等原因跳过的账号数量 |
 | `invalid_count` | 格式无效的输入行数量 |
+| `tagged_count` | 本次成功绑定标签的新增账号数量 |
 
 #### 导入格式
 
@@ -562,7 +566,10 @@ curl -H "X-API-Key: your-api-key" \
   "group_id": 1,
   "account_format": "client_id_refresh_token",
   "provider": "outlook",
-  "forward_enabled": false
+  "forward_enabled": false,
+  "remark": "批次 A",
+  "status": "active",
+  "tag_ids": [1, 2]
 }
 ```
 

@@ -644,6 +644,78 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertIsNotNone(row)
         self.assertIsNone(row['sort_order'])
 
+    def test_accounts_api_import_applies_shared_metadata_to_new_accounts(self):
+        existing_id = self._insert_account('metadata-existing@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            tag_id = db.execute(
+                'INSERT INTO tags (name, color) VALUES (?, ?)',
+                ('导入批次', '#0078d4')
+            ).lastrowid
+            db.commit()
+
+        with patch.object(web_outlook_app, 'encrypt_data', side_effect=lambda value: value):
+            response = self.client.post('/api/accounts', json={
+                'account_string': '\n'.join([
+                    'metadata-existing@example.com----old-password',
+                    'metadata-new-a@example.com----imap-password-a',
+                    'metadata-new-b@example.com----imap-password-b',
+                ]),
+                'group_id': 1,
+                'provider': 'gmail',
+                'remark': '统一导入备注',
+                'status': 'inactive',
+                'tag_ids': [tag_id],
+            })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['added_count'], 2)
+        self.assertEqual(payload['skipped_count'], 1)
+        self.assertEqual(payload['tagged_count'], 2)
+
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            rows = db.execute(
+                '''
+                SELECT id, email, remark, status
+                FROM accounts
+                WHERE email IN (?, ?, ?)
+                ORDER BY email
+                ''',
+                (
+                    'metadata-existing@example.com',
+                    'metadata-new-a@example.com',
+                    'metadata-new-b@example.com',
+                )
+            ).fetchall()
+            account_rows = {row['email']: dict(row) for row in rows}
+            tagged_rows = db.execute(
+                '''
+                SELECT account_id
+                FROM account_tags
+                WHERE tag_id = ?
+                ORDER BY account_id
+                ''',
+                (tag_id,)
+            ).fetchall()
+
+        self.assertEqual(account_rows['metadata-existing@example.com']['id'], existing_id)
+        self.assertEqual(account_rows['metadata-existing@example.com']['remark'], '')
+        self.assertEqual(account_rows['metadata-existing@example.com']['status'], 'active')
+        self.assertEqual(account_rows['metadata-new-a@example.com']['remark'], '统一导入备注')
+        self.assertEqual(account_rows['metadata-new-a@example.com']['status'], 'inactive')
+        self.assertEqual(account_rows['metadata-new-b@example.com']['remark'], '统一导入备注')
+        self.assertEqual(account_rows['metadata-new-b@example.com']['status'], 'inactive')
+        self.assertEqual(
+            {row['account_id'] for row in tagged_rows},
+            {
+                account_rows['metadata-new-a@example.com']['id'],
+                account_rows['metadata-new-b@example.com']['id'],
+            }
+        )
+
     def test_update_account_without_sort_order_clears_custom_sort(self):
         account_id = self._insert_account('clear-sort@example.com')
         with self.app.app_context():

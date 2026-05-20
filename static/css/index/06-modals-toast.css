@@ -186,6 +186,188 @@
             margin-top: 6px;
         }
 
+        .import-account-modal-content {
+            width: min(1040px, calc(100vw - 48px));
+            max-width: calc(100vw - 24px);
+            max-height: min(92vh, 920px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .import-account-modal-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .import-account-source,
+        .import-account-options {
+            min-width: 0;
+        }
+
+        .import-account-stack {
+            display: grid;
+            grid-template-columns: minmax(0, 0.92fr) minmax(380px, 1.08fr);
+            gap: 20px;
+            align-items: start;
+        }
+
+        .import-options-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px 18px;
+            align-items: start;
+        }
+
+        .import-account-input-group,
+        .import-options-grid .form-group {
+            margin-bottom: 0;
+        }
+
+        .import-account-textarea {
+            min-height: 420px;
+            height: min(52vh, 520px);
+            line-height: 1.55;
+        }
+
+        .import-remark-textarea {
+            min-height: 76px;
+            height: 76px;
+            font-family: inherit;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .import-custom-imap {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 112px;
+            gap: 12px;
+        }
+
+        .import-custom-imap .form-group {
+            margin-bottom: 0;
+        }
+
+        .import-format-example {
+            display: none;
+            margin-top: 10px;
+            padding: 10px 12px;
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            color: #4b5563;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.55;
+            white-space: pre-line;
+            word-break: break-word;
+        }
+
+        .import-tag-dropdown {
+            position: relative;
+        }
+
+        .import-tag-trigger {
+            width: 100%;
+            min-height: 40px;
+            padding: 0 12px;
+            border: 1px solid #e5e5e5;
+            border-radius: 6px;
+            background: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            text-align: left;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .import-tag-trigger-text {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .import-tag-trigger-count {
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            border-radius: 999px;
+            background: #111827;
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .import-tag-trigger-caret {
+            color: #6b7280;
+            font-size: 12px;
+        }
+
+        .import-tag-panel {
+            display: none;
+            position: absolute;
+            z-index: 1010;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            padding: 6px;
+            border: 1px solid #dcdfe4;
+            border-radius: 8px;
+            background: #ffffff;
+            box-shadow: 0 16px 34px rgba(15, 23, 42, 0.14);
+        }
+
+        .import-tag-dropdown.open .import-tag-panel {
+            display: block;
+        }
+
+        .import-tag-options {
+            min-height: 42px;
+            max-height: 190px;
+            overflow-y: auto;
+            display: grid;
+            gap: 4px;
+            scrollbar-width: thin;
+        }
+
+        .import-tag-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 34px;
+            padding: 6px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #374151;
+        }
+
+        .import-tag-option:hover {
+            background: #f8fafc;
+        }
+
+        .import-tag-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex: 0 0 auto;
+        }
+
+        .import-tag-empty {
+            padding: 8px;
+            color: #6b7280;
+            font-size: 12px;
+        }
+
         .settings-modal-content {
             width: min(1160px, calc(100vw - 40px));
             max-width: calc(100vw - 24px);
@@ -1310,6 +1492,8 @@
         }
 
         @media (max-width: 860px) {
+            .import-account-stack,
+            .import-options-grid,
             .refresh-snapshot-grid,
             .forwarding-toolbar__controls,
             .settings-panel-grid,
@@ -1323,6 +1507,19 @@
             .settings-inline-action {
                 flex-direction: column;
                 align-items: stretch;
+            }
+
+            .import-account-modal-body {
+                padding: 18px;
+            }
+
+            .import-account-textarea {
+                min-height: 260px;
+                height: 320px;
+            }
+
+            .import-custom-imap {
+                grid-template-columns: 1fr;
             }
 
             .refresh-toolbar,
