@@ -6,6 +6,15 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.52] - 2026-05-20
+
+### Added
+- 导入邮箱账号支持在不改变账号文本格式的前提下，统一设置新增账号的备注、标签和状态。
+
+### Changed
+- 重构导入邮箱账号弹窗的 PC 端布局，将账号信息与导入设置分为两栏展示。
+- 导入标签下拉支持点击下拉外部区域自动关闭。
+
 ## [2.0.51] - 2026-05-19
 
 ### Fixed

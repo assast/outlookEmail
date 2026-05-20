@@ -1114,13 +1114,16 @@ def api_replace_account_aliases_endpoint(account_id):
 @login_required
 def api_add_account():
     """添加账号"""
-    data = request.json
+    data = request.json or {}
     account_str = data.get('account_string', '')
     group_id = data.get('group_id', 1)
     account_format = data.get('account_format', 'client_id_refresh_token')
     provider = data.get('provider', 'outlook')
     forward_enabled = bool(data.get('forward_enabled', False))
     sort_order = parse_account_sort_order_input(data.get('sort_order')) if 'sort_order' in data else None
+    remark = sanitize_input(str(data.get('remark', '') or '').strip(), max_length=500)
+    status = normalize_account_status(data.get('status', 'active'))
+    tag_ids = normalize_tag_ids_input(data.get('tag_ids', []))
     imap_host = (data.get('imap_host', '') or '').strip()
     try:
         imap_port = int(data.get('imap_port', 993) or 993)
@@ -1146,9 +1149,10 @@ def api_add_account():
         else:
             invalid_count += 1
 
-    result = add_accounts_bulk(parsed_accounts, group_id, forward_enabled, sort_order)
+    result = add_accounts_bulk(parsed_accounts, group_id, forward_enabled, sort_order, remark, status, tag_ids)
     added = result.get('added_count', 0)
     skipped_count = result.get('skipped_count', 0)
+    tagged_count = result.get('tagged_count', 0)
     
     if added > 0:
         message = f'成功添加 {added} 个账号'
@@ -1165,6 +1169,7 @@ def api_add_account():
             'added_count': added,
             'skipped_count': skipped_count,
             'invalid_count': invalid_count,
+            'tagged_count': tagged_count,
         })
     else:
         return jsonify({

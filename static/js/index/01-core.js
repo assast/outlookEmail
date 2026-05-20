@@ -1083,6 +1083,7 @@
             document.addEventListener('click', closeAccountActionMenus);
             document.addEventListener('click', handleGlobalChromeClick);
             document.addEventListener('click', handleGlobalTagFilterClick);
+            document.addEventListener('click', handleGlobalImportTagClick);
             document.getElementById('importImapHost')?.addEventListener('input', updateImportHint);
             document.getElementById('importImapPort')?.addEventListener('input', updateImportHint);
             document.getElementById('oauthEmailInput')?.addEventListener('input', invalidateRefreshTokenPreview);
@@ -1160,6 +1161,16 @@
         function handleGlobalTagFilterClick(event) {
             if (!event.target.closest('#tagFilterDropdown')) {
                 closeTagFilterDropdown();
+            }
+        }
+
+        function closeImportTagDropdown() {
+            document.getElementById('importTagDropdown')?.classList.remove('open');
+        }
+
+        function handleGlobalImportTagClick(event) {
+            if (!event.target.closest('#importTagDropdown')) {
+                closeImportTagDropdown();
             }
         }
 
