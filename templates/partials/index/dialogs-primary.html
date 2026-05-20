@@ -78,66 +78,98 @@
 
     <!-- 添加账号模态框 -->
     <div class="modal" id="addAccountModal" onmousedown="if(event.target === this) hideAddAccountModal()">
-        <div class="modal-content">
+        <div class="modal-content import-account-modal-content">
             <div class="modal-header">
                 <h3>导入邮箱账号</h3>
                 <button class="modal-close" onclick="hideAddAccountModal()">&times;</button>
             </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">选择分组</label>
-                    <select class="form-select" id="importGroupSelect">
-                        <!-- 分组选项将通过 JS 动态加载 -->
-                    </select>
-                </div>
-                <div class="form-group" id="importChannelGroup" style="display: none;">
-                    <label class="form-label">选择渠道</label>
-                    <select class="form-select" id="importChannelSelect" onchange="updateImportHint()">
-                        <option value="gptmail">GPTMail</option>
-                        <option value="duckmail">DuckMail</option>
-                        <option value="cloudflare">Cloudflare</option>
-                    </select>
-                </div>
-                <div class="form-group" id="importProviderGroup">
-                    <label class="form-label">邮箱类型</label>
-                    <select class="form-select" id="importProviderSelect" onchange="updateImportHint()">
-                        <option value="outlook">Outlook OAuth</option>
-                        <option value="gmail">Gmail</option>
-                        <option value="qq">QQ</option>
-                        <option value="163">163</option>
-                        <option value="126">126</option>
-                        <option value="yahoo">Yahoo</option>
-                        <option value="aliyun">Aliyun</option>
-                        <option value="2925">2925邮箱</option>
-                        <option value="custom">自定义 IMAP</option>
-                    </select>
-                </div>
-                <div id="customImapSettings" style="display: none;">
-                    <div class="form-group">
-                        <label class="form-label">IMAP 服务器</label>
-                        <input type="text" class="form-input" id="importImapHost" placeholder="imap.example.com">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">IMAP 端口</label>
-                        <input type="number" class="form-input" id="importImapPort" value="993" min="1" max="65535">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">账号信息</label>
-                    <textarea class="form-textarea" id="accountInput"
-                        placeholder="邮箱----密码----client_id----refresh_token"></textarea>
-                    <div class="form-hint" id="importFormatHint">Outlook 支持两种格式并自动识别：邮箱----密码----client_id----refresh_token 或 邮箱----密码----refresh_token----client_id
-                    </div>
-                    <div id="importFormatExample"
-                        style="display: none; margin-top: 8px; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; font-size: 12px; color: #666; font-family: monospace; white-space: pre-line; border: 1px solid #e9ecef;">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" id="importForwardEnabled">
-                        <span class="form-label" style="margin: 0;">导入后启用邮件转发</span>
-                    </label>
-                    <div class="form-hint">开启后，新导入账号会立即参与转发轮询。</div>
+            <div class="modal-body import-account-modal-body">
+                <div class="import-account-stack">
+                    <section class="import-account-options">
+                        <div class="import-options-grid">
+                            <div class="form-group">
+                                <label class="form-label">选择分组</label>
+                                <select class="form-select" id="importGroupSelect">
+                                    <!-- 分组选项将通过 JS 动态加载 -->
+                                </select>
+                            </div>
+                            <div class="form-group" id="importChannelGroup" style="display: none;">
+                                <label class="form-label">选择渠道</label>
+                                <select class="form-select" id="importChannelSelect" onchange="updateImportHint()">
+                                    <option value="gptmail">GPTMail</option>
+                                    <option value="duckmail">DuckMail</option>
+                                    <option value="cloudflare">Cloudflare</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="importProviderGroup">
+                                <label class="form-label">邮箱类型</label>
+                                <select class="form-select" id="importProviderSelect" onchange="updateImportHint()">
+                                    <option value="outlook">Outlook OAuth</option>
+                                    <option value="gmail">Gmail</option>
+                                    <option value="qq">QQ</option>
+                                    <option value="163">163</option>
+                                    <option value="126">126</option>
+                                    <option value="yahoo">Yahoo</option>
+                                    <option value="aliyun">Aliyun</option>
+                                    <option value="2925">2925邮箱</option>
+                                    <option value="custom">自定义 IMAP</option>
+                                </select>
+                            </div>
+                            <div id="customImapSettings" class="import-custom-imap" style="display: none;">
+                                <div class="form-group">
+                                    <label class="form-label">IMAP 服务器</label>
+                                    <input type="text" class="form-input" id="importImapHost" placeholder="imap.example.com">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">IMAP 端口</label>
+                                    <input type="number" class="form-input" id="importImapPort" value="993" min="1" max="65535">
+                                </div>
+                            </div>
+                            <div class="form-group import-account-default-field">
+                                <label class="form-label">备注</label>
+                                <textarea class="form-textarea import-remark-textarea" id="importRemark"
+                                    placeholder="可选，将写入本次新增账号"></textarea>
+                            </div>
+                            <div class="form-group import-account-default-field">
+                                <label class="form-label">标签</label>
+                                <div class="import-tag-dropdown" id="importTagDropdown">
+                                    <button class="import-tag-trigger" type="button" onclick="toggleImportTagDropdown(event)">
+                                        <span class="import-tag-trigger-text" id="importTagSummary">未选择标签</span>
+                                        <span class="import-tag-trigger-count" id="importTagCount" style="display: none;"></span>
+                                        <span class="import-tag-trigger-caret">▾</span>
+                                    </button>
+                                    <div class="import-tag-panel">
+                                        <div class="import-tag-options" id="importTagOptions"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group import-account-default-field">
+                                <label class="form-label">状态</label>
+                                <select class="form-select" id="importStatus">
+                                    <option value="active">正常</option>
+                                    <option value="inactive">停用</option>
+                                </select>
+                            </div>
+                            <div class="form-group import-account-default-field" id="importForwardGroup">
+                                <label class="settings-toggle settings-toggle--inline">
+                                    <input type="checkbox" id="importForwardEnabled">
+                                    <span class="form-label">导入后启用邮件转发</span>
+                                </label>
+                                <div class="form-hint">开启后，新导入账号会立即参与转发轮询。</div>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="import-account-source">
+                        <div class="form-group import-account-input-group">
+                            <label class="form-label">账号信息</label>
+                            <textarea class="form-textarea import-account-textarea" id="accountInput"
+                                placeholder="邮箱----密码----client_id----refresh_token"></textarea>
+                            <div class="form-hint" id="importFormatHint">Outlook 支持两种格式并自动识别：邮箱----密码----client_id----refresh_token 或 邮箱----密码----refresh_token----client_id
+                            </div>
+                            <div id="importFormatExample" class="import-format-example">
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </div>
             <div class="modal-footer">

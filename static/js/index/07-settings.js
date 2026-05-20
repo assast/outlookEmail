@@ -1,4 +1,4 @@
-        /* global accountsCache, closeAllModals, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, formatAbsoluteDateTime, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, refreshVisibleAccountList, setAppTimeZone, setModalVisible, setSelectedForwardChannels, setShowAccountCreatedAt, setShowAccountSortOrder, setShowGroupId, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
+        /* global accountsCache, allTags, closeAllModals, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, escapeHtml, formatAbsoluteDateTime, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, refreshVisibleAccountList, setAppTimeZone, setModalVisible, setSelectedForwardChannels, setShowAccountCreatedAt, setShowAccountSortOrder, setShowGroupId, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
 
         // ==================== 设置相关 ====================
         let settingsScrollSyncBound = false;
@@ -554,6 +554,77 @@
             `);
         }
 
+        function renderImportTagOptions() {
+            const container = document.getElementById('importTagOptions');
+            if (!container) return;
+
+            const tags = typeof allTags !== 'undefined' && Array.isArray(allTags) ? allTags : [];
+            if (!tags.length) {
+                container.innerHTML = '<div class="import-tag-empty">暂无标签</div>';
+                updateImportTagSummary();
+                return;
+            }
+
+            container.innerHTML = tags.map(tag => `
+                <label class="import-tag-option">
+                    <input type="checkbox" class="import-tag-checkbox" value="${tag.id}" onchange="updateImportTagSummary()">
+                    <span class="import-tag-dot" style="background-color: ${escapeHtml(tag.color || '#9ca3af')};"></span>
+                    <span>${escapeHtml(tag.name || '')}</span>
+                </label>
+            `).join('');
+            updateImportTagSummary();
+        }
+
+        function updateImportTagSummary() {
+            const summaryEl = document.getElementById('importTagSummary');
+            const countEl = document.getElementById('importTagCount');
+            if (!summaryEl || !countEl) return;
+
+            const selected = Array.from(document.querySelectorAll('.import-tag-checkbox:checked'))
+                .map(checkbox => {
+                    const label = checkbox.closest('.import-tag-option');
+                    return label ? label.textContent.trim() : '';
+                })
+                .filter(Boolean);
+
+            if (!selected.length) {
+                summaryEl.textContent = '未选择标签';
+                countEl.style.display = 'none';
+                countEl.textContent = '';
+                return;
+            }
+
+            summaryEl.textContent = selected.length <= 2 ? selected.join('、') : `已选 ${selected.length} 个标签`;
+            countEl.style.display = 'inline-flex';
+            countEl.textContent = String(selected.length);
+        }
+
+        function toggleImportTagDropdown(event) {
+            event?.stopPropagation();
+            const dropdown = document.getElementById('importTagDropdown');
+            if (!dropdown) return;
+            dropdown.classList.toggle('open');
+        }
+
+        function resetImportDefaults() {
+            const remarkInput = document.getElementById('importRemark');
+            const statusSelect = document.getElementById('importStatus');
+            const forwardInput = document.getElementById('importForwardEnabled');
+            const tagDropdown = document.getElementById('importTagDropdown');
+
+            if (remarkInput) remarkInput.value = '';
+            if (statusSelect) statusSelect.value = 'active';
+            if (forwardInput) forwardInput.checked = false;
+            tagDropdown?.classList.remove('open');
+            renderImportTagOptions();
+        }
+
+        function getImportSelectedTagIds() {
+            return Array.from(document.querySelectorAll('.import-tag-checkbox:checked'))
+                .map(checkbox => parseInt(checkbox.value, 10))
+                .filter(Number.isFinite);
+        }
+
         function showAddAccountModal() {
             showModal('addAccountModal');
             document.getElementById('accountInput').value = '';
@@ -569,6 +640,7 @@
             if (currentGroupId) {
                 document.getElementById('importGroupSelect').value = currentGroupId;
             }
+            resetImportDefaults();
             updateImportHint();
         }
 
@@ -579,6 +651,9 @@
             const imapHost = document.getElementById('importImapHost')?.value.trim() || '';
             const imapPort = parseInt(document.getElementById('importImapPort')?.value || '993', 10);
             const forwardEnabled = !!document.getElementById('importForwardEnabled')?.checked;
+            const remark = document.getElementById('importRemark')?.value.trim() || '';
+            const status = document.getElementById('importStatus')?.value || 'active';
+            const tagIds = getImportSelectedTagIds();
             const importButton = document.querySelector('#addAccountModal .btn.btn-primary');
 
             if (!input) {
@@ -615,7 +690,10 @@
                             provider,
                             imap_host: imapHost,
                             imap_port: Number.isFinite(imapPort) ? imapPort : 993,
-                            forward_enabled: forwardEnabled
+                            forward_enabled: forwardEnabled,
+                            remark,
+                            status,
+                            tag_ids: tagIds
                         })
                     });
                 }

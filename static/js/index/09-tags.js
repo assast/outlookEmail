@@ -1,4 +1,4 @@
-        /* global UNTAGGED_TAG_FILTER_KEY, accountsCache, currentAccountListSource, currentGroupId, handleApiError, hideModal, invalidateAccountCaches, isTempEmailGroup, isUntaggedTagFilterValue, loadAccountsByGroup, loadTempEmails, normalizeTagFilterSelectionValue, refreshVisibleAccountList, renderFilteredAccountList, renderTempEmailList, selectedTagFilters, showModal, showToast, updateBatchTagTagOptions, updateCurrentGroupHeader */
+        /* global UNTAGGED_TAG_FILTER_KEY, accountsCache, currentAccountListSource, currentGroupId, handleApiError, hideModal, invalidateAccountCaches, isTempEmailGroup, isUntaggedTagFilterValue, loadAccountsByGroup, loadTempEmails, normalizeTagFilterSelectionValue, refreshVisibleAccountList, renderFilteredAccountList, renderImportTagOptions, renderTempEmailList, selectedTagFilters, showModal, showToast, updateBatchTagTagOptions, updateCurrentGroupHeader */
 
         // ==================== 标签管理 ====================
 
@@ -41,6 +41,9 @@
                     );
                     renderTagList();
                     updateTagFilter();
+                    if (typeof renderImportTagOptions === 'function') {
+                        renderImportTagOptions();
+                    }
                 }
             } catch (error) {
                 showToast('加载标签失败', 'error');

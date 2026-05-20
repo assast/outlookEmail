@@ -1505,11 +1505,15 @@
             const customImapSettings = document.getElementById('customImapSettings');
             const customHost = document.getElementById('importImapHost');
             const customPort = document.getElementById('importImapPort');
+            const accountDefaultFields = document.querySelectorAll('#addAccountModal .import-account-default-field');
             if (!hintEl || !inputEl) return;
 
             const isTempGroup = isTempImportGroup();
             if (channelGroup) channelGroup.style.display = isTempGroup ? '' : 'none';
             if (providerGroup) providerGroup.style.display = isTempGroup ? 'none' : '';
+            accountDefaultFields.forEach(field => {
+                field.style.display = isTempGroup ? 'none' : '';
+            });
 
             if (isTempGroup) {
                 if (customImapSettings) customImapSettings.style.display = 'none';

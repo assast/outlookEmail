@@ -484,6 +484,13 @@ def normalize_account_refresh_status(status: Any) -> str:
     return 'never'
 
 
+def normalize_account_status(status: Any) -> str:
+    normalized = str(status or '').strip().lower()
+    if normalized == 'inactive':
+        return 'inactive'
+    return 'active'
+
+
 # ==================== 标签管理 ====================
 
 def get_tags() -> List[Dict]:
@@ -491,6 +498,22 @@ def get_tags() -> List[Dict]:
     db = get_db()
     cursor = db.execute('SELECT * FROM tags ORDER BY created_at DESC')
     return [dict(row) for row in cursor.fetchall()]
+
+
+def normalize_tag_ids_input(tag_ids: Any) -> List[int]:
+    values = tag_ids if isinstance(tag_ids, (list, tuple, set)) else str(tag_ids or '').split(',')
+    normalized: List[int] = []
+    seen = set()
+    for raw_value in values:
+        try:
+            tag_id = int(str(raw_value).strip())
+        except (TypeError, ValueError):
+            continue
+        if tag_id <= 0 or tag_id in seen:
+            continue
+        seen.add(tag_id)
+        normalized.append(tag_id)
+    return normalized
 
 
 def add_tag(name: str, color: str) -> Optional[int]:
@@ -927,10 +950,10 @@ def serialize_account_summary(account: Dict[str, Any], last_refresh_log: Optiona
 ACCOUNT_INSERT_SQL = '''
     INSERT OR IGNORE INTO accounts (
         email, password, client_id, refresh_token, group_id, sort_order, remark,
-        account_type, provider, imap_host, imap_port, imap_password, forward_enabled,
+        status, account_type, provider, imap_host, imap_port, imap_password, forward_enabled,
         forward_last_checked_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 '''
 
 
@@ -938,7 +961,7 @@ def build_account_insert_values(email_addr: str, password: str, client_id: str =
                                 group_id: int = 1, remark: str = '', account_type: str = 'outlook',
                                 provider: str = 'outlook', imap_host: str = '', imap_port: int = 993,
                                 imap_password: str = '', forward_enabled: bool = False,
-                                sort_order: Optional[int] = None) -> tuple:
+                                sort_order: Optional[int] = None, status: str = 'active') -> tuple:
     encrypted_password = encrypt_data(password) if password else password
     encrypted_refresh_token = encrypt_data(refresh_token) if refresh_token else refresh_token
     encrypted_imap_password = encrypt_data(imap_password) if imap_password else imap_password
@@ -948,6 +971,7 @@ def build_account_insert_values(email_addr: str, password: str, client_id: str =
     normalized_imap_host = imap_host or provider_meta.get('imap_host', '')
     normalized_imap_port = int(imap_port or provider_meta.get('imap_port', 993) or 993)
     normalized_sort_order = parse_account_sort_order_input(sort_order)
+    normalized_status = normalize_account_status(status)
 
     return (
         email_addr,
@@ -957,6 +981,7 @@ def build_account_insert_values(email_addr: str, password: str, client_id: str =
         group_id,
         normalized_sort_order,
         remark,
+        normalized_status,
         normalized_account_type,
         normalized_provider,
         normalized_imap_host,
@@ -971,7 +996,7 @@ def add_account(email_addr: str, password: str, client_id: str = '', refresh_tok
                 group_id: int = 1, remark: str = '', account_type: str = 'outlook',
                 provider: str = 'outlook', imap_host: str = '', imap_port: int = 993,
                 imap_password: str = '', forward_enabled: bool = False,
-                sort_order: Optional[int] = None) -> bool:
+                sort_order: Optional[int] = None, status: str = 'active') -> bool:
     """添加邮箱账号"""
     db = get_db()
     try:
@@ -979,7 +1004,7 @@ def add_account(email_addr: str, password: str, client_id: str = '', refresh_tok
         db.execute(ACCOUNT_INSERT_SQL, build_account_insert_values(
             email_addr, password, client_id, refresh_token, group_id, remark,
             account_type, provider, imap_host, imap_port, imap_password,
-            forward_enabled, sort_order
+            forward_enabled, sort_order, status
         ))
         db.commit()
         return db.total_changes > before_changes
@@ -989,12 +1014,23 @@ def add_account(email_addr: str, password: str, client_id: str = '', refresh_tok
 
 def add_accounts_bulk(parsed_accounts: List[Dict[str, Any]], group_id: int = 1,
                       forward_enabled: bool = False,
-                      sort_order: Optional[int] = None) -> Dict[str, int]:
+                      sort_order: Optional[int] = None, remark: str = '',
+                      status: str = 'active', tag_ids: Optional[List[int]] = None) -> Dict[str, int]:
     """批量添加邮箱账号，单事务写入，重复邮箱自动跳过。"""
     if not parsed_accounts:
         return {'added_count': 0, 'skipped_count': 0}
 
     db = get_db()
+    normalized_status = normalize_account_status(status)
+    normalized_tag_ids = normalize_tag_ids_input(tag_ids)
+    if normalized_tag_ids:
+        placeholders = ','.join('?' * len(normalized_tag_ids))
+        rows = db.execute(
+            f'SELECT id FROM tags WHERE id IN ({placeholders})',
+            normalized_tag_ids
+        ).fetchall()
+        normalized_tag_ids = [int(row['id']) for row in rows]
+
     rows = [
         build_account_insert_values(
             parsed['email'],
@@ -1002,25 +1038,40 @@ def add_accounts_bulk(parsed_accounts: List[Dict[str, Any]], group_id: int = 1,
             parsed.get('client_id', ''),
             parsed.get('refresh_token', ''),
             group_id,
-            '',
+            remark,
             parsed.get('account_type', 'outlook'),
             parsed.get('provider', 'outlook'),
             parsed.get('imap_host', ''),
             parsed.get('imap_port', 993),
             parsed.get('imap_password', ''),
             forward_enabled,
-            sort_order
+            sort_order,
+            normalized_status
         )
         for parsed in parsed_accounts
     ]
 
-    before_changes = db.total_changes
-    db.executemany(ACCOUNT_INSERT_SQL, rows)
+    added_account_ids: List[int] = []
+    for row in rows:
+        before_row_changes = db.total_changes
+        cursor = db.execute(ACCOUNT_INSERT_SQL, row)
+        if db.total_changes > before_row_changes:
+            added_account_ids.append(int(cursor.lastrowid))
+
+    if normalized_tag_ids and added_account_ids:
+        db.executemany(
+            'INSERT OR IGNORE INTO account_tags (account_id, tag_id) VALUES (?, ?)',
+            [
+                (account_id, tag_id)
+                for account_id in added_account_ids
+                for tag_id in normalized_tag_ids
+            ]
+        )
     db.commit()
-    added_count = max(0, db.total_changes - before_changes)
     return {
-        'added_count': added_count,
-        'skipped_count': max(0, len(rows) - added_count),
+        'added_count': len(added_account_ids),
+        'skipped_count': max(0, len(rows) - len(added_account_ids)),
+        'tagged_count': len(added_account_ids) if normalized_tag_ids else 0,
     }
 
 
