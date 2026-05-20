@@ -109,7 +109,7 @@ services:
 docker-compose up -d
 ```
 
-#### 可选：启用界面 Docker 在线更新
+#### 可选：启用界面 Docker 在线更新 + 使用自己的 Client ID 和回调 URL
 
 界面里的 Docker 在线更新需要访问宿主机 Docker socket。`/var/run/docker.sock` 具有宿主机 Docker 管理权限，只建议在可信环境开启。
 
@@ -117,6 +117,8 @@ docker-compose up -d
 应用默认会在 daemon 明确返回“最低支持 API 版本”时自动按该版本重试；如果你的 Docker 环境或 socket 代理有特殊兼容要求，也可以显式设置 `DOCKER_UPDATE_API_VERSION`，其值可参考 `docker version --format '{{.Server.APIVersion}}'` 的输出。
 可选环境变量 `DOCKER_UPDATE_STATUS_TIMEOUT` 用于单独控制状态查询和容器 inspect 的超时时间（秒），不影响实际更新任务的 `DOCKER_UPDATE_TIMEOUT`。
 如果当前 `latest` / `main` / `dev` 标签没有新的镜像可拉取，界面会显示本次没有应用更新，而不是误报为更新失败。
+
+如果想让界面里的「获取 Token」使用自己的 Azure 应用，请同时设置 `OAUTH_CLIENT_ID` 和 `OAUTH_REDIRECT_URI`。这两个值会用于生成 Microsoft 授权链接和换取 Refresh Token；换取成功后界面返回的 Client ID 需要和 Refresh Token 一起导入账号。未设置时会使用项目内置的默认 Client ID 和默认回调地址 `http://localhost:8080`。
 
 ```yaml
 version: '3.8'
@@ -137,6 +139,9 @@ services:
       - DOCKER_UPDATE_CONTAINER=outlook-mail-reader
       # 可选：在较新的 Docker daemon / socket 代理环境中显式指定 API 版本
       # - DOCKER_UPDATE_API_VERSION=1.52
+      # 可选：让界面 OAuth 助手使用你自己的 Azure 应用
+      # - OAUTH_CLIENT_ID=your-azure-application-client-id
+      # - OAUTH_REDIRECT_URI=http://localhost:8080
     restart: unless-stopped
 ```
 
@@ -234,6 +239,8 @@ Web 应用采用四栏式布局设计：
 
 1. **Client ID** - Microsoft Azure 应用注册的客户端 ID
 2. **Refresh Token** - OAuth2 刷新令牌
+
+界面中的 OAuth2 助手会读取服务启动时的 `OAUTH_CLIENT_ID` 和 `OAUTH_REDIRECT_URI`。如果你在 Docker / Docker Compose 里配置了自己的值，授权链接和换取 Token 都会使用这些值；如果没有配置，则使用项目内置默认值。账号导入时，Client ID 要和同一次授权换出的 Refresh Token 配套使用。
 
 #### 步骤 1：注册 Azure 应用（这一步看目前的情况得E3 或者 E5 或者其他的开发者账号才能创建）
 
