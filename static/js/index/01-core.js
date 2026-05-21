@@ -1132,7 +1132,9 @@
             initAccountListScroll();
             initAccountPageSizeSelect();
             initAccountSearchScopeSelect();
-            initAccountSelectionGestures();
+            if (typeof initAccountSelectionGestures === 'function') {
+                initAccountSelectionGestures();
+            }
             window.addEventListener('pointermove', handleGlobalGroupPointerMove, { passive: false });
             window.addEventListener('pointerup', handleGlobalGroupPointerUp);
             window.addEventListener('pointercancel', handleGlobalGroupPointerUp);
