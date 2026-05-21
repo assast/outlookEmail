@@ -72,6 +72,10 @@
 
         function handleAccountSelectionCheckboxClick(event) {
             event.stopPropagation();
+            if (accountSelectionMode && Date.now() < accountSelectionSuppressClickUntil) {
+                event.preventDefault();
+                return;
+            }
             applyAccountSelectionFromCheckbox(event.currentTarget, event);
         }
 
@@ -118,7 +122,8 @@
             if (!accountSelectionMode || event.button !== 0) {
                 return;
             }
-            if (event.target.closest('.account-menu-wrap, .account-action-btn, .account-menu-trigger, .account-menu-panel, .account-error-btn, button, input, a')) {
+            const startedOnCheckbox = !!event.target.closest('.account-select-checkbox');
+            if (!startedOnCheckbox && event.target.closest('.account-menu-wrap, .account-action-btn, .account-menu-trigger, .account-menu-panel, .account-error-btn, button, input, a')) {
                 return;
             }
 
@@ -135,7 +140,7 @@
                 targetChecked: !checkbox.checked,
                 visitedIds: new Set()
             };
-            item.setPointerCapture?.(event.pointerId);
+            document.getElementById('accountList')?.setPointerCapture?.(event.pointerId);
             setAccountDragSelection(checkbox);
         }
 
@@ -154,6 +159,7 @@
             if (!accountSelectionDragState || event.pointerId !== accountSelectionDragState.pointerId) {
                 return;
             }
+            document.getElementById('accountList')?.releasePointerCapture?.(event.pointerId);
             accountSelectionDragState = null;
         }
 
@@ -167,6 +173,40 @@
             accountList.addEventListener('pointermove', handleAccountSelectionPointerMove);
             accountList.addEventListener('pointerup', handleAccountSelectionPointerEnd);
             accountList.addEventListener('pointercancel', handleAccountSelectionPointerEnd);
+            accountList.addEventListener('scroll', positionAccountBatchActionBar, { passive: true });
+            window.addEventListener('resize', positionAccountBatchActionBar);
+        }
+
+        function resetAccountBatchActionBarPosition() {
+            const bar = document.getElementById('batchActionBar');
+            if (!bar) return;
+            bar.style.removeProperty('--batch-action-top');
+            bar.style.removeProperty('--batch-action-max-width');
+        }
+
+        function positionAccountBatchActionBar() {
+            const bar = document.getElementById('batchActionBar');
+            const panel = document.getElementById('accountPanel');
+            const firstChecked = document.querySelector('#accountList .account-select-checkbox:checked');
+            const firstSelectedItem = firstChecked?.closest('.account-item');
+
+            if (!bar || !panel || !firstSelectedItem || !window.matchMedia('(min-width: 769px)').matches) {
+                resetAccountBatchActionBarPosition();
+                return;
+            }
+
+            const panelRect = panel.getBoundingClientRect();
+            const itemRect = firstSelectedItem.getBoundingClientRect();
+            const availableWidth = Math.max(260, window.innerWidth - panelRect.right - 16);
+            bar.style.setProperty('--batch-action-max-width', `${Math.min(560, Math.round(availableWidth))}px`);
+
+            const barHeight = bar.offsetHeight || 0;
+            const minTop = 8;
+            const maxTop = Math.max(minTop, panelRect.height - barHeight - 12);
+            const selectedTop = itemRect.top - panelRect.top;
+            const top = Math.min(Math.max(selectedTop, minTop), maxTop);
+
+            bar.style.setProperty('--batch-action-top', `${Math.round(top)}px`);
         }
 
         // 更新批量操作栏状态
@@ -271,9 +311,11 @@
                         batchDeleteBtn.textContent = checked.length > 1 ? `删除 (${checked.length})` : '删除';
                     }
                 }
+                positionAccountBatchActionBar();
             } else {
                 bar.style.display = 'none';
                 panel?.classList.remove('batch-toolbar-active');
+                resetAccountBatchActionBarPosition();
                 if (batchRefreshBtn) {
                     batchRefreshBtn.disabled = false;
                     batchRefreshBtn.dataset.loading = 'false';

@@ -971,3 +971,47 @@
             border-color: #c82333;
             box-shadow: 0 14px 26px rgba(200, 35, 51, 0.22);
         }
+
+        @media (min-width: 769px) {
+            .account-panel.batch-toolbar-active .account-list {
+                padding-bottom: 16px;
+            }
+
+            #batchActionBar {
+                left: calc(100% + 8px);
+                right: auto;
+                bottom: auto;
+                top: var(--batch-action-top, 72px);
+                width: 560px;
+                max-width: var(--batch-action-max-width, 560px);
+                align-items: flex-start;
+                justify-content: flex-start;
+            }
+
+            #batchActionBar::before {
+                content: '';
+                position: absolute;
+                top: 18px;
+                left: -7px;
+                width: 12px;
+                height: 12px;
+                border-left: 1px solid rgba(209, 213, 219, 0.9);
+                border-bottom: 1px solid rgba(209, 213, 219, 0.9);
+                background: rgba(255, 255, 255, 0.96);
+                transform: rotate(45deg);
+            }
+
+            #batchActionBar .batch-action-bar__summary {
+                max-width: 100%;
+            }
+
+            #batchActionBar .batch-selection-count {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            #batchActionBar .batch-action-bar__controls {
+                justify-content: flex-start;
+            }
+        }

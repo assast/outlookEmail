@@ -6,6 +6,13 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Changed
+- PC 端邮箱账号批量操作菜单改为悬浮在第一个选中账号右侧，并随账号列表滚动重新定位，减少底部空间占用。
+- README 补充批量选择、拖拽选择、批量菜单和邮件批量操作的详细使用说明。
+
+### Fixed
+- 修复批量选择模式下从账号选择框按住拖拽无法连续选择的问题，并补充 Mac 触控板拖拽选择排查说明。
+
 ## [2.0.52] - 2026-05-20
 
 ### Added
