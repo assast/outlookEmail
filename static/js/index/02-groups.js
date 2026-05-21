@@ -1,4 +1,4 @@
-        /* global ACCOUNT_LIST_DEFAULT_PAGE_SIZE, ACCOUNT_LIST_MAX_PAGE_SIZE, accountListPageSize, accountListRequestSeq, accountPaginationState, accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, formatAbsoluteDateTime, generateTempEmail, groups, handleApiError, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, shouldShowAccountCreatedAt, shouldShowAccountSortOrder, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, tempEmailGroupId, updateCurrentGroupHeader, updateMobileContext */
+        /* global ACCOUNT_LIST_DEFAULT_PAGE_SIZE, ACCOUNT_LIST_MAX_PAGE_SIZE, accountListPageSize, accountListRequestSeq, accountPaginationState, accountSelectionMode, accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, formatAbsoluteDateTime, generateTempEmail, groups, handleAccountRowSelectionClick, handleAccountSelectionCheckboxClick, handleApiError, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, shouldShowAccountCreatedAt, shouldShowAccountSortOrder, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, tempEmailGroupId, toggleAccountSelectionMode, updateCurrentGroupHeader, updateMobileContext */
 
         // ==================== 分组相关 ====================
 
@@ -430,12 +430,24 @@
         }
 
         // 更新账号面板头部动作按钮
+        function renderAccountSelectionModeButton() {
+            const activeClass = accountSelectionMode ? ' active' : '';
+            const title = accountSelectionMode ? '退出批量选择' : '批量选择';
+            return `
+                <button class="panel-action-btn account-selection-mode-btn${activeClass}" id="accountSelectionModeBtn"
+                        onclick="toggleAccountSelectionMode()" title="${title}" aria-pressed="${accountSelectionMode ? 'true' : 'false'}">
+                    ☑
+                </button>
+            `;
+        }
+
         function updateAccountPanelActions() {
             const actions = document.querySelector('.account-panel-header-actions');
             const searchInput = document.getElementById('globalSearch');
             if (!actions) return;
             if (isTempEmailGroup) {
                 actions.innerHTML = `
+                    ${renderAccountSelectionModeButton()}
                     <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
                         🏷️
                     </button>
@@ -465,6 +477,7 @@
                 }
             } else {
                 actions.innerHTML = `
+                    ${renderAccountSelectionModeButton()}
                     <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
                         🏷️
                     </button>
@@ -852,6 +865,10 @@
             if (isAccountRowInteractiveTarget(event?.target)) {
                 return;
             }
+            if (accountSelectionMode || event?.shiftKey) {
+                handleAccountRowSelectionClick(event);
+                return;
+            }
             if (isTemp) {
                 selectTempEmail(email);
             } else {
@@ -886,13 +903,14 @@
             );
             container.innerHTML = accounts.map(acc => `
                 <div class="account-item ${currentAccount === acc.email ? 'active' : ''} ${acc.status === 'inactive' ? 'inactive' : ''}"
+                     data-account-id="${acc.id}"
                      onclick="handleAccountItemClick(event, '${escapeJs(acc.email)}')">
                     <input type="checkbox" class="account-select-checkbox" value="${acc.id}" 
                            data-account-email="${escapeHtml(acc.email)}"
                            data-account-type="${escapeHtml(acc.account_type || 'outlook')}"
                            data-refreshable="${acc.account_type !== 'imap' ? 'true' : 'false'}"
                            data-forward-enabled="${acc.forward_enabled ? 'true' : 'false'}"
-                           onclick="event.stopPropagation(); updateBatchActionBar()">
+                           onclick="handleAccountSelectionCheckboxClick(event)">
                     <div class="account-body">
                         <div class="account-title-row">
                             <div class="account-email-wrap">

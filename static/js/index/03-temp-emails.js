@@ -1,4 +1,4 @@
-        /* global accountsCache, closeMobilePanels, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentMethod, currentSkip, escapeHtml, escapeJs, formatDate, groups, handleApiError, hasMoreEmails, isLoadingMore, loadGroups, loadTempEmails, matchesSelectedTagFilters, refreshEmails, renderAccountTagSummary, renderEmailDetail, renderEmailList, renderEmptyStateMarkup, scheduleEmailListLoadCheck, selectedTagFilters, showEmailList, showMobileEmailDetail, showToast, updateBatchActionBar, updateMobileContext, updateCurrentGroupHeader */
+        /* global accountsCache, closeMobilePanels, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentMethod, currentSkip, escapeHtml, escapeJs, formatDate, groups, handleAccountSelectionCheckboxClick, handleApiError, hasMoreEmails, isLoadingMore, loadGroups, loadTempEmails, matchesSelectedTagFilters, refreshEmails, renderAccountTagSummary, renderEmailDetail, renderEmailList, renderEmptyStateMarkup, scheduleEmailListLoadCheck, selectedTagFilters, showEmailList, showMobileEmailDetail, showToast, updateBatchActionBar, updateMobileContext, updateCurrentGroupHeader */
 
         // ==================== 临时邮箱相关 ====================
 
@@ -113,13 +113,14 @@
 
             container.innerHTML = cloudflareGlobalEntry + filtered.map(email => `
                 <div class="account-item ${currentAccount === email.email ? 'active' : ''}"
+                     data-account-id="${email.id}"
                      onclick="handleAccountItemClick(event, '${escapeJs(email.email)}', true)">
                     <input type="checkbox" class="account-select-checkbox" value="${email.id}"
                            data-account-email="${escapeHtml(email.email)}"
                            data-account-type="temp-email"
                            data-refreshable="false"
                            data-forward-enabled="false"
-                           onclick="event.stopPropagation(); updateBatchActionBar()">
+                           onclick="handleAccountSelectionCheckboxClick(event)">
                     <div class="account-body">
                         <div class="account-title-row">
                             <div class="account-email-wrap">

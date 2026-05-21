@@ -2,6 +2,213 @@
 
         // ==================== 批量操作 ====================
 
+        let accountSelectionMode = false;
+        let accountSelectionAnchorId = null;
+        let accountSelectionDragState = null;
+        let accountSelectionSuppressClickUntil = 0;
+
+        function getAccountSelectionCheckboxes() {
+            return Array.from(document.querySelectorAll('#accountList .account-select-checkbox'));
+        }
+
+        function getAccountSelectionCheckboxById(accountId) {
+            return getAccountSelectionCheckboxes()
+                .find(checkbox => String(checkbox.value) === String(accountId));
+        }
+
+        function setAccountSelectionMode(enabled) {
+            accountSelectionMode = !!enabled;
+            document.getElementById('accountPanel')?.classList.toggle('account-selection-mode', accountSelectionMode);
+            document.querySelectorAll('.account-selection-mode-btn').forEach(button => {
+                button.classList.toggle('active', accountSelectionMode);
+                button.setAttribute('aria-pressed', accountSelectionMode ? 'true' : 'false');
+                button.title = accountSelectionMode ? '退出批量选择' : '批量选择';
+            });
+            if (!accountSelectionMode) {
+                accountSelectionDragState = null;
+            }
+        }
+
+        function toggleAccountSelectionMode() {
+            setAccountSelectionMode(!accountSelectionMode);
+        }
+
+        function setAccountSelectionAnchor(checkbox) {
+            if (checkbox) {
+                accountSelectionAnchorId = String(checkbox.value);
+            }
+        }
+
+        function setAccountSelectionRange(fromCheckbox, toCheckbox, checked) {
+            const checkboxes = getAccountSelectionCheckboxes();
+            const fromIndex = checkboxes.indexOf(fromCheckbox);
+            const toIndex = checkboxes.indexOf(toCheckbox);
+            if (fromIndex === -1 || toIndex === -1) {
+                return false;
+            }
+
+            const start = Math.min(fromIndex, toIndex);
+            const end = Math.max(fromIndex, toIndex);
+            for (let index = start; index <= end; index += 1) {
+                checkboxes[index].checked = checked;
+            }
+            return true;
+        }
+
+        function applyAccountSelectionFromCheckbox(checkbox, event = null) {
+            if (!checkbox) {
+                return;
+            }
+
+            if (event?.shiftKey && accountSelectionAnchorId) {
+                const anchor = getAccountSelectionCheckboxById(accountSelectionAnchorId);
+                if (anchor && setAccountSelectionRange(anchor, checkbox, checkbox.checked)) {
+                    event.preventDefault?.();
+                }
+            }
+            setAccountSelectionAnchor(checkbox);
+            updateBatchActionBar();
+        }
+
+        function handleAccountSelectionCheckboxClick(event) {
+            event.stopPropagation();
+            if (accountSelectionMode && Date.now() < accountSelectionSuppressClickUntil) {
+                event.preventDefault();
+                return;
+            }
+            applyAccountSelectionFromCheckbox(event.currentTarget, event);
+        }
+
+        function handleAccountRowSelectionClick(event) {
+            if (Date.now() < accountSelectionSuppressClickUntil) {
+                event?.preventDefault?.();
+                return;
+            }
+            if (event?.target?.closest?.('.account-menu-wrap, .account-action-btn, .account-menu-trigger, .account-menu-panel, .account-error-btn, button, input, a')) {
+                return;
+            }
+
+            const item = event.currentTarget;
+            const checkbox = item?.querySelector?.('.account-select-checkbox');
+            if (!checkbox) {
+                return;
+            }
+
+            event?.preventDefault?.();
+            if (event?.shiftKey && accountSelectionAnchorId) {
+                checkbox.checked = true;
+                applyAccountSelectionFromCheckbox(checkbox, event);
+            } else {
+                checkbox.checked = !checkbox.checked;
+                applyAccountSelectionFromCheckbox(checkbox, event);
+            }
+        }
+
+        function setAccountDragSelection(checkbox) {
+            if (!accountSelectionDragState || !checkbox) {
+                return;
+            }
+            const accountId = String(checkbox.value);
+            if (accountSelectionDragState.visitedIds.has(accountId)) {
+                return;
+            }
+            accountSelectionDragState.visitedIds.add(accountId);
+            checkbox.checked = accountSelectionDragState.targetChecked;
+            setAccountSelectionAnchor(checkbox);
+            updateBatchActionBar();
+        }
+
+        function handleAccountSelectionPointerDown(event) {
+            if (!accountSelectionMode || event.button !== 0) {
+                return;
+            }
+            const startedOnCheckbox = !!event.target.closest('.account-select-checkbox');
+            if (!startedOnCheckbox && event.target.closest('.account-menu-wrap, .account-action-btn, .account-menu-trigger, .account-menu-panel, .account-error-btn, button, input, a')) {
+                return;
+            }
+
+            const item = event.target.closest('.account-item');
+            const checkbox = item?.querySelector?.('.account-select-checkbox');
+            if (!checkbox) {
+                return;
+            }
+
+            event.preventDefault();
+            accountSelectionSuppressClickUntil = Date.now() + 350;
+            accountSelectionDragState = {
+                pointerId: event.pointerId,
+                targetChecked: !checkbox.checked,
+                visitedIds: new Set()
+            };
+            document.getElementById('accountList')?.setPointerCapture?.(event.pointerId);
+            setAccountDragSelection(checkbox);
+        }
+
+        function handleAccountSelectionPointerMove(event) {
+            if (!accountSelectionDragState || event.pointerId !== accountSelectionDragState.pointerId) {
+                return;
+            }
+            event.preventDefault();
+            const element = document.elementFromPoint(event.clientX, event.clientY);
+            const item = element?.closest?.('#accountList .account-item');
+            const checkbox = item?.querySelector?.('.account-select-checkbox');
+            setAccountDragSelection(checkbox);
+        }
+
+        function handleAccountSelectionPointerEnd(event) {
+            if (!accountSelectionDragState || event.pointerId !== accountSelectionDragState.pointerId) {
+                return;
+            }
+            document.getElementById('accountList')?.releasePointerCapture?.(event.pointerId);
+            accountSelectionDragState = null;
+        }
+
+        function initAccountSelectionGestures() {
+            const accountList = document.getElementById('accountList');
+            if (!accountList || accountList.dataset.boundSelectionGestures) {
+                return;
+            }
+            accountList.dataset.boundSelectionGestures = 'true';
+            accountList.addEventListener('pointerdown', handleAccountSelectionPointerDown);
+            accountList.addEventListener('pointermove', handleAccountSelectionPointerMove);
+            accountList.addEventListener('pointerup', handleAccountSelectionPointerEnd);
+            accountList.addEventListener('pointercancel', handleAccountSelectionPointerEnd);
+            accountList.addEventListener('scroll', positionAccountBatchActionBar, { passive: true });
+            window.addEventListener('resize', positionAccountBatchActionBar);
+        }
+
+        function resetAccountBatchActionBarPosition() {
+            const bar = document.getElementById('batchActionBar');
+            if (!bar) return;
+            bar.style.removeProperty('--batch-action-top');
+            bar.style.removeProperty('--batch-action-max-width');
+        }
+
+        function positionAccountBatchActionBar() {
+            const bar = document.getElementById('batchActionBar');
+            const panel = document.getElementById('accountPanel');
+            const firstChecked = document.querySelector('#accountList .account-select-checkbox:checked');
+            const firstSelectedItem = firstChecked?.closest('.account-item');
+
+            if (!bar || !panel || !firstSelectedItem || !window.matchMedia('(min-width: 769px)').matches) {
+                resetAccountBatchActionBarPosition();
+                return;
+            }
+
+            const panelRect = panel.getBoundingClientRect();
+            const itemRect = firstSelectedItem.getBoundingClientRect();
+            const availableWidth = Math.max(260, window.innerWidth - panelRect.right - 16);
+            bar.style.setProperty('--batch-action-max-width', `${Math.min(560, Math.round(availableWidth))}px`);
+
+            const barHeight = bar.offsetHeight || 0;
+            const minTop = 8;
+            const maxTop = Math.max(minTop, panelRect.height - barHeight - 12);
+            const selectedTop = itemRect.top - panelRect.top;
+            const top = Math.min(Math.max(selectedTop, minTop), maxTop);
+
+            bar.style.setProperty('--batch-action-top', `${Math.round(top)}px`);
+        }
+
         // 更新批量操作栏状态
         function updateBatchActionBar() {
             const checked = Array.from(document.querySelectorAll('.account-select-checkbox:checked'));
@@ -104,9 +311,11 @@
                         batchDeleteBtn.textContent = checked.length > 1 ? `删除 (${checked.length})` : '删除';
                     }
                 }
+                positionAccountBatchActionBar();
             } else {
                 bar.style.display = 'none';
                 panel?.classList.remove('batch-toolbar-active');
+                resetAccountBatchActionBarPosition();
                 if (batchRefreshBtn) {
                     batchRefreshBtn.disabled = false;
                     batchRefreshBtn.dataset.loading = 'false';
@@ -154,6 +363,7 @@
             document.querySelectorAll('#accountList .account-select-checkbox').forEach(cb => {
                 cb.checked = false;
             });
+            accountSelectionAnchorId = null;
             updateBatchActionBar();
         }
 
