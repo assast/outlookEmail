@@ -521,6 +521,28 @@
             accent-color: #1a1a1a;
         }
 
+        .account-selection-mode-btn.active {
+            background-color: #111827;
+            border-color: #111827;
+            color: #ffffff;
+        }
+
+        .account-panel.account-selection-mode .account-list {
+            user-select: none;
+            cursor: crosshair;
+        }
+
+        .account-panel.account-selection-mode .account-item {
+            cursor: crosshair;
+        }
+
+        .account-panel.account-selection-mode .account-item:has(.account-select-checkbox:checked),
+        .account-item:has(.account-select-checkbox:checked) {
+            border-color: #2563eb;
+            background-color: #eff6ff;
+            box-shadow: inset 3px 0 0 #2563eb, 0 10px 24px rgba(37, 99, 235, 0.12);
+        }
+
         .account-body {
             min-width: 0;
             display: flex;
