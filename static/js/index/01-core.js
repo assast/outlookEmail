@@ -1,4 +1,4 @@
-        /* global closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, initAccountListScroll, initAccountPageSizeSelect, initAccountSearchScopeSelect, initColorPicker, initEmailListScroll, loadGroups, loadMoreCloudflareGlobalMessages, loadTags, renderEmailList, scheduleEmailListLoadCheck, searchAccounts */
+        /* global closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, initAccountListScroll, initAccountPageSizeSelect, initAccountSearchScopeSelect, initAccountSelectionGestures, initColorPicker, initEmailListScroll, loadGroups, loadMoreCloudflareGlobalMessages, loadTags, renderEmailList, scheduleEmailListLoadCheck, searchAccounts */
 
         // 全局状态
         let csrfToken = null;
@@ -1132,6 +1132,7 @@
             initAccountListScroll();
             initAccountPageSizeSelect();
             initAccountSearchScopeSelect();
+            initAccountSelectionGestures();
             window.addEventListener('pointermove', handleGlobalGroupPointerMove, { passive: false });
             window.addEventListener('pointerup', handleGlobalGroupPointerUp);
             window.addEventListener('pointercancel', handleGlobalGroupPointerUp);
