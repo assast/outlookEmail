@@ -405,6 +405,50 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertTrue(third_claim['success'])
         self.assertEqual(third_claim['data']['account_id'], account_id)
 
+    def test_extension_login_rejects_wrong_password(self):
+        with self.app.app_context():
+            web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('extension-pass'))
+            web_outlook_app.login_attempts.clear()
+
+        anonymous_client = self.app.test_client()
+        response = anonymous_client.post('/api/extension/login', json={
+            'password': 'wrong-pass',
+        })
+
+        self.assertEqual(response.status_code, 401)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertEqual(payload['error'], '密码错误')
+
+    def test_extension_login_launch_url_sets_session_once(self):
+        with self.app.app_context():
+            web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('extension-pass'))
+            web_outlook_app.login_attempts.clear()
+            web_outlook_app.extension_login_tokens.clear()
+
+        anonymous_client = self.app.test_client()
+        response = anonymous_client.post('/api/extension/login', json={
+            'password': 'extension-pass',
+            'next': '/#settings',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertIn('/extension-login/', payload['launch_url'])
+        self.assertEqual(payload['expires_in'], web_outlook_app.EXTENSION_LOGIN_TOKEN_TTL_SECONDS)
+
+        launch_response = anonymous_client.get(payload['launch_url'], follow_redirects=False)
+        self.assertEqual(launch_response.status_code, 302)
+        self.assertEqual(launch_response.headers['Location'], '/#settings')
+
+        with anonymous_client.session_transaction() as sess:
+            self.assertTrue(sess.get('logged_in'))
+
+        reused_response = anonymous_client.get(payload['launch_url'], follow_redirects=False)
+        self.assertEqual(reused_response.status_code, 302)
+        self.assertTrue(reused_response.headers['Location'].endswith('/login'))
+
     def test_delete_and_reimport_same_email_preserves_done_status(self):
         original_account_id = self._insert_account('done@example.com')
         self.client.post('/api/projects/start', json={'project_key': 'gpt', 'name': 'GPT'})

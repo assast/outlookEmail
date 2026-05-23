@@ -63,6 +63,82 @@ def logout():
     return redirect(url_for('login'))
 
 
+extension_login_tokens = {}
+EXTENSION_LOGIN_TOKEN_TTL_SECONDS = 60
+
+
+def prune_extension_login_tokens():
+    now = time.time()
+    expired_tokens = [
+        token for token, payload in extension_login_tokens.items()
+        if float(payload.get('expires_at', 0)) <= now
+    ]
+    for token in expired_tokens:
+        extension_login_tokens.pop(token, None)
+
+
+def normalize_extension_next_path(next_path: str) -> str:
+    value = str(next_path or '').strip()
+    if not value or not value.startswith('/') or value.startswith('//'):
+        return '/'
+    if '\r' in value or '\n' in value:
+        return '/'
+    return value
+
+
+@app.route('/api/extension/login', methods=['POST'])
+@csrf_exempt
+def api_extension_login():
+    """浏览器扩展密码登录：返回一次性 Web 会话跳转地址。"""
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip:
+        client_ip = client_ip.split(',')[0].strip()
+
+    allowed, remaining_time = check_rate_limit(client_ip)
+    if not allowed:
+        return jsonify({
+            'success': False,
+            'error': f'登录失败次数过多，请在 {remaining_time} 秒后重试'
+        }), 429
+
+    data = request.get_json(silent=True) or {}
+    password = str(data.get('password') or '')
+    if not verify_login_password(password):
+        record_login_failure(client_ip)
+        return jsonify({'success': False, 'error': '密码错误'}), 401
+
+    reset_login_attempts(client_ip)
+    prune_extension_login_tokens()
+
+    token = secrets.token_urlsafe(32)
+    next_path = normalize_extension_next_path(data.get('next') or '/')
+    extension_login_tokens[token] = {
+        'expires_at': time.time() + EXTENSION_LOGIN_TOKEN_TTL_SECONDS,
+        'next': next_path,
+    }
+
+    return jsonify({
+        'success': True,
+        'launch_url': url_for('extension_login', token=token, next=next_path),
+        'expires_in': EXTENSION_LOGIN_TOKEN_TTL_SECONDS,
+    })
+
+
+@app.route('/extension-login/<token>', methods=['GET'])
+@csrf_exempt
+def extension_login(token):
+    """消费扩展一次性登录票据，在服务端域名下建立 Web Session。"""
+    prune_extension_login_tokens()
+    payload = extension_login_tokens.pop(str(token or ''), None)
+    if not payload:
+        return redirect(url_for('login'))
+
+    session['logged_in'] = True
+    session.permanent = True
+    session.modified = True
+    return redirect(normalize_extension_next_path(request.args.get('next') or payload.get('next') or '/'))
+
+
 @app.route('/favicon.ico')
 def favicon():
     """返回内联 SVG favicon，避免 500 错误"""

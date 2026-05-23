@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OutlookEmail 控制台</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <main class="shell">
+    <header class="header">
+      <div>
+        <h1>OutlookEmail</h1>
+        <p>密码登录版浏览器扩展</p>
+      </div>
+      <span class="status-pill" id="statusPill">未连接</span>
+    </header>
+
+    <section class="panel">
+      <label class="field">
+        <span>服务地址</span>
+        <input id="serverUrl" type="url" placeholder="http://127.0.0.1:5000" autocomplete="url">
+      </label>
+      <label class="field">
+        <span>Web 登录密码</span>
+        <input id="password" type="password" placeholder="输入 Web 端登录密码" autocomplete="current-password">
+      </label>
+      <label class="check-row">
+        <input id="rememberPassword" type="checkbox">
+        <span>记住密码到本机浏览器</span>
+      </label>
+      <div class="button-row">
+        <button id="btnTest" class="btn btn-secondary" type="button">验证</button>
+        <button id="btnOpen" class="btn btn-primary" type="button">打开侧边栏控制台</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <span>Web 功能入口</span>
+        <small>不切换标签页</small>
+      </div>
+      <div class="quick-grid">
+        <button class="quick-btn" type="button" data-next="/">邮箱管理</button>
+        <button class="quick-btn" type="button" data-next="/#import">导入账号</button>
+        <button class="quick-btn" type="button" data-next="/#refresh">Token 刷新</button>
+        <button class="quick-btn" type="button" data-next="/#oauth">换取 Token</button>
+        <button class="quick-btn" type="button" data-next="/#export">导出邮箱</button>
+        <button class="quick-btn" type="button" data-next="/#tags">标签管理</button>
+        <button class="quick-btn" type="button" data-next="/#settings">系统设置</button>
+      </div>
+    </section>
+
+    <section class="panel compact">
+      <div class="button-row">
+        <button id="btnLogout" class="btn btn-secondary" type="button">打开退出登录</button>
+        <button id="btnClear" class="btn btn-danger" type="button">清除本地配置</button>
+      </div>
+    </section>
+
+    <div class="message" id="message" role="status"></div>
+  </main>
+
+  <script src="storage.js"></script>
+  <script src="api-client.js"></script>
+  <script src="popup.js"></script>
+</body>
+
+</html>

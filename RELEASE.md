@@ -45,9 +45,10 @@
 1. 目标提交已经合并到 `main`，且 `main` 处于可发布状态。
 2. `VERSION` 已更新为本次版本号。
 3. `CHANGELOG.md` 已新增本次版本条目，日期与内容完整。
-4. `README.md`、部署文档、升级文档中涉及的行为说明没有与当前实现冲突。
-5. 如本次改动影响 Docker、Windows `exe`、环境变量、API 或前端交互，已同步写入文档。
-6. 本地或 CI 已完成必要验证，至少确认核心功能没有明显回归。
+4. 如需向用户提示新增功能，已更新 `templates/partials/index/dialogs-management.html` 中的 `releaseNoticeModal` 文案。
+5. `README.md`、部署文档、升级文档中涉及的行为说明没有与当前实现冲突。
+6. 如本次改动影响 Docker、Windows `exe`、环境变量、API 或前端交互，已同步写入文档。
+7. 本地或 CI 已完成必要验证，至少确认核心功能没有明显回归。
 
 ## 标准发版步骤
 
@@ -65,6 +66,7 @@
 
 - `VERSION`
 - `CHANGELOG.md`
+- `templates/partials/index/dialogs-management.html` 中的 `releaseNoticeModal` 文案（如需提示用户新增功能）
 
 示例：
 

@@ -862,3 +862,45 @@
             </div>
         </div>
     </div>
+
+    <!-- 版本更新提示模态框 -->
+    <div class="modal" id="releaseNoticeModal" data-release-version="{{ app_version }}"
+        onmousedown="if(event.target === this) dismissReleaseNotice()">
+        <div class="modal-content release-notice-modal-content">
+            <div class="modal-header">
+                <div>
+                    <div class="release-notice-eyebrow">版本更新</div>
+                    <h3>新版功能已上线</h3>
+                </div>
+                <button class="modal-close" onclick="dismissReleaseNotice()">&times;</button>
+            </div>
+            <div class="modal-body release-notice-body">
+                <div class="release-notice-version">当前版本：v{{ app_version }}</div>
+                <div class="release-notice-grid">
+                    <div class="release-notice-card">
+                        <div class="release-notice-card-title">浏览器扩展侧边栏</div>
+                        <p>新增 Chrome / Edge 扩展，可在侧边栏直接使用邮箱、导入、刷新、Token、导出、标签和设置。</p>
+                    </div>
+                    <div class="release-notice-card">
+                        <div class="release-notice-card-title">临时邮箱增强</div>
+                        <p>临时邮箱分组支持查看 GPTMail、DuckMail、Cloudflare 邮件，并支持 Cloudflare 所有邮件全局查看。</p>
+                    </div>
+                    <div class="release-notice-card">
+                        <div class="release-notice-card-title">邮箱操作优化</div>
+                        <p>邮件列表显示在账号列表上方，账号分组会自动记住，账号更多操作收进下拉菜单。</p>
+                    </div>
+                    <div class="release-notice-card">
+                        <div class="release-notice-card-title">刷新与设置覆盖</div>
+                        <p>扩展内补齐刷新进度、失败重试、标签管理、Cloudflare 设置和 WebDAV 备份等常用功能。</p>
+                    </div>
+                </div>
+                <div class="release-notice-hint">
+                    此提示每个版本只会显示一次。后续发布时，可在这里维护新版功能说明。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-secondary" href="{{ changelog_url }}" target="_blank" rel="noreferrer">查看更新日志</a>
+                <button class="btn btn-primary" type="button" onclick="dismissReleaseNotice()">我知道了</button>
+            </div>
+        </div>
+    </div>

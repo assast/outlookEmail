@@ -1,6 +1,6 @@
 # 多邮箱邮件管理工具
 
-一个面向多邮箱账号场景的邮件管理工具，支持通过 Outlook/Hotmail OAuth、Microsoft Graph API 和标准 IMAP 统一读取、管理和转发邮件，并提供 Web 界面用于分组管理、账号管理、邮件查看和对外 API 调用。当前支持 Outlook/Hotmail、Gmail、QQ、163、126、Yahoo、阿里邮箱以及自定义 IMAP 邮箱，同时集成 GPTMail、DuckMail、Cloudflare Temp Email 多提供商临时邮箱能力。
+一个面向多邮箱账号场景的邮件管理工具，支持通过 Outlook/Hotmail OAuth、Microsoft Graph API 和标准 IMAP 统一读取、管理和转发邮件，并提供 Web 界面、Chrome/Edge 浏览器扩展，用于分组管理、账号管理、邮件查看和对外 API 调用。当前支持 Outlook/Hotmail、Gmail、QQ、163、126、Yahoo、阿里邮箱以及自定义 IMAP 邮箱，同时集成 GPTMail、DuckMail、Cloudflare Temp Email 多提供商临时邮箱能力。
 ## 📦 快速开始
 ### 体验站点（可能非最新版本）
 https://aso.de5.net
@@ -9,34 +9,9 @@ admin123
 
 ## 🌿 版本管理与发布
 
-本项目采用轻量化双分支版本管理：
+本项目采用轻量化双分支版本管理：`main` 为稳定发布分支，`dev` 为日常开发分支。
 
-- `main`：稳定分支，只保留可发布版本
-- `dev`：开发分支，日常功能开发与修复默认在这里进行
-
-标准发版流程：
-
-1. 在 `dev` 分支完成开发与验证
-2. 合并到 `main`
-3. 更新 `VERSION` 与 `CHANGELOG.md`
-4. 推送 `main`
-5. 手动触发 GitHub Actions 的 `Create GitHub Release` 工作流，并传入不带 `v` 的版本号，例如 `2.0.15`
-
-手动发版工作流会自动：
-
-- 构建 Windows `exe` 并打包为 Release 附件
-- 创建并推送对应标签，例如 `v2.0.15`
-- 根据 `CHANGELOG.md` 中对应版本条目生成 GitHub Release 正文
-- 构建并发布正式版本镜像 `ghcr.io/assast/outlookemail:v2.0.15`
-
-Docker 镜像标签约定：
-
-- `ghcr.io/assast/outlookemail:latest`：默认分支最近一次符合条件的稳定构建
-- `ghcr.io/assast/outlookemail:main`：`main` 分支最近一次符合条件的构建
-- `ghcr.io/assast/outlookemail:dev`：`dev` 分支最近一次符合条件的构建
-- `ghcr.io/assast/outlookemail:vX.Y.Z`：正式版本镜像
-
-更完整的发版步骤、工作流行为和核对清单见 [发版说明](RELEASE.md)。
+完整的发版步骤、工作流行为和核对清单见 [发版说明](RELEASE.md)。
 
 ### 方式一：下载 Windows `exe`(win可用)
 
@@ -272,7 +247,6 @@ Web 应用采用四栏式布局设计：
 - `Mail.ReadWrite` - 读写邮件
 - `User.Read` - 读取用户信息
 - `IMAP.AccessAsUser.All` - IMAP 访问
-
 #### 步骤 5：获取 Refresh Token
 
 使用本工具内置的 OAuth2 助手获取 Refresh Token：
@@ -442,7 +416,26 @@ user@example.com----app-password----imap.example.com----993
 - 「手动上传」会立即上传真实备份文件，需要输入登录密码
 - WebDAV 备份涉及账号、令牌、临时邮箱凭据等敏感数据，建议使用专用 WebDAV 目录并控制访问权限
 
-### 8. 对外 API
+### 8. 浏览器扩展（密码版）
+
+仓库内置 Chrome / Edge Manifest V3 扩展，目录为 `browser-extension/`。扩展使用 Web 端登录密码，不需要对外 API Key。
+
+安装方式：
+
+1. 打开浏览器扩展管理页，例如 `chrome://extensions/` 或 `edge://extensions/`
+2. 开启开发者模式
+3. 选择“加载已解压的扩展程序”
+4. 选择本仓库的 `browser-extension` 目录
+
+使用方式：
+
+1. 点击扩展图标
+2. 填写 OutlookEmail 服务地址和 Web 登录密码
+3. 点击“保存配置”，或直接点侧边栏里的功能入口
+
+扩展会在浏览器侧边栏内提供原生操作面板，当前网页标签不会被切走。现在可直接使用邮箱、导入、刷新、Token、导出、标签和设置等功能。完整安装、配置、功能和故障排查说明见 [浏览器扩展使用说明](browser-extension/README.md)。
+
+### 9. 对外 API
 
 通过 API Key 直接获取邮件，无需登录 Web 界面。
 

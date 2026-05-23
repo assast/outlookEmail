@@ -53,6 +53,7 @@
         const REFRESH_STREAM_STALL_TIMEOUT_MS = 70000;
         const VERSION_STATUS_REQUEST_TIMEOUT_MS = 12000;
         const DOCKER_UPDATE_REQUEST_TIMEOUT_MS = 20000;
+        const RELEASE_NOTICE_SEEN_VERSION_KEY = 'outlook_release_notice_seen_version';
         const DEFAULT_APP_TIME_ZONE = 'Asia/Shanghai';
         const FALLBACK_APP_TIME_ZONES = [
             'Asia/Shanghai',
@@ -1149,7 +1150,86 @@
             }
 
             syncResponsiveUI();
+            handleExtensionLaunchHash();
+            window.setTimeout(showReleaseNoticeIfNeeded, 900);
         });
+
+        function handleExtensionLaunchHash() {
+            const action = String(window.location.hash || '').replace(/^#/, '').trim().toLowerCase();
+            if (!action) {
+                return;
+            }
+
+            const actions = {
+                'settings': () => typeof showSettingsModal === 'function' && showSettingsModal(),
+                'refresh': () => typeof showRefreshModal === 'function' && showRefreshModal(true),
+                'export': () => typeof showExportModal === 'function' && showExportModal(),
+                'import': () => typeof showAddAccountModal === 'function' && showAddAccountModal(),
+                'oauth': () => typeof showGetRefreshTokenModal === 'function' && showGetRefreshTokenModal(),
+                'tags': () => typeof showTagManagementModal === 'function' && showTagManagementModal(),
+            };
+
+            const openAction = actions[action];
+            if (!openAction) {
+                return;
+            }
+
+            window.setTimeout(openAction, 250);
+        }
+
+        function getCurrentReleaseNoticeVersion() {
+            const modalVersion = document.getElementById('releaseNoticeModal')?.dataset?.releaseVersion;
+            if (modalVersion) {
+                return String(modalVersion).trim();
+            }
+            const versionText = document.getElementById('appVersionValue')?.textContent || '';
+            return String(versionText).replace(/^v/i, '').trim();
+        }
+
+        function getSeenReleaseNoticeVersion() {
+            try {
+                return localStorage.getItem(RELEASE_NOTICE_SEEN_VERSION_KEY) || '';
+            } catch (error) {
+                return '';
+            }
+        }
+
+        function markReleaseNoticeSeen(version) {
+            try {
+                localStorage.setItem(RELEASE_NOTICE_SEEN_VERSION_KEY, String(version || ''));
+            } catch (error) {
+                // localStorage 不可用时不阻断主界面。
+            }
+        }
+
+        function showReleaseNoticeIfNeeded() {
+            const modal = document.getElementById('releaseNoticeModal');
+            if (!modal) {
+                return;
+            }
+
+            const currentVersion = getCurrentReleaseNoticeVersion();
+            if (!currentVersion || getSeenReleaseNoticeVersion() === currentVersion) {
+                return;
+            }
+
+            showModal('releaseNoticeModal');
+        }
+
+        function markCurrentReleaseNoticeSeen() {
+            const currentVersion = getCurrentReleaseNoticeVersion();
+            if (currentVersion) {
+                markReleaseNoticeSeen(currentVersion);
+            }
+        }
+
+        function dismissReleaseNotice() {
+            markCurrentReleaseNoticeSeen();
+            hideModal('releaseNoticeModal');
+        }
+
+        window.dismissReleaseNotice = dismissReleaseNotice;
+        window.markCurrentReleaseNoticeSeen = markCurrentReleaseNoticeSeen;
 
         function closeAccountActionMenus() {
             document.querySelectorAll('.account-item.menu-open').forEach(item => {

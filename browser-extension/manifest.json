@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "OutlookEmail 控制台",
+  "version": "0.1.0",
+  "description": "使用 Web 登录密码打开 OutlookEmail 控制台，并复用完整 Web 端功能。",
+  "action": {
+    "default_title": "OutlookEmail"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "permissions": [
+    "storage",
+    "sidePanel"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src http://* https://*;"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+E",
+        "mac": "Command+Shift+E"
+      },
+      "description": "打开 OutlookEmail 控制台面板"
+    }
+  }
+}

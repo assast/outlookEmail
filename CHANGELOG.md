@@ -6,6 +6,17 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.54] - 2026-05-23
+
+### Added
+- 新增 Chrome / Edge 浏览器扩展，支持在侧边栏使用邮箱、导入、刷新、Token、导出、标签和设置等常用功能。
+- 新增浏览器扩展密码登录桥接接口 `/api/extension/login` 和一次性登录跳转 `/extension-login/<token>`，扩展可使用 Web 登录密码建立正常 Web Session。
+- 首页新增版本更新提示弹框，用户更新后首次打开界面会看到本版本新增功能说明，且每个版本只提示一次。
+
+### Changed
+- README 增加浏览器扩展入口说明，并将完整发版流程收敛到 `RELEASE.md`。
+- API 文档补充浏览器扩展密码登录流程。
+
 ## [2.0.53] - 2026-05-21
 
 ### Added

@@ -9,6 +9,7 @@
 - 接口分为两类：
   - 对外 API：`/api/external/*`，使用 API Key
   - 完整管理 API：其余 `/api/*`，先登录 Web，再带 Session Cookie
+- 浏览器扩展可以使用 `POST /api/extension/login` 通过 Web 登录密码换取一次性跳转地址，再建立正常 Web Session
 - 写操作默认使用 JSON 请求体，`Content-Type: application/json`
 - 大多数接口返回 JSON；少数接口返回文件下载或 SSE 事件流
 
@@ -27,6 +28,8 @@
 | --- | --- | --- | --- | --- |
 | GET | `/api/version-status` | Session | JSON | 当前版本与仓库版本状态 |
 | GET | `/api/csrf-token` | Session | JSON | 获取当前登录会话对应的 CSRF Token |
+| POST | `/api/extension/login` | Web 登录密码 | JSON | 浏览器扩展获取一次性登录跳转地址 |
+| GET | `/extension-login/<token>` | 一次性 token | Redirect | 消费扩展登录 token，建立 Web Session 后跳转 |
 
 ### 对外 API
 
@@ -141,6 +144,35 @@
 ### 完整 API
 
 完整 API 需要先登录 Web 界面并携带 Session Cookie。
+
+### 浏览器扩展密码登录
+
+浏览器扩展不使用对外 API Key。扩展先调用 `POST /api/extension/login`，用 Web 登录密码换取 60 秒有效的一次性 `launch_url`；随后在浏览器标签页打开该 URL，服务端会在自身域名下写入正常 Web Session 并跳转到 Web 控制台。
+
+请求体：
+
+```json
+{
+  "password": "web-login-password",
+  "next": "/#settings"
+}
+```
+
+成功响应：
+
+```json
+{
+  "success": true,
+  "launch_url": "/extension-login/<token>?next=/%23settings",
+  "expires_in": 60
+}
+```
+
+说明：
+
+- `next` 可选，必须是站内路径；非法值会回退到 `/`
+- `launch_url` 只能消费一次，过期或重复打开会跳回登录页
+- 扩展打开控制台后，后续 Web 页面仍按完整管理 API 的 Session + CSRF 规则工作
 
 ### CSRF
 

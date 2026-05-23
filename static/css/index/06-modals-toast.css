@@ -1678,6 +1678,70 @@
             font-size: 12px;
         }
 
+        .release-notice-modal-content {
+            width: min(720px, calc(100vw - 32px));
+        }
+
+        .release-notice-eyebrow {
+            color: #666;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .release-notice-body {
+            display: grid;
+            gap: 16px;
+        }
+
+        .release-notice-version {
+            display: inline-flex;
+            width: fit-content;
+            padding: 6px 10px;
+            border: 1px solid #e5e5e5;
+            border-radius: 999px;
+            background: #f8fafc;
+            color: #333;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .release-notice-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .release-notice-card {
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            padding: 14px;
+            background: #ffffff;
+        }
+
+        .release-notice-card-title {
+            margin-bottom: 8px;
+            color: #1a1a1a;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .release-notice-card p {
+            margin: 0;
+            color: #666;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .release-notice-hint {
+            padding: 10px 12px;
+            border-radius: 8px;
+            background: #f8fafc;
+            color: #666;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
         /* 消息提示 */
         .toast {
             position: fixed;
@@ -1710,4 +1774,10 @@
 
         .toast.error {
             background-color: #dc3545;
+        }
+
+        @media (max-width: 640px) {
+            .release-notice-grid {
+                grid-template-columns: 1fr;
+            }
         }

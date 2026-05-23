@@ -1,4 +1,4 @@
-        /* global closeAccountActionMenus, closeFullscreenEmail, closeMobilePanels, closeNavbarActionsMenu, closeTagFilterDropdown, currentGroupId, escapeHtml, formatDate, handleApiError, hideModal, invalidateAccountCaches, loadGroups, loadAccountsByGroup, refreshVisibleAccountList, resetSelectedAccountViewIfDeleted, showEditAccountModal, showModal, showToast, updateModalBodyState */
+        /* global closeAccountActionMenus, closeFullscreenEmail, closeMobilePanels, closeNavbarActionsMenu, closeTagFilterDropdown, currentGroupId, escapeHtml, formatDate, handleApiError, hideModal, invalidateAccountCaches, loadGroups, loadAccountsByGroup, markCurrentReleaseNoticeSeen, refreshVisibleAccountList, resetSelectedAccountViewIfDeleted, showEditAccountModal, showModal, showToast, updateModalBodyState */
 
         // ==================== Token 刷新管理 ====================
 
@@ -1113,6 +1113,11 @@
 
         // 统一关闭所有模态框的函数 (修复 bug：防止模态框意外残留)
         function closeAllModals() {
+            const releaseNoticeModal = document.getElementById('releaseNoticeModal');
+            if (releaseNoticeModal?.classList.contains('show') && typeof markCurrentReleaseNoticeSeen === 'function') {
+                markCurrentReleaseNoticeSeen();
+            }
+
             document.querySelectorAll('.modal').forEach(modal => {
                 modal.classList.remove('show');
                 modal.style.display = 'none';
