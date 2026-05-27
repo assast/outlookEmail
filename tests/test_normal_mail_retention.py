@@ -1,4 +1,5 @@
 import importlib
+import json
 import os
 import sys
 import tempfile
@@ -260,6 +261,103 @@ class NormalMailRetentionTests(unittest.TestCase):
             [item['id'] for item in inbox_payload['emails']],
             ['inbox-mid', 'inbox-old']
         )
+
+    def _seed_graph_detail_retained_row(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                INSERT INTO retained_normal_mail_messages (
+                    account_id, folder, provider_message_id, id_mode,
+                    subject, sender, recipients, received_at,
+                    has_attachments, body_cached
+                )
+                VALUES (?, 'inbox', 'graph-detail-1', 'graph',
+                        'List subject', 'list@example.com',
+                        'reader@example.com', '2026-05-26T01:00:00Z', 0, 0)
+                ''',
+                (self.account['id'],)
+            )
+            db.commit()
+
+    def _graph_detail_payload(self):
+        return {
+            'id': 'graph-detail-1',
+            'subject': 'Detail subject',
+            'from': {'emailAddress': {'address': 'sender@example.com'}},
+            'toRecipients': [{'emailAddress': {'address': 'reader@example.com'}}],
+            'ccRecipients': [{'emailAddress': {'address': 'copy@example.com'}}],
+            'receivedDateTime': '2026-05-27T05:00:00Z',
+            'hasAttachments': True,
+            'body': {'contentType': 'html', 'content': '<p>Persist me</p>'},
+        }
+
+    def _graph_attachment_payload(self):
+        return [{
+            'id': 'att-1',
+            'name': 'report.pdf',
+            'content_type': 'application/pdf',
+            'size': 1234,
+            'is_inline': False,
+            'content_id': '',
+        }]
+
+    def _retained_detail_rows(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            rows = db.execute(
+                '''
+                SELECT folder, provider_message_id, id_mode, subject, sender,
+                       recipients, cc, received_at, body, body_type,
+                       attachments_json, has_attachments, body_cached,
+                       body_cached_at, last_synced_at, updated_at
+                FROM retained_normal_mail_messages
+                WHERE account_id = ?
+                ''',
+                (self.account['id'],)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _assert_graph_detail_retained(self, row, attachments):
+        self.assertEqual(row['folder'], 'inbox')
+        self.assertEqual(row['provider_message_id'], 'graph-detail-1')
+        self.assertEqual(row['id_mode'], 'graph')
+        self.assertEqual(row['subject'], 'Detail subject')
+        self.assertEqual(row['sender'], 'sender@example.com')
+        self.assertEqual(row['recipients'], 'reader@example.com')
+        self.assertEqual(row['cc'], 'copy@example.com')
+        self.assertEqual(row['received_at'], '2026-05-27T05:00:00Z')
+        self.assertEqual(row['body'], '<p>Persist me</p>')
+        self.assertEqual(row['body_type'], 'html')
+        self.assertEqual(row['has_attachments'], 1)
+        self.assertEqual(row['body_cached'], 1)
+        self.assertIsNotNone(row['body_cached_at'])
+        self.assertIsNotNone(row['last_synced_at'])
+        self.assertIsNotNone(row['updated_at'])
+        self.assertEqual(json.loads(row['attachments_json']), attachments)
+
+    def test_get_email_detail_persists_successful_graph_body(self):
+        self._seed_graph_detail_retained_row()
+        graph_detail = self._graph_detail_payload()
+        attachments = self._graph_attachment_payload()
+
+        with patch.object(web_outlook_app, 'get_email_detail_graph', return_value=graph_detail) as detail_mock, \
+             patch.object(web_outlook_app, 'get_email_attachments_graph', return_value=attachments) as attachments_mock:
+            response = self.client.get(
+                '/api/email/retained@example.com/graph-detail-1?method=graph&folder=inbox&id_mode=graph'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['email']['subject'], 'Detail subject')
+        self.assertEqual(payload['email']['body'], '<p>Persist me</p>')
+        detail_mock.assert_called_once()
+        attachments_mock.assert_called_once()
+
+        rows = self._retained_detail_rows()
+        self.assertEqual(len(rows), 1)
+        self._assert_graph_detail_retained(rows[0], attachments)
 
 
 if __name__ == '__main__':
