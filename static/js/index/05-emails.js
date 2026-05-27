@@ -557,6 +557,20 @@
             });
         }
 
+        function buildEmailDetailRequestUrl(messageId, folder, selectedEmail = {}) {
+            const query = new URLSearchParams({
+                method: currentMethod,
+                folder
+            });
+            if (isNormalMailboxListRequest()) {
+                query.set('prefer_local', '1');
+                if (selectedEmail.id_mode) {
+                    query.set('id_mode', selectedEmail.id_mode);
+                }
+            }
+            return `/api/email/${encodeURIComponent(currentAccount)}/${encodeURIComponent(messageId)}?${query.toString()}`;
+        }
+
         function getRecipientDisplayLabel(emailItem) {
             if (isTempEmailGroup && currentMethod !== 'cloudflare-admin') {
                 return '';
@@ -1149,7 +1163,7 @@
 
             try {
                 const response = await fetchWithTimeout(
-                    `/api/email/${encodeURIComponent(currentAccount)}/${encodeURIComponent(messageId)}?method=${currentMethod}&folder=${requestFolder}`,
+                    buildEmailDetailRequestUrl(messageId, requestFolder, selectedEmail),
                     {
                         timeoutMs: EMAIL_DETAIL_REQUEST_TIMEOUT_MS,
                         timeoutMessage: '加载邮件详情超时，请稍后重试'
