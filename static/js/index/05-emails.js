@@ -176,18 +176,20 @@
             const existingCache = emailListCache[cacheKey] || {};
             const incomingEmails = Array.isArray(data.emails) ? data.emails : [];
             const { method, remoteMethod, methodLabel } = getEmailListMethodMetadata(data, options);
-            const preserveNewRows = options.preserveNewRows === true;
+            const announceNewRows = options.announceNewRows === true;
             const listElement = document.getElementById('emailList');
-            const previousScrollTop = preserveNewRows && listElement ? listElement.scrollTop : null;
-            const newMessageKeys = getNewMessageIdKeys(data.new_message_ids, options.folder);
-            const visibleIncoming = preserveNewRows
-                ? incomingEmails.filter(emailItem => !newMessageKeys.has(getEmailMessageStableKey(emailItem, options.folder)))
-                : incomingEmails;
-            const mergedResult = mergeEmailListByStableKey(currentEmails, visibleIncoming, options.folder);
+            const previousScrollTop = announceNewRows && listElement ? listElement.scrollTop : null;
+            const mergedResult = mergeEmailListByStableKey(currentEmails, incomingEmails, options.folder);
+            const newlySyncedRows = announceNewRows
+                ? collectNewlySyncedEmailRows(data, mergedResult, options.folder)
+                : [];
             const folderSummaries = currentFolder === 'all'
                 ? mergeFolderSummaries(existingCache.folder_summaries, data.folder_summaries)
                 : undefined;
 
+            if (announceNewRows) {
+                markNewlySyncedEmailRows(newlySyncedRows, options.folder);
+            }
             currentEmails = mergedResult.emails;
             currentMethod = method;
             hasMoreEmails = data.has_more === true;
@@ -206,8 +208,8 @@
                 }
             }
             scheduleEmailListLoadCheck(80);
-            if (preserveNewRows) {
-                storePendingNewMailRows(data, { ...mergedResult, newEmails: [] }, options.folder);
+            if (announceNewRows) {
+                announceNewlySyncedEmailRows(data, newlySyncedRows, options.folder);
             }
             return mergedResult;
         }
@@ -316,7 +318,7 @@
                 method: getRemoteMailboxMethodFallback(),
                 context,
                 mergeWithCurrentList: true,
-                preserveNewRows: true,
+                announceNewRows: true,
                 preserveCurrentListOnError: true
             }).catch(error => {
                 if (isCurrentMailboxContext(context)) {
@@ -383,8 +385,6 @@
         let selectedEmailIds = new Set();
         let pendingReadEmailIds = new Set();
         let isBatchSelectMode = false;
-        let pendingNewEmailRows = [];
-        let pendingNewEmailKeys = new Set();
         let highlightedNewEmailKeys = new Set();
         const requestedBodyRetentionKeys = new Set();
         const BODY_RETENTION_REQUEST_LIMIT = 5;
@@ -411,7 +411,7 @@
             );
         }
 
-        function collectPendingNewEmailRows(data, mergeResult, fallbackFolder = currentFolder) {
+        function collectNewlySyncedEmailRows(data, mergeResult, fallbackFolder = currentFolder) {
             const newMessageKeys = getNewMessageIdKeys(data.new_message_ids, fallbackFolder);
             const candidateRows = Array.isArray(data.emails) ? data.emails : [];
             const rows = candidateRows.filter(emailItem => {
@@ -433,44 +433,24 @@
             }
 
             notice.hidden = false;
-            notice.setAttribute('role', 'button');
-            notice.setAttribute('tabindex', '0');
-            notice.onclick = revealPendingNewEmails;
-            notice.onkeydown = event => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    revealPendingNewEmails();
-                }
-            };
+            notice.setAttribute('role', 'status');
+            notice.removeAttribute('tabindex');
+            notice.onclick = null;
+            notice.onkeydown = null;
             notice.innerHTML = `
-                <span>有 ${newCount} 封新邮件已同步</span>
-                <span class="new-mail-notice__hint">点击查看</span>
+                <span>有 ${newCount} 封新邮件已同步并加入列表</span>
+                <span class="new-mail-notice__hint">已自动显示</span>
             `;
         }
 
-        function storePendingNewMailRows(data, mergeResult, fallbackFolder = currentFolder) {
-            const rows = collectPendingNewEmailRows(data, mergeResult, fallbackFolder);
-            pendingNewEmailRows = [];
-            pendingNewEmailKeys = new Set();
-
+        function markNewlySyncedEmailRows(rows, fallbackFolder = currentFolder) {
+            highlightedNewEmailKeys = new Set();
             rows.forEach(emailItem => {
                 const key = getEmailMessageStableKey(emailItem, fallbackFolder);
-                if (!key || pendingNewEmailKeys.has(key)) {
-                    return;
+                if (key) {
+                    highlightedNewEmailKeys.add(key);
                 }
-                pendingNewEmailKeys.add(key);
-                pendingNewEmailRows.push(emailItem);
             });
-
-            const reportedCount = Number(data.new_count || 0);
-            const visibleCount = reportedCount > 0 ? reportedCount : pendingNewEmailRows.length;
-            showNewMailNotice(visibleCount);
-            requestBodyRetentionForNewRows(pendingNewEmailRows, fallbackFolder);
-        }
-
-        function resetPendingNewMailState() {
-            pendingNewEmailRows = [];
-            pendingNewEmailKeys = new Set();
         }
 
         function scheduleNewEmailHighlightClear() {
@@ -482,49 +462,19 @@
             }, 3500);
         }
 
-        function revealPendingNewEmails() {
-            if (pendingNewEmailRows.length === 0) {
+        function announceNewlySyncedEmailRows(data, rows, fallbackFolder = currentFolder) {
+            const reportedCount = Number(data.new_count || 0);
+            const visibleCount = reportedCount > 0 ? reportedCount : rows.length;
+            if (visibleCount <= 0) {
                 hideNewMailNotice();
-                resetPendingNewMailState();
                 return;
             }
 
-            const emailList = document.getElementById('emailList');
-            const previousScrollTop = emailList ? emailList.scrollTop : 0;
-            const mergeResult = mergeEmailListByStableKey(currentEmails, pendingNewEmailRows, currentFolder);
-            highlightedNewEmailKeys = new Set(pendingNewEmailKeys);
-
-            currentEmails = mergeResult.emails;
-            currentSkip = currentEmails.length;
-            hasMoreEmails = false;
-            updateVisibleEmailListCache();
-            updateEmailListHeader(getEmailListCacheEntry(currentAccount, currentFolder)?.method_label || currentMethod, currentEmails.length);
-            renderEmailList(currentEmails);
-            const currentList = document.getElementById('emailList');
-            if (currentList) {
-                currentList.scrollTop = previousScrollTop;
+            showNewMailNotice(visibleCount);
+            requestBodyRetentionForNewRows(rows, fallbackFolder);
+            if (rows.length > 0) {
+                scheduleNewEmailHighlightClear();
             }
-            hideNewMailNotice();
-            resetPendingNewMailState();
-            scheduleNewEmailHighlightClear();
-        }
-
-        function updateVisibleEmailListCache() {
-            if (!currentAccount || isTempEmailGroup) {
-                return;
-            }
-
-            const cacheKey = `${currentAccount}_${currentFolder}`;
-            const existingCache = emailListCache[cacheKey] || {};
-            emailListCache[cacheKey] = {
-                ...existingCache,
-                emails: currentEmails,
-                has_more: hasMoreEmails,
-                skip: currentSkip,
-                method: currentMethod,
-                method_label: existingCache.method_label || currentMethod,
-                derived_from: null
-            };
         }
 
         function buildBodyRetentionItems(rows, fallbackFolder = currentFolder) {

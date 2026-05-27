@@ -136,15 +136,6 @@
             font-weight: 500;
         }
 
-        .new-mail-notice[role="button"] {
-            cursor: pointer;
-        }
-
-        .new-mail-notice[role="button"]:hover {
-            border-color: #93c5fd;
-            background: #dbeafe;
-        }
-
         .mail-sync-status {
             margin-top: 10px;
             padding: 8px 12px;
