@@ -2091,6 +2091,206 @@ def normalize_email_list_item(item: Dict[str, Any], folder: str) -> Dict[str, An
     return row
 
 
+def coerce_retained_mail_text(value: Any) -> str:
+    if value is None:
+        return ''
+    if isinstance(value, (list, tuple, set)):
+        return ', '.join(str(item).strip() for item in value if str(item).strip())
+    return str(value)
+
+
+def coerce_retained_mail_bool(value: Any) -> int:
+    if isinstance(value, str):
+        return 1 if value.strip().lower() in {'1', 'true', 'yes', 'on'} else 0
+    return 1 if bool(value) else 0
+
+
+def retained_mail_storage_folder(item: Dict[str, Any], request_folder: str) -> str:
+    folder_name = normalize_folder_name(request_folder)
+    if folder_name == 'all':
+        return normalize_folder_name((item or {}).get('folder', 'all'))
+    return folder_name
+
+
+def build_retained_normal_mail_list_row(account_id: int, item: Dict[str, Any],
+                                        request_folder: str) -> Optional[Dict[str, Any]]:
+    source = dict(item or {})
+    provider_message_id = str(source.get('id') or '').strip()
+    if not provider_message_id:
+        return None
+
+    storage_folder = retained_mail_storage_folder(source, request_folder)
+    if not source.get('from') and source.get('sender'):
+        source['from'] = source.get('sender')
+    if not source.get('to') and source.get('recipients'):
+        source['to'] = coerce_retained_mail_text(source.get('recipients'))
+    if not source.get('date') and source.get('received_at'):
+        source['date'] = source.get('received_at')
+
+    normalized = normalize_email_list_item(source, storage_folder)
+    normalized['folder'] = storage_folder
+    return {
+        'account_id': account_id,
+        'folder': normalized['folder'],
+        'provider_message_id': provider_message_id,
+        'id_mode': str(normalized.get('id_mode') or '').strip().lower(),
+        'subject': coerce_retained_mail_text(normalized.get('subject')) or '无主题',
+        'sender': coerce_retained_mail_text(normalized.get('from')) or '未知',
+        'recipients': coerce_retained_mail_text(normalized.get('to')),
+        'received_at': coerce_retained_mail_text(normalized.get('date')),
+        'is_read': coerce_retained_mail_bool(normalized.get('is_read')),
+        'has_attachments': coerce_retained_mail_bool(normalized.get('has_attachments')),
+        'body_preview': coerce_retained_mail_text(normalized.get('body_preview')),
+    }
+
+
+def upsert_retained_normal_mail_list_items(account: Dict[str, Any], folder: str,
+                                           items: List[Dict[str, Any]], db=None) -> int:
+    account_id = int((account or {}).get('id') or 0)
+    if not account_id:
+        return 0
+
+    rows = [
+        row for row in (
+            build_retained_normal_mail_list_row(account_id, item, folder)
+            for item in (items or [])
+        )
+        if row is not None
+    ]
+    if not rows:
+        return 0
+
+    database = db or get_db()
+    database.executemany(
+        '''
+        INSERT INTO retained_normal_mail_messages (
+            account_id, folder, provider_message_id, id_mode,
+            subject, sender, recipients, received_at,
+            is_read, has_attachments, body_preview,
+            list_cached, list_cached_at, last_synced_at, updated_at
+        )
+        VALUES (
+            :account_id, :folder, :provider_message_id, :id_mode,
+            :subject, :sender, :recipients, :received_at,
+            :is_read, :has_attachments, :body_preview,
+            1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        )
+        ON CONFLICT(account_id, folder, provider_message_id, id_mode)
+        DO UPDATE SET
+            subject = excluded.subject,
+            sender = excluded.sender,
+            recipients = excluded.recipients,
+            received_at = excluded.received_at,
+            is_read = excluded.is_read,
+            has_attachments = excluded.has_attachments,
+            body_preview = excluded.body_preview,
+            list_cached = 1,
+            list_cached_at = CURRENT_TIMESTAMP,
+            last_synced_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        ''',
+        rows
+    )
+    database.commit()
+    return len(rows)
+
+
+def parse_non_negative_int(raw_value: Any, default: int, max_value: Optional[int] = None) -> int:
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        value = default
+    value = max(0, value)
+    return min(value, max_value) if max_value is not None else value
+
+
+def is_local_retention_request() -> bool:
+    source = str(request.args.get('source', '') or '').strip().lower()
+    local_only = str(request.args.get('local_only', '') or '').strip().lower()
+    return source == 'local' or local_only in {'1', 'true', 'yes', 'on'}
+
+
+def retained_mail_row_to_list_item(row) -> Dict[str, Any]:
+    return {
+        'id': row['provider_message_id'],
+        'subject': row['subject'] or '无主题',
+        'from': row['sender'] or '未知',
+        'to': row['recipients'] or '',
+        'date': row['received_at'] or '',
+        'is_read': bool(row['is_read']),
+        'has_attachments': bool(row['has_attachments']),
+        'body_preview': row['body_preview'] or '',
+        'folder': row['folder'] or 'inbox',
+        'id_mode': row['id_mode'] or '',
+    }
+
+
+def email_matches_local_retention_filters(item: Dict[str, Any], subject_contains: str = '',
+                                          from_contains: str = '', keyword: str = '') -> bool:
+    subject = str(item.get('subject', '') or '')
+    sender = str(item.get('from', '') or '')
+    preview = str(item.get('body_preview', '') or '')
+    if subject_contains and subject_contains not in subject.lower():
+        return False
+    if from_contains and from_contains not in sender.lower():
+        return False
+    if not keyword:
+        return True
+    return keyword in '\n'.join([subject, preview]).lower()
+
+
+def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
+                                    skip: int, top: int) -> Dict[str, Any]:
+    folder_name = normalize_folder_name(folder)
+    if folder_name not in VALID_MAIL_FOLDERS:
+        return {
+            'success': False,
+            'error': f'folder 参数无效，支持: {", ".join(sorted(VALID_MAIL_FOLDERS))}'
+        }
+
+    params: List[Any] = [int(account['id'])]
+    folder_filter = ''
+    if folder_name != 'all':
+        folder_filter = 'AND folder = ?'
+        params.append(folder_name)
+
+    db = get_db()
+    total_row = db.execute(
+        f'''
+        SELECT COUNT(*) AS count
+        FROM retained_normal_mail_messages
+        WHERE account_id = ? AND list_cached = 1 {folder_filter}
+        ''',
+        params
+    ).fetchone()
+    total_count = int(total_row['count'] if total_row else 0)
+
+    rows = db.execute(
+        f'''
+        SELECT provider_message_id, subject, sender, recipients, received_at,
+               is_read, has_attachments, body_preview, folder, id_mode
+        FROM retained_normal_mail_messages
+        WHERE account_id = ? AND list_cached = 1 {folder_filter}
+        ORDER BY COALESCE(NULLIF(received_at, ''), '0000') DESC, id DESC
+        LIMIT ? OFFSET ?
+        ''',
+        list(params) + [top + 1, skip]
+    ).fetchall()
+
+    emails = [retained_mail_row_to_list_item(row) for row in rows[:top]]
+    return {
+        'success': True,
+        'emails': emails,
+        'has_more': len(rows) > top or total_count > skip + len(emails),
+        'count': total_count,
+        'method': 'Local Retention',
+        'source': 'local_retention',
+        'request_method': 'local',
+        'local_retention': True,
+        'folder': folder_name,
+    }
+
+
 def format_graph_email_item(item: Dict[str, Any], folder: str) -> Dict[str, Any]:
     return normalize_email_list_item({
         'id': item.get('id'),
@@ -2389,6 +2589,11 @@ def api_get_emails(email_addr):
         return jsonify({'success': False, 'error': error_payload})
 
     folder = normalize_folder_name(request.args.get('folder', 'inbox'))
+    local_retention_request = is_local_retention_request()
+    if local_retention_request:
+        skip = parse_non_negative_int(request.args.get('skip', 0), 0)
+        top = parse_non_negative_int(request.args.get('top', 20), 20)
+        return jsonify(fetch_retained_normal_mail_list(account, folder, skip, top))
     skip = int(request.args.get('skip', 0))
     top = int(request.args.get('top', 20))
     result = fetch_account_emails(account, folder, skip, top)

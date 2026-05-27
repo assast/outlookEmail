@@ -1378,18 +1378,34 @@ def api_get_emails_v2(email_addr):
         return jsonify({'success': False, 'error': error_payload})
 
     folder = normalize_folder_name(request.args.get('folder', 'inbox'))
-    skip = int(request.args.get('skip', 0))
-    top = int(request.args.get('top', 20))
+    local_retention_request = is_local_retention_request()
+    if local_retention_request:
+        skip = parse_non_negative_int(request.args.get('skip', 0), 0)
+        top = parse_non_negative_int(request.args.get('top', 20), 20)
+    else:
+        skip = int(request.args.get('skip', 0))
+        top = int(request.args.get('top', 20))
     subject_contains = get_query_arg_preserve_plus('subject_contains', '').strip().lower()
     from_contains = get_query_arg_preserve_plus('from_contains', '').strip().lower()
     keyword = get_query_arg_preserve_plus('keyword', '').strip().lower()
-    result = fetch_account_emails(account, folder, skip, top)
+    if local_retention_request:
+        result = fetch_retained_normal_mail_list(account, folder, skip, top)
+    else:
+        result = fetch_account_emails(account, folder, skip, top)
     if result.get('success'):
+        if not local_retention_request:
+            upsert_retained_normal_mail_list_items(account, folder, result.get('emails', []))
         if subject_contains or from_contains or keyword:
-            result['emails'] = [
-                item for item in result.get('emails', [])
-                if email_matches_filters(account, item, subject_contains, from_contains, keyword)
-            ]
+            if local_retention_request:
+                result['emails'] = [
+                    item for item in result.get('emails', [])
+                    if email_matches_local_retention_filters(item, subject_contains, from_contains, keyword)
+                ]
+            else:
+                result['emails'] = [
+                    item for item in result.get('emails', [])
+                    if email_matches_filters(account, item, subject_contains, from_contains, keyword)
+                ]
         result['requested_email'] = requested_email
         result['resolved_email'] = account.get('email', '')
         if account.get('resolved_query_email'):
