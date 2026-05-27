@@ -389,6 +389,32 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self._assert_graph_detail_retained(rows[0], attachments)
 
+    def test_prefer_local_detail_falls_back_and_fills_missing_body(self):
+        self._seed_graph_detail_retained_row()
+        graph_detail = self._graph_detail_payload()
+        attachments = self._graph_attachment_payload()
+
+        with patch.object(web_outlook_app, 'get_email_detail_graph', return_value=graph_detail) as detail_mock, \
+             patch.object(web_outlook_app, 'get_email_attachments_graph', return_value=attachments) as attachments_mock:
+            response = self.client.get(
+                '/api/email/retained@example.com/graph-detail-1'
+                '?prefer_local=1&method=graph&folder=inbox&id_mode=graph'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['email']['subject'], 'Detail subject')
+        self.assertEqual(payload['email']['body'], '<p>Persist me</p>')
+        self.assertNotEqual(payload.get('source'), 'local_retention')
+        self.assertFalse(payload.get('local_retention', False))
+        detail_mock.assert_called_once()
+        attachments_mock.assert_called_once()
+
+        rows = self._retained_detail_rows()
+        self.assertEqual(len(rows), 1)
+        self._assert_graph_detail_retained(rows[0], attachments)
+
     def test_get_email_detail_returns_cached_body_without_remote_fetch(self):
         attachments = self._seed_cached_detail_retained_row()
 
