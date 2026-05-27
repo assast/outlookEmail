@@ -1,6 +1,163 @@
-        /* global EMAIL_DETAIL_REQUEST_TIMEOUT_MS, EMAIL_LIST_REQUEST_TIMEOUT_MS, adjustIframeHeight, applyEmailListCache, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, currentSkip, emailListCache, escapeHtml, fetchWithTimeout, formatDate, getEmailListCacheEntry, getFolderDisplayName, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, invalidateEmailListCache, isTempEmailGroup, isTimeoutAbortError, loadCloudflareGlobalMessages, normalizeFolderSummaries, renderCloudflareGlobalFilterBar, renderEmptyStateMarkup, scheduleEmailListLoadCheck, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
+        /* global EMAIL_DETAIL_REQUEST_TIMEOUT_MS, EMAIL_LIST_REQUEST_TIMEOUT_MS, adjustIframeHeight, applyEmailListCache, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, currentSkip, emailListCache, escapeHtml, fetchWithTimeout, formatDate, getEmailListCacheEntry, getFolderDisplayName, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, invalidateEmailListCache, isTempEmailGroup, isTimeoutAbortError, loadCloudflareGlobalMessages, mergeFolderSummaries, normalizeFolderSummaries, renderCloudflareGlobalFilterBar, renderEmptyStateMarkup, scheduleEmailListLoadCheck, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
 
         // ==================== 邮件相关 ====================
+
+        function isNormalMailboxListRequest() {
+            return !isTempEmailGroup && currentMethod !== 'cloudflare-admin';
+        }
+
+        function getNormalMailboxRemoteMethod() {
+            const cacheMethod = getEmailListCacheEntry(currentAccount, currentFolder)?.remote_method;
+            return cacheMethod || currentMethod;
+        }
+
+        function getRemoteMailboxMethodFallback() {
+            const method = String(getNormalMailboxRemoteMethod() || '').trim().toLowerCase();
+            return ['graph', 'imap'].includes(method) ? method : 'graph';
+        }
+
+        function buildEmailListRequestUrl(email, params = {}) {
+            const query = new URLSearchParams(params);
+            return `/api/emails/${encodeURIComponent(email)}?${query.toString()}`;
+        }
+
+        function setEmailListLoadingState(isLoading) {
+            const refreshBtn = document.querySelector('.refresh-btn');
+            const folderTabs = document.querySelectorAll('.folder-tab');
+
+            if (refreshBtn) {
+                refreshBtn.disabled = isLoading;
+                refreshBtn.textContent = isLoading ? '获取中...' : '获取邮件';
+            }
+            folderTabs.forEach(tab => {
+                tab.disabled = isLoading;
+            });
+        }
+
+        function updateEmailListHeader(methodLabel, emailCount) {
+            const methodTag = document.getElementById('methodTag');
+            if (methodTag) {
+                methodTag.textContent = methodLabel;
+                methodTag.style.display = 'inline';
+            }
+
+            const emailCountEl = document.getElementById('emailCount');
+            if (emailCountEl) {
+                emailCountEl.textContent = `(${emailCount})`;
+            }
+        }
+
+        function cacheEmailListResponse(cacheKey, data, method, methodLabel, options = {}) {
+            const emails = Array.isArray(data.emails) ? data.emails : [];
+            const disableLoadMore = options.disableLoadMore === true;
+            emailListCache[cacheKey] = {
+                emails,
+                has_more: disableLoadMore ? false : data.has_more === true,
+                skip: emails.length,
+                method,
+                method_label: methodLabel,
+                derived_from: null,
+                local_retention: data.local_retention === true,
+                local_retention_count: Number(data.count) || emails.length,
+                folder_summaries: currentFolder === 'all'
+                    ? normalizeFolderSummaries(data.folder_summaries)
+                    : undefined
+            };
+
+            if (options.remoteMethod) {
+                emailListCache[cacheKey].remote_method = options.remoteMethod;
+            }
+        }
+
+        function applyEmailListResponse(cacheKey, data, options = {}) {
+            const emails = Array.isArray(data.emails) ? data.emails : [];
+            const method = options.method || data.request_method || (data.method === 'Graph API' ? 'graph' : 'imap');
+            const remoteMethod = method === 'local' ? getRemoteMailboxMethodFallback() : method;
+            const methodLabel = options.methodLabel || data.method || method;
+            const disableLoadMore = options.disableLoadMore === true;
+
+            currentEmails = emails;
+            currentMethod = method;
+            hasMoreEmails = disableLoadMore ? false : data.has_more === true;
+            currentSkip = currentEmails.length;
+
+            cacheEmailListResponse(cacheKey, data, method, methodLabel, {
+                disableLoadMore,
+                remoteMethod
+            });
+            updateEmailListHeader(methodLabel, currentEmails.length);
+            renderEmailList(currentEmails);
+            scheduleEmailListLoadCheck(80);
+        }
+
+        async function tryRenderLocalRetainedEmails(email, cacheKey) {
+            try {
+                const response = await fetchWithTimeout(
+                    buildEmailListRequestUrl(email, {
+                        source: 'local',
+                        folder: currentFolder,
+                        skip: 0,
+                        top: 20
+                    }),
+                    {
+                        timeoutMs: EMAIL_LIST_REQUEST_TIMEOUT_MS,
+                        timeoutMessage: '读取本地保留邮件超时'
+                    }
+                );
+                const data = await response.json();
+                const retainedEmails = Array.isArray(data.emails) ? data.emails : [];
+                if (!data.success || retainedEmails.length === 0) {
+                    return false;
+                }
+
+                applyEmailListResponse(cacheKey, data, {
+                    method: getRemoteMailboxMethodFallback(),
+                    methodLabel: data.method || 'Local Retention',
+                    disableLoadMore: true
+                });
+                return true;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        async function fetchRemoteEmails(email, cacheKey) {
+            const response = await fetchWithTimeout(
+                buildEmailListRequestUrl(email, {
+                    method: getRemoteMailboxMethodFallback(),
+                    folder: currentFolder,
+                    skip: 0,
+                    top: 20
+                }),
+                {
+                    timeoutMs: EMAIL_LIST_REQUEST_TIMEOUT_MS,
+                    timeoutMessage: '获取邮件超时，请检查网络、代理或账号配置后重试'
+                }
+            );
+            const data = await response.json();
+
+            if (data.success) {
+                applyEmailListResponse(cacheKey, data);
+                return;
+            }
+
+            const fetchErrorDetails = data.details || (data.error ? { error: data.error } : {});
+            if (Object.keys(fetchErrorDetails).length > 0) {
+                showEmailFetchErrorModal(fetchErrorDetails);
+            } else {
+                handleApiError(data, '获取邮件失败');
+            }
+            document.getElementById('emailList').innerHTML = renderEmptyStateMarkup(
+                '⚠️',
+                '获取邮件失败，<a href="javascript:void(0)" onclick="showEmailFetchErrorModal(window._lastFetchErrorDetails)" style="color:#409eff;text-decoration:underline;">点击查看详情</a>',
+                {
+                    allowHtml: true,
+                    onAction: 'refreshEmails()',
+                    actionTitle: '刷新邮件列表'
+                }
+            );
+            window._lastFetchErrorDetails = fetchErrorDetails;
+        }
 
         // 加载邮件列表
         async function loadEmails(email, forceRefresh = false) {
@@ -10,7 +167,6 @@
             selectedEmailIds.clear();
             updateEmailBatchActionBar();
 
-            // 检查缓存
             const cacheKey = `${email}_${currentFolder}`;
             const cache = !forceRefresh ? getEmailListCacheEntry(email, currentFolder) : null;
             if (cache) {
@@ -18,79 +174,16 @@
                 return;
             }
 
-            // 禁用按钮
-            const refreshBtn = document.querySelector('.refresh-btn');
-            const folderTabs = document.querySelectorAll('.folder-tab');
-            if (refreshBtn) {
-                refreshBtn.disabled = true;
-                refreshBtn.textContent = '获取中...';
-            }
-            folderTabs.forEach(tab => tab.disabled = true);
-
-            // 重置分页状态
+            setEmailListLoadingState(true);
             currentSkip = 0;
             hasMoreEmails = true;
-
             container.innerHTML = '<div class="loading"><div class="loading-spinner"></div></div>';
 
             try {
-                // 每次只查询20封邮件
-                const response = await fetchWithTimeout(
-                    `/api/emails/${encodeURIComponent(email)}?method=${currentMethod}&folder=${currentFolder}&skip=0&top=20`,
-                    {
-                        timeoutMs: EMAIL_LIST_REQUEST_TIMEOUT_MS,
-                        timeoutMessage: '获取邮件超时，请检查网络、代理或账号配置后重试'
-                    }
-                );
-                const data = await response.json();
-
-                if (data.success) {
-                    currentEmails = data.emails;
-                    currentMethod = data.request_method || (data.method === 'Graph API' ? 'graph' : 'imap');
-                    hasMoreEmails = data.has_more;
-                    currentSkip = currentEmails.length;
-
-                    // 保存到缓存
-                    emailListCache[cacheKey] = {
-                        emails: currentEmails,
-                        has_more: hasMoreEmails,
-                        skip: currentSkip,
-                        method: currentMethod,
-                        method_label: data.method || currentMethod,
-                        derived_from: null,
-                        folder_summaries: currentFolder === 'all'
-                            ? normalizeFolderSummaries(data.folder_summaries)
-                            : undefined
-                    };
-
-                    // 显示使用的方法和邮件数量
-                    const methodTag = document.getElementById('methodTag');
-                    methodTag.textContent = data.method;
-                    methodTag.style.display = 'inline';
-
-                    document.getElementById('emailCount').textContent = `(${data.emails.length})`;
-
-                    renderEmailList(data.emails);
-                    scheduleEmailListLoadCheck(80);
-                } else {
-                    // 显示详细的多方法失败弹框
-                    const fetchErrorDetails = data.details || (data.error ? { error: data.error } : {});
-                    if (Object.keys(fetchErrorDetails).length > 0) {
-                        showEmailFetchErrorModal(fetchErrorDetails);
-                    } else {
-                        handleApiError(data, '获取邮件失败');
-                    }
-                    container.innerHTML = renderEmptyStateMarkup(
-                        '⚠️',
-                        '获取邮件失败，<a href="javascript:void(0)" onclick="showEmailFetchErrorModal(window._lastFetchErrorDetails)" style="color:#409eff;text-decoration:underline;">点击查看详情</a>',
-                        {
-                            allowHtml: true,
-                            onAction: 'refreshEmails()',
-                            actionTitle: '刷新邮件列表'
-                        }
-                    );
-                    window._lastFetchErrorDetails = fetchErrorDetails;
+                if (isNormalMailboxListRequest() && await tryRenderLocalRetainedEmails(email, cacheKey)) {
+                    return;
                 }
+                await fetchRemoteEmails(email, cacheKey);
             } catch (error) {
                 const errorMessage = isTimeoutAbortError(error)
                     ? '获取邮件超时，请重试'
@@ -100,12 +193,7 @@
                     actionTitle: '刷新邮件列表'
                 });
             } finally {
-                // 启用按钮
-                if (refreshBtn) {
-                    refreshBtn.disabled = false;
-                    refreshBtn.textContent = '获取邮件';
-                }
-                folderTabs.forEach(tab => tab.disabled = false);
+                setEmailListLoadingState(false);
             }
         }
 
@@ -445,7 +533,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         email: currentAccount,
-                        method: currentMethod,
+                        method: getRemoteMailboxMethodFallback(),
                         folder: currentFolder,
                         items: normalizedItems
                     })
