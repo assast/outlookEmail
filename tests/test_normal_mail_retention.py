@@ -157,6 +157,41 @@ class NormalMailRetentionTests(unittest.TestCase):
             ).fetchone()
         return dict(row)
 
+    def _seed_delete_graph_retained_rows(self):
+        rows = [
+            ('delete-graph-1', 'Delete me'),
+            ('delete-graph-2', 'Keep me'),
+        ]
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.executemany(
+                '''
+                INSERT INTO retained_normal_mail_messages (
+                    account_id, folder, provider_message_id, id_mode,
+                    subject, sender, recipients, received_at, list_cached
+                )
+                VALUES (?, 'inbox', ?, 'graph', ?,
+                        'sender@example.com', 'reader@example.com',
+                        '2026-05-27T07:00:00Z', 1)
+                ''',
+                [(self.account['id'], message_id, subject) for message_id, subject in rows]
+            )
+            db.commit()
+
+    def _retained_graph_ids(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            rows = db.execute(
+                '''
+                SELECT provider_message_id
+                FROM retained_normal_mail_messages
+                WHERE account_id = ? AND folder = 'inbox' AND id_mode = 'graph'
+                ORDER BY provider_message_id
+                ''',
+                (self.account['id'],)
+            ).fetchall()
+        return [row['provider_message_id'] for row in rows]
+
     def test_get_emails_persists_successful_remote_list_rows(self):
         remote_result = self._remote_list_result()
 
@@ -241,6 +276,55 @@ class NormalMailRetentionTests(unittest.TestCase):
 
         state = self._retained_read_state('mark-read-failed-graph-1')
         self.assertEqual(state['is_read'], 0)
+
+    def test_delete_emails_removes_successful_retained_graph_row(self):
+        self._seed_delete_graph_retained_rows()
+        remote_result = {
+            'success': True,
+            'success_count': 1,
+            'failed_count': 0,
+            'errors': [],
+        }
+
+        with patch.object(web_outlook_app, 'delete_emails_graph', return_value=remote_result) as delete_mock:
+            response = self.client.post(
+                '/api/emails/delete',
+                json={
+                    'email': 'retained@example.com',
+                    'ids': ['delete-graph-1'],
+                }
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        delete_mock.assert_called_once()
+        self.assertEqual(self._retained_graph_ids(), ['delete-graph-2'])
+
+    def test_delete_emails_remote_failure_keeps_retained_graph_rows(self):
+        self._seed_delete_graph_retained_rows()
+        remote_result = {
+            'success': False,
+            'success_count': 0,
+            'failed_count': 1,
+            'errors': ['remote failed'],
+            'error': 'remote failed',
+        }
+
+        with patch.object(web_outlook_app, 'delete_emails_graph', return_value=remote_result), \
+             patch.object(web_outlook_app, 'delete_emails_imap', return_value=remote_result):
+            response = self.client.post(
+                '/api/emails/delete',
+                json={
+                    'email': 'retained@example.com',
+                    'ids': ['delete-graph-1'],
+                }
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertEqual(self._retained_graph_ids(), ['delete-graph-1', 'delete-graph-2'])
 
     def test_get_emails_reports_new_remote_rows_before_retention_upsert(self):
         old_row = {

@@ -2123,6 +2123,64 @@ def mark_retained_normal_mail_rows_read(account: Dict[str, Any], items: List[Dic
     return max(0, cursor.rowcount or 0)
 
 
+def get_successfully_deleted_message_ids(result: Dict[str, Any], requested_ids: List[str]) -> List[str]:
+    if not (result or {}).get('success'):
+        return []
+
+    for field_name in ('deleted_ids', 'updated_ids'):
+        explicit_ids = [
+            str(message_id or '').strip()
+            for message_id in (result or {}).get(field_name) or []
+            if str(message_id or '').strip()
+        ]
+        if explicit_ids:
+            return list(dict.fromkeys(explicit_ids))
+
+    normalized_requested = [
+        str(message_id or '').strip()
+        for message_id in requested_ids or []
+        if str(message_id or '').strip()
+    ]
+    if not normalized_requested:
+        return []
+
+    success_count = int((result or {}).get('success_count', len(normalized_requested)) or 0)
+    failed_count = int((result or {}).get('failed_count', 0) or 0)
+    if failed_count == 0 and success_count == len(normalized_requested):
+        return list(dict.fromkeys(normalized_requested))
+    return []
+
+
+def delete_retained_normal_mail_rows(account: Dict[str, Any], requested_ids: List[str],
+                                     result: Dict[str, Any], fallback_id_mode: str = '',
+                                     db=None) -> int:
+    account_id = int((account or {}).get('id') or 0)
+    deleted_ids = get_successfully_deleted_message_ids(result, requested_ids)
+    if not account_id or not deleted_ids:
+        return 0
+
+    database = db or get_db()
+    id_mode = str(fallback_id_mode or '').strip().lower()
+    if id_mode:
+        cursor = database.executemany(
+            '''
+            DELETE FROM retained_normal_mail_messages
+            WHERE account_id = ? AND provider_message_id = ? AND id_mode = ?
+            ''',
+            [(account_id, message_id, id_mode) for message_id in deleted_ids]
+        )
+    else:
+        cursor = database.executemany(
+            '''
+            DELETE FROM retained_normal_mail_messages
+            WHERE account_id = ? AND provider_message_id = ?
+            ''',
+            [(account_id, message_id) for message_id in deleted_ids]
+        )
+    database.commit()
+    return max(0, cursor.rowcount or 0)
+
+
 def split_email_action_items_by_method(items: List[Dict[str, str]], method: str) -> tuple[List[Dict[str, str]], List[Dict[str, str]]]:
     graph_items = []
     imap_items = []
@@ -3384,6 +3442,7 @@ def api_delete_emails():
 
     graph_res = delete_emails_graph(account['client_id'], account['refresh_token'], message_ids, proxy_url, fallback_proxy_urls)
     if graph_res['success']:
+        delete_retained_normal_mail_rows(account, message_ids, graph_res, fallback_id_mode='graph')
         return jsonify(graph_res)
 
     # 如果是代理错误，不再回退 IMAP
@@ -3402,6 +3461,7 @@ def api_delete_emails():
         fallback_proxy_urls,
     )
     if imap_res['success']:
+        delete_retained_normal_mail_rows(account, message_ids, imap_res, fallback_id_mode='uid')
         return jsonify(imap_res)
 
     # 3. 尝试 IMAP 回退（旧服务器）
@@ -3415,6 +3475,7 @@ def api_delete_emails():
         fallback_proxy_urls,
     )
     if imap_old_res['success']:
+        delete_retained_normal_mail_rows(account, message_ids, imap_old_res, fallback_id_mode='uid')
         return jsonify(imap_old_res)
 
     # 所有方式均失败，返回 Graph API 的错误
