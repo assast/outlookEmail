@@ -166,7 +166,14 @@
             const existingCache = emailListCache[cacheKey] || {};
             const incomingEmails = Array.isArray(data.emails) ? data.emails : [];
             const { method, remoteMethod, methodLabel } = getEmailListMethodMetadata(data, options);
-            const mergedResult = mergeEmailListByStableKey(currentEmails, incomingEmails, options.folder);
+            const preserveNewRows = options.preserveNewRows === true;
+            const listElement = document.getElementById('emailList');
+            const previousScrollTop = preserveNewRows && listElement ? listElement.scrollTop : null;
+            const newMessageKeys = getNewMessageIdKeys(data.new_message_ids, options.folder);
+            const visibleIncoming = preserveNewRows
+                ? incomingEmails.filter(emailItem => !newMessageKeys.has(getEmailMessageStableKey(emailItem, options.folder)))
+                : incomingEmails;
+            const mergedResult = mergeEmailListByStableKey(currentEmails, visibleIncoming, options.folder);
             const folderSummaries = currentFolder === 'all'
                 ? mergeFolderSummaries(existingCache.folder_summaries, data.folder_summaries)
                 : undefined;
@@ -182,7 +189,16 @@
             });
             updateEmailListHeader(methodLabel, currentEmails.length);
             renderEmailList(currentEmails);
+            if (previousScrollTop !== null) {
+                const currentListElement = document.getElementById('emailList');
+                if (currentListElement) {
+                    currentListElement.scrollTop = previousScrollTop;
+                }
+            }
             scheduleEmailListLoadCheck(80);
+            if (preserveNewRows) {
+                storePendingNewMailRows(data, { ...mergedResult, newEmails: [] }, options.folder);
+            }
             return mergedResult;
         }
 
@@ -288,6 +304,7 @@
                 method: getRemoteMailboxMethodFallback(),
                 context,
                 mergeWithCurrentList: true,
+                preserveNewRows: true,
                 preserveCurrentListOnError: true
             }).catch(error => {
                 if (isCurrentMailboxContext(context)) {
@@ -309,6 +326,7 @@
             // 切换账号/刷新时清除选中状态
             selectedEmailIds.clear();
             updateEmailBatchActionBar();
+            hideNewMailNotice();
 
             const cacheKey = `${email}_${currentFolder}`;
             const cache = !forceRefresh ? getEmailListCacheEntry(email, currentFolder) : null;
@@ -350,6 +368,73 @@
         let selectedEmailIds = new Set();
         let pendingReadEmailIds = new Set();
         let isBatchSelectMode = false;
+        let pendingNewEmailRows = [];
+        let pendingNewEmailKeys = new Set();
+
+        function hideNewMailNotice() {
+            const notice = document.getElementById('newMailNotice');
+            if (!notice) {
+                return;
+            }
+
+            notice.hidden = true;
+            notice.innerHTML = '';
+        }
+
+        function getNewMessageIdKeys(newMessageIds, fallbackFolder = currentFolder) {
+            return new Set(
+                (newMessageIds || [])
+                    .map(item => getEmailMessageStableKey(item, fallbackFolder))
+                    .filter(Boolean)
+            );
+        }
+
+        function collectPendingNewEmailRows(data, mergeResult, fallbackFolder = currentFolder) {
+            const newMessageKeys = getNewMessageIdKeys(data.new_message_ids, fallbackFolder);
+            const candidateRows = Array.isArray(data.emails) ? data.emails : [];
+            const rows = candidateRows.filter(emailItem => {
+                const key = getEmailMessageStableKey(emailItem, fallbackFolder);
+                return key && newMessageKeys.has(key);
+            });
+
+            if (rows.length > 0) {
+                return rows;
+            }
+            return Number(data.new_count || 0) > 0 ? mergeResult.newEmails : [];
+        }
+
+        function showNewMailNotice(newCount) {
+            const notice = document.getElementById('newMailNotice');
+            if (!notice || newCount <= 0) {
+                hideNewMailNotice();
+                return;
+            }
+
+            notice.hidden = false;
+            notice.innerHTML = `
+                <span>有 ${newCount} 封新邮件已同步</span>
+                <span class="new-mail-notice__hint">继续阅读不受影响</span>
+            `;
+        }
+
+        function storePendingNewMailRows(data, mergeResult, fallbackFolder = currentFolder) {
+            const rows = collectPendingNewEmailRows(data, mergeResult, fallbackFolder);
+            pendingNewEmailRows = [];
+            pendingNewEmailKeys = new Set();
+
+            rows.forEach(emailItem => {
+                const key = getEmailMessageStableKey(emailItem, fallbackFolder);
+                if (!key || pendingNewEmailKeys.has(key)) {
+                    return;
+                }
+                pendingNewEmailKeys.add(key);
+                pendingNewEmailRows.push(emailItem);
+            });
+
+            const reportedCount = Number(data.new_count || 0);
+            const visibleCount = reportedCount > 0 ? reportedCount : pendingNewEmailRows.length;
+            showNewMailNotice(visibleCount);
+        }
 
         function getRecipientDisplayLabel(emailItem) {
             if (isTempEmailGroup && currentMethod !== 'cloudflare-admin') {
