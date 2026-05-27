@@ -1394,6 +1394,13 @@ def api_get_emails_v2(email_addr):
         result = fetch_account_emails(account, folder, skip, top)
     if result.get('success'):
         if not local_retention_request:
+            new_message_ids = []
+            if skip == 0:
+                new_message_ids = find_new_retained_normal_mail_identifiers(
+                    account, folder, result.get('emails', [])
+                )
+                result['new_count'] = len(new_message_ids)
+                result['new_message_ids'] = new_message_ids
             upsert_retained_normal_mail_list_items(account, folder, result.get('emails', []))
         if subject_contains or from_contains or keyword:
             if local_retention_request:

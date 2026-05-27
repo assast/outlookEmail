@@ -2144,6 +2144,77 @@ def build_retained_normal_mail_list_row(account_id: int, item: Dict[str, Any],
     }
 
 
+RETAINED_MAIL_KEY_LOOKUP_CHUNK_SIZE = 200
+
+
+def retained_normal_mail_key(row: Dict[str, Any]) -> tuple:
+    return (
+        int(row.get('account_id') or 0),
+        str(row.get('folder') or ''),
+        str(row.get('provider_message_id') or ''),
+        str(row.get('id_mode') or '').strip().lower(),
+    )
+
+
+def retained_mail_new_message_identifier(row: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        'id': str(row.get('provider_message_id') or ''),
+        'folder': str(row.get('folder') or ''),
+        'id_mode': str(row.get('id_mode') or ''),
+    }
+
+
+def query_existing_retained_normal_mail_keys(rows: List[Dict[str, Any]], db=None) -> set:
+    if not rows:
+        return set()
+
+    database = db or get_db()
+    existing_keys = set()
+    for index in range(0, len(rows), RETAINED_MAIL_KEY_LOOKUP_CHUNK_SIZE):
+        chunk = rows[index:index + RETAINED_MAIL_KEY_LOOKUP_CHUNK_SIZE]
+        clauses = []
+        params: List[Any] = [int(chunk[0]['account_id'])]
+        for row in chunk:
+            clauses.append('(folder = ? AND provider_message_id = ? AND id_mode = ?)')
+            params.extend([row['folder'], row['provider_message_id'], row['id_mode']])
+        result_rows = database.execute(
+            f'''
+            SELECT account_id, folder, provider_message_id, id_mode
+            FROM retained_normal_mail_messages
+            WHERE account_id = ? AND ({' OR '.join(clauses)})
+            ''',
+            params
+        ).fetchall()
+        existing_keys.update(retained_normal_mail_key(dict(row)) for row in result_rows)
+    return existing_keys
+
+
+def find_new_retained_normal_mail_identifiers(account: Dict[str, Any], folder: str,
+                                              items: List[Dict[str, Any]], db=None) -> List[Dict[str, str]]:
+    account_id = int((account or {}).get('id') or 0)
+    if not account_id:
+        return []
+
+    unique_rows = []
+    seen_keys = set()
+    for item in items or []:
+        row = build_retained_normal_mail_list_row(account_id, item, folder)
+        if row is None:
+            continue
+        key = retained_normal_mail_key(row)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        unique_rows.append(row)
+
+    existing_keys = query_existing_retained_normal_mail_keys(unique_rows, db)
+    return [
+        retained_mail_new_message_identifier(row)
+        for row in unique_rows
+        if retained_normal_mail_key(row) not in existing_keys
+    ]
+
+
 def upsert_retained_normal_mail_list_items(account: Dict[str, Any], folder: str,
                                            items: List[Dict[str, Any]], db=None) -> int:
     account_id = int((account or {}).get('id') or 0)

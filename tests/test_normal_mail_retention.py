@@ -142,6 +142,59 @@ class NormalMailRetentionTests(unittest.TestCase):
         self._assert_graph_retained_row(rows[0])
         self._assert_imap_retained_row(rows[1])
 
+    def test_get_emails_reports_new_remote_rows_before_retention_upsert(self):
+        old_row = {
+            'id': 'old-uid-1',
+            'id_mode': 'uid',
+            'subject': 'Already retained',
+            'from': 'old@example.com',
+            'to': 'reader@example.com',
+            'date': '2026-05-26T02:00:00Z',
+            'is_read': True,
+            'has_attachments': False,
+            'body_preview': 'Old preview',
+        }
+        new_row = {
+            'id': 'new-uid-2',
+            'id_mode': 'uid',
+            'subject': 'Fresh remote',
+            'from': 'new@example.com',
+            'to': 'reader@example.com',
+            'date': '2026-05-27T02:00:00Z',
+            'is_read': False,
+            'has_attachments': False,
+            'body_preview': 'New preview',
+        }
+        with self.app.app_context():
+            web_outlook_app.upsert_retained_normal_mail_list_items(
+                self.account, 'inbox', [old_row]
+            )
+
+        remote_result = {
+            'success': True,
+            'emails': [old_row, new_row],
+            'method': 'IMAP',
+            'has_more': False,
+        }
+        with patch.object(web_outlook_app, 'fetch_account_emails', return_value=remote_result):
+            response = self.client.get(
+                '/api/emails/retained@example.com?folder=inbox&skip=0&top=20'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['new_count'], 1)
+        self.assertEqual(
+            payload['new_message_ids'],
+            [{'id': 'new-uid-2', 'folder': 'inbox', 'id_mode': 'uid'}]
+        )
+
+        rows = self._retained_rows_for_account()
+        self.assertEqual(len(rows), 2)
+        retained_ids = {row['provider_message_id'] for row in rows}
+        self.assertEqual(retained_ids, {'old-uid-1', 'new-uid-2'})
+
     def test_get_emails_can_return_local_retention_list_with_pagination(self):
         with self.app.app_context():
             db = web_outlook_app.get_db()
@@ -179,6 +232,8 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertEqual(payload['source'], 'local_retention')
         self.assertEqual(payload['request_method'], 'local')
         self.assertTrue(payload['local_retention'])
+        self.assertNotIn('new_count', payload)
+        self.assertNotIn('new_message_ids', payload)
         self.assertEqual(payload['count'], 3)
         self.assertTrue(payload['has_more'])
         self.assertEqual(len(payload['emails']), 1)
