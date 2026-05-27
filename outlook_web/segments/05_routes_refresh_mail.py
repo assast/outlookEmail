@@ -2597,6 +2597,12 @@ def is_local_retention_request() -> bool:
     return source == 'local' or local_only in {'1', 'true', 'yes', 'on'}
 
 
+def is_prefer_local_detail_request() -> bool:
+    source = str(request.args.get('source', '') or '').strip().lower()
+    prefer_local = str(request.args.get('prefer_local', '') or '').strip().lower()
+    return source == 'local' or prefer_local in {'1', 'true', 'yes', 'on'}
+
+
 def retained_mail_row_to_list_item(row) -> Dict[str, Any]:
     return {
         'id': row['provider_message_id'],
@@ -2610,6 +2616,83 @@ def retained_mail_row_to_list_item(row) -> Dict[str, Any]:
         'folder': row['folder'] or 'inbox',
         'id_mode': row['id_mode'] or '',
     }
+
+
+def parse_retained_mail_attachments(raw_attachments: Any) -> List[Dict[str, Any]]:
+    if not raw_attachments:
+        return []
+    try:
+        attachments = json.loads(raw_attachments)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(attachments, list):
+        return []
+    return [item for item in attachments if isinstance(item, dict)]
+
+
+def retained_mail_row_to_detail_response(row) -> Dict[str, Any]:
+    attachments = parse_retained_mail_attachments(row['attachments_json'])
+    return {
+        'success': True,
+        'email': {
+            'id': row['provider_message_id'],
+            'subject': row['subject'] or '无主题',
+            'from': row['sender'] or '未知',
+            'to': row['recipients'] or '',
+            'cc': row['cc'] or '',
+            'date': row['received_at'] or '',
+            'body': row['body'] or '',
+            'body_type': row['body_type'] or 'text',
+            'attachments': attachments,
+            'has_attachments': bool(row['has_attachments']),
+            'folder': row['folder'] or 'inbox',
+            'id_mode': row['id_mode'] or '',
+        },
+        'method': 'Local Retention',
+        'source': 'local_retention',
+        'request_method': 'local',
+        'local_retention': True,
+    }
+
+
+def fetch_retained_normal_mail_detail(account: Dict[str, Any], folder: str,
+                                      message_id: str, id_mode: str = '') -> Optional[Dict[str, Any]]:
+    account_id = int((account or {}).get('id') or 0)
+    provider_message_id = str(message_id or '').strip()
+    if not account_id or not provider_message_id:
+        return None
+
+    folder_name = normalize_folder_name(folder)
+    requested_id_mode = str(id_mode or '').strip().lower()
+    params: List[Any] = [account_id, provider_message_id]
+    folder_filter = ''
+    id_mode_filter = ''
+    if folder_name != 'all':
+        folder_filter = 'AND folder = ?'
+        params.append(folder_name)
+    if requested_id_mode:
+        id_mode_filter = 'AND id_mode = ?'
+        params.append(requested_id_mode)
+
+    row = get_db().execute(
+        f'''
+        SELECT provider_message_id, id_mode, folder, subject, sender,
+               recipients, cc, received_at, body, body_type,
+               attachments_json, has_attachments
+        FROM retained_normal_mail_messages
+        WHERE account_id = ?
+          AND provider_message_id = ?
+          AND body_cached = 1
+          {folder_filter}
+          {id_mode_filter}
+        ORDER BY COALESCE(body_cached_at, updated_at, created_at) DESC, id DESC
+        LIMIT 1
+        ''',
+        params
+    ).fetchone()
+    if not row:
+        return None
+    return retained_mail_row_to_detail_response(row)
 
 
 def email_matches_local_retention_filters(item: Dict[str, Any], subject_contains: str = '',
@@ -3216,6 +3299,11 @@ def api_get_email_detail(email_addr, message_id):
     id_mode = str(request.args.get('id_mode') or '').strip().lower()
     proxy_url = get_account_proxy_url(account)
     fallback_proxy_urls = get_account_proxy_failover_urls(account)
+
+    if is_prefer_local_detail_request():
+        retained_detail = fetch_retained_normal_mail_detail(account, folder, message_id, id_mode)
+        if retained_detail:
+            return jsonify(retained_detail)
 
     if account.get('account_type') == 'imap':
         result = fetch_imap_account_detail_response(
