@@ -136,6 +136,15 @@
             font-weight: 500;
         }
 
+        .new-mail-notice[role="button"] {
+            cursor: pointer;
+        }
+
+        .new-mail-notice[role="button"]:hover {
+            border-color: #93c5fd;
+            background: #dbeafe;
+        }
+
         .cloudflare-global-filter {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto auto;
@@ -231,6 +240,18 @@
             background-color: #f6f7fb;
             border-color: #1a1a1a;
             box-shadow: inset 3px 0 0 #1a1a1a, 0 10px 24px rgba(15, 23, 42, 0.06);
+        }
+
+        .email-item.newly-synced {
+            border-color: #60a5fa;
+            box-shadow: inset 3px 0 0 #2563eb, 0 12px 26px rgba(37, 99, 235, 0.16);
+            animation: newly-synced-pulse 1.4s ease-in-out 2;
+        }
+
+        @keyframes newly-synced-pulse {
+            0% { background-color: #eff6ff; }
+            50% { background-color: #dbeafe; }
+            100% { background-color: #ffffff; }
         }
 
         .email-item.unread {

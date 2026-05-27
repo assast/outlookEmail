@@ -370,6 +370,7 @@
         let isBatchSelectMode = false;
         let pendingNewEmailRows = [];
         let pendingNewEmailKeys = new Set();
+        let highlightedNewEmailKeys = new Set();
 
         function hideNewMailNotice() {
             const notice = document.getElementById('newMailNotice');
@@ -379,6 +380,10 @@
 
             notice.hidden = true;
             notice.innerHTML = '';
+            notice.removeAttribute('role');
+            notice.removeAttribute('tabindex');
+            notice.onclick = null;
+            notice.onkeydown = null;
         }
 
         function getNewMessageIdKeys(newMessageIds, fallbackFolder = currentFolder) {
@@ -411,9 +416,18 @@
             }
 
             notice.hidden = false;
+            notice.setAttribute('role', 'button');
+            notice.setAttribute('tabindex', '0');
+            notice.onclick = revealPendingNewEmails;
+            notice.onkeydown = event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    revealPendingNewEmails();
+                }
+            };
             notice.innerHTML = `
                 <span>有 ${newCount} 封新邮件已同步</span>
-                <span class="new-mail-notice__hint">继续阅读不受影响</span>
+                <span class="new-mail-notice__hint">点击查看</span>
             `;
         }
 
@@ -434,6 +448,65 @@
             const reportedCount = Number(data.new_count || 0);
             const visibleCount = reportedCount > 0 ? reportedCount : pendingNewEmailRows.length;
             showNewMailNotice(visibleCount);
+        }
+
+        function resetPendingNewMailState() {
+            pendingNewEmailRows = [];
+            pendingNewEmailKeys = new Set();
+        }
+
+        function scheduleNewEmailHighlightClear() {
+            window.setTimeout(() => {
+                highlightedNewEmailKeys = new Set();
+                document.querySelectorAll('.email-item.newly-synced').forEach(item => {
+                    item.classList.remove('newly-synced');
+                });
+            }, 3500);
+        }
+
+        function revealPendingNewEmails() {
+            if (pendingNewEmailRows.length === 0) {
+                hideNewMailNotice();
+                resetPendingNewMailState();
+                return;
+            }
+
+            const emailList = document.getElementById('emailList');
+            const previousScrollTop = emailList ? emailList.scrollTop : 0;
+            const mergeResult = mergeEmailListByStableKey(currentEmails, pendingNewEmailRows, currentFolder);
+            highlightedNewEmailKeys = new Set(pendingNewEmailKeys);
+
+            currentEmails = mergeResult.emails;
+            currentSkip = currentEmails.length;
+            hasMoreEmails = false;
+            updateVisibleEmailListCache();
+            updateEmailListHeader(getEmailListCacheEntry(currentAccount, currentFolder)?.method_label || currentMethod, currentEmails.length);
+            renderEmailList(currentEmails);
+            const currentList = document.getElementById('emailList');
+            if (currentList) {
+                currentList.scrollTop = previousScrollTop;
+            }
+            hideNewMailNotice();
+            resetPendingNewMailState();
+            scheduleNewEmailHighlightClear();
+        }
+
+        function updateVisibleEmailListCache() {
+            if (!currentAccount || isTempEmailGroup) {
+                return;
+            }
+
+            const cacheKey = `${currentAccount}_${currentFolder}`;
+            const existingCache = emailListCache[cacheKey] || {};
+            emailListCache[cacheKey] = {
+                ...existingCache,
+                emails: currentEmails,
+                has_more: hasMoreEmails,
+                skip: currentSkip,
+                method: currentMethod,
+                method_label: existingCache.method_label || currentMethod,
+                derived_from: null
+            };
         }
 
         function getRecipientDisplayLabel(emailItem) {
@@ -663,8 +736,9 @@
                 const recipientDisplayLabel = getRecipientDisplayLabel(email);
                 const sourceLabel = getEmailSourceLabel(email);
                 const hasAttachments = Boolean(email.has_attachments);
+                const isNewlySynced = highlightedNewEmailKeys.has(getEmailMessageStableKey(email));
                 return `
-                <div class="email-item ${email.is_read === false ? 'unread' : ''} ${isActive ? 'active' : ''}"
+                <div class="email-item ${email.is_read === false ? 'unread' : ''} ${isActive ? 'active' : ''} ${isNewlySynced ? 'newly-synced' : ''}"
                      onclick="${clickHandler}('${email.id}', ${index})">
                     <div class="email-checkbox-wrapper" onclick="event.stopPropagation(); toggleEmailSelection('${email.id}')">
                         <input type="checkbox" class="email-checkbox" ${isChecked ? 'checked' : ''} style="pointer-events: none;">
