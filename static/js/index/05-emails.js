@@ -63,6 +63,16 @@
             }
         }
 
+        function setMailSyncStatus(message = '') {
+            const status = document.getElementById('mailSyncStatus');
+            if (!status) {
+                return;
+            }
+
+            status.textContent = message;
+            status.hidden = !message;
+        }
+
         function getEmailListMethodMetadata(data, options = {}) {
             const method = options.method || data.request_method || (data.method === 'Graph API' ? 'graph' : 'imap');
             return {
@@ -252,6 +262,7 @@
 
             if (data.success) {
                 if (!options.context || isCurrentMailboxContext(options.context)) {
+                    setMailSyncStatus('');
                     if (options.mergeWithCurrentList === true) {
                         applyMergedRemoteEmailSync(cacheKey, data, options);
                     } else {
@@ -265,6 +276,7 @@
             if (options.preserveCurrentListOnError === true) {
                 window._lastFetchErrorDetails = fetchErrorDetails;
                 if (!options.context || isCurrentMailboxContext(options.context)) {
+                    setMailSyncStatus('后台同步失败，当前显示的是本地保留邮件');
                     showToast('后台同步失败，已保留本地邮件列表', 'error');
                 }
                 return false;
@@ -308,6 +320,7 @@
                 preserveCurrentListOnError: true
             }).catch(error => {
                 if (isCurrentMailboxContext(context)) {
+                    setMailSyncStatus('后台同步失败，当前显示的是本地保留邮件');
                     showToast(isTimeoutAbortError(error) ? '后台同步超时' : '后台同步失败', 'error');
                 }
             }).finally(() => {
@@ -327,6 +340,7 @@
             selectedEmailIds.clear();
             updateEmailBatchActionBar();
             hideNewMailNotice();
+            setMailSyncStatus('');
 
             const cacheKey = `${email}_${currentFolder}`;
             const cache = !forceRefresh ? getEmailListCacheEntry(email, currentFolder) : null;
@@ -352,6 +366,7 @@
                 const errorMessage = isTimeoutAbortError(error)
                     ? '获取邮件超时，请重试'
                     : '网络错误，请重试';
+                setMailSyncStatus('');
                 container.innerHTML = renderEmptyStateMarkup('⚠️', errorMessage, {
                     onAction: 'refreshEmails()',
                     actionTitle: '刷新邮件列表'

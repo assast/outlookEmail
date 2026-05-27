@@ -145,6 +145,21 @@
             background: #dbeafe;
         }
 
+        .mail-sync-status {
+            margin-top: 10px;
+            padding: 8px 12px;
+            border: 1px solid #fed7aa;
+            border-radius: 10px;
+            background: #fff7ed;
+            color: #9a3412;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .mail-sync-status[hidden] {
+            display: none;
+        }
+
         .cloudflare-global-filter {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto auto;
