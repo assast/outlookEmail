@@ -2145,6 +2145,7 @@ def build_retained_normal_mail_list_row(account_id: int, item: Dict[str, Any],
 
 
 RETAINED_MAIL_KEY_LOOKUP_CHUNK_SIZE = 200
+RETAINED_MAIL_BODY_FETCH_LIMIT = 5
 
 
 def retained_normal_mail_key(row: Dict[str, Any]) -> tuple:
@@ -2695,6 +2696,137 @@ def fetch_retained_normal_mail_detail(account: Dict[str, Any], folder: str,
     return retained_mail_row_to_detail_response(row)
 
 
+def normalize_body_retention_items(raw_items: Any, fallback_folder: str,
+                                   fallback_method: str) -> List[Dict[str, str]]:
+    items: List[Dict[str, str]] = []
+    for raw_item in raw_items or []:
+        if isinstance(raw_item, dict):
+            message_id = str(raw_item.get('id') or raw_item.get('message_id') or '').strip()
+            folder = normalize_folder_name(raw_item.get('folder', fallback_folder))
+            id_mode = str(raw_item.get('id_mode') or '').strip().lower()
+            method = str(raw_item.get('method') or fallback_method or 'graph').strip().lower()
+        else:
+            message_id = str(raw_item or '').strip()
+            folder = normalize_folder_name(fallback_folder)
+            id_mode = ''
+            method = str(fallback_method or 'graph').strip().lower()
+        if message_id:
+            items.append({'id': message_id, 'folder': folder, 'id_mode': id_mode, 'method': method})
+    return items
+
+
+def find_retained_body_cache_row(account_id: int, item: Dict[str, str], db=None):
+    message_id = str(item.get('id') or '').strip()
+    if not account_id or not message_id:
+        return None
+
+    folder = normalize_folder_name(item.get('folder', 'inbox'))
+    id_mode = str(item.get('id_mode') or '').strip().lower()
+    filters = ['account_id = ?', 'provider_message_id = ?']
+    params: List[Any] = [account_id, message_id]
+    if folder != 'all':
+        filters.append('folder = ?')
+        params.append(folder)
+    if id_mode:
+        filters.append('id_mode = ?')
+        params.append(id_mode)
+    return (db or get_db()).execute(
+        f'''
+        SELECT folder, provider_message_id, id_mode, body_cached
+        FROM retained_normal_mail_messages
+        WHERE {' AND '.join(filters)}
+        ORDER BY body_cached DESC, COALESCE(updated_at, created_at) DESC, id DESC
+        LIMIT 1
+        ''',
+        params
+    ).fetchone()
+
+
+def retained_body_fetch_item(item: Dict[str, str], cache_row) -> Dict[str, str]:
+    if not cache_row:
+        return item
+    fetch_item = dict(item)
+    fetch_item['folder'] = str(cache_row['folder'] or fetch_item.get('folder') or 'inbox')
+    fetch_item['id_mode'] = str(cache_row['id_mode'] or fetch_item.get('id_mode') or '').strip().lower()
+    return fetch_item
+
+
+def retained_body_fetch_method(account: Dict[str, Any], item: Dict[str, str]) -> str:
+    if account.get('account_type') == 'imap':
+        return 'imap'
+    id_mode = str(item.get('id_mode') or '').strip().lower()
+    if id_mode == 'graph':
+        return 'graph'
+    if id_mode in {'uid', 'sequence'}:
+        return 'imap'
+    method = str(item.get('method') or 'graph').strip().lower()
+    return 'graph' if method == 'graph' else 'imap'
+
+
+def fetch_retained_body_response(account: Dict[str, Any], item: Dict[str, str],
+                                 proxy_url: str, fallback_proxy_urls: List[str]) -> Dict[str, Any]:
+    method = retained_body_fetch_method(account, item)
+    message_id = item['id']
+    folder = normalize_folder_name(item.get('folder', 'inbox'))
+    id_mode = str(item.get('id_mode') or '').strip().lower()
+    if account.get('account_type') == 'imap':
+        return fetch_imap_account_detail_response(account, folder, message_id, method, id_mode, proxy_url)
+    if method == 'graph':
+        result = fetch_graph_detail_response(
+            account, folder, message_id, method, id_mode, proxy_url, fallback_proxy_urls
+        )
+    else:
+        result = fetch_oauth_imap_detail_response(
+            account, folder, message_id, method, id_mode, proxy_url, fallback_proxy_urls
+        )
+    return result or {'success': False, 'error': '获取邮件详情失败'}
+
+
+def retain_normal_mail_bodies(account: Dict[str, Any], items: List[Dict[str, str]]) -> Dict[str, Any]:
+    db = get_db()
+    account_id = int(account.get('id') or 0)
+    proxy_url = get_account_proxy_url(account)
+    fallback_proxy_urls = get_account_proxy_failover_urls(account)
+    cached_count = skipped_count = failed_count = fetched_count = 0
+    results: List[Dict[str, Any]] = []
+    errors: List[Dict[str, str]] = []
+
+    for item in items:
+        cache_row = find_retained_body_cache_row(account_id, item, db=db)
+        if cache_row and int(cache_row['body_cached'] or 0) == 1:
+            skipped_count += 1
+            results.append({'id': item['id'], 'status': 'skipped', 'reason': 'body_cached'})
+            continue
+        if fetched_count >= RETAINED_MAIL_BODY_FETCH_LIMIT:
+            skipped_count += 1
+            results.append({'id': item['id'], 'status': 'skipped', 'reason': 'fetch_limit'})
+            continue
+        fetch_item = retained_body_fetch_item(item, cache_row)
+        fetched_count += 1
+        try:
+            response = fetch_retained_body_response(account, fetch_item, proxy_url, fallback_proxy_urls)
+        except Exception as exc:
+            response = {'success': False, 'error': str(exc)}
+        if response.get('success'):
+            cached_count += 1
+            results.append({'id': item['id'], 'status': 'cached'})
+            continue
+        failed_count += 1
+        error = str(response.get('error') or '获取邮件详情失败')
+        errors.append({'id': item['id'], 'error': error})
+        results.append({'id': item['id'], 'status': 'failed', 'error': error})
+
+    return {
+        'success': failed_count == 0,
+        'cached_count': cached_count,
+        'skipped_count': skipped_count,
+        'failed_count': failed_count,
+        'limit': RETAINED_MAIL_BODY_FETCH_LIMIT,
+        'results': results,
+        'errors': errors,
+    }
+
+
 def email_matches_local_retention_filters(item: Dict[str, Any], subject_contains: str = '',
                                           from_contains: str = '', keyword: str = '') -> bool:
     subject = str(item.get('subject', '') or '')
@@ -3151,6 +3283,29 @@ def api_mark_emails_read():
         results.append(imap_result)
 
     return jsonify(merge_email_action_results(results))
+
+
+@app.route('/api/emails/retain-bodies', methods=['POST'])
+@login_required
+def api_retain_email_bodies():
+    """按服务器端上限为已保留的普通邮箱列表行补齐正文。"""
+    data = request.json or {}
+    email_addr = str(data.get('email') or '').strip()
+    fallback_folder = normalize_folder_name(data.get('folder', 'inbox'))
+    fallback_method = str(data.get('method') or 'graph').strip().lower()
+    raw_items = data.get('items')
+    if raw_items is None:
+        raw_items = data.get('ids', [])
+    items = normalize_body_retention_items(raw_items, fallback_folder, fallback_method)
+    if not email_addr or not items:
+        return jsonify({'success': False, 'error': '参数不完整'})
+
+    account = get_account_by_email(email_addr)
+    if not account:
+        return jsonify({'success': False, 'error': '账号不存在'})
+
+    return jsonify(retain_normal_mail_bodies(account, items))
+
 
 @app.route('/api/emails/delete', methods=['POST'])
 @login_required

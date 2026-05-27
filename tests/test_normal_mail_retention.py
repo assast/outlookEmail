@@ -449,6 +449,52 @@ class NormalMailRetentionTests(unittest.TestCase):
         oauth_imap_mock.assert_not_called()
         generic_imap_mock.assert_not_called()
 
+    def test_retain_bodies_api_fetches_and_persists_uncached_graph_bodies(self):
+        items = [
+            {'id': 'retain-body-1', 'folder': 'inbox', 'id_mode': 'graph', 'method': 'graph'},
+            {'id': 'retain-body-2', 'folder': 'inbox', 'id_mode': 'graph', 'method': 'graph'},
+        ]
+        with self.app.app_context():
+            web_outlook_app.upsert_retained_normal_mail_list_items(self.account, 'inbox', items)
+
+        def graph_detail(client_id, refresh_token, message_id, proxy_url, fallback_proxy_urls):
+            return {
+                'id': message_id,
+                'subject': f'Detail {message_id}',
+                'from': {'emailAddress': {'address': f'{message_id}@example.com'}},
+                'toRecipients': [{'emailAddress': {'address': 'reader@example.com'}}],
+                'ccRecipients': [],
+                'receivedDateTime': '2026-05-27T05:00:00Z',
+                'hasAttachments': False,
+                'body': {'contentType': 'html', 'content': f'<p>Body {message_id}</p>'},
+            }
+
+        with patch.object(web_outlook_app, 'get_email_detail_graph', side_effect=graph_detail) as detail_mock, \
+             patch.object(web_outlook_app, 'get_email_attachments_graph', return_value=[]) as attachments_mock:
+            response = self.client.post(
+                '/api/emails/retain-bodies',
+                json={
+                    'email': 'retained@example.com',
+                    'folder': 'inbox',
+                    'items': items,
+                }
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['cached_count'], 2)
+        self.assertEqual(payload['skipped_count'], 0)
+        self.assertEqual(payload['failed_count'], 0)
+        self.assertEqual(detail_mock.call_count, 2)
+        attachments_mock.assert_not_called()
+
+        rows = sorted(self._retained_detail_rows(), key=lambda row: row['provider_message_id'])
+        self.assertEqual([row['provider_message_id'] for row in rows], ['retain-body-1', 'retain-body-2'])
+        self.assertEqual([row['body_cached'] for row in rows], [1, 1])
+        self.assertEqual(rows[0]['body'], '<p>Body retain-body-1</p>')
+        self.assertEqual(rows[1]['body'], '<p>Body retain-body-2</p>')
+
 
 if __name__ == '__main__':
     unittest.main()
