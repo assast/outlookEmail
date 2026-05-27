@@ -111,6 +111,31 @@
             padding-bottom: 88px;
         }
 
+        .new-mail-notice {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 12px;
+            padding: 8px 12px;
+            border: 1px solid #bfdbfe;
+            border-radius: 10px;
+            background: #eff6ff;
+            color: #1d4ed8;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .new-mail-notice[hidden] {
+            display: none;
+        }
+
+        .new-mail-notice__hint {
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
         .cloudflare-global-filter {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto auto;
