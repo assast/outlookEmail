@@ -371,6 +371,8 @@
         let pendingNewEmailRows = [];
         let pendingNewEmailKeys = new Set();
         let highlightedNewEmailKeys = new Set();
+        const requestedBodyRetentionKeys = new Set();
+        const BODY_RETENTION_REQUEST_LIMIT = 5;
 
         function hideNewMailNotice() {
             const notice = document.getElementById('newMailNotice');
@@ -448,6 +450,7 @@
             const reportedCount = Number(data.new_count || 0);
             const visibleCount = reportedCount > 0 ? reportedCount : pendingNewEmailRows.length;
             showNewMailNotice(visibleCount);
+            requestBodyRetentionForNewRows(pendingNewEmailRows, fallbackFolder);
         }
 
         function resetPendingNewMailState() {
@@ -507,6 +510,51 @@
                 method_label: existingCache.method_label || currentMethod,
                 derived_from: null
             };
+        }
+
+        function buildBodyRetentionItems(rows, fallbackFolder = currentFolder) {
+            const method = getRemoteMailboxMethodFallback();
+            return (rows || [])
+                .map(emailItem => ({
+                    id: String(emailItem?.id || '').trim(),
+                    folder: String(emailItem?.folder || fallbackFolder || 'inbox'),
+                    id_mode: String(emailItem?.id_mode || '').trim(),
+                    method
+                }))
+                .filter(item => item.id);
+        }
+
+        function getUnrequestedBodyRetentionItems(rows, fallbackFolder = currentFolder) {
+            const items = buildBodyRetentionItems(rows, fallbackFolder);
+            const unrequestedItems = items.filter(item => {
+                const key = getEmailMessageStableKey(item, fallbackFolder);
+                return key && !requestedBodyRetentionKeys.has(key);
+            });
+            const selectedItems = unrequestedItems.slice(0, BODY_RETENTION_REQUEST_LIMIT);
+            selectedItems.forEach(item => {
+                requestedBodyRetentionKeys.add(getEmailMessageStableKey(item, fallbackFolder));
+            });
+            return selectedItems;
+        }
+
+        function requestBodyRetentionForNewRows(rows, fallbackFolder = currentFolder) {
+            const items = getUnrequestedBodyRetentionItems(rows, fallbackFolder);
+            if (!items.length || !currentAccount || isTempEmailGroup) {
+                return;
+            }
+
+            fetch('/api/emails/retain-bodies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: currentAccount,
+                    folder: fallbackFolder,
+                    method: getRemoteMailboxMethodFallback(),
+                    items
+                })
+            }).catch(error => {
+                console.warn('Retained mail body background fetch failed:', error);
+            });
         }
 
         function getRecipientDisplayLabel(emailItem) {
