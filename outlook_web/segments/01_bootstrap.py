@@ -1108,6 +1108,36 @@ def init_db():
         )
     ''')
 
+    # 创建普通邮箱本地保留邮件表（列表元数据 + 已缓存正文）
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS retained_normal_mail_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            folder TEXT NOT NULL DEFAULT 'inbox',
+            provider_message_id TEXT NOT NULL,
+            id_mode TEXT NOT NULL DEFAULT '',
+            subject TEXT DEFAULT '无主题',
+            sender TEXT DEFAULT '未知',
+            recipients TEXT DEFAULT '',
+            cc TEXT DEFAULT '',
+            received_at TEXT DEFAULT '',
+            is_read INTEGER NOT NULL DEFAULT 0,
+            has_attachments INTEGER NOT NULL DEFAULT 0,
+            body_preview TEXT DEFAULT '',
+            body TEXT,
+            body_type TEXT DEFAULT 'text',
+            attachments_json TEXT DEFAULT '[]',
+            list_cached INTEGER NOT NULL DEFAULT 1,
+            body_cached INTEGER NOT NULL DEFAULT 0,
+            list_cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            body_cached_at TIMESTAMP,
+            last_synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE CASCADE
+        )
+    ''')
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS forwarding_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1770,6 +1800,21 @@ def init_db():
     cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_forward_logs_lookup
         ON forward_logs(account_id, message_id, channel)
+    ''')
+
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_retained_normal_mail_messages_key
+        ON retained_normal_mail_messages(account_id, folder, provider_message_id, id_mode)
+    ''')
+
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_retained_normal_mail_messages_list
+        ON retained_normal_mail_messages(account_id, folder, received_at DESC, id DESC)
+    ''')
+
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_retained_normal_mail_messages_body_cache
+        ON retained_normal_mail_messages(account_id, folder, body_cached, received_at DESC)
     ''')
 
     cursor.execute('''

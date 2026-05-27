@@ -599,6 +599,58 @@ class ProjectRuntimeTests(unittest.TestCase):
 
         self.assertIn('sort_order', columns)
 
+    def test_init_db_creates_retained_normal_mail_schema(self):
+        expected_columns = {
+            'account_id',
+            'folder',
+            'provider_message_id',
+            'id_mode',
+            'subject',
+            'sender',
+            'recipients',
+            'cc',
+            'received_at',
+            'is_read',
+            'has_attachments',
+            'body_preview',
+            'body',
+            'body_type',
+            'attachments_json',
+            'list_cached',
+            'body_cached',
+            'list_cached_at',
+            'body_cached_at',
+            'last_synced_at',
+            'created_at',
+            'updated_at',
+        }
+
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            columns = {
+                row['name']
+                for row in db.execute("PRAGMA table_info(retained_normal_mail_messages)").fetchall()
+            }
+            indexes = {
+                row['name']: bool(row['unique'])
+                for row in db.execute("PRAGMA index_list(retained_normal_mail_messages)").fetchall()
+            }
+            unique_columns = [
+                row['name']
+                for row in db.execute(
+                    "PRAGMA index_info(ux_retained_normal_mail_messages_key)"
+                ).fetchall()
+            ]
+
+        self.assertTrue(expected_columns.issubset(columns))
+        self.assertTrue(indexes['ux_retained_normal_mail_messages_key'])
+        self.assertIn('idx_retained_normal_mail_messages_list', indexes)
+        self.assertIn('idx_retained_normal_mail_messages_body_cache', indexes)
+        self.assertEqual(
+            unique_columns,
+            ['account_id', 'folder', 'provider_message_id', 'id_mode']
+        )
+
     def test_account_sort_order_roundtrips_through_account_apis(self):
         account_id = self._insert_account('sort@example.com')
 
