@@ -63,9 +63,68 @@
             }
         }
 
+        function getEmailListMethodMetadata(data, options = {}) {
+            const method = options.method || data.request_method || (data.method === 'Graph API' ? 'graph' : 'imap');
+            return {
+                method,
+                remoteMethod: method === 'local' ? getRemoteMailboxMethodFallback() : method,
+                methodLabel: options.methodLabel || data.method || method,
+                disableLoadMore: options.disableLoadMore === true
+            };
+        }
+
+        function getEmailMessageStableKey(emailItem, fallbackFolder = currentFolder) {
+            const id = String(emailItem?.id || '').trim();
+            if (!id) {
+                return '';
+            }
+
+            const folder = String(emailItem?.folder || fallbackFolder || '').trim().toLowerCase();
+            const idMode = String(emailItem?.id_mode || emailItem?.idMode || '').trim().toLowerCase();
+            return `${folder}::${idMode}::${id}`;
+        }
+
+        function getEmailListTimestamp(emailItem) {
+            const timestamp = Date.parse(emailItem?.date || emailItem?.received_at || '');
+            return Number.isNaN(timestamp) ? 0 : timestamp;
+        }
+
+        function mergeEmailListByStableKey(existingEmails, incomingEmails, fallbackFolder = currentFolder) {
+            const mergedEmails = [];
+            const indexByKey = new Map();
+            const newEmails = [];
+
+            (existingEmails || []).forEach(emailItem => {
+                const key = getEmailMessageStableKey(emailItem, fallbackFolder);
+                if (key) {
+                    indexByKey.set(key, mergedEmails.length);
+                }
+                mergedEmails.push(emailItem);
+            });
+
+            (incomingEmails || []).forEach(emailItem => {
+                const key = getEmailMessageStableKey(emailItem, fallbackFolder);
+                if (key && indexByKey.has(key)) {
+                    const index = indexByKey.get(key);
+                    mergedEmails[index] = { ...mergedEmails[index], ...emailItem };
+                    return;
+                }
+
+                if (key) {
+                    indexByKey.set(key, mergedEmails.length);
+                }
+                mergedEmails.push(emailItem);
+                newEmails.push(emailItem);
+            });
+
+            mergedEmails.sort((left, right) => getEmailListTimestamp(right) - getEmailListTimestamp(left));
+            return { emails: mergedEmails, newEmails };
+        }
+
         function cacheEmailListResponse(cacheKey, data, method, methodLabel, options = {}) {
             const emails = Array.isArray(data.emails) ? data.emails : [];
             const disableLoadMore = options.disableLoadMore === true;
+            const folderSummaries = options.folderSummaries || data.folder_summaries;
             emailListCache[cacheKey] = {
                 emails,
                 has_more: disableLoadMore ? false : data.has_more === true,
@@ -76,7 +135,7 @@
                 local_retention: data.local_retention === true,
                 local_retention_count: Number(data.count) || emails.length,
                 folder_summaries: currentFolder === 'all'
-                    ? normalizeFolderSummaries(data.folder_summaries)
+                    ? normalizeFolderSummaries(folderSummaries)
                     : undefined
             };
 
@@ -87,10 +146,7 @@
 
         function applyEmailListResponse(cacheKey, data, options = {}) {
             const emails = Array.isArray(data.emails) ? data.emails : [];
-            const method = options.method || data.request_method || (data.method === 'Graph API' ? 'graph' : 'imap');
-            const remoteMethod = method === 'local' ? getRemoteMailboxMethodFallback() : method;
-            const methodLabel = options.methodLabel || data.method || method;
-            const disableLoadMore = options.disableLoadMore === true;
+            const { method, remoteMethod, methodLabel, disableLoadMore } = getEmailListMethodMetadata(data, options);
 
             currentEmails = emails;
             currentMethod = method;
@@ -104,6 +160,30 @@
             updateEmailListHeader(methodLabel, currentEmails.length);
             renderEmailList(currentEmails);
             scheduleEmailListLoadCheck(80);
+        }
+
+        function applyMergedRemoteEmailSync(cacheKey, data, options = {}) {
+            const existingCache = emailListCache[cacheKey] || {};
+            const incomingEmails = Array.isArray(data.emails) ? data.emails : [];
+            const { method, remoteMethod, methodLabel } = getEmailListMethodMetadata(data, options);
+            const mergedResult = mergeEmailListByStableKey(currentEmails, incomingEmails, options.folder);
+            const folderSummaries = currentFolder === 'all'
+                ? mergeFolderSummaries(existingCache.folder_summaries, data.folder_summaries)
+                : undefined;
+
+            currentEmails = mergedResult.emails;
+            currentMethod = method;
+            hasMoreEmails = data.has_more === true;
+            currentSkip = currentEmails.length;
+
+            cacheEmailListResponse(cacheKey, { ...data, emails: currentEmails, folder_summaries: folderSummaries }, method, methodLabel, {
+                remoteMethod,
+                folderSummaries
+            });
+            updateEmailListHeader(methodLabel, currentEmails.length);
+            renderEmailList(currentEmails);
+            scheduleEmailListLoadCheck(80);
+            return mergedResult;
         }
 
         async function tryRenderLocalRetainedEmails(email, cacheKey) {
@@ -156,9 +236,13 @@
 
             if (data.success) {
                 if (!options.context || isCurrentMailboxContext(options.context)) {
-                    applyEmailListResponse(cacheKey, data);
+                    if (options.mergeWithCurrentList === true) {
+                        applyMergedRemoteEmailSync(cacheKey, data, options);
+                    } else {
+                        applyEmailListResponse(cacheKey, data, options);
+                    }
                 }
-                return true;
+                return data;
             }
 
             const fetchErrorDetails = data.details || (data.error ? { error: data.error } : {});
@@ -203,6 +287,7 @@
                 folder: context.folder,
                 method: getRemoteMailboxMethodFallback(),
                 context,
+                mergeWithCurrentList: true,
                 preserveCurrentListOnError: true
             }).catch(error => {
                 if (isCurrentMailboxContext(context)) {
