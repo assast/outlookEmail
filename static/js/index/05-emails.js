@@ -6,6 +6,8 @@
             return !isTempEmailGroup && currentMethod !== 'cloudflare-admin';
         }
 
+        const backgroundMailboxSyncs = new Map();
+
         function getNormalMailboxRemoteMethod() {
             const cacheMethod = getEmailListCacheEntry(currentAccount, currentFolder)?.remote_method;
             return cacheMethod || currentMethod;
@@ -21,17 +23,31 @@
             return `/api/emails/${encodeURIComponent(email)}?${query.toString()}`;
         }
 
-        function setEmailListLoadingState(isLoading) {
+        function setEmailListLoadingState(isLoading, options = {}) {
             const refreshBtn = document.querySelector('.refresh-btn');
             const folderTabs = document.querySelectorAll('.folder-tab');
+            const isBackgroundSync = options.background === true;
 
             if (refreshBtn) {
-                refreshBtn.disabled = isLoading;
-                refreshBtn.textContent = isLoading ? '获取中...' : '获取邮件';
+                refreshBtn.disabled = isLoading && !isBackgroundSync;
+                refreshBtn.textContent = isLoading
+                    ? (isBackgroundSync ? '同步中...' : '获取中...')
+                    : '获取邮件';
+                refreshBtn.title = isLoading && isBackgroundSync
+                    ? '本地保留邮件已显示，正在后台同步远程邮件'
+                    : '';
+                refreshBtn.toggleAttribute('aria-busy', isLoading);
             }
             folderTabs.forEach(tab => {
-                tab.disabled = isLoading;
+                tab.disabled = isLoading && !isBackgroundSync;
+                tab.title = isLoading && isBackgroundSync
+                    ? '本地保留邮件已显示，后台同步进行中'
+                    : '';
             });
+        }
+
+        function isCurrentMailboxContext(context) {
+            return currentAccount === context.account && currentFolder === context.folder;
         }
 
         function updateEmailListHeader(methodLabel, emailCount) {
@@ -121,11 +137,13 @@
             }
         }
 
-        async function fetchRemoteEmails(email, cacheKey) {
+        async function fetchRemoteEmails(email, cacheKey, options = {}) {
+            const requestFolder = options.folder || currentFolder;
+            const requestMethod = options.method || getRemoteMailboxMethodFallback();
             const response = await fetchWithTimeout(
                 buildEmailListRequestUrl(email, {
-                    method: getRemoteMailboxMethodFallback(),
-                    folder: currentFolder,
+                    method: requestMethod,
+                    folder: requestFolder,
                     skip: 0,
                     top: 20
                 }),
@@ -137,11 +155,21 @@
             const data = await response.json();
 
             if (data.success) {
-                applyEmailListResponse(cacheKey, data);
-                return;
+                if (!options.context || isCurrentMailboxContext(options.context)) {
+                    applyEmailListResponse(cacheKey, data);
+                }
+                return true;
             }
 
             const fetchErrorDetails = data.details || (data.error ? { error: data.error } : {});
+            if (options.preserveCurrentListOnError === true) {
+                window._lastFetchErrorDetails = fetchErrorDetails;
+                if (!options.context || isCurrentMailboxContext(options.context)) {
+                    showToast('后台同步失败，已保留本地邮件列表', 'error');
+                }
+                return false;
+            }
+
             if (Object.keys(fetchErrorDetails).length > 0) {
                 showEmailFetchErrorModal(fetchErrorDetails);
             } else {
@@ -157,6 +185,36 @@
                 }
             );
             window._lastFetchErrorDetails = fetchErrorDetails;
+            return false;
+        }
+
+        function startBackgroundRemoteMailboxSync(email, cacheKey) {
+            const context = {
+                account: email,
+                folder: currentFolder
+            };
+            const syncKey = `${context.account}_${context.folder}`;
+            if (backgroundMailboxSyncs.has(syncKey)) {
+                return;
+            }
+
+            setEmailListLoadingState(true, { background: true });
+            const syncPromise = fetchRemoteEmails(email, cacheKey, {
+                folder: context.folder,
+                method: getRemoteMailboxMethodFallback(),
+                context,
+                preserveCurrentListOnError: true
+            }).catch(error => {
+                if (isCurrentMailboxContext(context)) {
+                    showToast(isTimeoutAbortError(error) ? '后台同步超时' : '后台同步失败', 'error');
+                }
+            }).finally(() => {
+                backgroundMailboxSyncs.delete(syncKey);
+                if (isCurrentMailboxContext(context)) {
+                    setEmailListLoadingState(false);
+                }
+            });
+            backgroundMailboxSyncs.set(syncKey, syncPromise);
         }
 
         // 加载邮件列表
@@ -178,9 +236,12 @@
             currentSkip = 0;
             hasMoreEmails = true;
             container.innerHTML = '<div class="loading"><div class="loading-spinner"></div></div>';
+            let startedBackgroundSync = false;
 
             try {
                 if (isNormalMailboxListRequest() && await tryRenderLocalRetainedEmails(email, cacheKey)) {
+                    startBackgroundRemoteMailboxSync(email, cacheKey);
+                    startedBackgroundSync = true;
                     return;
                 }
                 await fetchRemoteEmails(email, cacheKey);
@@ -193,7 +254,9 @@
                     actionTitle: '刷新邮件列表'
                 });
             } finally {
-                setEmailListLoadingState(false);
+                if (!startedBackgroundSync) {
+                    setEmailListLoadingState(false);
+                }
             }
         }
 
