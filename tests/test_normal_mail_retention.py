@@ -126,6 +126,37 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertEqual(row['body_preview'], 'Inbox preview')
         self.assertEqual(row['list_cached'], 1)
 
+    def _seed_unread_graph_retained_row(self, message_id='mark-read-graph-1'):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                INSERT INTO retained_normal_mail_messages (
+                    account_id, folder, provider_message_id, id_mode,
+                    subject, sender, recipients, received_at, is_read, list_cached
+                )
+                VALUES (?, 'inbox', ?, 'graph',
+                        'Unread subject', 'sender@example.com',
+                        'reader@example.com', '2026-05-27T07:00:00Z', 0, 1)
+                ''',
+                (self.account['id'], message_id)
+            )
+            db.commit()
+
+    def _retained_read_state(self, message_id):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            row = db.execute(
+                '''
+                SELECT is_read, updated_at
+                FROM retained_normal_mail_messages
+                WHERE account_id = ? AND folder = 'inbox'
+                  AND provider_message_id = ? AND id_mode = 'graph'
+                ''',
+                (self.account['id'], message_id)
+            ).fetchone()
+        return dict(row)
+
     def test_get_emails_persists_successful_remote_list_rows(self):
         remote_result = self._remote_list_result()
 
@@ -142,6 +173,74 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self._assert_graph_retained_row(rows[0])
         self._assert_imap_retained_row(rows[1])
+
+    def test_mark_read_updates_successful_retained_graph_row(self):
+        self._seed_unread_graph_retained_row()
+        remote_result = {
+            'success': True,
+            'success_count': 1,
+            'failed_count': 0,
+            'updated_ids': ['mark-read-graph-1'],
+            'errors': [],
+        }
+
+        with patch.object(web_outlook_app, 'mark_emails_read_graph_result', return_value=remote_result) as mark_mock:
+            response = self.client.post(
+                '/api/emails/mark-read',
+                json={
+                    'email': 'retained@example.com',
+                    'method': 'graph',
+                    'folder': 'inbox',
+                    'items': [{
+                        'id': 'mark-read-graph-1',
+                        'folder': 'inbox',
+                        'id_mode': 'graph',
+                    }],
+                }
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['updated_ids'], ['mark-read-graph-1'])
+        mark_mock.assert_called_once()
+
+        state = self._retained_read_state('mark-read-graph-1')
+        self.assertEqual(state['is_read'], 1)
+        self.assertIsNotNone(state['updated_at'])
+
+    def test_mark_read_remote_failure_does_not_update_retained_graph_row(self):
+        self._seed_unread_graph_retained_row('mark-read-failed-graph-1')
+        remote_result = {
+            'success': False,
+            'success_count': 0,
+            'failed_count': 1,
+            'updated_ids': [],
+            'errors': ['remote failed'],
+        }
+
+        with patch.object(web_outlook_app, 'mark_emails_read_graph_result', return_value=remote_result):
+            response = self.client.post(
+                '/api/emails/mark-read',
+                json={
+                    'email': 'retained@example.com',
+                    'method': 'graph',
+                    'folder': 'inbox',
+                    'items': [{
+                        'id': 'mark-read-failed-graph-1',
+                        'folder': 'inbox',
+                        'id_mode': 'graph',
+                    }],
+                }
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertEqual(payload['error'], 'remote failed')
+
+        state = self._retained_read_state('mark-read-failed-graph-1')
+        self.assertEqual(state['is_read'], 0)
 
     def test_get_emails_reports_new_remote_rows_before_retention_upsert(self):
         old_row = {

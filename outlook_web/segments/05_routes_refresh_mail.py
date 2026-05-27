@@ -2077,6 +2077,111 @@ def merge_email_action_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     return merged_result
 
 
+def mark_retained_normal_mail_rows_read(account: Dict[str, Any], items: List[Dict[str, str]],
+                                        result: Dict[str, Any], fallback_id_mode: str = '',
+                                        db=None) -> int:
+    account_id = int((account or {}).get('id') or 0)
+    updated_ids = {
+        str(message_id or '').strip()
+        for message_id in (result or {}).get('updated_ids') or []
+        if str(message_id or '').strip()
+    }
+    if not account_id or not updated_ids:
+        return 0
+
+    keys = []
+    seen_keys = set()
+    for item in items or []:
+        message_id = str((item or {}).get('id') or '').strip()
+        if message_id not in updated_ids:
+            continue
+
+        folder = normalize_folder_name((item or {}).get('folder', 'inbox'))
+        id_mode = str((item or {}).get('id_mode') or fallback_id_mode or '').strip().lower()
+        if not id_mode:
+            continue
+
+        key = (account_id, folder, message_id, id_mode)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        keys.append(key)
+
+    if not keys:
+        return 0
+
+    database = db or get_db()
+    cursor = database.executemany(
+        '''
+        UPDATE retained_normal_mail_messages
+        SET is_read = 1, updated_at = CURRENT_TIMESTAMP
+        WHERE account_id = ? AND folder = ? AND provider_message_id = ? AND id_mode = ?
+        ''',
+        keys
+    )
+    database.commit()
+    return max(0, cursor.rowcount or 0)
+
+
+def split_email_action_items_by_method(items: List[Dict[str, str]], method: str) -> tuple[List[Dict[str, str]], List[Dict[str, str]]]:
+    graph_items = []
+    imap_items = []
+    for item in items:
+        id_mode = str(item.get('id_mode') or '').strip().lower()
+        if id_mode == 'graph':
+            graph_items.append(item)
+        elif id_mode in {'uid', 'sequence'}:
+            imap_items.append(item)
+        elif method == 'graph':
+            graph_items.append(item)
+        else:
+            imap_items.append(item)
+    return graph_items, imap_items
+
+
+def mark_imap_account_emails_read(account: Dict[str, Any], items: List[Dict[str, str]],
+                                  proxy_url: str) -> Dict[str, Any]:
+    result = mark_emails_read_imap_generic_result(
+        account['email'],
+        account.get('imap_password', ''),
+        account.get('imap_host', ''),
+        items,
+        account.get('imap_port', 993),
+        account.get('provider', 'custom'),
+        proxy_url
+    )
+    mark_retained_normal_mail_rows_read(account, items, result, fallback_id_mode='uid')
+    return result
+
+
+def mark_graph_items_read(account: Dict[str, Any], items: List[Dict[str, str]],
+                          proxy_url: str, fallback_proxy_urls: List[str]) -> Dict[str, Any]:
+    result = mark_emails_read_graph_result(
+        account['client_id'],
+        account['refresh_token'],
+        [item['id'] for item in items],
+        proxy_url,
+        fallback_proxy_urls,
+    )
+    mark_retained_normal_mail_rows_read(account, items, result, fallback_id_mode='graph')
+    return result
+
+
+def mark_oauth_imap_items_read(account: Dict[str, Any], items: List[Dict[str, str]],
+                               proxy_url: str, fallback_proxy_urls: List[str]) -> Dict[str, Any]:
+    result = mark_emails_read_imap_batch(
+        account['email'], account['client_id'], account['refresh_token'],
+        items, IMAP_SERVER_NEW, proxy_url, fallback_proxy_urls,
+    )
+    if not result.get('success') and result.get('success_count', 0) == 0:
+        result = mark_emails_read_imap_batch(
+            account['email'], account['client_id'], account['refresh_token'],
+            items, IMAP_SERVER_OLD, proxy_url, fallback_proxy_urls,
+        )
+    mark_retained_normal_mail_rows_read(account, items, result, fallback_id_mode='uid')
+    return result
+
+
 def normalize_email_list_item(item: Dict[str, Any], folder: str) -> Dict[str, Any]:
     row = dict(item or {})
     row['subject'] = row.get('subject', '无主题')
@@ -3210,10 +3315,7 @@ def api_mark_emails_read():
     email_addr = str(data.get('email') or '').strip()
     method = str(data.get('method') or 'graph').strip().lower()
     fallback_folder = normalize_folder_name(data.get('folder', 'inbox'))
-    raw_items = data.get('items')
-    if raw_items is None:
-        raw_items = data.get('ids', [])
-
+    raw_items = data.get('items') if data.get('items') is not None else data.get('ids', [])
     items = normalize_email_action_items(raw_items, fallback_folder)
     if not email_addr or not items:
         return jsonify({'success': False, 'error': '参数不完整'})
@@ -3224,64 +3326,15 @@ def api_mark_emails_read():
 
     proxy_url = get_account_proxy_url(account)
     fallback_proxy_urls = get_account_proxy_failover_urls(account)
-
     if account.get('account_type') == 'imap':
-        result = mark_emails_read_imap_generic_result(
-            account['email'],
-            account.get('imap_password', ''),
-            account.get('imap_host', ''),
-            items,
-            account.get('imap_port', 993),
-            account.get('provider', 'custom'),
-            proxy_url
-        )
-        return jsonify(result)
+        return jsonify(mark_imap_account_emails_read(account, items, proxy_url))
 
-    graph_items = []
-    imap_items = []
-    for item in items:
-        id_mode = str(item.get('id_mode') or '').strip().lower()
-        if id_mode == 'graph':
-            graph_items.append(item)
-        elif id_mode in {'uid', 'sequence'}:
-            imap_items.append(item)
-        elif method == 'graph':
-            graph_items.append(item)
-        else:
-            imap_items.append(item)
-
+    graph_items, imap_items = split_email_action_items_by_method(items, method)
     results = []
     if graph_items:
-        results.append(mark_emails_read_graph_result(
-            account['client_id'],
-            account['refresh_token'],
-            [item['id'] for item in graph_items],
-            proxy_url,
-            fallback_proxy_urls,
-        ))
-
+        results.append(mark_graph_items_read(account, graph_items, proxy_url, fallback_proxy_urls))
     if imap_items:
-        imap_result = mark_emails_read_imap_batch(
-            account['email'],
-            account['client_id'],
-            account['refresh_token'],
-            imap_items,
-            IMAP_SERVER_NEW,
-            proxy_url,
-            fallback_proxy_urls,
-        )
-        if not imap_result.get('success') and imap_result.get('success_count', 0) == 0:
-            imap_result = mark_emails_read_imap_batch(
-                account['email'],
-                account['client_id'],
-                account['refresh_token'],
-                imap_items,
-                IMAP_SERVER_OLD,
-                proxy_url,
-                fallback_proxy_urls,
-            )
-        results.append(imap_result)
-
+        results.append(mark_oauth_imap_items_read(account, imap_items, proxy_url, fallback_proxy_urls))
     return jsonify(merge_email_action_results(results))
 
 
