@@ -181,6 +181,72 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertEqual(saved_value, 'false')
         self.assertTrue(self._retention_switch_retained_row_exists())
 
+    def _seed_retention_status_rows(self):
+        db = web_outlook_app.get_db()
+        self.assertTrue(web_outlook_app.set_setting(
+            'normal_mail_local_retention_enabled',
+            'true',
+        ))
+        added = web_outlook_app.add_account(
+            'status-retained@example.com',
+            'password',
+            'client-id',
+            'refresh-token',
+            group_id=1,
+            account_type='outlook',
+            provider='outlook',
+        )
+        self.assertTrue(added)
+        account = web_outlook_app.get_account_by_email('status-retained@example.com')
+        self._insert_retention_status_rows(db, account['id'])
+        db.commit()
+
+    def _insert_retention_status_rows(self, db, account_id):
+        db.executemany(
+            '''
+            INSERT INTO retained_normal_mail_messages (
+                account_id, folder, provider_message_id, id_mode,
+                subject, sender, recipients, received_at,
+                body_preview, body, body_type, attachments_json,
+                list_cached, body_cached, body_cached_at
+            )
+            VALUES (?, 'inbox', ?, 'graph', ?,
+                    'sender@example.com', 'reader@example.com',
+                    '2026-05-27T07:00:00Z', ?, ?, 'html', '[]',
+                    1, ?, CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END)
+            ''',
+            [
+                (account_id, 'status-with-body', 'Cached status row',
+                 'cached preview', '<p>cached body</p>', 1, 1),
+                (account_id, 'status-without-body', 'Metadata only status row',
+                 'metadata preview', None, 0, 0),
+            ]
+        )
+
+    def test_retention_status_api_reports_seeded_storage_statistics(self):
+        with tempfile.TemporaryDirectory(prefix='outlookEmail-retention-status-') as temp_dir:
+            status_db_path = os.path.join(temp_dir, 'status.db')
+            with patch.object(web_outlook_app, 'DATABASE', status_db_path):
+                web_outlook_app.init_db()
+                with self.app.app_context():
+                    self._seed_retention_status_rows()
+
+                response = self.client.get('/api/settings/normal-mail-retention/status')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        status = payload['status']
+        self.assertTrue(status['enabled'])
+        self.assertEqual(status['saved_message_count'], 2)
+        self.assertEqual(status['cached_body_count'], 1)
+        self.assertIsInstance(status['estimated_retained_bytes'], int)
+        self.assertGreaterEqual(status['estimated_retained_bytes'], 0)
+        self.assertIsInstance(status['db_file_bytes'], int)
+        self.assertGreaterEqual(status['db_file_bytes'], 0)
+        self.assertEqual(status['clear_status']['state'], 'idle')
+        self.assertIn('message', status['clear_status'])
+
     def _assert_graph_retained_row(self, row):
         self.assertEqual(row['folder'], 'junkemail')
         self.assertEqual(row['provider_message_id'], 'graph-message-1')
