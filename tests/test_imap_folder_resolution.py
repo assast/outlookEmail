@@ -733,6 +733,16 @@ class ExternalAccountsApiTests(unittest.TestCase):
                 ''',
                 (account['id'], account['email'], 'manual', 'success', None)
             )
+            db.execute(
+                '''
+                UPDATE accounts
+                SET last_refresh_status = 'success',
+                    last_refresh_error = NULL,
+                    last_refresh_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                ''',
+                (account['id'],),
+            )
             db.commit()
 
     def test_global_refresh_logs_clamps_invalid_and_large_pagination(self):
