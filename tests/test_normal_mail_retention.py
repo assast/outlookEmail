@@ -1,6 +1,7 @@
 import importlib
 import json
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -98,6 +99,31 @@ class NormalMailRetentionTests(unittest.TestCase):
                 (self.account['id'],)
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def test_get_settings_fresh_db_returns_default_disabled_retention_switch(self):
+        with tempfile.TemporaryDirectory(prefix='outlookEmail-fresh-settings-') as temp_dir:
+            fresh_db_path = os.path.join(temp_dir, 'fresh.db')
+            with patch.object(web_outlook_app, 'DATABASE', fresh_db_path):
+                web_outlook_app.init_db()
+                with sqlite3.connect(fresh_db_path) as db:
+                    row = db.execute(
+                        '''
+                        SELECT value FROM settings
+                        WHERE key = 'normal_mail_local_retention_enabled'
+                        '''
+                    ).fetchone()
+
+                response = self.client.get('/api/settings')
+
+        self.assertIsNotNone(row)
+        self.assertEqual(row[0], 'false')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(
+            payload['settings']['normal_mail_local_retention_enabled'],
+            'false',
+        )
 
     def _assert_graph_retained_row(self, row):
         self.assertEqual(row['folder'], 'junkemail')

@@ -259,6 +259,10 @@ def api_get_settings():
     settings['show_account_created_at'] = get_setting('show_account_created_at', 'true')
     settings['show_account_sort_order'] = get_setting('show_account_sort_order', 'false')
     settings['show_group_id'] = get_setting('show_group_id', 'true')
+    settings['normal_mail_local_retention_enabled'] = get_setting(
+        'normal_mail_local_retention_enabled',
+        'false',
+    )
     settings['forward_channels'] = get_forward_channels()
     settings['forward_check_interval_minutes'] = get_setting('forward_check_interval_minutes', '5')
     settings['forward_account_delay_seconds'] = get_setting('forward_account_delay_seconds', '0')
