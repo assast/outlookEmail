@@ -765,6 +765,71 @@ class ExternalAccountsApiTests(unittest.TestCase):
         execute_args = db_mock.return_value.execute.call_args.args
         self.assertEqual(execute_args[1], (web_outlook_app.LOG_PAGINATION_MAX_LIMIT, 0))
 
+    def test_refresh_logs_prefer_current_account_email_over_log_email(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        current_email = 'current-user@outlook.com'
+        log_email = 'old-log-user@outlook.com'
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM account_refresh_logs')
+            db.execute(
+                'UPDATE accounts SET email = ? WHERE id = ?',
+                (current_email, self.account_id),
+            )
+            db.execute(
+                '''
+                INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message, created_at)
+                VALUES (?, ?, 'manual', 'success', NULL, '2026-05-28 10:00:00')
+                ''',
+                (self.account_id, log_email),
+            )
+            db.commit()
+
+        global_response = self.client.get('/api/accounts/refresh-logs')
+        self.assertEqual(global_response.status_code, 200)
+        global_payload = global_response.get_json()
+        self.assertTrue(global_payload['success'])
+        self.assertEqual(global_payload['logs'][0]['account_email'], current_email)
+        self.assertEqual(global_payload['logs'][0]['account_id'], self.account_id)
+        self.assertEqual(global_payload['logs'][0]['refresh_type'], 'manual')
+        self.assertEqual(global_payload['logs'][0]['status'], 'success')
+        self.assertIn('created_at', global_payload['logs'][0])
+
+        account_response = self.client.get(f'/api/accounts/{self.account_id}/refresh-logs')
+        self.assertEqual(account_response.status_code, 200)
+        account_payload = account_response.get_json()
+        self.assertTrue(account_payload['success'])
+        self.assertEqual(account_payload['logs'][0]['account_email'], current_email)
+
+    def test_refresh_logs_fall_back_to_log_email_when_account_missing(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        log_email = 'deleted-account-log@outlook.com'
+        missing_account_id = self.account_id + 1000
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM account_refresh_logs')
+            db.commit()
+            db.execute('PRAGMA foreign_keys = OFF')
+            db.execute(
+                '''
+                INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message, created_at)
+                VALUES (?, ?, 'manual', 'failed', 'gone', '2026-05-28 10:00:00')
+                ''',
+                (missing_account_id, log_email),
+            )
+            db.commit()
+            db.execute('PRAGMA foreign_keys = ON')
+
+        response = self.client.get('/api/accounts/refresh-logs')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['logs'][0]['account_email'], log_email)
+        self.assertEqual(payload['logs'][0]['account_id'], missing_account_id)
+        self.assertEqual(payload['logs'][0]['error_message'], 'gone')
+
     def test_account_refresh_logs_clamps_invalid_and_large_pagination(self):
         with self.client.session_transaction() as session:
             session['logged_in'] = True

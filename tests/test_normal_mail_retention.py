@@ -328,6 +328,42 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertFalse(payload['success'])
         self.assertEqual(self._retained_graph_ids(), ['delete-graph-1', 'delete-graph-2'])
 
+    def test_delete_emails_imap_uses_imap_oauth_token_and_remains_unsupported(self):
+        with patch.object(web_outlook_app, 'get_access_token_graph') as graph_token_mock, \
+             patch.object(web_outlook_app, 'get_access_token_imap', return_value='imap-token') as imap_token_mock, \
+             patch.object(web_outlook_app.imaplib, 'IMAP4_SSL') as imap_mock:
+            graph_token_mock.side_effect = AssertionError('Graph token helper should not be used for IMAP delete')
+            connection = imap_mock.return_value
+            connection.authenticate.return_value = ('OK', [b'Authenticated'])
+            connection.select.return_value = ('OK', [b'1'])
+
+            result = web_outlook_app.delete_emails_imap(
+                'retained@example.com',
+                'client-id',
+                'refresh-token',
+                ['uid-1'],
+                'imap.example.com',
+                'socks5://proxy.example:1080',
+                ['socks5://fallback.example:1080'],
+            )
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error'], 'IMAP 删除暂不支持 (ID 格式不兼容)')
+        graph_token_mock.assert_not_called()
+        imap_token_mock.assert_called_once_with(
+            'client-id',
+            'refresh-token',
+            'socks5://proxy.example:1080',
+            ['socks5://fallback.example:1080'],
+        )
+        imap_mock.assert_called_once_with(
+            'imap.example.com',
+            web_outlook_app.IMAP_PORT,
+            timeout=web_outlook_app.IMAP_TIMEOUT,
+        )
+        connection.authenticate.assert_called_once()
+        connection.select.assert_called_once_with('INBOX')
+
     def test_retained_action_row_counts_are_cumulative(self):
         with self.app.app_context():
             db = web_outlook_app.get_db()

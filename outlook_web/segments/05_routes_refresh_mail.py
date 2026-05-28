@@ -1686,6 +1686,20 @@ def api_stop_full_refresh():
     })
 
 
+
+def serialize_refresh_log_row(row):
+    account_email = row['current_account_email'] or row['log_account_email']
+    return {
+        'id': row['id'],
+        'account_id': row['account_id'],
+        'account_email': account_email,
+        'refresh_type': row['refresh_type'],
+        'status': row['status'],
+        'error_message': row['error_message'],
+        'created_at': row['created_at']
+    }
+
+
 @app.route('/api/accounts/refresh-logs', methods=['GET'])
 @login_required
 def api_get_refresh_logs():
@@ -1697,7 +1711,15 @@ def api_get_refresh_logs():
     )
 
     cursor = db.execute('''
-        SELECT l.*, a.email as account_email
+        SELECT
+            l.id,
+            l.account_id,
+            l.account_email AS log_account_email,
+            a.email AS current_account_email,
+            l.refresh_type,
+            l.status,
+            l.error_message,
+            l.created_at
         FROM account_refresh_logs l
         LEFT JOIN accounts a ON l.account_id = a.id
         WHERE l.refresh_type IN ('manual', 'scheduled')
@@ -1708,15 +1730,7 @@ def api_get_refresh_logs():
 
     logs = []
     for row in cursor.fetchall():
-        logs.append({
-            'id': row['id'],
-            'account_id': row['account_id'],
-            'account_email': row['account_email'] or row['account_email'],
-            'refresh_type': row['refresh_type'],
-            'status': row['status'],
-            'error_message': row['error_message'],
-            'created_at': row['created_at']
-        })
+        logs.append(serialize_refresh_log_row(row))
 
     return jsonify({'success': True, 'logs': logs})
 
@@ -1733,23 +1747,25 @@ def api_get_account_refresh_logs(account_id):
     )
 
     cursor = db.execute('''
-        SELECT * FROM account_refresh_logs
-        WHERE account_id = ?
-        ORDER BY created_at DESC
+        SELECT
+            l.id,
+            l.account_id,
+            l.account_email AS log_account_email,
+            a.email AS current_account_email,
+            l.refresh_type,
+            l.status,
+            l.error_message,
+            l.created_at
+        FROM account_refresh_logs l
+        LEFT JOIN accounts a ON l.account_id = a.id
+        WHERE l.account_id = ?
+        ORDER BY l.created_at DESC
         LIMIT ? OFFSET ?
     ''', (account_id, limit, offset))
 
     logs = []
     for row in cursor.fetchall():
-        logs.append({
-            'id': row['id'],
-            'account_id': row['account_id'],
-            'account_email': row['account_email'],
-            'refresh_type': row['refresh_type'],
-            'status': row['status'],
-            'error_message': row['error_message'],
-            'created_at': row['created_at']
-        })
+        logs.append(serialize_refresh_log_row(row))
 
     return jsonify({'success': True, 'logs': logs})
 
@@ -2019,7 +2035,7 @@ def delete_emails_graph(client_id: str, refresh_token: str, message_ids: List[st
 def delete_emails_imap(email_addr: str, client_id: str, refresh_token: str, message_ids: List[str], server: str,
                        proxy_url: str = None, fallback_proxy_urls: List[str] = None) -> Dict[str, Any]:
     """通过 IMAP 删除邮件（永久删除）"""
-    access_token = get_access_token_graph(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
     if not access_token:
         return {"success": False, "error": "获取 Access Token 失败"}
         

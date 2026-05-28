@@ -1336,6 +1336,33 @@ class FrontendEmailListSecurityTests(unittest.TestCase):
         self.assertIn('if (currentEmailDetail && deletedIds.has(String(currentEmailDetail.id)))', self.emails_js)
 
 
+class FrontendEmailBodyRetentionAndIframeTests(unittest.TestCase):
+    def setUp(self):
+        self.emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+    def test_body_retention_failed_requests_are_retryable(self):
+        self.assertIn('const requestedKeys = items', self.emails_js)
+        self.assertIn('requestedKeys.forEach(key => requestedBodyRetentionKeys.add(key));', self.emails_js)
+        self.assertIn('requestedKeys.forEach(key => requestedBodyRetentionKeys.delete(key));', self.emails_js)
+        self.assertIn('if (data && data.success === false)', self.emails_js)
+
+    def test_normal_detail_iframe_resize_resources_are_cleaned(self):
+        self.assertIn('const normalDetailIframeResizeResources = { timers: [], observer: null };', self.emails_js)
+        self.assertIn('function cleanupNormalDetailIframeResizeResources()', self.emails_js)
+        self.assertIn('cleanupNormalDetailIframeResizeResources();', self.emails_js)
+        self.assertIn("const container = document.getElementById('emailDetail');", self.emails_js)
+        self.assertIn('normalDetailIframeResizeResources.timers.push(window.setTimeout(adjustHeight, delay));', self.emails_js)
+        self.assertIn('resources.observer.disconnect();', self.emails_js)
+        self.assertIn('if (!iframe.isConnected)', self.emails_js)
+
+    def test_fullscreen_iframe_resize_resources_are_cleaned(self):
+        self.assertIn('const fullscreenIframeResizeResources = { timers: [], observer: null };', self.emails_js)
+        self.assertIn('function cleanupFullscreenIframeResizeResources()', self.emails_js)
+        self.assertIn('cleanupFullscreenIframeResizeResources();', self.emails_js)
+        self.assertIn("const modal = document.getElementById('fullscreenEmailModal');", self.emails_js)
+        self.assertIn('fullscreenIframeResizeResources.timers.push(window.setTimeout(adjustHeight, delay));', self.emails_js)
+        self.assertIn('resources.observer.disconnect();', self.emails_js)
+
 class FrontendTimezoneBootstrapTests(unittest.TestCase):
     def test_settings_js_no_longer_updates_timezone_in_add_account_flow(self):
         settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')

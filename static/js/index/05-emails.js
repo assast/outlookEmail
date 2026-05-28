@@ -8,7 +8,26 @@
 
         const backgroundMailboxSyncs = new Map();
         const pendingNewMailSyncs = new Map();
+        const normalDetailIframeResizeResources = { timers: [], observer: null };
+        const fullscreenIframeResizeResources = { timers: [], observer: null };
         const NEW_EMAIL_HIGHLIGHT_CLEAR_DELAY_MS = 3500;
+
+        function cleanupIframeResizeResources(resources) {
+            (resources.timers || []).forEach(timerId => window.clearTimeout(timerId));
+            resources.timers = [];
+            if (resources.observer) {
+                resources.observer.disconnect();
+                resources.observer = null;
+            }
+        }
+
+        function cleanupNormalDetailIframeResizeResources() {
+            cleanupIframeResizeResources(normalDetailIframeResizeResources);
+        }
+
+        function cleanupFullscreenIframeResizeResources() {
+            cleanupIframeResizeResources(fullscreenIframeResizeResources);
+        }
 
         function getNormalMailboxRemoteMethod() {
             const cacheMethod = getEmailListCacheEntry(currentAccount, currentFolder)?.remote_method;
@@ -586,11 +605,7 @@
                 const key = getEmailMessageStableKey(item, fallbackFolder);
                 return key && !requestedBodyRetentionKeys.has(key);
             });
-            const selectedItems = unrequestedItems.slice(0, BODY_RETENTION_REQUEST_LIMIT);
-            selectedItems.forEach(item => {
-                requestedBodyRetentionKeys.add(getEmailMessageStableKey(item, fallbackFolder));
-            });
-            return selectedItems;
+            return unrequestedItems.slice(0, BODY_RETENTION_REQUEST_LIMIT);
         }
 
         function requestBodyRetentionForNewRows(rows, fallbackFolder = currentFolder) {
@@ -598,6 +613,11 @@
             if (!items.length || !currentAccount || isTempEmailGroup) {
                 return;
             }
+
+            const requestedKeys = items
+                .map(item => getEmailMessageStableKey(item, fallbackFolder))
+                .filter(Boolean);
+            requestedKeys.forEach(key => requestedBodyRetentionKeys.add(key));
 
             fetch('/api/emails/retain-bodies', {
                 method: 'POST',
@@ -608,7 +628,17 @@
                     method: getRemoteMailboxMethodFallback(),
                     items
                 })
+            }).then(response => {
+                if (!response.ok) {
+                    throw new Error(`Retained body request failed with status ${response.status}`);
+                }
+                return response.json().catch(() => ({ success: true }));
+            }).then(data => {
+                if (data && data.success === false) {
+                    throw new Error(data.error || 'Retained body request failed');
+                }
             }).catch(error => {
+                requestedKeys.forEach(key => requestedBodyRetentionKeys.delete(key));
                 console.warn('Retained mail body background fetch failed:', error);
             });
         }
@@ -666,9 +696,9 @@
                 return `${numericSize} B`;
             }
             if (numericSize < 1024 * 1024) {
-                return `${(numericSize / 1024).toFixed(1).replace(/\\.0$/, '')} KB`;
+                return `${(numericSize / 1024).toFixed(1).replace(/\.0$/, '')} KB`;
             }
-            return `${(numericSize / (1024 * 1024)).toFixed(1).replace(/\\.0$/, '')} MB`;
+            return `${(numericSize / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB`;
         }
 
         function buildAttachmentDownloadUrl(email, attachment) {
@@ -1319,6 +1349,7 @@
 
         // 渲染邮件详情
         function renderEmailDetail(email) {
+            cleanupNormalDetailIframeResizeResources();
             const container = document.getElementById('emailDetail');
             const compactMobileMeta = typeof isMobileLayout === 'function' && isMobileLayout();
 
@@ -1436,13 +1467,15 @@
 
         // 动态调整 iframe 高度
         function adjustIframeHeight(iframe) {
+            cleanupNormalDetailIframeResizeResources();
             try {
-                // 多次尝试调整高度，确保内容完全加载
                 const adjustHeight = () => {
+                    if (!iframe.isConnected) {
+                        return;
+                    }
                     if (iframe.contentDocument && iframe.contentDocument.body) {
                         const body = iframe.contentDocument.body;
                         const html = iframe.contentDocument.documentElement;
-                        // 获取实际内容高度（取最大值）
                         const height = Math.max(
                             body.scrollHeight,
                             body.offsetHeight,
@@ -1450,34 +1483,23 @@
                             html.scrollHeight,
                             html.offsetHeight
                         );
-                        // 设置最小高度为 600px，添加 100px 余量确保长邮件能完整显示
                         iframe.style.height = Math.max(height + 100, 600) + 'px';
                     }
                 };
 
-                // 立即调整一次
                 adjustHeight();
-                // 100ms 后再调整（等待图片等资源加载）
-                setTimeout(adjustHeight, 100);
-                // 300ms 后再调整
-                setTimeout(adjustHeight, 300);
-                // 500ms 后再调整（确保所有内容都已加载）
-                setTimeout(adjustHeight, 500);
-                // 1秒后最后调整一次
-                setTimeout(adjustHeight, 1000);
-                // 2秒后再次调整（处理延迟加载的内容）
-                setTimeout(adjustHeight, 2000);
+                [100, 300, 500, 1000, 2000].forEach(delay => {
+                    normalDetailIframeResizeResources.timers.push(window.setTimeout(adjustHeight, delay));
+                });
 
-                // 监听 iframe 内容变化
                 if (iframe.contentDocument) {
-                    const observer = new MutationObserver(adjustHeight);
-                    observer.observe(iframe.contentDocument.body, {
+                    normalDetailIframeResizeResources.observer = new MutationObserver(adjustHeight);
+                    normalDetailIframeResizeResources.observer.observe(iframe.contentDocument.body, {
                         childList: true,
                         subtree: true,
                         attributes: true
                     });
 
-                    // 监听图片加载完成事件
                     const images = iframe.contentDocument.querySelectorAll('img');
                     images.forEach(img => {
                         img.addEventListener('load', adjustHeight);
@@ -1487,26 +1509,6 @@
             } catch (e) {
                 console.log('Cannot adjust iframe height:', e);
             }
-        }
-
-        // 切换邮件列表显示
-        function toggleEmailList() {
-            const panel = document.getElementById('emailListPanel');
-            const toggleText = document.getElementById('toggleListText');
-
-            isListVisible = !isListVisible;
-
-            if (isListVisible) {
-                panel.classList.remove('hidden');
-                toggleText.textContent = '隐藏列表';
-            } else {
-                panel.classList.add('hidden');
-                toggleText.textContent = '显示列表';
-            }
-
-            closeMobilePanels();
-            closeNavbarActionsMenu();
-            updateMobileContext();
         }
 
         // 全屏查看邮件
@@ -1531,6 +1533,7 @@
             const emailBody = emailDetail.querySelector('.email-detail-body');
 
             if (emailHeader && emailBody) {
+                cleanupFullscreenIframeResizeResources();
                 // 清空内容
                 content.innerHTML = '';
 
@@ -1600,6 +1603,7 @@
         }
 
         function closeFullscreenEmail() {
+            cleanupFullscreenIframeResizeResources();
             const modal = document.getElementById('fullscreenEmailModal');
             if (!modal) return;
             modal.classList.remove('show');
@@ -1701,8 +1705,12 @@
         }
 
         function adjustFullscreenIframeHeight(iframe) {
+            cleanupFullscreenIframeResizeResources();
             try {
                 const adjustHeight = () => {
+                    if (!iframe.isConnected) {
+                        return;
+                    }
                     if (iframe.contentDocument && iframe.contentDocument.body) {
                         const body = iframe.contentDocument.body;
                         const html = iframe.contentDocument.documentElement;
@@ -1713,28 +1721,23 @@
                             html.scrollHeight,
                             html.offsetHeight
                         );
-                        // 全屏模式下设置实际高度，添加余量
                         iframe.style.height = (height + 100) + 'px';
                     }
                 };
 
-                // 多次调整高度
                 adjustHeight();
-                setTimeout(adjustHeight, 100);
-                setTimeout(adjustHeight, 300);
-                setTimeout(adjustHeight, 500);
-                setTimeout(adjustHeight, 1000);
+                [100, 300, 500, 1000].forEach(delay => {
+                    fullscreenIframeResizeResources.timers.push(window.setTimeout(adjustHeight, delay));
+                });
 
-                // 监听内容变化
                 if (iframe.contentDocument) {
-                    const observer = new MutationObserver(adjustHeight);
-                    observer.observe(iframe.contentDocument.body, {
+                    fullscreenIframeResizeResources.observer = new MutationObserver(adjustHeight);
+                    fullscreenIframeResizeResources.observer.observe(iframe.contentDocument.body, {
                         childList: true,
                         subtree: true,
                         attributes: true
                     });
 
-                    // 监听图片加载
                     const images = iframe.contentDocument.querySelectorAll('img');
                     images.forEach(img => {
                         img.addEventListener('load', adjustHeight);
@@ -1745,7 +1748,6 @@
                 console.log('Cannot adjust fullscreen iframe height:', e);
             }
         }
-
         // 显示邮件列表（移动端）
         function showEmailList({ scheduleLoadCheck = true } = {}) {
             document.getElementById('emailListPanel').classList.remove('hidden');

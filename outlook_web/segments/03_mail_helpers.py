@@ -819,8 +819,6 @@ def get_emails_imap(account: str, client_id: str, refresh_token: str, folder: st
     )
 
 
-def get_emails_imap_with_server(account: str, client_id: str, refresh_token: str, folder: str = 'inbox', skip: int = 0, top: int = 20, server: str = IMAP_SERVER_NEW, proxy_url: str = None) -> Dict[str, Any]:
-    """使用 IMAP 获取邮件列表（支持分页、文件夹选择和服务器选择）"""
 def get_emails_imap_with_server(account: str, client_id: str, refresh_token: str, folder: str = 'inbox',
                                 skip: int = 0, top: int = 20, server: str = IMAP_SERVER_NEW,
                                 proxy_url: str = None,
