@@ -24,6 +24,12 @@
                                     </button>
                                 </li>
                                 <li>
+                                    <button type="button" class="settings-sidebar-link" data-target="settingsNormalMailRetentionSection" onclick="scrollSettingsSection('settingsNormalMailRetentionSection', this)">
+                                        <strong>普通邮箱本地保留</strong>
+                                        <span>开关、空间统计与缓存清理</span>
+                                    </button>
+                                </li>
+                                <li>
                                     <button type="button" class="settings-sidebar-link" data-target="settingsWebdavBackupSection" onclick="scrollSettingsSection('settingsWebdavBackupSection', this)">
                                         <strong>WebDAV 备份</strong>
                                         <span>导出全部分组并按 Cron 上传</span>
@@ -187,6 +193,47 @@
                                 <div id="cronValidationResult" class="settings-note" style="display: none;"></div>
                             </div>
                         </div>
+                    </div>
+                </section>
+
+                <section class="settings-section" id="settingsNormalMailRetentionSection">
+                    <div class="settings-section-head">
+                        <span class="settings-section-kicker">Retention</span>
+                        <h4>普通邮箱本地保留</h4>
+                        <p>控制 Outlook/IMAP 普通邮箱列表元数据与部分正文是否保存到本机 SQLite。</p>
+                    </div>
+                    <div class="settings-panel settings-panel-stack">
+                        <div class="settings-panel-grid settings-panel-grid--compact">
+                            <div class="form-group settings-form-span-full">
+                                <label class="settings-toggle settings-toggle--card">
+                                    <input type="checkbox" id="normalMailLocalRetentionEnabled">
+                                    <span class="form-label">启用普通邮箱本地保留</span>
+                                </label>
+                                <div class="form-hint" id="normalMailLocalRetentionExplanation">默认关闭。开启后，普通 Outlook/IMAP 邮箱的列表元数据和已查看的部分正文会保存到本机 SQLite，用于本地优先加载与离线回看；不会保存附件二进制或原始 MIME。</div>
+                            </div>
+                        </div>
+
+                        <div class="settings-subpanel" id="normalMailRetentionStats">
+                            <div class="settings-action-row settings-action-row--toolbar">
+                                <div>
+                                    <label class="form-label">存储统计</label>
+                                    <div class="form-hint" id="normalMailRetentionStatsError" style="display: none;"></div>
+                                </div>
+                                <button class="btn btn-secondary" type="button" id="refreshNormalMailRetentionStatusBtn" onclick="loadNormalMailRetentionStatus()">刷新统计</button>
+                            </div>
+                            <div class="settings-panel-grid settings-panel-grid--compact">
+                                <div class="settings-note">已保存邮件：<strong id="normalMailRetentionSavedCount">0</strong></div>
+                                <div class="settings-note">已缓存正文：<strong id="normalMailRetentionCachedBodyCount">0</strong></div>
+                                <div class="settings-note">估算占用空间：<strong id="normalMailRetentionEstimatedBytes">0 B</strong></div>
+                                <div class="settings-note">SQLite 数据库大小：<strong id="normalMailRetentionDbBytes">0 B</strong></div>
+                            </div>
+                        </div>
+
+                        <div class="settings-action-row settings-action-row--toolbar">
+                            <button class="btn btn-danger" type="button" id="clearNormalMailRetentionCacheBtn" onclick="clearNormalMailRetentionCache()">清理普通邮箱本地缓存</button>
+                            <div class="form-hint">独立清理本地保留的普通邮箱列表与正文缓存，不会修改上方开关。</div>
+                        </div>
+                        <div id="normalMailRetentionClearStatus" class="settings-note">清理状态：普通邮箱本地缓存清理空闲</div>
                     </div>
                 </section>
 

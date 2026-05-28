@@ -73,6 +73,7 @@
         let showAccountCreatedAt = true;
         let showAccountSortOrder = false;
         let showGroupId = true;
+        let normalMailLocalRetentionEnabled = false;
 
         function isUntaggedTagFilterValue(value) {
             return String(value || '').trim() === UNTAGGED_TAG_FILTER_KEY;
@@ -165,6 +166,15 @@
 
         function shouldShowGroupId() {
             return showGroupId !== false;
+        }
+
+        function setNormalMailLocalRetentionEnabled(enabled) {
+            normalMailLocalRetentionEnabled = enabled === true;
+            return normalMailLocalRetentionEnabled;
+        }
+
+        function isNormalMailLocalRetentionEnabled() {
+            return normalMailLocalRetentionEnabled === true;
         }
 
         function parseDateInput(dateInput) {
@@ -1068,6 +1078,7 @@
                 setShowAccountCreatedAt(String(data?.settings?.show_account_created_at) !== 'false');
                 setShowAccountSortOrder(String(data?.settings?.show_account_sort_order) === 'true');
                 setShowGroupId(String(data?.settings?.show_group_id) !== 'false');
+                setNormalMailLocalRetentionEnabled(String(data?.settings?.normal_mail_local_retention_enabled) === 'true');
                 return data?.settings || null;
             } catch (error) {
                 return null;
