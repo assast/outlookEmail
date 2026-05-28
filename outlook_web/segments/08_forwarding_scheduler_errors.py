@@ -1410,6 +1410,22 @@ def handle_local_retention_list_request(account: Dict[str, Any], requested_email
                                         from_contains: str, keyword: str):
     skip = parse_non_negative_int(request.args.get('skip', 0), 0)
     top = parse_non_negative_int(request.args.get('top', 20), 20)
+    if not is_normal_mail_local_retention_enabled():
+        result = {
+            'success': True,
+            'emails': [],
+            'has_more': False,
+            'count': 0,
+            'method': 'Local Retention',
+            'source': 'local_retention_disabled',
+            'request_method': 'local',
+            'local_retention': False,
+            'local_retention_enabled': False,
+            'message': '本地存储未启用',
+            'folder': folder,
+        }
+        add_resolved_account_metadata(result, requested_email, account)
+        return jsonify(result)
     include_body = bool(keyword)
     result = fetch_retained_normal_mail_list(account, folder, skip, top, include_body=include_body)
     if result.get('success'):

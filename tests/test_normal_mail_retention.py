@@ -714,6 +714,53 @@ class NormalMailRetentionTests(unittest.TestCase):
         retained_ids = {row['provider_message_id'] for row in rows}
         self.assertEqual(retained_ids, {'old-uid-1', 'new-uid-2'})
 
+    def test_local_retention_list_disabled_hides_seeded_rows_until_enabled(self):
+        items = [{
+            'id': 'disabled-local-row',
+            'folder': 'inbox',
+            'id_mode': 'graph',
+            'subject': 'Hidden local row',
+            'from': 'sender@example.com',
+            'to': 'reader@example.com',
+            'date': '2026-05-27T08:00:00Z',
+            'is_read': True,
+            'has_attachments': False,
+            'body_preview': 'hidden',
+        }]
+        with self.app.app_context():
+            web_outlook_app.upsert_retained_normal_mail_list_items(self.account, 'inbox', items)
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'false',
+            ))
+
+        disabled_response = self.client.get(
+            '/api/emails/retained@example.com?source=local&folder=inbox&skip=0&top=20'
+        )
+
+        self.assertEqual(disabled_response.status_code, 200)
+        disabled_payload = disabled_response.get_json()
+        self.assertTrue(disabled_payload['success'])
+        self.assertFalse(disabled_payload['local_retention_enabled'])
+        self.assertFalse(disabled_payload['local_retention'])
+        self.assertEqual(disabled_payload['emails'], [])
+        self.assertEqual(disabled_payload['count'], 0)
+        self.assertEqual(disabled_payload['message'], '本地存储未启用')
+
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
+
+        enabled_response = self.client.get(
+            '/api/emails/retained@example.com?source=local&folder=inbox&skip=0&top=20'
+        )
+        enabled_payload = enabled_response.get_json()
+        self.assertTrue(enabled_payload['success'])
+        self.assertTrue(enabled_payload['local_retention'])
+        self.assertEqual([item['id'] for item in enabled_payload['emails']], ['disabled-local-row'])
+
     def test_get_emails_can_return_local_retention_list_with_pagination(self):
         with self.app.app_context():
             db = web_outlook_app.get_db()
@@ -1160,8 +1207,38 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self._assert_graph_detail_retained(rows[0], attachments)
 
+    def test_prefer_local_detail_disabled_does_not_return_cached_body(self):
+        self._seed_cached_detail_retained_row()
+        graph_detail = self._graph_detail_payload()
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'false',
+            ))
+
+        with patch.object(web_outlook_app, 'get_email_detail_graph', return_value=graph_detail) as detail_mock, \
+             patch.object(web_outlook_app, 'get_email_attachments_graph', return_value=[]) as attachments_mock:
+            response = self.client.get(
+                '/api/email/retained@example.com/cached-detail-1'
+                '?prefer_local=1&method=graph&folder=inbox&id_mode=graph'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertNotEqual(payload.get('source'), 'local_retention')
+        self.assertFalse(payload.get('local_retention', False))
+        self.assertEqual(payload['email']['body'], '<p>Persist me</p>')
+        detail_mock.assert_called_once()
+        attachments_mock.assert_called_once()
+
     def test_get_email_detail_returns_cached_body_without_remote_fetch(self):
         attachments = self._seed_cached_detail_retained_row()
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
 
         with patch.object(web_outlook_app, 'get_email_detail_graph') as graph_mock, \
              patch.object(web_outlook_app, 'get_email_detail_imap') as oauth_imap_mock, \

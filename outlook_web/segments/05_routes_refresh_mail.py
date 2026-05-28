@@ -3702,7 +3702,7 @@ def api_get_email_detail(email_addr, message_id):
     proxy_url = get_account_proxy_url(account)
     fallback_proxy_urls = get_account_proxy_failover_urls(account)
 
-    if is_prefer_local_detail_request():
+    if is_prefer_local_detail_request() and is_normal_mail_local_retention_enabled():
         retained_detail = fetch_retained_normal_mail_detail(account, folder, message_id, id_mode)
         if retained_detail:
             return jsonify(retained_detail)
