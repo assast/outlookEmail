@@ -20,6 +20,8 @@ TOKEN_REFRESH_CONFLICT_MESSAGE = '已有 Token 全量刷新任务在执行，请
 TOKEN_REFRESH_STOP_REQUESTED_MESSAGE = '已请求停止，当前账号处理完成后会结束任务'
 TOKEN_REFRESH_STOPPED_MESSAGE = '已手动停止全量刷新任务'
 SELECTED_REFRESH_TASK_TTL_SECONDS = 300
+LOG_PAGINATION_DEFAULT_LIMIT = 100
+LOG_PAGINATION_MAX_LIMIT = 1000
 token_refresh_stop_event = threading.Event()
 selected_refresh_tasks: Dict[str, Dict[str, Any]] = {}
 selected_refresh_tasks_lock = threading.Lock()
@@ -48,6 +50,20 @@ def get_account_field(account: Any, field_name: str, default: Any) -> Any:
         return account[field_name]
     except (KeyError, IndexError, TypeError, AttributeError):
         return default
+
+
+def parse_log_pagination(limit_value: Any = None, offset_value: Any = 0,
+                         default_limit: int = LOG_PAGINATION_DEFAULT_LIMIT,
+                         max_limit: int = LOG_PAGINATION_MAX_LIMIT) -> tuple[int, int]:
+    try:
+        limit = int(limit_value) if limit_value not in (None, '') else default_limit
+    except (TypeError, ValueError):
+        limit = default_limit
+    try:
+        offset = int(offset_value or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    return max(1, min(limit, max_limit)), max(0, offset)
 
 
 def is_outlook_refreshable_account(account: Any) -> bool:
@@ -1675,8 +1691,10 @@ def api_stop_full_refresh():
 def api_get_refresh_logs():
     """获取所有账号的刷新历史（只返回全量刷新：manual 和 scheduled，近半年）"""
     db = get_db()
-    limit = int(request.args.get('limit', 1000))
-    offset = int(request.args.get('offset', 0))
+    limit, offset = parse_log_pagination(
+        request.args.get('limit'),
+        request.args.get('offset'),
+    )
 
     cursor = db.execute('''
         SELECT l.*, a.email as account_email
@@ -1708,8 +1726,11 @@ def api_get_refresh_logs():
 def api_get_account_refresh_logs(account_id):
     """获取单个账号的刷新历史"""
     db = get_db()
-    limit = int(request.args.get('limit', 50))
-    offset = int(request.args.get('offset', 0))
+    limit, offset = parse_log_pagination(
+        request.args.get('limit'),
+        request.args.get('offset'),
+        default_limit=50,
+    )
 
     cursor = db.execute('''
         SELECT * FROM account_refresh_logs
@@ -1775,8 +1796,10 @@ def api_get_failed_refresh_logs():
 def api_get_forwarding_logs():
     """获取最近的转发记录"""
     db = get_db()
-    limit = int(request.args.get('limit', 100))
-    offset = int(request.args.get('offset', 0))
+    limit, offset = parse_log_pagination(
+        request.args.get('limit'),
+        request.args.get('offset'),
+    )
 
     cursor = db.execute('''
         SELECT * FROM forwarding_logs
@@ -1806,15 +1829,18 @@ def api_get_forwarding_logs():
 def api_get_failed_forwarding_logs():
     """获取最近失败的转发记录"""
     db = get_db()
-    limit = int(request.args.get('limit', 100))
+    limit, offset = parse_log_pagination(
+        request.args.get('limit'),
+        request.args.get('offset'),
+    )
 
     cursor = db.execute('''
         SELECT * FROM forwarding_logs
         WHERE status = 'failed'
         AND created_at >= datetime('now', '-6 months')
         ORDER BY created_at DESC
-        LIMIT ?
-    ''', (limit,))
+        LIMIT ? OFFSET ?
+    ''', (limit, offset))
 
     logs = []
     for row in cursor.fetchall():
@@ -1840,8 +1866,10 @@ def api_get_account_forwarding_logs(account_id):
     account = get_account_by_id(account_id)
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'}), 404
-    limit = int(request.args.get('limit', 100))
-    offset = int(request.args.get('offset', 0))
+    limit, offset = parse_log_pagination(
+        request.args.get('limit'),
+        request.args.get('offset'),
+    )
     failed_only = str(request.args.get('failed_only', '')).strip().lower() in ('1', 'true', 'yes', 'on')
 
     query = '''

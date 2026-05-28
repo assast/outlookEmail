@@ -714,6 +714,7 @@ class ExternalAccountsApiTests(unittest.TestCase):
 
             account = web_outlook_app.get_account_by_email('user@outlook.com')
             self.assertIsNotNone(account)
+            self.account_id = account['id']
 
             alias_ok, _, alias_errors = web_outlook_app.replace_account_aliases(
                 account['id'],
@@ -733,6 +734,171 @@ class ExternalAccountsApiTests(unittest.TestCase):
                 (account['id'], account['email'], 'manual', 'success', None)
             )
             db.commit()
+
+    def test_global_refresh_logs_clamps_invalid_and_large_pagination(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM account_refresh_logs')
+            for index in range(3):
+                db.execute(
+                    """
+                    INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message, created_at)
+                    VALUES (?, ?, 'manual', 'success', NULL, datetime('now', ?))
+                    """,
+                    (self.account_id, f'user-{index}@outlook.com', f'-{index} minutes')
+                )
+            db.commit()
+
+        invalid_response = self.client.get('/api/accounts/refresh-logs?limit=abc&offset=bad')
+        self.assertEqual(invalid_response.status_code, 200)
+        invalid_payload = invalid_response.get_json()
+        self.assertTrue(invalid_payload['success'])
+        self.assertIn('logs', invalid_payload)
+
+        large_response = self.client.get('/api/accounts/refresh-logs?limit=999999&offset=0')
+        self.assertEqual(large_response.status_code, 200)
+        with patch.object(web_outlook_app, 'get_db') as db_mock:
+            db_mock.return_value.execute.return_value.fetchall.return_value = []
+            self.client.get('/api/accounts/refresh-logs?limit=999999&offset=-5')
+        execute_args = db_mock.return_value.execute.call_args.args
+        self.assertEqual(execute_args[1], (web_outlook_app.LOG_PAGINATION_MAX_LIMIT, 0))
+
+    def test_account_refresh_logs_clamps_invalid_and_large_pagination(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        invalid_response = self.client.get(f'/api/accounts/{self.account_id}/refresh-logs?limit=abc&offset=bad')
+        self.assertEqual(invalid_response.status_code, 200)
+        payload = invalid_response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertIn('logs', payload)
+
+        with patch.object(web_outlook_app, 'get_db') as db_mock:
+            db_mock.return_value.execute.return_value.fetchall.return_value = []
+            self.client.get(f'/api/accounts/{self.account_id}/refresh-logs?limit=999999&offset=-5')
+        execute_args = db_mock.return_value.execute.call_args.args
+        self.assertEqual(execute_args[1], (self.account_id, web_outlook_app.LOG_PAGINATION_MAX_LIMIT, 0))
+
+    def test_failed_refresh_logs_keep_json_shape_with_ignored_pagination_inputs(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE accounts
+                SET last_refresh_status = 'failed',
+                    last_refresh_error = 'expired token',
+                    last_refresh_at = '2026-04-27 11:00:00'
+                WHERE id = ?
+                """,
+                (self.account_id,),
+            )
+            db.commit()
+
+        response = self.client.get('/api/accounts/refresh-logs/failed?limit=abc&offset=bad')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertIn('logs', payload)
+        self.assertTrue(payload['logs'])
+        self.assertIn('account_email', payload['logs'][0])
+        self.assertIn('refresh_type', payload['logs'][0])
+
+    def test_global_forwarding_logs_clamps_invalid_and_large_pagination(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM forwarding_logs')
+            for index in range(3):
+                db.execute(
+                    """
+                    INSERT INTO forwarding_logs (account_id, account_email, message_id, channel, status, error_message, created_at)
+                    VALUES (?, ?, ?, 'smtp', 'success', NULL, datetime('now', ?))
+                    """,
+                    (self.account_id, 'user@outlook.com', f'msg-{index}', f'-{index} minutes')
+                )
+            db.commit()
+
+        invalid_response = self.client.get('/api/accounts/forwarding-logs?limit=abc&offset=bad')
+        self.assertEqual(invalid_response.status_code, 200)
+        invalid_payload = invalid_response.get_json()
+        self.assertTrue(invalid_payload['success'])
+        self.assertIn('logs', invalid_payload)
+
+        with patch.object(web_outlook_app, 'get_db') as db_mock:
+            db_mock.return_value.execute.return_value.fetchall.return_value = []
+            self.client.get('/api/accounts/forwarding-logs?limit=999999&offset=-5')
+        execute_args = db_mock.return_value.execute.call_args.args
+        self.assertEqual(execute_args[1], (web_outlook_app.LOG_PAGINATION_MAX_LIMIT, 0))
+
+    def test_failed_forwarding_logs_clamps_invalid_and_large_pagination(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        invalid_response = self.client.get('/api/accounts/forwarding-logs/failed?limit=abc&offset=bad')
+        self.assertEqual(invalid_response.status_code, 200)
+        payload = invalid_response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertIn('logs', payload)
+
+        with patch.object(web_outlook_app, 'get_db') as db_mock:
+            db_mock.return_value.execute.return_value.fetchall.return_value = []
+            self.client.get('/api/accounts/forwarding-logs/failed?limit=999999&offset=-5')
+        execute_args = db_mock.return_value.execute.call_args.args
+        self.assertEqual(execute_args[1], (web_outlook_app.LOG_PAGINATION_MAX_LIMIT, 0))
+
+    def test_account_forwarding_logs_clamps_and_filters_by_account(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM forwarding_logs')
+            db.execute(
+                """
+                INSERT INTO forwarding_logs (account_id, account_email, message_id, channel, status, error_message, created_at)
+                VALUES (?, ?, 'target-msg', 'smtp', 'failed', 'boom', datetime('now'))
+                """,
+                (self.account_id, 'user@outlook.com')
+            )
+            self.assertTrue(web_outlook_app.add_account(
+                'other@outlook.com',
+                'password123',
+                'other-client-id',
+                'other-refresh-token',
+                group_id=1,
+            ))
+            other_account = web_outlook_app.get_account_by_email('other@outlook.com')
+            self.assertIsNotNone(other_account)
+            db.execute(
+                """
+                INSERT INTO forwarding_logs (account_id, account_email, message_id, channel, status, error_message, created_at)
+                VALUES (?, ?, 'other-msg', 'smtp', 'failed', 'boom', datetime('now'))
+                """,
+                (other_account['id'], 'other@outlook.com')
+            )
+            db.commit()
+
+        invalid_response = self.client.get(f'/api/accounts/{self.account_id}/forwarding-logs?limit=abc&offset=bad')
+        self.assertEqual(invalid_response.status_code, 200)
+        payload = invalid_response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual([row['message_id'] for row in payload['logs']], ['target-msg'])
+        self.assertIn('account', payload)
+
+        with patch.object(web_outlook_app, 'get_db') as db_mock:
+            db_mock.return_value.execute.return_value.fetchall.return_value = []
+            with patch.object(web_outlook_app, 'get_account_by_id', return_value={
+                'id': self.account_id,
+                'email': 'user@outlook.com',
+                'status': 'active',
+                'forward_enabled': True,
+                'forward_last_checked_at': '',
+            }):
+                self.client.get(f'/api/accounts/{self.account_id}/forwarding-logs?limit=999999&offset=-5')
+        execute_args = db_mock.return_value.execute.call_args.args
+        self.assertEqual(execute_args[1], (self.account_id, web_outlook_app.LOG_PAGINATION_MAX_LIMIT, 0))
 
     def test_external_accounts_requires_api_key(self):
         response = self.client.get('/api/external/accounts')
