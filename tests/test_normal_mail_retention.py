@@ -437,6 +437,11 @@ class NormalMailRetentionTests(unittest.TestCase):
     def test_get_emails_persists_successful_remote_list_rows(self):
         remote_result = self._remote_list_result()
 
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
         with patch.object(web_outlook_app, 'fetch_account_emails', return_value=remote_result) as fetch_mock:
             response = self.client.get('/api/emails/retained@example.com?folder=all')
 
@@ -450,6 +455,28 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self._assert_graph_retained_row(rows[0])
         self._assert_imap_retained_row(rows[1])
+
+    def test_get_emails_disabled_retention_returns_remote_list_without_persisting_rows(self):
+        remote_result = self._remote_list_result()
+
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'false',
+            ))
+        with patch.object(web_outlook_app, 'fetch_account_emails', return_value=remote_result) as fetch_mock:
+            response = self.client.get('/api/emails/retained@example.com?folder=all')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['emails'], remote_result['emails'])
+        self.assertEqual(payload['method'], remote_result['method'])
+        self.assertEqual(payload['has_more'], remote_result['has_more'])
+        fetch_mock.assert_called_once()
+
+        rows = self._retained_rows_for_account()
+        self.assertEqual(rows, [])
 
     def test_mark_read_updates_successful_retained_graph_row(self):
         self._seed_unread_graph_retained_row()

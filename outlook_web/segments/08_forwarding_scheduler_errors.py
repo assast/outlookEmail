@@ -1427,13 +1427,14 @@ def handle_remote_email_list_request(account: Dict[str, Any], requested_email: s
     top = int(request.args.get('top', 20))
     result = fetch_account_emails(account, folder, skip, top)
     if result.get('success'):
-        if skip == 0:
-            new_message_ids = find_new_retained_normal_mail_identifiers(
-                account, folder, result.get('emails', [])
-            )
-            result['new_count'] = len(new_message_ids)
-            result['new_message_ids'] = new_message_ids
-        upsert_retained_normal_mail_list_items(account, folder, result.get('emails', []))
+        if is_normal_mail_local_retention_enabled():
+            if skip == 0:
+                new_message_ids = find_new_retained_normal_mail_identifiers(
+                    account, folder, result.get('emails', [])
+                )
+                result['new_count'] = len(new_message_ids)
+                result['new_message_ids'] = new_message_ids
+            upsert_retained_normal_mail_list_items(account, folder, result.get('emails', []))
         apply_email_list_filters(
             account, result, False, subject_contains, from_contains, keyword
         )

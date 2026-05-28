@@ -2389,6 +2389,11 @@ RETAINED_MAIL_KEY_LOOKUP_CHUNK_SIZE = 200
 RETAINED_MAIL_BODY_FETCH_LIMIT = 5
 
 
+def is_normal_mail_local_retention_enabled() -> bool:
+    value = str(get_setting('normal_mail_local_retention_enabled', 'false')).strip().lower()
+    return value in {'1', 'true', 'yes', 'on'}
+
+
 def retained_normal_mail_key(row: Dict[str, Any]) -> tuple:
     return (
         int(row.get('account_id') or 0),
