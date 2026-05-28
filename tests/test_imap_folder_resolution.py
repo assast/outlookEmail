@@ -916,6 +916,38 @@ class ExternalAccountsApiTests(unittest.TestCase):
         self.assertFalse(payload['success'])
         self.assertIn('API Key', payload['error'])
 
+    def test_external_accounts_rejects_mismatched_api_key(self):
+        response = self.client.get(
+            '/api/external/accounts',
+            headers={'X-API-Key': 'wrong-external-key'}
+        )
+
+        self.assertEqual(response.status_code, 401)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertEqual(payload['error'], 'API Key 无效')
+
+    def test_external_accounts_uses_constant_time_api_key_compare(self):
+        original_compare_digest = web_outlook_app.secrets.compare_digest
+
+        with patch.object(
+            web_outlook_app.secrets,
+            'compare_digest',
+            wraps=original_compare_digest,
+        ) as compare_digest_mock:
+            response = self.client.get(
+                '/api/external/accounts?group_id=1',
+                headers={'X-API-Key': ' test-external-key '}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        compare_digest_mock.assert_called_once_with(
+            'test-external-key',
+            'test-external-key',
+        )
+
     def test_internal_emails_requires_login(self):
         response = self.client.get('/api/emails/user@outlook.com?folder=inbox')
 

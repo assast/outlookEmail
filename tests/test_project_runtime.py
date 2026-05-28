@@ -1305,6 +1305,37 @@ class FrontendColorPickerTests(unittest.TestCase):
         )
 
 
+class FrontendEmailListSecurityTests(unittest.TestCase):
+    def setUp(self):
+        self.emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+    def test_email_rows_use_delegated_clicks_without_inline_handlers(self):
+        self.assertNotIn('onclick="${clickHandler}', self.emails_js)
+        self.assertNotIn("onclick=\"${clickHandler}('${email.id}', ${index})\"", self.emails_js)
+        self.assertIn('data-email-id="${escapeHtml(String(email.id || \'\'))}"', self.emails_js)
+        self.assertIn('data-email-index="${index}"', self.emails_js)
+        self.assertIn('function handleEmailListClick(event)', self.emails_js)
+        self.assertIn("container.addEventListener('click', handleEmailListClick);", self.emails_js)
+        self.assertIn('selectEmail(emailId, emailIndex);', self.emails_js)
+
+    def test_email_checkbox_uses_delegated_click_without_inline_toggle(self):
+        self.assertNotIn("toggleEmailSelection('${email.id}')", self.emails_js)
+        self.assertIn('event.stopPropagation();', self.emails_js)
+        self.assertIn('toggleEmailSelection(checkboxWrapper.dataset.emailId);', self.emails_js)
+        self.assertIn('class="email-checkbox-wrapper" data-email-id=', self.emails_js)
+
+    def test_detail_load_error_message_is_rendered_as_text(self):
+        self.assertNotIn("${data.error && data.error.message ? data.error.message : '加载失败'}", self.emails_js)
+        self.assertIn("const errorText = container.querySelector('.empty-state-text');", self.emails_js)
+        self.assertIn("errorText.textContent = data.error && data.error.message ? data.error.message : '加载失败';", self.emails_js)
+
+    def test_delete_emails_removes_matching_cached_rows_and_preserves_unrelated_detail(self):
+        self.assertIn('function removeDeletedEmailsFromCachedLists(deletedIds, account = currentAccount)', self.emails_js)
+        self.assertIn('cacheValue.emails = cacheValue.emails.filter(email => !normalizedIds.has(String(email.id)));', self.emails_js)
+        self.assertIn('removeDeletedEmailsFromCachedLists(deletedIds);', self.emails_js)
+        self.assertIn('if (currentEmailDetail && deletedIds.has(String(currentEmailDetail.id)))', self.emails_js)
+
+
 class FrontendTimezoneBootstrapTests(unittest.TestCase):
     def test_settings_js_no_longer_updates_timezone_in_add_account_flow(self):
         settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')

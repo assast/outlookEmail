@@ -840,10 +840,7 @@
                 return;
             }
 
-            // 根据是否是临时邮箱选择不同的点击处理函数
-            const clickHandler = currentMethod === 'cloudflare-admin'
-                ? 'getCloudflareGlobalMessageDetail'
-                : (isTempEmailGroup ? 'getTempEmailDetail' : 'selectEmail');
+            bindEmailListDelegatedEvents();
             const listPrefix = currentMethod === 'cloudflare-admin' && typeof renderCloudflareGlobalFilterBar === 'function'
                 ? renderCloudflareGlobalFilterBar()
                 : '';
@@ -857,8 +854,9 @@
                 const isNewlySynced = highlightedNewEmailKeys.has(getEmailMessageStableKey(email));
                 return `
                 <div class="email-item ${email.is_read === false ? 'unread' : ''} ${isActive ? 'active' : ''} ${isNewlySynced ? 'newly-synced' : ''}"
-                     onclick="${clickHandler}('${email.id}', ${index})">
-                    <div class="email-checkbox-wrapper" onclick="event.stopPropagation(); toggleEmailSelection('${email.id}')">
+                     data-email-id="${escapeHtml(String(email.id || ''))}"
+                     data-email-index="${index}">
+                    <div class="email-checkbox-wrapper" data-email-id="${escapeHtml(String(email.id || ''))}">
                         <input type="checkbox" class="email-checkbox" ${isChecked ? 'checked' : ''} style="pointer-events: none;">
                     </div>
                     <div class="email-body">
@@ -881,6 +879,39 @@
             `}).join('');
 
             updateEmailBatchActionBar();
+        }
+
+        function handleEmailListClick(event) {
+            const checkboxWrapper = event.target.closest('.email-checkbox-wrapper[data-email-id]');
+            if (checkboxWrapper) {
+                event.stopPropagation();
+                toggleEmailSelection(checkboxWrapper.dataset.emailId);
+                return;
+            }
+
+            const emailItem = event.target.closest('.email-item[data-email-id]');
+            if (!emailItem || !emailItem.parentElement?.contains(event.target)) {
+                return;
+            }
+
+            const emailId = emailItem.dataset.emailId || '';
+            const emailIndex = Number(emailItem.dataset.emailIndex || 0);
+            if (currentMethod === 'cloudflare-admin') {
+                getCloudflareGlobalMessageDetail(emailId, emailIndex);
+            } else if (isTempEmailGroup) {
+                getTempEmailDetail(emailId, emailIndex);
+            } else {
+                selectEmail(emailId, emailIndex);
+            }
+        }
+
+        function bindEmailListDelegatedEvents() {
+            const container = document.getElementById('emailList');
+            if (!container || container.dataset.emailListClickBound === 'true') {
+                return;
+            }
+            container.dataset.emailListClickBound = 'true';
+            container.addEventListener('click', handleEmailListClick);
         }
 
         function getSelectedEmailItems() {
@@ -1132,6 +1163,25 @@
             await deleteEmails([currentEmailDetail.id]);
         }
 
+        function removeDeletedEmailsFromCachedLists(deletedIds, account = currentAccount) {
+            const normalizedIds = new Set(Array.from(deletedIds || []).map(id => String(id)));
+            if (!normalizedIds.size) {
+                return;
+            }
+
+            const cachePrefix = `${account || ''}_`;
+            Object.entries(emailListCache).forEach(([cacheKey, cacheValue]) => {
+                if (!cacheKey.startsWith(cachePrefix) || !Array.isArray(cacheValue?.emails)) {
+                    return;
+                }
+                cacheValue.emails = cacheValue.emails.filter(email => !normalizedIds.has(String(email.id)));
+                cacheValue.skip = cacheValue.emails.length;
+                if (typeof cacheValue.local_retention_count === 'number') {
+                    cacheValue.local_retention_count = Math.max(0, cacheValue.local_retention_count - normalizedIds.size);
+                }
+            });
+        }
+
         async function deleteEmails(ids) {
             showToast('正在删除...', 'info');
 
@@ -1150,18 +1200,18 @@
                 if (result.success) {
                     showToast(`成功删除 ${result.success_count} 封邮件`);
 
-                    // Remove deleted emails from currentEmails
-                    const deletedIds = new Set(ids); // Ideally result should return what was deleted
-                    currentEmails = currentEmails.filter(e => !deletedIds.has(e.id));
+                    const deletedIds = new Set(ids.map(id => String(id)));
+                    currentEmails = currentEmails.filter(e => !deletedIds.has(String(e.id)));
+                    removeDeletedEmailsFromCachedLists(deletedIds);
                     selectedEmailIds.clear();
-                    if (currentEmailId && deletedIds.has(currentEmailId)) {
+                    if (currentEmailId && deletedIds.has(String(currentEmailId))) {
                         currentEmailId = null;
                     }
 
                     renderEmailList(currentEmails);
 
                     // If current viewed email was deleted, clear view
-                    if (currentEmailDetail && deletedIds.has(currentEmailDetail.id)) {
+                    if (currentEmailDetail && deletedIds.has(String(currentEmailDetail.id))) {
                         currentEmailId = null;
                         currentEmailDetail = null;
                         document.getElementById('emailDetail').innerHTML = `
@@ -1246,9 +1296,13 @@
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon">⚠️</div>
-                            <div class="empty-state-text">${data.error && data.error.message ? data.error.message : '加载失败'}</div>
+                            <div class="empty-state-text"></div>
                         </div>
                     `;
+                    const errorText = container.querySelector('.empty-state-text');
+                    if (errorText) {
+                        errorText.textContent = data.error && data.error.message ? data.error.message : '加载失败';
+                    }
                 }
             } catch (error) {
                 const errorMessage = isTimeoutAbortError(error)

@@ -4,6 +4,8 @@ import os
 import sys
 import tempfile
 import unittest
+
+import pytest
 from unittest.mock import patch
 
 
@@ -494,6 +496,41 @@ class NormalMailRetentionTests(unittest.TestCase):
             [item['id'] for item in inbox_payload['emails']],
             ['inbox-mid', 'inbox-old']
         )
+
+    @pytest.mark.xfail(strict=True, reason='mixed id modes currently expose duplicate retained provider ids')
+    def test_local_retention_list_dedupes_mixed_id_modes_for_same_provider_id(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.executemany(
+                '''
+                INSERT INTO retained_normal_mail_messages (
+                    account_id, folder, provider_message_id, id_mode,
+                    subject, sender, recipients, received_at,
+                    received_at_sort, is_read, list_cached, body_cached
+                )
+                VALUES (?, 'inbox', 'mixed-provider-1', ?, ?,
+                        'sender@example.com', 'reader@example.com',
+                        '2026-05-27T09:00:00Z', ?, 1, 1, ?)
+                ''',
+                [
+                    (self.account['id'], 'uid', 'UID retained copy', 100.0, 0),
+                    (self.account['id'], 'graph', 'Graph retained copy', 101.0, 1),
+                ]
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'fetch_account_emails') as fetch_mock:
+            response = self.client.get(
+                '/api/emails/retained@example.com?source=local&folder=inbox&skip=0&top=20'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        fetch_mock.assert_not_called()
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        visible_provider_ids = [item['id'] for item in payload['emails']]
+        self.assertEqual(visible_provider_ids.count('mixed-provider-1'), 1)
+        self.assertEqual(payload['count'], 1)
 
     def test_local_retention_list_can_page_beyond_first_twenty_rows(self):
         items = []
