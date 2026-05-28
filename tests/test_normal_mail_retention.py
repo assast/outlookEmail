@@ -100,6 +100,38 @@ class NormalMailRetentionTests(unittest.TestCase):
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def _seed_retention_switch_retained_row(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                INSERT INTO retained_normal_mail_messages (
+                    account_id, folder, provider_message_id, id_mode,
+                    subject, sender, recipients, received_at, list_cached
+                )
+                VALUES (?, 'inbox', 'settings-switch-kept-1', 'graph',
+                        'Keep cached row', 'sender@example.com',
+                        'reader@example.com', '2026-05-27T07:00:00Z', 1)
+                ''',
+                (self.account['id'],)
+            )
+            db.commit()
+
+    def _retention_switch_retained_row_exists(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            row = db.execute(
+                '''
+                SELECT id
+                FROM retained_normal_mail_messages
+                WHERE account_id = ? AND folder = 'inbox'
+                  AND provider_message_id = 'settings-switch-kept-1'
+                  AND id_mode = 'graph'
+                ''',
+                (self.account['id'],)
+            ).fetchone()
+        return row is not None
+
     def test_get_settings_fresh_db_returns_default_disabled_retention_switch(self):
         with tempfile.TemporaryDirectory(prefix='outlookEmail-fresh-settings-') as temp_dir:
             fresh_db_path = os.path.join(temp_dir, 'fresh.db')
@@ -124,6 +156,30 @@ class NormalMailRetentionTests(unittest.TestCase):
             payload['settings']['normal_mail_local_retention_enabled'],
             'false',
         )
+
+    def test_update_settings_retention_switch_does_not_clear_retained_rows(self):
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
+        self._seed_retention_switch_retained_row()
+
+        response = self.client.put(
+            '/api/settings',
+            json={'normal_mail_local_retention_enabled': False},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        with self.app.app_context():
+            saved_value = web_outlook_app.get_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            )
+        self.assertEqual(saved_value, 'false')
+        self.assertTrue(self._retention_switch_retained_row_exists())
 
     def _assert_graph_retained_row(self, row):
         self.assertEqual(row['folder'], 'junkemail')

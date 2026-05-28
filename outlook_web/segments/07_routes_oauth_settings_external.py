@@ -469,6 +469,19 @@ def api_update_settings():
         else:
             errors.append('组ID展示必须是 true 或 false')
 
+    if 'normal_mail_local_retention_enabled' in data:
+        retention_enabled = str(data['normal_mail_local_retention_enabled']).strip().lower()
+        if retention_enabled in ('true', 'false'):
+            if set_setting(
+                'normal_mail_local_retention_enabled',
+                normalize_bool_setting_value(retention_enabled),
+            ):
+                updated.append('普通邮箱本地保留开关')
+            else:
+                errors.append('更新普通邮箱本地保留开关失败')
+        else:
+            errors.append('普通邮箱本地保留开关必须是 true 或 false')
+
     # 更新对外 API Key
     if 'external_api_key' in data:
         new_ext_key = data['external_api_key'].strip()
