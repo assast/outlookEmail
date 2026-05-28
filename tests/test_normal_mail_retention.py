@@ -3,6 +3,7 @@ import json
 import os
 import sqlite3
 import time
+import threading
 import sys
 import tempfile
 import unittest
@@ -52,7 +53,7 @@ class NormalMailRetentionTests(unittest.TestCase):
             self.assertTrue(added)
             self.account = web_outlook_app.get_account_by_email('retained@example.com')
             if hasattr(web_outlook_app, 'set_normal_mail_retention_clear_status'):
-                web_outlook_app.set_normal_mail_retention_clear_status('idle', '')
+                web_outlook_app.set_normal_mail_retention_clear_status('idle', '普通邮箱本地缓存清理空闲')
 
     def _remote_list_result(self):
         return {
@@ -292,6 +293,51 @@ class NormalMailRetentionTests(unittest.TestCase):
                 'false',
             )
         self.assertEqual(saved_value, 'true')
+
+    def test_clear_retention_cache_reports_running_and_rejects_duplicate_job(self):
+        original_clear = web_outlook_app.clear_retained_normal_mail_cache_rows
+        release_clear = threading.Event()
+        clear_started = threading.Event()
+        clear_calls = []
+
+        def slow_clear():
+            clear_calls.append('called')
+            clear_started.set()
+            self.assertTrue(release_clear.wait(timeout=2))
+            return original_clear()
+
+        with self.app.app_context():
+            self._seed_retention_status_rows()
+
+        with patch.object(web_outlook_app, 'clear_retained_normal_mail_cache_rows', side_effect=slow_clear):
+            first_response = self.client.post('/api/settings/normal-mail-retention/clear')
+            self.assertTrue(clear_started.wait(timeout=2))
+            running_status = self.client.get('/api/settings/normal-mail-retention/status')
+            second_response = self.client.post('/api/settings/normal-mail-retention/clear')
+            release_clear.set()
+
+        self.assertEqual(first_response.status_code, 200)
+        first_payload = first_response.get_json()
+        self.assertTrue(first_payload['success'])
+        self.assertFalse(first_payload['already_running'])
+        self.assertEqual(first_payload['status']['state'], 'running')
+        self.assertTrue(first_payload['status']['message'])
+
+        self.assertEqual(running_status.status_code, 200)
+        running_payload = running_status.get_json()
+        self.assertEqual(running_payload['status']['clear_status']['state'], 'running')
+        self.assertTrue(running_payload['status']['clear_status']['message'])
+
+        self.assertEqual(second_response.status_code, 200)
+        second_payload = second_response.get_json()
+        self.assertTrue(second_payload['success'])
+        self.assertTrue(second_payload['already_running'])
+        self.assertEqual(second_payload['status']['state'], 'running')
+        self.assertTrue(second_payload['status']['message'])
+        self.assertEqual(clear_calls, ['called'])
+
+        status = self._wait_for_clear_status()
+        self.assertEqual(status['clear_status']['state'], 'succeeded')
 
     def _assert_graph_retained_row(self, row):
         self.assertEqual(row['folder'], 'junkemail')

@@ -208,7 +208,7 @@ NORMAL_MAIL_RETENTION_TEXT_COLUMNS = (
 NORMAL_MAIL_RETENTION_CLEAR_STATUS_LOCK = threading.Lock()
 NORMAL_MAIL_RETENTION_CLEAR_STATUS = {
     'state': 'idle',
-    'message': '',
+    'message': '普通邮箱本地缓存清理空闲',
 }
 
 
@@ -247,7 +247,17 @@ def run_normal_mail_retention_clear_operation():
 
 
 def start_normal_mail_retention_clear_operation():
-    status = set_normal_mail_retention_clear_status('running', '正在清理普通邮箱本地缓存…')
+    with NORMAL_MAIL_RETENTION_CLEAR_STATUS_LOCK:
+        if NORMAL_MAIL_RETENTION_CLEAR_STATUS.get('state') == 'running':
+            status = dict(NORMAL_MAIL_RETENTION_CLEAR_STATUS)
+            status['already_running'] = True
+            return status
+        NORMAL_MAIL_RETENTION_CLEAR_STATUS.update({
+            'state': 'running',
+            'message': '正在清理普通邮箱本地缓存…',
+        })
+        status = dict(NORMAL_MAIL_RETENTION_CLEAR_STATUS)
+        status['already_running'] = False
     worker = threading.Thread(
         target=run_normal_mail_retention_clear_operation,
         name='normal-mail-retention-clear',
@@ -316,6 +326,7 @@ def api_clear_normal_mail_retention_cache():
     return jsonify({
         'success': True,
         'status': status,
+        'already_running': bool(status.get('already_running', False)),
     })
 
 
