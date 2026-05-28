@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     # These segmented files are executed into the shared `web_outlook_app`
@@ -111,6 +111,16 @@ def normalize_webdav_backup_setting_value(key: str, value) -> str:
     if key == 'webdav_backup_enabled':
         return normalize_bool_setting_value(value)
     return str(value or '').strip()
+
+
+def parse_external_email_pagination_param(raw_value: Any, default: int, max_value: Optional[int] = None) -> int:
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        value = default
+    if value < 0:
+        value = default
+    return min(value, max_value) if max_value is not None else value
 
 
 def get_current_webdav_backup_setting_value(key: str) -> str:
@@ -871,8 +881,8 @@ def api_external_get_emails():
     """对外 API：通过 API Key 获取邮件列表"""
     email_addr = get_query_arg_preserve_plus('email', '').strip()
     folder = request.args.get('folder', 'inbox').strip().lower()
-    skip = int(request.args.get('skip', 0))
-    top = int(request.args.get('top', 20))
+    skip = parse_external_email_pagination_param(request.args.get('skip', 0), 0)
+    top = parse_external_email_pagination_param(request.args.get('top', 20), 20, 50)
 
     if not email_addr:
         return jsonify({'success': False, 'error': '缺少 email 参数'}), 400
@@ -881,10 +891,6 @@ def api_external_get_emails():
     valid_folders = ['inbox', 'junkemail']
     if folder not in valid_folders:
         return jsonify({'success': False, 'error': f'folder 参数无效，支持: {", ".join(valid_folders)}'}), 400
-
-    # 限制分页大小
-    if top > 50:
-        top = 50
 
     account = resolve_account_for_email_api(email_addr)
     if not account:

@@ -705,16 +705,27 @@
             return `${(numericSize / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB`;
         }
 
+        function appendEmailIdModeParam(query, email) {
+            const idMode = String(email?.id_mode || email?.idMode || '').trim().toLowerCase();
+            if (idMode) {
+                query.set('id_mode', idMode);
+            }
+        }
+
         function buildAttachmentDownloadUrl(email, attachment) {
-            const folder = encodeURIComponent(email?.folder || currentFolder || 'inbox');
-            const method = encodeURIComponent(getCurrentEmailRemoteActionMethod(email));
-            return `/api/email/${encodeURIComponent(currentAccount)}/${encodeURIComponent(email.id)}/attachments/${encodeURIComponent(attachment.id)}?method=${method}&folder=${folder}`;
+            const query = new URLSearchParams();
+            query.set('method', getCurrentEmailRemoteActionMethod(email));
+            query.set('folder', email?.folder || currentFolder || 'inbox');
+            appendEmailIdModeParam(query, email);
+            return `/api/email/${encodeURIComponent(currentAccount)}/${encodeURIComponent(email.id)}/attachments/${encodeURIComponent(attachment.id)}?${query.toString()}`;
         }
 
         function buildAllAttachmentsDownloadUrl(email) {
-            const folder = encodeURIComponent(email?.folder || currentFolder || 'inbox');
-            const method = encodeURIComponent(getCurrentEmailRemoteActionMethod(email));
-            return `/api/email/${encodeURIComponent(currentAccount)}/${encodeURIComponent(email.id)}/attachments/download-all?method=${method}&folder=${folder}`;
+            const query = new URLSearchParams();
+            query.set('method', getCurrentEmailRemoteActionMethod(email));
+            query.set('folder', email?.folder || currentFolder || 'inbox');
+            appendEmailIdModeParam(query, email);
+            return `/api/email/${encodeURIComponent(currentAccount)}/${encodeURIComponent(email.id)}/attachments/download-all?${query.toString()}`;
         }
 
         function parseDownloadFilename(response, fallbackFilename) {

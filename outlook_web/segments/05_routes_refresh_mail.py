@@ -2824,6 +2824,8 @@ def fetch_graph_detail_response(account: Dict[str, Any], folder: str,
 def fetch_oauth_imap_detail_response(account: Dict[str, Any], folder: str,
                                      message_id: str, method: str, id_mode: str,
                                      proxy_url: str, fallback_proxy_urls: List[str]) -> Optional[Dict[str, Any]]:
+    requested_mode = str(id_mode or '').strip().lower()
+    preferred_id_mode = requested_mode if requested_mode in {'uid', 'sequence'} else 'uid'
     detail = get_email_detail_imap(
         account['email'],
         account['client_id'],
@@ -2832,6 +2834,7 @@ def fetch_oauth_imap_detail_response(account: Dict[str, Any], folder: str,
         folder,
         proxy_url,
         fallback_proxy_urls,
+        preferred_id_mode,
     )
     if not detail:
         return None
@@ -2845,7 +2848,8 @@ def parse_non_negative_int(raw_value: Any, default: int, max_value: Optional[int
         value = int(raw_value)
     except (TypeError, ValueError):
         value = default
-    value = max(0, value)
+    if value < 0:
+        value = default
     return min(value, max_value) if max_value is not None else value
 
 
@@ -3480,8 +3484,8 @@ def api_get_emails(email_addr):
         skip = parse_non_negative_int(request.args.get('skip', 0), 0)
         top = parse_non_negative_int(request.args.get('top', 20), 20)
         return jsonify(fetch_retained_normal_mail_list(account, folder, skip, top))
-    skip = int(request.args.get('skip', 0))
-    top = int(request.args.get('top', 20))
+    skip = parse_non_negative_int(request.args.get('skip', 0), 0)
+    top = parse_non_negative_int(request.args.get('top', 20), 20, 50)
     result = fetch_account_emails(account, folder, skip, top)
     return jsonify(result)
 
@@ -3555,7 +3559,9 @@ def api_retain_email_bodies():
 @login_required
 def api_delete_emails():
     """批量删除邮件（永久删除）"""
-    data = request.json
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
     email_addr = data.get('email', '')
     message_ids = data.get('ids', [])
     
@@ -3728,7 +3734,7 @@ def api_get_email_detail(email_addr, message_id):
     return jsonify({'success': False, 'error': '获取邮件详情失败'})
 
 
-def download_email_attachment_for_account(account, method, message_id, attachment_id, folder, proxy_url, fallback_proxy_urls):
+def download_email_attachment_for_account(account, method, message_id, attachment_id, folder, proxy_url, fallback_proxy_urls, id_mode=''):
     if account.get('account_type') == 'imap':
         return download_email_attachment_imap_generic_result(
             account['email'],
@@ -3761,10 +3767,11 @@ def download_email_attachment_for_account(account, method, message_id, attachmen
         folder,
         proxy_url,
         fallback_proxy_urls,
+        id_mode,
     )
 
 
-def get_email_attachment_metadata_for_download(account, method, message_id, folder, proxy_url, fallback_proxy_urls):
+def get_email_attachment_metadata_for_download(account, method, message_id, folder, proxy_url, fallback_proxy_urls, id_mode=''):
     if account.get('account_type') == 'imap':
         detail_result = get_email_detail_imap_generic_result(
             account['email'],
@@ -3800,6 +3807,7 @@ def get_email_attachment_metadata_for_download(account, method, message_id, fold
         folder,
         proxy_url,
         fallback_proxy_urls,
+        id_mode or 'uid',
     )
     if detail:
         return {'success': True, 'attachments': detail.get('attachments', [])}
@@ -3874,7 +3882,7 @@ def stringify_attachment_download_error(error):
     return str(error or '获取附件失败')
 
 
-def stream_email_attachments_zip(account, method, message_id, attachments, folder, proxy_url, fallback_proxy_urls):
+def stream_email_attachments_zip(account, method, message_id, attachments, folder, proxy_url, fallback_proxy_urls, id_mode=''):
     import zipfile
 
     zip_buffer = StreamingZipBuffer()
@@ -3891,6 +3899,7 @@ def stream_email_attachments_zip(account, method, message_id, attachments, folde
                 folder,
                 proxy_url,
                 fallback_proxy_urls,
+                attachment.get('id_mode') or id_mode,
             )
             if not result.get('success'):
                 attachment_name = sanitize_attachment_filename(
@@ -3935,6 +3944,7 @@ def api_download_all_email_attachments(email_addr, message_id):
 
     method = request.args.get('method', 'graph')
     folder = normalize_folder_name(request.args.get('folder', 'inbox'))
+    id_mode = str(request.args.get('id_mode') or '').strip().lower()
     proxy_url = get_account_proxy_url(account)
     fallback_proxy_urls = get_account_proxy_failover_urls(account)
     metadata_result = get_email_attachment_metadata_for_download(
@@ -3944,6 +3954,7 @@ def api_download_all_email_attachments(email_addr, message_id):
         folder,
         proxy_url,
         fallback_proxy_urls,
+        id_mode,
     )
     if not metadata_result.get('success'):
         return jsonify({'success': False, 'error': metadata_result.get('error', '获取附件列表失败')})
@@ -3961,6 +3972,7 @@ def api_download_all_email_attachments(email_addr, message_id):
             folder,
             proxy_url,
             fallback_proxy_urls,
+            id_mode,
         ),
         mimetype='application/zip'
     )
@@ -3979,6 +3991,7 @@ def api_download_email_attachment(email_addr, message_id, attachment_id):
 
     method = request.args.get('method', 'graph')
     folder = normalize_folder_name(request.args.get('folder', 'inbox'))
+    id_mode = str(request.args.get('id_mode') or '').strip().lower()
     proxy_url = get_account_proxy_url(account)
     fallback_proxy_urls = get_account_proxy_failover_urls(account)
     result = download_email_attachment_for_account(
@@ -3989,6 +4002,7 @@ def api_download_email_attachment(email_addr, message_id, attachment_id):
         folder,
         proxy_url,
         fallback_proxy_urls,
+        id_mode,
     )
 
     if not result.get('success'):

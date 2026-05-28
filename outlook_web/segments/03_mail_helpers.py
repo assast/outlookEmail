@@ -954,7 +954,8 @@ def get_raw_email_imap(account: str, client_id: str, refresh_token: str, message
 
 def get_email_detail_imap(account: str, client_id: str, refresh_token: str, message_id: str,
                           folder: str = 'inbox', proxy_url: str = None,
-                          fallback_proxy_urls: Optional[List[str]] = None) -> Optional[Dict]:
+                          fallback_proxy_urls: Optional[List[str]] = None,
+                          preferred_id_mode: str = 'sequence') -> Optional[Dict]:
     """使用 IMAP 获取邮件详情"""
     access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
     if not access_token:
@@ -971,13 +972,27 @@ def get_email_detail_imap(account: str, client_id: str, refresh_token: str, mess
         if not selected_folder:
             return None
 
-        status, msg_data = connection.fetch(message_id.encode() if isinstance(message_id, str) else message_id, '(RFC822)')
-        if status != 'OK' or not msg_data or not msg_data[0]:
+        preferred_mode = str(preferred_id_mode or 'sequence').strip().lower()
+        if preferred_mode not in {'uid', 'sequence'}:
+            preferred_mode = 'sequence'
+        status, msg_data, _fetch_mode, _fetch_attempts = fetch_imap_message(
+            connection,
+            message_id,
+            '(RFC822)',
+            preferred_mode=preferred_mode
+        )
+        if status != 'OK' or not msg_data:
             return None
 
-        raw_email = msg_data[0][1]
+        raw_email, fetch_response_text = parse_imap_fetch_response(msg_data)
+        if not raw_email:
+            return None
         msg = email.message_from_bytes(raw_email)
-        return build_email_detail_from_message(msg, str(message_id))
+        return build_email_detail_from_message(
+            msg,
+            str(message_id),
+            extract_imap_internaldate(fetch_response_text)
+        )
     except Exception:
         return None
     finally:
@@ -1976,7 +1991,8 @@ def get_email_detail_imap_generic_result(email_addr: str, imap_password: str, im
 
 def download_email_attachment_imap_result(account: str, client_id: str, refresh_token: str, message_id: str,
                                           attachment_id: str, folder: str = 'inbox', proxy_url: str = None,
-                                          fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+                                          fallback_proxy_urls: Optional[List[str]] = None,
+                                          preferred_id_mode: str = 'uid') -> Dict[str, Any]:
     """使用 Outlook IMAP 下载邮件附件"""
     access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
     if not access_token:
@@ -2011,8 +2027,16 @@ def download_email_attachment_imap_result(account: str, client_id: str, refresh_
                 )
             }
 
-        status, msg_data = connection.fetch(message_id.encode() if isinstance(message_id, str) else message_id, '(RFC822)')
-        if status != 'OK' or not msg_data or not msg_data[0]:
+        preferred_mode = str(preferred_id_mode or 'uid').strip().lower()
+        if preferred_mode not in {'uid', 'sequence'}:
+            preferred_mode = 'uid'
+        status, msg_data, _fetch_mode, fetch_attempts = fetch_imap_message(
+            connection,
+            message_id,
+            '(RFC822)',
+            preferred_mode=preferred_mode,
+        )
+        if status != 'OK' or not msg_data:
             return {
                 'success': False,
                 'error': build_error_payload(
@@ -2020,11 +2044,22 @@ def download_email_attachment_imap_result(account: str, client_id: str, refresh_
                     '获取附件失败',
                     'IMAPFetchError',
                     502,
-                    {'message_id': str(message_id)}
+                    {'message_id': str(message_id), 'fetch_attempts': fetch_attempts[:10]}
                 )
             }
 
-        raw_email = msg_data[0][1]
+        raw_email, _fetch_response_text = parse_imap_fetch_response(msg_data)
+        if not raw_email:
+            return {
+                'success': False,
+                'error': build_error_payload(
+                    'ATTACHMENT_FETCH_FAILED',
+                    '获取附件失败',
+                    'IMAPFetchError',
+                    502,
+                    {'message_id': str(message_id), 'fetch_attempts': fetch_attempts[:10]}
+                )
+            }
         msg = email.message_from_bytes(raw_email)
         attachment = get_message_attachment_by_id(msg, attachment_id)
         if not attachment:

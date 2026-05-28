@@ -1099,6 +1099,60 @@ class ExternalAccountsApiTests(unittest.TestCase):
         self.assertEqual(called_skip, 2)
         self.assertEqual(called_top, 20)
 
+    def test_parse_non_negative_int_defaults_negative_and_invalid_values(self):
+        self.assertEqual(web_outlook_app.parse_non_negative_int('-3', 20), 20)
+        self.assertEqual(web_outlook_app.parse_non_negative_int('0', 20), 0)
+        self.assertEqual(web_outlook_app.parse_non_negative_int('abc', 20), 20)
+        self.assertEqual(web_outlook_app.parse_non_negative_int('999', 1, 50), 50)
+
+    def test_internal_emails_clamps_invalid_remote_pagination(self):
+        expected_result = {
+            'success': True,
+            'emails': [],
+            'method': 'Graph API',
+            'has_more': False,
+        }
+
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+
+        with patch.object(web_outlook_app, 'fetch_account_emails', return_value=expected_result) as fetch_mock:
+            response = self.client.get('/api/emails/user@outlook.com?folder=inbox&skip=abc&top=-3')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        called_account, called_folder, called_skip, called_top = fetch_mock.call_args.args
+        self.assertEqual(called_account['email'], 'user@outlook.com')
+        self.assertEqual(called_folder, 'inbox')
+        self.assertEqual(called_skip, 0)
+        self.assertEqual(called_top, 20)
+
+    def test_internal_emails_clamps_large_remote_top(self):
+        expected_result = {
+            'success': True,
+            'emails': [],
+            'method': 'Graph API',
+            'has_more': False,
+        }
+
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+
+        with patch.object(web_outlook_app, 'fetch_account_emails', return_value=expected_result) as fetch_mock:
+            response = self.client.get('/api/emails/user@outlook.com?folder=inbox&skip=-5&top=999')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        called_account, called_folder, called_skip, called_top = fetch_mock.call_args.args
+        self.assertEqual(called_account['email'], 'user@outlook.com')
+        self.assertEqual(called_folder, 'inbox')
+        self.assertEqual(called_skip, 0)
+        self.assertEqual(called_top, 50)
+
     def test_internal_emails_plus_address_prefers_exact_match(self):
         with self.app.app_context():
             added = web_outlook_app.add_account(
@@ -1383,6 +1437,102 @@ class ExternalAccountsApiTests(unittest.TestCase):
         self.assertEqual(called_folder, 'inbox')
         self.assertEqual(called_skip, 0)
         self.assertEqual(called_top, 1)
+
+    def test_external_emails_clamps_invalid_remote_pagination(self):
+        expected_result = {
+            'success': True,
+            'emails': [],
+            'method': 'Graph API',
+            'has_more': False,
+        }
+
+        with patch.object(web_outlook_app, 'fetch_account_emails', return_value=expected_result) as fetch_mock:
+            response = self.client.get(
+                '/api/external/emails?email=user@outlook.com&folder=inbox&skip=bad&top=999',
+                headers={'X-API-Key': 'test-external-key'}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        called_account, called_folder, called_skip, called_top = fetch_mock.call_args.args
+        self.assertEqual(called_account['email'], 'user@outlook.com')
+        self.assertEqual(called_folder, 'inbox')
+        self.assertEqual(called_skip, 0)
+        self.assertEqual(called_top, 50)
+
+    def test_legacy_external_emails_clamps_non_numeric_and_negative_pagination(self):
+        expected_result = {
+            'success': True,
+            'emails': [],
+            'method': 'Graph API',
+            'has_more': False,
+        }
+
+        original_view = self.app.view_functions['api_external_get_emails']
+        self.app.view_functions['api_external_get_emails'] = web_outlook_app.api_key_required(
+            web_outlook_app.api_external_get_emails
+        )
+        try:
+            with patch.object(web_outlook_app, 'get_emails_graph', return_value=expected_result) as graph_mock, \
+                    patch.object(web_outlook_app, 'get_emails_imap_with_server') as imap_mock:
+                response = self.client.get(
+                    '/api/external/emails?email=user@outlook.com&folder=inbox&skip=abc&top=-3',
+                    headers={'X-API-Key': 'test-external-key'},
+                )
+        finally:
+            self.app.view_functions['api_external_get_emails'] = original_view
+
+        status_code = response.status_code
+        self.assertNotEqual(status_code, 500)
+        self.assertEqual(status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['method'], 'Graph API')
+        self.assertIn('emails', payload)
+        self.assertIn('has_more', payload)
+        imap_mock.assert_not_called()
+
+        graph_args = graph_mock.call_args.args
+        self.assertEqual(graph_args[0], '24d9a0ed-8787-4584-883c-2fd79308940a')
+        self.assertEqual(graph_args[2], 'inbox')
+        self.assertEqual(graph_args[3], 0)
+        self.assertEqual(graph_args[4], 20)
+
+    def test_legacy_external_emails_keeps_valid_pagination_contract(self):
+        graph_result = {
+            'success': True,
+            'emails': [
+                {'id': 'legacy-1'},
+                {'id': 'legacy-2'},
+            ],
+        }
+
+        original_view = self.app.view_functions['api_external_get_emails']
+        self.app.view_functions['api_external_get_emails'] = web_outlook_app.api_key_required(
+            web_outlook_app.api_external_get_emails
+        )
+        try:
+            with patch.object(web_outlook_app, 'get_emails_graph', return_value=graph_result) as graph_mock:
+                response = self.client.get(
+                    '/api/external/emails?email=user@outlook.com&folder=inbox&skip=2&top=3',
+                    headers={'X-API-Key': 'test-external-key'},
+                )
+        finally:
+            self.app.view_functions['api_external_get_emails'] = original_view
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['method'], 'Graph API')
+        self.assertFalse(payload['has_more'])
+        self.assertEqual([item['id'] for item in payload['emails']], ['legacy-1', 'legacy-2'])
+
+        graph_args = graph_mock.call_args.args
+        self.assertEqual(graph_args[2], 'inbox')
+        self.assertEqual(graph_args[3], 2)
+        self.assertEqual(graph_args[4], 3)
 
     def test_external_emails_plus_address_falls_back_to_alias_with_plus(self):
         with self.app.app_context():
@@ -2979,6 +3129,47 @@ class MultiChannelForwardingTests(unittest.TestCase):
             '',
             [],
         )
+
+    def test_outlook_keyword_filter_matches_oauth_imap_detail_body_for_imap_ids(self):
+        account = {
+            'email': 'imap-forward@example.com',
+            'account_type': 'outlook',
+            'client_id': 'client-id',
+            'refresh_token': 'refresh-token',
+        }
+        item = {
+            'id': '42',
+            'id_mode': 'uid',
+            'folder': 'inbox',
+            'subject': 'regular subject',
+            'from': 'sender@example.com',
+            'body_preview': 'metadata preview without token',
+        }
+        detail = {
+            'body': '<p>The IMAP detail body contains unique-imap-token.</p>',
+            'body_type': 'html',
+        }
+
+        with patch.object(web_outlook_app, 'get_account_proxy_url', return_value='proxy-url'):
+            with patch.object(web_outlook_app, 'get_account_proxy_failover_urls', return_value=['fallback-proxy']):
+                with patch.object(web_outlook_app, 'get_email_detail_imap', return_value=detail) as imap_detail_mock:
+                    with patch.object(web_outlook_app, 'get_email_detail_graph') as graph_detail_mock:
+                        matched = web_outlook_app.email_matches_filters(
+                            account, item, keyword='unique-imap-token'
+                        )
+
+        self.assertTrue(matched)
+        imap_detail_mock.assert_called_once_with(
+            'imap-forward@example.com',
+            'client-id',
+            'refresh-token',
+            '42',
+            'inbox',
+            'proxy-url',
+            ['fallback-proxy'],
+            'uid',
+        )
+        graph_detail_mock.assert_not_called()
 
     def test_process_forwarding_job_waits_between_accounts(self):
         with self.app.app_context():

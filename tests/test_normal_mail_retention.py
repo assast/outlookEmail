@@ -595,6 +595,20 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertFalse(payload['success'])
         self.assertEqual(self._retained_graph_ids(), ['delete-graph-1', 'delete-graph-2'])
 
+    def test_delete_emails_handles_non_object_json_without_500(self):
+        for kwargs in (
+            {'data': '', 'content_type': 'text/plain'},
+            {'data': 'null', 'content_type': 'application/json'},
+            {'data': '[]', 'content_type': 'application/json'},
+        ):
+            with self.subTest(kwargs=kwargs):
+                response = self.client.post('/api/emails/delete', **kwargs)
+
+                self.assertEqual(response.status_code, 200)
+                payload = response.get_json()
+                self.assertFalse(payload['success'])
+                self.assertEqual(payload['error'], '参数不完整')
+
     def test_delete_emails_imap_uses_imap_oauth_token_and_remains_unsupported(self):
         with patch.object(web_outlook_app, 'get_access_token_graph') as graph_token_mock, \
              patch.object(web_outlook_app, 'get_access_token_imap', return_value='imap-token') as imap_token_mock, \

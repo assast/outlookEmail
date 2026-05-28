@@ -1187,6 +1187,205 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertEqual(put_mock.call_args.kwargs['auth'], ('manual-user', 'manual-pass'))
         self.assertIn('manual-upload@example.com', put_mock.call_args.kwargs['data'].decode('utf-8'))
 
+    def test_download_all_oauth_imap_attachments_uses_requested_id_mode(self):
+        account_id = self._insert_account('user@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE accounts
+                SET client_id = 'client-id', refresh_token = 'refresh-token'
+                WHERE id = ?
+                """,
+                (account_id,),
+            )
+            db.commit()
+
+        detail = {'attachments': [{'id': 'attachment-1', 'name': 'report.txt'}]}
+        with patch.object(web_outlook_app, 'get_email_detail_imap', return_value=detail) as detail_mock, \
+                patch.object(web_outlook_app, 'download_email_attachment_for_account', return_value={
+                    'success': True,
+                    'filename': 'report.txt',
+                    'content_type': 'text/plain',
+                    'content': b'attachment body',
+                }):
+            response = self.client.get(
+                '/api/email/user@example.com/42/attachments/download-all'
+                '?method=imap&folder=inbox&id_mode=sequence'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
+        detail_mock.assert_called_once_with(
+            'user@example.com',
+            'client-id',
+            'refresh-token',
+            '42',
+            'inbox',
+            '',
+            ['', ''],
+            'sequence',
+        )
+
+    def test_single_oauth_imap_attachment_download_uses_uid_id_mode(self):
+        account_id = self._insert_account('user@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE accounts
+                SET client_id = 'client-id', refresh_token = 'refresh-token'
+                WHERE id = ?
+                """,
+                (account_id,),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'download_email_attachment_imap_result', return_value={
+            'success': True,
+            'filename': 'report.txt',
+            'content_type': 'text/plain',
+            'content': b'attachment body',
+        }) as download_mock:
+            response = self.client.get(
+                '/api/email/user@example.com/42/attachments/attachment-1'
+                '?method=imap&folder=inbox&id_mode=uid'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b'attachment body')
+        self.assertIn("filename*=UTF-8''report.txt", response.headers.get('Content-Disposition', ''))
+        download_mock.assert_called_once_with(
+            'user@example.com',
+            'client-id',
+            'refresh-token',
+            '42',
+            'attachment-1',
+            'inbox',
+            '',
+            ['', ''],
+            'uid',
+        )
+
+    def test_single_oauth_imap_attachment_download_uses_sequence_id_mode(self):
+        account_id = self._insert_account('user@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE accounts
+                SET client_id = 'client-id', refresh_token = 'refresh-token'
+                WHERE id = ?
+                """,
+                (account_id,),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'download_email_attachment_imap_result', return_value={
+            'success': True,
+            'filename': 'report.txt',
+            'content_type': 'text/plain',
+            'content': b'attachment body',
+        }) as download_mock:
+            response = self.client.get(
+                '/api/email/user@example.com/42/attachments/attachment-1'
+                '?method=imap&folder=inbox&id_mode=sequence'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b'attachment body')
+        download_mock.assert_called_once_with(
+            'user@example.com',
+            'client-id',
+            'refresh-token',
+            '42',
+            'attachment-1',
+            'inbox',
+            '',
+            ['', ''],
+            'sequence',
+        )
+
+    def test_graph_attachment_download_ignores_id_mode_contract(self):
+        account_id = self._insert_account('user@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE accounts
+                SET client_id = 'client-id', refresh_token = 'refresh-token'
+                WHERE id = ?
+                """,
+                (account_id,),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'download_email_attachment_graph_result', return_value={
+            'success': True,
+            'filename': 'graph.txt',
+            'content_type': 'text/plain',
+            'content': b'graph body',
+        }) as graph_download_mock, \
+                patch.object(web_outlook_app, 'download_email_attachment_imap_result') as imap_download_mock:
+            response = self.client.get(
+                '/api/email/user@example.com/graph-message/attachments/graph-attachment'
+                '?method=graph&folder=inbox&id_mode=sequence'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b'graph body')
+        self.assertIn("filename*=UTF-8''graph.txt", response.headers.get('Content-Disposition', ''))
+        graph_download_mock.assert_called_once_with(
+            'client-id',
+            'refresh-token',
+            'graph-message',
+            'graph-attachment',
+            '',
+            ['', ''],
+        )
+        imap_download_mock.assert_not_called()
+
+    def test_standard_imap_attachment_download_still_works_without_id_mode(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                INSERT INTO accounts (
+                    email, password, client_id, refresh_token,
+                    group_id, remark, status, account_type, provider,
+                    imap_host, imap_port, imap_password, forward_enabled
+                )
+                VALUES (?, '', '', '', 1, '', 'active', 'imap', 'custom', 'imap.example.com', 993, 'secret', 0)
+                ''',
+                ('imap-user@example.com',),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'download_email_attachment_imap_generic_result', return_value={
+            'success': True,
+            'filename': 'imap.txt',
+            'content_type': 'text/plain',
+            'content': b'imap body',
+        }) as generic_download_mock:
+            response = self.client.get(
+                '/api/email/imap-user@example.com/imap-message/attachments/imap-attachment'
+                '?method=imap&folder=inbox'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b'imap body')
+        generic_download_mock.assert_called_once_with(
+            'imap-user@example.com',
+            'secret',
+            'imap.example.com',
+            993,
+            'imap-message',
+            'imap-attachment',
+            'inbox',
+            'custom',
+            '',
+        )
+
     def test_imap_attachment_detail_and_download_route(self):
         with self.app.app_context():
             db = web_outlook_app.get_db()
@@ -1438,6 +1637,16 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
             settings_js.index("showToast('设置已保存，但列表刷新失败，请刷新页面', 'warning');")
         )
 
+    def test_attachment_download_url_builders_include_id_mode(self):
+        emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+        self.assertIn('function appendEmailIdModeParam(query, email)', emails_js)
+        self.assertIn("query.set('id_mode', idMode);", emails_js)
+        self.assertIn('appendEmailIdModeParam(query, email);', emails_js)
+        self.assertIn('function buildAttachmentDownloadUrl(email, attachment)', emails_js)
+        self.assertIn('function buildAllAttachmentsDownloadUrl(email)', emails_js)
+        self.assertIn('new URLSearchParams()', emails_js)
+
     def test_attachment_download_links_use_busy_fetch_handler(self):
         emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
 
@@ -1491,7 +1700,7 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn("if (idMode === 'graph')", emails_js)
         self.assertIn("if (idMode === 'uid' || idMode === 'sequence')", emails_js)
         self.assertIn('method: getCurrentEmailRemoteActionMethod(selectedEmail)', emails_js)
-        self.assertIn('const method = encodeURIComponent(getCurrentEmailRemoteActionMethod(email));', emails_js)
+        self.assertIn("query.set('method', getCurrentEmailRemoteActionMethod(email));", emails_js)
         self.assertIn('const method = encodeURIComponent(getCurrentEmailRemoteActionMethod(currentEmailDetail));', emails_js)
         self.assertIn("id_mode: data.email?.id_mode || selectedEmail?.id_mode || ''", emails_js)
 

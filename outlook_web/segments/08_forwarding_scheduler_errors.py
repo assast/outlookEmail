@@ -1439,8 +1439,8 @@ def handle_local_retention_list_request(account: Dict[str, Any], requested_email
 def handle_remote_email_list_request(account: Dict[str, Any], requested_email: str,
                                      folder: str, subject_contains: str,
                                      from_contains: str, keyword: str):
-    skip = int(request.args.get('skip', 0))
-    top = int(request.args.get('top', 20))
+    skip = parse_non_negative_int(request.args.get('skip', 0), 0)
+    top = parse_non_negative_int(request.args.get('top', 20), 20, 50)
     result = fetch_account_emails(account, folder, skip, top)
     if result.get('success'):
         if is_normal_mail_local_retention_enabled():
@@ -1485,8 +1485,8 @@ def api_get_emails_v2(email_addr):
 def api_external_get_emails_v2():
     email_addr = get_query_arg_preserve_plus('email', '').strip()
     folder = normalize_folder_name(request.args.get('folder', 'inbox'))
-    skip = int(request.args.get('skip', 0))
-    top = int(request.args.get('top', 1))
+    skip = parse_non_negative_int(request.args.get('skip', 0), 0)
+    top = parse_non_negative_int(request.args.get('top', 1), 1, 50)
     subject_contains = get_query_arg_preserve_plus('subject_contains', '').strip().lower()
     from_contains = get_query_arg_preserve_plus('from_contains', '').strip().lower()
     keyword = get_query_arg_preserve_plus('keyword', '').strip().lower()
@@ -1497,9 +1497,6 @@ def api_external_get_emails_v2():
     valid_folders = sorted(VALID_MAIL_FOLDERS)
     if folder not in VALID_MAIL_FOLDERS:
         return jsonify({'success': False, 'error': f'folder 参数无效，仅支持 {", ".join(valid_folders)}'}), 400
-
-    if top > 50:
-        top = 50
 
     account = resolve_account_for_email_api(email_addr)
     if not account:
@@ -1557,6 +1554,23 @@ def email_matches_filters(account: Dict[str, Any], item: Dict[str, Any],
             body = str((detail_payload.get('email') or {}).get('body', '') or '')
             return keyword in strip_html_content(body).lower()
         return False
+
+    item_id_mode = str(item.get('id_mode') or item.get('idMode') or '').strip().lower()
+    if item_id_mode in {'uid', 'sequence'}:
+        detail = get_email_detail_imap(
+            account.get('email', ''),
+            account.get('client_id', ''),
+            account.get('refresh_token', ''),
+            str(item.get('id', '')),
+            item.get('folder', 'inbox'),
+            proxy_url,
+            fallback_proxy_urls,
+            'uid' if item_id_mode == 'uid' else 'sequence',
+        )
+        if not detail:
+            return False
+        body = str(detail.get('body', '') or '')
+        return keyword in strip_html_content(body).lower()
 
     detail = get_email_detail_graph(
         account.get('client_id', ''),
