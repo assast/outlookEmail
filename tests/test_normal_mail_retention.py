@@ -695,6 +695,11 @@ class NormalMailRetentionTests(unittest.TestCase):
             'method': 'IMAP',
             'has_more': False,
         }
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
         with patch.object(web_outlook_app, 'fetch_account_emails', return_value=remote_result):
             response = self.client.get(
                 '/api/emails/retained@example.com?folder=inbox&skip=0&top=20'
@@ -1185,6 +1190,11 @@ class NormalMailRetentionTests(unittest.TestCase):
         self._seed_graph_detail_retained_row()
         graph_detail = self._graph_detail_payload()
         attachments = self._graph_attachment_payload()
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
 
         with patch.object(web_outlook_app, 'get_email_detail_graph', return_value=graph_detail) as detail_mock, \
              patch.object(web_outlook_app, 'get_email_attachments_graph', return_value=attachments) as attachments_mock:
