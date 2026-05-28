@@ -1364,6 +1364,83 @@ def api_update_account_v2(account_id):
     return jsonify({'success': False, 'error': '更新失败'})
 
 
+def add_resolved_account_metadata(result: Dict[str, Any], requested_email: str,
+                                  account: Dict[str, Any]) -> Dict[str, Any]:
+    result['requested_email'] = requested_email
+    result['resolved_email'] = account.get('email', '')
+    if account.get('resolved_query_email'):
+        result['resolved_query_email'] = account.get('resolved_query_email')
+        result['fallback_used'] = bool(account.get('fallback_used'))
+        result['fallback_email'] = account.get('fallback_email', '')
+    if account.get('matched_alias'):
+        result['matched_alias'] = account.get('matched_alias')
+    return result
+
+
+def get_email_filter_args() -> tuple[str, str, str]:
+    return (
+        get_query_arg_preserve_plus('subject_contains', '').strip().lower(),
+        get_query_arg_preserve_plus('from_contains', '').strip().lower(),
+        get_query_arg_preserve_plus('keyword', '').strip().lower(),
+    )
+
+
+def apply_email_list_filters(account: Dict[str, Any], result: Dict[str, Any],
+                             local_retention_request: bool,
+                             subject_contains: str, from_contains: str,
+                             keyword: str) -> None:
+    if not (subject_contains or from_contains or keyword):
+        return
+    if local_retention_request:
+        result['emails'] = [
+            item for item in result.get('emails', [])
+            if email_matches_local_retention_filters(
+                item, subject_contains, from_contains, keyword
+            )
+        ]
+        return
+    result['emails'] = [
+        item for item in result.get('emails', [])
+        if email_matches_filters(account, item, subject_contains, from_contains, keyword)
+    ]
+
+
+def handle_local_retention_list_request(account: Dict[str, Any], requested_email: str,
+                                        folder: str, subject_contains: str,
+                                        from_contains: str, keyword: str):
+    skip = parse_non_negative_int(request.args.get('skip', 0), 0)
+    top = parse_non_negative_int(request.args.get('top', 20), 20)
+    include_body = bool(keyword)
+    result = fetch_retained_normal_mail_list(account, folder, skip, top, include_body=include_body)
+    if result.get('success'):
+        apply_email_list_filters(
+            account, result, True, subject_contains, from_contains, keyword
+        )
+        add_resolved_account_metadata(result, requested_email, account)
+    return jsonify(result)
+
+
+def handle_remote_email_list_request(account: Dict[str, Any], requested_email: str,
+                                     folder: str, subject_contains: str,
+                                     from_contains: str, keyword: str):
+    skip = int(request.args.get('skip', 0))
+    top = int(request.args.get('top', 20))
+    result = fetch_account_emails(account, folder, skip, top)
+    if result.get('success'):
+        if skip == 0:
+            new_message_ids = find_new_retained_normal_mail_identifiers(
+                account, folder, result.get('emails', [])
+            )
+            result['new_count'] = len(new_message_ids)
+            result['new_message_ids'] = new_message_ids
+        upsert_retained_normal_mail_list_items(account, folder, result.get('emails', []))
+        apply_email_list_filters(
+            account, result, False, subject_contains, from_contains, keyword
+        )
+        add_resolved_account_metadata(result, requested_email, account)
+    return jsonify(result)
+
+
 def api_get_emails_v2(email_addr):
     requested_email = str(email_addr or '').strip()
     account = resolve_account_for_email_api(requested_email)
@@ -1378,50 +1455,14 @@ def api_get_emails_v2(email_addr):
         return jsonify({'success': False, 'error': error_payload})
 
     folder = normalize_folder_name(request.args.get('folder', 'inbox'))
-    local_retention_request = is_local_retention_request()
-    if local_retention_request:
-        skip = parse_non_negative_int(request.args.get('skip', 0), 0)
-        top = parse_non_negative_int(request.args.get('top', 20), 20)
-    else:
-        skip = int(request.args.get('skip', 0))
-        top = int(request.args.get('top', 20))
-    subject_contains = get_query_arg_preserve_plus('subject_contains', '').strip().lower()
-    from_contains = get_query_arg_preserve_plus('from_contains', '').strip().lower()
-    keyword = get_query_arg_preserve_plus('keyword', '').strip().lower()
-    if local_retention_request:
-        result = fetch_retained_normal_mail_list(account, folder, skip, top)
-    else:
-        result = fetch_account_emails(account, folder, skip, top)
-    if result.get('success'):
-        if not local_retention_request:
-            new_message_ids = []
-            if skip == 0:
-                new_message_ids = find_new_retained_normal_mail_identifiers(
-                    account, folder, result.get('emails', [])
-                )
-                result['new_count'] = len(new_message_ids)
-                result['new_message_ids'] = new_message_ids
-            upsert_retained_normal_mail_list_items(account, folder, result.get('emails', []))
-        if subject_contains or from_contains or keyword:
-            if local_retention_request:
-                result['emails'] = [
-                    item for item in result.get('emails', [])
-                    if email_matches_local_retention_filters(item, subject_contains, from_contains, keyword)
-                ]
-            else:
-                result['emails'] = [
-                    item for item in result.get('emails', [])
-                    if email_matches_filters(account, item, subject_contains, from_contains, keyword)
-                ]
-        result['requested_email'] = requested_email
-        result['resolved_email'] = account.get('email', '')
-        if account.get('resolved_query_email'):
-            result['resolved_query_email'] = account.get('resolved_query_email')
-            result['fallback_used'] = bool(account.get('fallback_used'))
-            result['fallback_email'] = account.get('fallback_email', '')
-        if account.get('matched_alias'):
-            result['matched_alias'] = account.get('matched_alias')
-    return jsonify(result)
+    subject_contains, from_contains, keyword = get_email_filter_args()
+    if is_local_retention_request():
+        return handle_local_retention_list_request(
+            account, requested_email, folder, subject_contains, from_contains, keyword
+        )
+    return handle_remote_email_list_request(
+        account, requested_email, folder, subject_contains, from_contains, keyword
+    )
 
 
 def api_external_get_emails_v2():

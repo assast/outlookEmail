@@ -2111,16 +2111,19 @@ def mark_retained_normal_mail_rows_read(account: Dict[str, Any], items: List[Dic
         return 0
 
     database = db or get_db()
-    cursor = database.executemany(
-        '''
-        UPDATE retained_normal_mail_messages
-        SET is_read = 1, updated_at = CURRENT_TIMESTAMP
-        WHERE account_id = ? AND folder = ? AND provider_message_id = ? AND id_mode = ?
-        ''',
-        keys
-    )
+    updated_count = 0
+    for key in keys:
+        cursor = database.execute(
+            '''
+            UPDATE retained_normal_mail_messages
+            SET is_read = 1, updated_at = CURRENT_TIMESTAMP
+            WHERE account_id = ? AND folder = ? AND provider_message_id = ? AND id_mode = ?
+            ''',
+            key
+        )
+        updated_count += max(0, cursor.rowcount or 0)
     database.commit()
-    return max(0, cursor.rowcount or 0)
+    return updated_count
 
 
 def get_successfully_deleted_message_ids(result: Dict[str, Any], requested_ids: List[str]) -> List[str]:
@@ -2161,24 +2164,27 @@ def delete_retained_normal_mail_rows(account: Dict[str, Any], requested_ids: Lis
 
     database = db or get_db()
     id_mode = str(fallback_id_mode or '').strip().lower()
-    if id_mode:
-        cursor = database.executemany(
-            '''
-            DELETE FROM retained_normal_mail_messages
-            WHERE account_id = ? AND provider_message_id = ? AND id_mode = ?
-            ''',
-            [(account_id, message_id, id_mode) for message_id in deleted_ids]
-        )
-    else:
-        cursor = database.executemany(
-            '''
-            DELETE FROM retained_normal_mail_messages
-            WHERE account_id = ? AND provider_message_id = ?
-            ''',
-            [(account_id, message_id) for message_id in deleted_ids]
-        )
+    deleted_count = 0
+    for message_id in deleted_ids:
+        if id_mode:
+            cursor = database.execute(
+                '''
+                DELETE FROM retained_normal_mail_messages
+                WHERE account_id = ? AND provider_message_id = ? AND id_mode = ?
+                ''',
+                (account_id, message_id, id_mode)
+            )
+        else:
+            cursor = database.execute(
+                '''
+                DELETE FROM retained_normal_mail_messages
+                WHERE account_id = ? AND provider_message_id = ?
+                ''',
+                (account_id, message_id)
+            )
+        deleted_count += max(0, cursor.rowcount or 0)
     database.commit()
-    return max(0, cursor.rowcount or 0)
+    return deleted_count
 
 
 def split_email_action_items_by_method(items: List[Dict[str, str]], method: str) -> tuple[List[Dict[str, str]], List[Dict[str, str]]]:
@@ -2301,6 +2307,7 @@ def build_retained_normal_mail_list_row(account_id: int, item: Dict[str, Any],
         'sender': coerce_retained_mail_text(normalized.get('from')) or '未知',
         'recipients': coerce_retained_mail_text(normalized.get('to')),
         'received_at': coerce_retained_mail_text(normalized.get('date')),
+        'received_at_sort': retained_mail_received_at_sort(normalized.get('date')),
         'is_read': coerce_retained_mail_bool(normalized.get('is_read')),
         'has_attachments': coerce_retained_mail_bool(normalized.get('has_attachments')),
         'body_preview': coerce_retained_mail_text(normalized.get('body_preview')),
@@ -2318,6 +2325,13 @@ def retained_normal_mail_key(row: Dict[str, Any]) -> tuple:
         str(row.get('provider_message_id') or ''),
         str(row.get('id_mode') or '').strip().lower(),
     )
+
+
+def retained_mail_received_at_sort(value: Any) -> float:
+    parsed = parse_email_datetime(str(value or ''))
+    if not parsed:
+        return 0.0
+    return parsed.timestamp()
 
 
 def retained_mail_new_message_identifier(row: Dict[str, Any]) -> Dict[str, str]:
@@ -2400,13 +2414,13 @@ def upsert_retained_normal_mail_list_items(account: Dict[str, Any], folder: str,
         '''
         INSERT INTO retained_normal_mail_messages (
             account_id, folder, provider_message_id, id_mode,
-            subject, sender, recipients, received_at,
+            subject, sender, recipients, received_at, received_at_sort,
             is_read, has_attachments, body_preview,
             list_cached, list_cached_at, last_synced_at, updated_at
         )
         VALUES (
             :account_id, :folder, :provider_message_id, :id_mode,
-            :subject, :sender, :recipients, :received_at,
+            :subject, :sender, :recipients, :received_at, :received_at_sort,
             :is_read, :has_attachments, :body_preview,
             1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
@@ -2416,6 +2430,7 @@ def upsert_retained_normal_mail_list_items(account: Dict[str, Any], folder: str,
             sender = excluded.sender,
             recipients = excluded.recipients,
             received_at = excluded.received_at,
+            received_at_sort = excluded.received_at_sort,
             is_read = excluded.is_read,
             has_attachments = excluded.has_attachments,
             body_preview = excluded.body_preview,
@@ -2601,6 +2616,7 @@ def build_retained_normal_mail_detail_row(account: Dict[str, Any], folder: str,
         'recipients': coerce_retained_mail_text(detail.get('to')),
         'cc': coerce_retained_mail_text(detail.get('cc')),
         'received_at': coerce_retained_mail_text(detail.get('date')),
+        'received_at_sort': retained_mail_received_at_sort(detail.get('date')),
         'body': coerce_retained_mail_text(detail.get('body')),
         'body_type': coerce_retained_mail_text(detail.get('body_type')) or 'text',
         'attachments_json': json.dumps(attachments, ensure_ascii=False),
@@ -2624,13 +2640,13 @@ def upsert_retained_normal_mail_detail(account: Dict[str, Any], folder: str,
         '''
         INSERT INTO retained_normal_mail_messages (
             account_id, folder, provider_message_id, id_mode,
-            subject, sender, recipients, cc, received_at,
+            subject, sender, recipients, cc, received_at, received_at_sort,
             has_attachments, body, body_type, attachments_json,
             body_cached, body_cached_at, last_synced_at, updated_at
         )
         VALUES (
             :account_id, :folder, :provider_message_id, :id_mode,
-            :subject, :sender, :recipients, :cc, :received_at,
+            :subject, :sender, :recipients, :cc, :received_at, :received_at_sort,
             :has_attachments, :body, :body_type, :attachments_json,
             1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
@@ -2641,6 +2657,7 @@ def upsert_retained_normal_mail_detail(account: Dict[str, Any], folder: str,
             recipients = excluded.recipients,
             cc = excluded.cc,
             received_at = excluded.received_at,
+            received_at_sort = excluded.received_at_sort,
             has_attachments = excluded.has_attachments,
             body = excluded.body,
             body_type = excluded.body_type,
@@ -2768,7 +2785,7 @@ def is_prefer_local_detail_request() -> bool:
 
 
 def retained_mail_row_to_list_item(row) -> Dict[str, Any]:
-    return {
+    item = {
         'id': row['provider_message_id'],
         'subject': row['subject'] or '无主题',
         'from': row['sender'] or '未知',
@@ -2780,6 +2797,9 @@ def retained_mail_row_to_list_item(row) -> Dict[str, Any]:
         'folder': row['folder'] or 'inbox',
         'id_mode': row['id_mode'] or '',
     }
+    if 'body' in row.keys() and row['body']:
+        item['body'] = row['body']
+    return item
 
 
 def parse_retained_mail_attachments(raw_attachments: Any) -> List[Dict[str, Any]]:
@@ -2995,17 +3015,19 @@ def email_matches_local_retention_filters(item: Dict[str, Any], subject_contains
     subject = str(item.get('subject', '') or '')
     sender = str(item.get('from', '') or '')
     preview = str(item.get('body_preview', '') or '')
+    body = strip_html_content(str(item.get('body', '') or ''))
     if subject_contains and subject_contains not in subject.lower():
         return False
     if from_contains and from_contains not in sender.lower():
         return False
     if not keyword:
         return True
-    return keyword in '\n'.join([subject, preview]).lower()
+    return keyword in '\n'.join([subject, preview, body]).lower()
 
 
 def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
-                                    skip: int, top: int) -> Dict[str, Any]:
+                                    skip: int, top: int,
+                                    include_body: bool = False) -> Dict[str, Any]:
     folder_name = normalize_folder_name(folder)
     if folder_name not in VALID_MAIL_FOLDERS:
         return {
@@ -3030,13 +3052,14 @@ def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
     ).fetchone()
     total_count = int(total_row['count'] if total_row else 0)
 
+    body_column = ', body' if include_body else ''
     rows = db.execute(
         f'''
         SELECT provider_message_id, subject, sender, recipients, received_at,
-               is_read, has_attachments, body_preview, folder, id_mode
+               is_read, has_attachments, body_preview{body_column}, folder, id_mode
         FROM retained_normal_mail_messages
         WHERE account_id = ? AND list_cached = 1 {folder_filter}
-        ORDER BY COALESCE(NULLIF(received_at, ''), '0000') DESC, id DESC
+        ORDER BY received_at_sort DESC, id DESC
         LIMIT ? OFFSET ?
         ''',
         list(params) + [top + 1, skip]

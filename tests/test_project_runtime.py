@@ -610,6 +610,7 @@ class ProjectRuntimeTests(unittest.TestCase):
             'recipients',
             'cc',
             'received_at',
+            'received_at_sort',
             'is_read',
             'has_attachments',
             'body_preview',
@@ -641,6 +642,18 @@ class ProjectRuntimeTests(unittest.TestCase):
                     "PRAGMA index_info(ux_retained_normal_mail_messages_key)"
                 ).fetchall()
             ]
+            list_index_columns = [
+                row['name']
+                for row in db.execute(
+                    "PRAGMA index_info(idx_retained_normal_mail_messages_list)"
+                ).fetchall()
+            ]
+            body_cache_index_columns = [
+                row['name']
+                for row in db.execute(
+                    "PRAGMA index_info(idx_retained_normal_mail_messages_body_cache)"
+                ).fetchall()
+            ]
 
         self.assertTrue(expected_columns.issubset(columns))
         self.assertTrue(indexes['ux_retained_normal_mail_messages_key'])
@@ -649,6 +662,14 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertEqual(
             unique_columns,
             ['account_id', 'folder', 'provider_message_id', 'id_mode']
+        )
+        self.assertEqual(
+            list_index_columns,
+            ['account_id', 'folder', 'received_at_sort', 'id']
+        )
+        self.assertEqual(
+            body_cache_index_columns,
+            ['account_id', 'folder', 'body_cached', 'received_at_sort']
         )
 
     def test_account_sort_order_roundtrips_through_account_apis(self):
@@ -1342,6 +1363,54 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn("link.textContent = isDownloading ? '打包中...' : link.dataset.defaultLabel;", emails_js)
         self.assertIn("action.textContent = isDownloading ? '下载中...' : '下载';", emails_js)
         self.assertIn("showToast(pendingMessage, 'info');", emails_js)
+
+    def test_local_retention_load_more_keeps_source_local(self):
+        core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
+
+        self.assertIn('function buildLoadMoreEmailsUrl(nextSkip)', core_js)
+        self.assertIn("query.set('source', 'local');", core_js)
+        self.assertIn("currentMethod === 'local' || cache?.local_retention === true", core_js)
+        self.assertIn('buildLoadMoreEmailsUrl(nextSkip)', core_js)
+        self.assertNotIn('?method=${currentMethod}&folder=${currentFolder}&skip=${nextSkip}&top=20', core_js)
+
+    def test_new_mail_notice_stages_rows_until_user_accepts(self):
+        emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+        queue_start = emails_js.index('function queuePendingNewMailSync')
+        apply_start = emails_js.index('function applyPendingNewMailSync')
+        queue_block = emails_js[queue_start:apply_start]
+        apply_block = emails_js[apply_start:emails_js.index('function applyMergedRemoteEmailSync')]
+
+        self.assertIn('pendingNewMailSyncs.set(syncKey', queue_block)
+        self.assertIn('announceNewlySyncedEmailRows(data, newlySyncedRows, options.folder, syncKey);', queue_block)
+        self.assertNotIn('currentEmails =', queue_block)
+        self.assertNotIn('renderEmailList(currentEmails);', queue_block)
+        self.assertNotIn('mergedEmails:', queue_block)
+
+        self.assertIn('const mergeResult = mergeEmailListByStableKey(', apply_block)
+        self.assertIn('currentEmails = mergeResult.emails;', apply_block)
+        self.assertIn('renderEmailList(currentEmails);', apply_block)
+        self.assertIn('requestBodyRetentionForNewRows(newlySyncedRows, pending.options.folder);', apply_block)
+        self.assertIn('scheduleNewEmailHighlightClear();', apply_block)
+
+        self.assertIn("notice.setAttribute('role', 'button');", emails_js)
+        self.assertIn("notice.setAttribute('tabindex', '0');", emails_js)
+        self.assertIn('notice.replaceChildren();', emails_js)
+        self.assertIn("hint.textContent = '点击显示';", emails_js)
+        self.assertIn('NEW_EMAIL_HIGHLIGHT_CLEAR_DELAY_MS', emails_js)
+        self.assertNotIn('已自动显示', emails_js)
+        self.assertNotIn('cacheRemoteEmailSyncResult', emails_js)
+
+    def test_provider_fallback_uses_id_mode_for_detail_raw_and_attachments(self):
+        emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+        self.assertIn('function getCurrentEmailRemoteActionMethod(emailItem = {})', emails_js)
+        self.assertIn("if (idMode === 'graph')", emails_js)
+        self.assertIn("if (idMode === 'uid' || idMode === 'sequence')", emails_js)
+        self.assertIn('method: getCurrentEmailRemoteActionMethod(selectedEmail)', emails_js)
+        self.assertIn('const method = encodeURIComponent(getCurrentEmailRemoteActionMethod(email));', emails_js)
+        self.assertIn('const method = encodeURIComponent(getCurrentEmailRemoteActionMethod(currentEmailDetail));', emails_js)
+        self.assertIn("id_mode: data.email?.id_mode || selectedEmail?.id_mode || ''", emails_js)
 
     def test_account_sort_ui_uses_sort_order_and_created_at(self):
         layout_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'layout.html').read_text(encoding='utf-8')

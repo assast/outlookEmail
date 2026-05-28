@@ -12,7 +12,7 @@ Included mailbox paths:
 
 ## Local-first list load
 
-Normal mailbox list views should load retained local rows first for the selected account and folder. The UI can render this retained list immediately without waiting for Microsoft Graph or IMAP, preserving the normal received-date ordering and pagination semantics.
+Normal mailbox list views should load retained local rows first for the selected account and folder. The UI can render this retained list immediately without waiting for Microsoft Graph or IMAP, preserving the normal received-date ordering and pagination semantics. Continued list pagination must keep using the local retained source (`source=local`) while the visible list is in local-first mode, so users can load beyond the first page even when the remote provider is still unavailable.
 
 If the remote provider is unavailable, rate limited, or slow, the retained list remains the user-visible fallback instead of being cleared. Local rows should be treated as cached mailbox state, not as a separate mailbox mode.
 
@@ -26,7 +26,7 @@ Remote sync must not block initial list rendering. A failed sync should leave th
 
 When background sync finds messages that were not already retained locally, the client should show a non-destructive new-message notice. The notice tells the user that newer remote messages are available without abruptly replacing the list while they are reading.
 
-After the user refreshes or accepts the notice, the list can be reloaded from the retained store so newly discovered messages appear in the normal ordering.
+Background sync must stage newly discovered rows without immediately merging them into the current visible list. After the user accepts the notice, the client merges the staged rows into the current list, highlights the newly visible messages, updates the list cache, and triggers best-effort body retention for the newly accepted rows.
 
 ## Detail body retention
 

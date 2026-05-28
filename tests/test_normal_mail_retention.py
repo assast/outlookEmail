@@ -86,7 +86,7 @@ class NormalMailRetentionTests(unittest.TestCase):
             rows = db.execute(
                 '''
                 SELECT account_id, folder, provider_message_id, id_mode,
-                       subject, sender, recipients, received_at,
+                       subject, sender, recipients, received_at, received_at_sort,
                        is_read, has_attachments, body_preview,
                        list_cached, list_cached_at, last_synced_at, updated_at
                 FROM retained_normal_mail_messages
@@ -326,6 +326,36 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertFalse(payload['success'])
         self.assertEqual(self._retained_graph_ids(), ['delete-graph-1', 'delete-graph-2'])
 
+    def test_retained_action_row_counts_are_cumulative(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            for message_id in ('count-1', 'count-2'):
+                self._seed_unread_graph_retained_row(message_id)
+            updated_count = web_outlook_app.mark_retained_normal_mail_rows_read(
+                self.account,
+                [
+                    {'id': 'count-1', 'folder': 'inbox', 'id_mode': 'graph'},
+                    {'id': 'count-2', 'folder': 'inbox', 'id_mode': 'graph'},
+                ],
+                {'updated_ids': ['count-1', 'count-2']},
+                db=db,
+            )
+            deleted_count = web_outlook_app.delete_retained_normal_mail_rows(
+                self.account,
+                ['count-1', 'count-2'],
+                {
+                    'success': True,
+                    'deleted_ids': ['count-1', 'count-2'],
+                    'success_count': 2,
+                    'failed_count': 0,
+                },
+                fallback_id_mode='graph',
+                db=db,
+            )
+
+        self.assertEqual(updated_count, 2)
+        self.assertEqual(deleted_count, 2)
+
     def test_get_emails_reports_new_remote_rows_before_retention_upsert(self):
         old_row = {
             'id': 'old-uid-1',
@@ -382,25 +412,45 @@ class NormalMailRetentionTests(unittest.TestCase):
     def test_get_emails_can_return_local_retention_list_with_pagination(self):
         with self.app.app_context():
             db = web_outlook_app.get_db()
-            rows = [
-                ('inbox', 'inbox-old', 'uid', 'Older inbox', 'old@example.com',
-                 'reader@example.com', '2026-05-25T10:00:00Z', 1, 0, 'Old preview'),
-                ('junkemail', 'junk-new', 'graph', 'Newest junk', 'junk@example.com',
-                 'reader@example.com', '2026-05-27T12:00:00Z', 0, 1, 'Junk preview'),
-                ('inbox', 'inbox-mid', 'uid', 'Middle inbox', 'mid@example.com',
-                 'reader@example.com', '2026-05-26T09:00:00Z', 0, 0, 'Middle preview'),
+            items = [
+                {
+                    'id': 'inbox-old',
+                    'folder': 'inbox',
+                    'id_mode': 'uid',
+                    'subject': 'Older inbox',
+                    'from': 'old@example.com',
+                    'to': 'reader@example.com',
+                    'date': '2026-05-25T10:00:00Z',
+                    'is_read': True,
+                    'has_attachments': False,
+                    'body_preview': 'Old preview',
+                },
+                {
+                    'id': 'junk-new',
+                    'folder': 'junkemail',
+                    'id_mode': 'graph',
+                    'subject': 'Newest junk',
+                    'from': 'junk@example.com',
+                    'to': 'reader@example.com',
+                    'date': '2026-05-27T12:00:00Z',
+                    'is_read': False,
+                    'has_attachments': True,
+                    'body_preview': 'Junk preview',
+                },
+                {
+                    'id': 'inbox-mid',
+                    'folder': 'inbox',
+                    'id_mode': 'uid',
+                    'subject': 'Middle inbox',
+                    'from': 'mid@example.com',
+                    'to': 'reader@example.com',
+                    'date': '2026-05-26T09:00:00Z',
+                    'is_read': False,
+                    'has_attachments': False,
+                    'body_preview': 'Middle preview',
+                },
             ]
-            db.executemany(
-                '''
-                INSERT INTO retained_normal_mail_messages (
-                    account_id, folder, provider_message_id, id_mode,
-                    subject, sender, recipients, received_at,
-                    is_read, has_attachments, body_preview, list_cached
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                ''',
-                [(self.account['id'], *row) for row in rows]
-            )
+            web_outlook_app.upsert_retained_normal_mail_list_items(self.account, 'all', items)
             db.commit()
 
         with patch.object(web_outlook_app, 'fetch_account_emails') as fetch_mock:
@@ -444,6 +494,144 @@ class NormalMailRetentionTests(unittest.TestCase):
             [item['id'] for item in inbox_payload['emails']],
             ['inbox-mid', 'inbox-old']
         )
+
+    def test_local_retention_list_can_page_beyond_first_twenty_rows(self):
+        items = []
+        for index in range(25):
+            items.append({
+                'id': f'bulk-{index:02d}',
+                'folder': 'inbox',
+                'id_mode': 'uid',
+                'subject': f'Bulk {index:02d}',
+                'from': 'sender@example.com',
+                'to': 'reader@example.com',
+                'date': f'2026-05-{27 - (index // 24):02d}T{23 - (index % 24):02d}:00:00Z',
+                'is_read': True,
+                'has_attachments': False,
+                'body_preview': f'preview {index:02d}',
+            })
+
+        with self.app.app_context():
+            web_outlook_app.upsert_retained_normal_mail_list_items(self.account, 'inbox', items)
+
+        with patch.object(web_outlook_app, 'fetch_account_emails') as fetch_mock:
+            first_response = self.client.get(
+                '/api/emails/retained@example.com?source=local&folder=inbox&skip=0&top=20'
+            )
+            next_response = self.client.get(
+                '/api/emails/retained@example.com?source=local&folder=inbox&skip=20&top=20'
+            )
+
+        fetch_mock.assert_not_called()
+        first_payload = first_response.get_json()
+        next_payload = next_response.get_json()
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(next_response.status_code, 200)
+        self.assertTrue(first_payload['success'])
+        self.assertTrue(first_payload['has_more'])
+        self.assertEqual(len(first_payload['emails']), 20)
+        self.assertTrue(next_payload['success'])
+        self.assertFalse(next_payload['has_more'])
+        self.assertEqual(next_payload['count'], 25)
+        self.assertEqual(len(next_payload['emails']), 5)
+        self.assertEqual([item['id'] for item in next_payload['emails']], [
+            'bulk-20', 'bulk-21', 'bulk-22', 'bulk-23', 'bulk-24'
+        ])
+
+    def test_local_retention_list_sorts_mixed_date_formats_before_pagination(self):
+        items = [
+            {
+                'id': 'rfc-older',
+                'id_mode': 'uid',
+                'subject': 'RFC older',
+                'from': 'older@example.com',
+                'to': 'reader@example.com',
+                'date': 'Tue, 26 May 2026 10:00:00 +0000',
+                'is_read': True,
+                'has_attachments': False,
+                'body_preview': 'older',
+            },
+            {
+                'id': 'internal-newer',
+                'id_mode': 'uid',
+                'subject': 'Internal newer',
+                'from': 'newer@example.com',
+                'to': 'reader@example.com',
+                'date': '27-May-2026 09:00:00 +0000',
+                'is_read': True,
+                'has_attachments': False,
+                'body_preview': 'newer',
+            },
+            {
+                'id': 'iso-middle',
+                'id_mode': 'graph',
+                'subject': 'ISO middle',
+                'from': 'middle@example.com',
+                'to': 'reader@example.com',
+                'date': '2026-05-26T12:00:00Z',
+                'is_read': False,
+                'has_attachments': False,
+                'body_preview': 'middle',
+            },
+        ]
+        with self.app.app_context():
+            web_outlook_app.upsert_retained_normal_mail_list_items(self.account, 'inbox', items)
+
+        response = self.client.get(
+            '/api/emails/retained@example.com?source=local&folder=inbox&skip=1&top=1'
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['count'], 3)
+        self.assertTrue(payload['has_more'])
+        self.assertEqual([item['id'] for item in payload['emails']], ['iso-middle'])
+
+    def test_local_retention_keyword_search_checks_cached_body(self):
+        with self.app.app_context():
+            web_outlook_app.upsert_retained_normal_mail_list_items(
+                self.account,
+                'inbox',
+                [{
+                    'id': 'body-keyword-1',
+                    'id_mode': 'graph',
+                    'subject': 'Routine subject',
+                    'from': 'sender@example.com',
+                    'to': 'reader@example.com',
+                    'date': '2026-05-27T08:00:00Z',
+                    'is_read': True,
+                    'has_attachments': False,
+                    'body_preview': 'No target here',
+                }]
+            )
+            web_outlook_app.upsert_retained_normal_mail_detail(
+                self.account,
+                'inbox',
+                'body-keyword-1',
+                {
+                    'id': 'body-keyword-1',
+                    'subject': 'Routine subject',
+                    'from': 'sender@example.com',
+                    'to': 'reader@example.com',
+                    'date': '2026-05-27T08:00:00Z',
+                    'body': '<p>Cached SecretNeedle body</p>',
+                    'body_type': 'html',
+                    'attachments': [],
+                },
+                'graph',
+                'graph',
+                'graph',
+            )
+
+        response = self.client.get(
+            '/api/emails/retained@example.com?source=local&folder=inbox&keyword=secretneedle'
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual([item['id'] for item in payload['emails']], ['body-keyword-1'])
 
     def _seed_graph_detail_retained_row(self):
         with self.app.app_context():

@@ -1331,6 +1331,20 @@
         }
 
         // 加载更多邮件
+        function buildLoadMoreEmailsUrl(nextSkip) {
+            const query = new URLSearchParams({
+                method: currentMethod,
+                folder: currentFolder,
+                skip: String(nextSkip),
+                top: '20'
+            });
+            const cache = getEmailListCacheEntry(currentAccount, currentFolder);
+            if (currentMethod === 'local' || cache?.local_retention === true) {
+                query.set('source', 'local');
+            }
+            return `/api/emails/${encodeURIComponent(currentAccount)}?${query.toString()}`;
+        }
+
         async function loadMoreEmails() {
             if (isLoadingMore || !hasMoreEmails) return;
             if (currentMethod === 'cloudflare-admin') {
@@ -1362,7 +1376,7 @@
 
             try {
                 const response = await fetchWithTimeout(
-                    `/api/emails/${encodeURIComponent(currentAccount)}?method=${currentMethod}&folder=${currentFolder}&skip=${nextSkip}&top=20`,
+                    buildLoadMoreEmailsUrl(nextSkip),
                     {
                         timeoutMs: EMAIL_LIST_REQUEST_TIMEOUT_MS,
                         timeoutMessage: '加载更多邮件超时，请稍后重试'
@@ -1398,6 +1412,10 @@
                             if (data.method) {
                                 emailListCache[cacheKey].method_label = data.method;
                             }
+                            if (data.local_retention === true) {
+                                emailListCache[cacheKey].local_retention = true;
+                                emailListCache[cacheKey].local_retention_count = Number(data.count) || currentEmails.length;
+                            }
                             if (currentFolder === 'all' && data.folder_summaries) {
                                 emailListCache[cacheKey].folder_summaries = mergeFolderSummaries(
                                     emailListCache[cacheKey].folder_summaries,
@@ -1413,6 +1431,8 @@
                                 method: currentMethod,
                                 method_label: data.method || currentMethod,
                                 derived_from: null,
+                                local_retention: data.local_retention === true,
+                                local_retention_count: Number(data.count) || currentEmails.length,
                                 folder_summaries: currentFolder === 'all'
                                     ? normalizeFolderSummaries(data.folder_summaries)
                                     : undefined

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from outlook_web.mail_datetime import parse_mail_datetime
+
 if TYPE_CHECKING:
     # These segmented files are executed into the shared `web_outlook_app`
     # globals at runtime. Importing from the assembled module keeps IDE
@@ -2192,23 +2194,8 @@ def download_email_attachment_imap_generic_result(email_addr: str, imap_password
 
 
 def parse_email_datetime(value: str) -> Optional[datetime]:
-    if not value:
-        return None
-    try:
-        value_str = str(value).strip()
-        value_str = re.sub(r'\s+\([A-Za-z0-9_./+-]+\)$', '', value_str)
-        if re.match(r'^\d{4}-\d{2}-\d{2}T', value_str):
-            normalized = value_str.replace('Z', '+00:00')
-            dt = datetime.fromisoformat(normalized)
-        elif re.match(r'^\d{1,2}-[A-Za-z]{3}-\d{4} \d{2}:\d{2}:\d{2} [+-]\d{4}$', value_str):
-            dt = datetime.strptime(value_str, '%d-%b-%Y %H:%M:%S %z')
-        else:
-            dt = parsedate_to_datetime(value_str)
-        if dt.tzinfo is not None:
-            return dt.astimezone().replace(tzinfo=None)
-        return dt
-    except Exception:
-        return None
+    """兼容旧共享全局名，实际实现位于 outlook_web.mail_datetime。"""
+    return parse_mail_datetime(value)
 
 
 def login_required(f):

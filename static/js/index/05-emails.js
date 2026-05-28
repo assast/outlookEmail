@@ -7,6 +7,8 @@
         }
 
         const backgroundMailboxSyncs = new Map();
+        const pendingNewMailSyncs = new Map();
+        const NEW_EMAIL_HIGHLIGHT_CLEAR_DELAY_MS = 3500;
 
         function getNormalMailboxRemoteMethod() {
             const cacheMethod = getEmailListCacheEntry(currentAccount, currentFolder)?.remote_method;
@@ -16,6 +18,17 @@
         function getRemoteMailboxMethodFallback() {
             const method = String(getNormalMailboxRemoteMethod() || '').trim().toLowerCase();
             return ['graph', 'imap'].includes(method) ? method : 'graph';
+        }
+
+        function getCurrentEmailRemoteActionMethod(emailItem = {}) {
+            const idMode = String(emailItem?.id_mode || emailItem?.idMode || '').trim().toLowerCase();
+            if (idMode === 'graph') {
+                return 'graph';
+            }
+            if (idMode === 'uid' || idMode === 'sequence') {
+                return 'imap';
+            }
+            return getRemoteMailboxMethodFallback();
         }
 
         function buildEmailListRequestUrl(email, params = {}) {
@@ -74,7 +87,9 @@
         }
 
         function getEmailListMethodMetadata(data, options = {}) {
-            const method = options.method || data.request_method || (data.method === 'Graph API' ? 'graph' : 'imap');
+            const requestMethod = String(data.request_method || '').trim().toLowerCase();
+            const optionMethod = String(options.method || '').trim().toLowerCase();
+            const method = requestMethod || optionMethod || (data.method === 'Graph API' ? 'graph' : 'imap');
             return {
                 method,
                 remoteMethod: method === 'local' ? getRemoteMailboxMethodFallback() : method,
@@ -172,32 +187,75 @@
             scheduleEmailListLoadCheck(80);
         }
 
-        function applyMergedRemoteEmailSync(cacheKey, data, options = {}) {
-            const existingCache = emailListCache[cacheKey] || {};
-            const incomingEmails = Array.isArray(data.emails) ? data.emails : [];
-            const { method, remoteMethod, methodLabel } = getEmailListMethodMetadata(data, options);
-            const announceNewRows = options.announceNewRows === true;
-            const listElement = document.getElementById('emailList');
-            const previousScrollTop = announceNewRows && listElement ? listElement.scrollTop : null;
-            const mergedResult = mergeEmailListByStableKey(currentEmails, incomingEmails, options.folder);
-            const newlySyncedRows = announceNewRows
-                ? collectNewlySyncedEmailRows(data, mergedResult, options.folder)
-                : [];
-            const folderSummaries = currentFolder === 'all'
-                ? mergeFolderSummaries(existingCache.folder_summaries, data.folder_summaries)
-                : undefined;
+        function getPendingNewMailSyncKey(account = currentAccount, folder = currentFolder) {
+            return `${account || ''}_${folder || 'all'}`;
+        }
 
-            if (announceNewRows) {
-                markNewlySyncedEmailRows(newlySyncedRows, options.folder);
+        function updateEmailListCacheRemoteMetadata(cacheKey, data, options = {}) {
+            const existingCache = emailListCache[cacheKey];
+            if (!existingCache) {
+                return;
             }
-            currentEmails = mergedResult.emails;
+
+            const { method, remoteMethod } = getEmailListMethodMetadata(data, options);
+            existingCache.remote_method = remoteMethod || method;
+            if (currentFolder === 'all' && data.folder_summaries) {
+                existingCache.folder_summaries = mergeFolderSummaries(
+                    existingCache.folder_summaries,
+                    data.folder_summaries
+                );
+            }
+        }
+
+        function queuePendingNewMailSync(syncKey, cacheKey, data, options = {}) {
+            const existingEmails = Array.isArray(currentEmails) ? currentEmails : [];
+            const incomingEmails = Array.isArray(data.emails) ? data.emails : [];
+            const mergedResult = mergeEmailListByStableKey(existingEmails, incomingEmails, options.folder);
+            const newlySyncedRows = collectNewlySyncedEmailRows(data, mergedResult, options.folder);
+
+            updateEmailListCacheRemoteMetadata(cacheKey, data, options);
+            pendingNewMailSyncs.set(syncKey, {
+                cacheKey,
+                data,
+                options: { ...options },
+                newlySyncedRows
+            });
+            announceNewlySyncedEmailRows(data, newlySyncedRows, options.folder, syncKey);
+            return mergedResult;
+        }
+
+
+        function applyPendingNewMailSync(syncKey = getPendingNewMailSyncKey()) {
+            const pending = pendingNewMailSyncs.get(syncKey);
+            if (!pending) {
+                hideNewMailNotice();
+                return false;
+            }
+
+            const listElement = document.getElementById('emailList');
+            const previousScrollTop = listElement ? listElement.scrollTop : null;
+            const mergeResult = mergeEmailListByStableKey(
+                Array.isArray(currentEmails) ? currentEmails : [],
+                pending.data.emails,
+                pending.options.folder
+            );
+            const newlySyncedRows = collectNewlySyncedEmailRows(
+                pending.data,
+                mergeResult,
+                pending.options.folder
+            );
+            const { method, remoteMethod, methodLabel } = getEmailListMethodMetadata(
+                pending.data,
+                pending.options
+            );
+            markNewlySyncedEmailRows(newlySyncedRows, pending.options.folder);
+            currentEmails = mergeResult.emails;
             currentMethod = method;
-            hasMoreEmails = data.has_more === true;
+            hasMoreEmails = pending.data.has_more === true;
             currentSkip = currentEmails.length;
 
-            cacheEmailListResponse(cacheKey, { ...data, emails: currentEmails, folder_summaries: folderSummaries }, method, methodLabel, {
-                remoteMethod,
-                folderSummaries
+            cacheEmailListResponse(pending.cacheKey, { ...pending.data, emails: currentEmails }, method, methodLabel, {
+                remoteMethod
             });
             updateEmailListHeader(methodLabel, currentEmails.length);
             renderEmailList(currentEmails);
@@ -208,9 +266,34 @@
                 }
             }
             scheduleEmailListLoadCheck(80);
-            if (announceNewRows) {
-                announceNewlySyncedEmailRows(data, newlySyncedRows, options.folder);
+            requestBodyRetentionForNewRows(newlySyncedRows, pending.options.folder);
+            if (newlySyncedRows.length > 0) {
+                scheduleNewEmailHighlightClear();
             }
+            pendingNewMailSyncs.delete(syncKey);
+            hideNewMailNotice();
+            return true;
+        }
+
+
+        function applyMergedRemoteEmailSync(cacheKey, data, options = {}) {
+            const syncKey = getPendingNewMailSyncKey(options.context?.account, options.context?.folder);
+            if (options.announceNewRows === true && Number(data.new_count || 0) > 0) {
+                return queuePendingNewMailSync(syncKey, cacheKey, data, options);
+            }
+
+            pendingNewMailSyncs.delete(syncKey);
+            hideNewMailNotice();
+            const mergedResult = mergeEmailListByStableKey(currentEmails, data.emails, options.folder);
+            const { method, remoteMethod, methodLabel } = getEmailListMethodMetadata(data, options);
+            currentEmails = mergedResult.emails;
+            currentMethod = method;
+            hasMoreEmails = data.has_more === true;
+            currentSkip = currentEmails.length;
+            cacheEmailListResponse(cacheKey, { ...data, emails: currentEmails }, method, methodLabel, { remoteMethod });
+            updateEmailListHeader(methodLabel, currentEmails.length);
+            renderEmailList(currentEmails);
+            scheduleEmailListLoadCheck(80);
             return mergedResult;
         }
 
@@ -235,9 +318,8 @@
                 }
 
                 applyEmailListResponse(cacheKey, data, {
-                    method: getRemoteMailboxMethodFallback(),
-                    methodLabel: data.method || 'Local Retention',
-                    disableLoadMore: true
+                    method: 'local',
+                    methodLabel: data.method || 'Local Retention'
                 });
                 return true;
             } catch (error) {
@@ -342,6 +424,7 @@
             selectedEmailIds.clear();
             updateEmailBatchActionBar();
             hideNewMailNotice();
+            pendingNewMailSyncs.delete(getPendingNewMailSyncKey(email, currentFolder));
             setMailSyncStatus('');
 
             const cacheKey = `${email}_${currentFolder}`;
@@ -397,6 +480,7 @@
 
             notice.hidden = true;
             notice.innerHTML = '';
+            notice.dataset.syncKey = '';
             notice.removeAttribute('role');
             notice.removeAttribute('tabindex');
             notice.onclick = null;
@@ -425,23 +509,34 @@
             return Number(data.new_count || 0) > 0 ? mergeResult.newEmails : [];
         }
 
-        function showNewMailNotice(newCount) {
+        function showNewMailNotice(newCount, syncKey = getPendingNewMailSyncKey()) {
             const notice = document.getElementById('newMailNotice');
             if (!notice || newCount <= 0) {
                 hideNewMailNotice();
                 return;
             }
 
+            const acceptPendingSync = () => applyPendingNewMailSync(syncKey);
             notice.hidden = false;
-            notice.setAttribute('role', 'status');
-            notice.removeAttribute('tabindex');
-            notice.onclick = null;
-            notice.onkeydown = null;
-            notice.innerHTML = `
-                <span>有 ${newCount} 封新邮件已同步并加入列表</span>
-                <span class="new-mail-notice__hint">已自动显示</span>
-            `;
+            notice.setAttribute('role', 'button');
+            notice.setAttribute('tabindex', '0');
+            notice.dataset.syncKey = syncKey;
+            notice.onclick = acceptPendingSync;
+            notice.onkeydown = event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    acceptPendingSync();
+                }
+            };
+            notice.replaceChildren();
+            const message = document.createElement('span');
+            message.textContent = `有 ${Number(newCount)} 封新邮件已同步`;
+            const hint = document.createElement('span');
+            hint.className = 'new-mail-notice__hint';
+            hint.textContent = '点击显示';
+            notice.append(message, hint);
         }
+
 
         function markNewlySyncedEmailRows(rows, fallbackFolder = currentFolder) {
             highlightedNewEmailKeys = new Set();
@@ -459,10 +554,10 @@
                 document.querySelectorAll('.email-item.newly-synced').forEach(item => {
                     item.classList.remove('newly-synced');
                 });
-            }, 3500);
+            }, NEW_EMAIL_HIGHLIGHT_CLEAR_DELAY_MS);
         }
 
-        function announceNewlySyncedEmailRows(data, rows, fallbackFolder = currentFolder) {
+        function announceNewlySyncedEmailRows(data, rows, fallbackFolder = currentFolder, syncKey = getPendingNewMailSyncKey()) {
             const reportedCount = Number(data.new_count || 0);
             const visibleCount = reportedCount > 0 ? reportedCount : rows.length;
             if (visibleCount <= 0) {
@@ -470,11 +565,7 @@
                 return;
             }
 
-            showNewMailNotice(visibleCount);
-            requestBodyRetentionForNewRows(rows, fallbackFolder);
-            if (rows.length > 0) {
-                scheduleNewEmailHighlightClear();
-            }
+            showNewMailNotice(visibleCount, syncKey);
         }
 
         function buildBodyRetentionItems(rows, fallbackFolder = currentFolder) {
@@ -524,7 +615,7 @@
 
         function buildEmailDetailRequestUrl(messageId, folder, selectedEmail = {}) {
             const query = new URLSearchParams({
-                method: currentMethod,
+                method: getCurrentEmailRemoteActionMethod(selectedEmail),
                 folder
             });
             if (isNormalMailboxListRequest()) {
@@ -582,13 +673,13 @@
 
         function buildAttachmentDownloadUrl(email, attachment) {
             const folder = encodeURIComponent(email?.folder || currentFolder || 'inbox');
-            const method = encodeURIComponent(currentMethod || 'graph');
+            const method = encodeURIComponent(getCurrentEmailRemoteActionMethod(email));
             return `/api/email/${encodeURIComponent(currentAccount)}/${encodeURIComponent(email.id)}/attachments/${encodeURIComponent(attachment.id)}?method=${method}&folder=${folder}`;
         }
 
         function buildAllAttachmentsDownloadUrl(email) {
             const folder = encodeURIComponent(email?.folder || currentFolder || 'inbox');
-            const method = encodeURIComponent(currentMethod || 'graph');
+            const method = encodeURIComponent(getCurrentEmailRemoteActionMethod(email));
             return `/api/email/${encodeURIComponent(currentAccount)}/${encodeURIComponent(email.id)}/attachments/download-all?method=${method}&folder=${folder}`;
         }
 
@@ -1137,7 +1228,11 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    currentEmailDetail = { ...data.email, folder: requestFolder };
+                    currentEmailDetail = {
+                        ...data.email,
+                        folder: requestFolder,
+                        id_mode: data.email?.id_mode || selectedEmail?.id_mode || ''
+                    };
                     renderEmailDetail(currentEmailDetail);
                     if (selectedEmail?.is_read === false) {
                         void requestMarkEmailsAsRead([{
@@ -1478,7 +1573,7 @@
             updateModalBodyState();
 
             const folder = encodeURIComponent(currentEmailDetail.folder || currentFolder || 'inbox');
-            const method = encodeURIComponent(currentMethod || 'graph');
+            const method = encodeURIComponent(getCurrentEmailRemoteActionMethod(currentEmailDetail));
             try {
                 const response = await fetchWithTimeout(
                     `/api/email/${encodeURIComponent(currentAccount)}/${encodeURIComponent(currentEmailDetail.id)}/raw?method=${method}&folder=${folder}`,

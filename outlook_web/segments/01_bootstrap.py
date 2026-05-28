@@ -27,7 +27,6 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.header import decode_header
-from email.utils import parsedate_to_datetime
 from typing import Optional, List, Dict, Any
 from urllib.parse import quote, urlparse, unquote
 from zoneinfo import ZoneInfo
@@ -38,6 +37,7 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from outlook_web.runtime import default_database_path, resource_path, resolve_secret_key, runtime_root
+from outlook_web.mail_datetime import parse_mail_datetime
 
 # 尝试导入 Flask-WTF CSRF 保护
 try:
@@ -951,6 +951,27 @@ def close_connection(exception):
         db.close()
 
 
+def get_index_columns(cursor, index_name: str) -> List[str]:
+    return [
+        row[2]
+        for row in cursor.execute(f'PRAGMA index_info({index_name})').fetchall()
+        if row[2]
+    ]
+
+
+def ensure_index_columns(cursor, index_name: str, table_name: str,
+                         expected_columns: List[str], create_sql: str) -> None:
+    """仅当索引缺失或列顺序变化时重建索引，避免每次启动都 DROP/CREATE。"""
+    indexes = {
+        row[1]
+        for row in cursor.execute(f'PRAGMA index_list({table_name})').fetchall()
+    }
+    if index_name in indexes and get_index_columns(cursor, index_name) == expected_columns:
+        return
+    cursor.execute(f'DROP INDEX IF EXISTS {index_name}')
+    cursor.execute(create_sql)
+
+
 def normalize_group_sort_orders_on_startup(cursor) -> None:
     """启动时归一化分组顺序，但保留已有自定义顺序。"""
     cursor.execute(
@@ -1121,6 +1142,7 @@ def init_db():
             recipients TEXT DEFAULT '',
             cc TEXT DEFAULT '',
             received_at TEXT DEFAULT '',
+            received_at_sort REAL DEFAULT 0,
             is_read INTEGER NOT NULL DEFAULT 0,
             has_attachments INTEGER NOT NULL DEFAULT 0,
             body_preview TEXT DEFAULT '',
@@ -1375,6 +1397,11 @@ def init_db():
         cursor.execute('ALTER TABLE temp_emails ADD COLUMN cloudflare_jwt TEXT')
     if 'cloudflare_address_id' not in temp_columns:
         cursor.execute('ALTER TABLE temp_emails ADD COLUMN cloudflare_address_id TEXT')
+
+    cursor.execute("PRAGMA table_info(retained_normal_mail_messages)")
+    retained_normal_mail_columns = {row[1] for row in cursor.fetchall()}
+    if 'received_at_sort' not in retained_normal_mail_columns:
+        cursor.execute('ALTER TABLE retained_normal_mail_messages ADD COLUMN received_at_sort REAL DEFAULT 0')
 
     cursor.execute("PRAGMA table_info(project_accounts)")
     project_account_columns = [col[1] for col in cursor.fetchall()]
@@ -1807,15 +1834,27 @@ def init_db():
         ON retained_normal_mail_messages(account_id, folder, provider_message_id, id_mode)
     ''')
 
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_retained_normal_mail_messages_list
-        ON retained_normal_mail_messages(account_id, folder, received_at DESC, id DESC)
-    ''')
+    ensure_index_columns(
+        cursor,
+        'idx_retained_normal_mail_messages_list',
+        'retained_normal_mail_messages',
+        ['account_id', 'folder', 'received_at_sort', 'id'],
+        '''
+        CREATE INDEX idx_retained_normal_mail_messages_list
+        ON retained_normal_mail_messages(account_id, folder, received_at_sort DESC, id DESC)
+        '''
+    )
 
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_retained_normal_mail_messages_body_cache
-        ON retained_normal_mail_messages(account_id, folder, body_cached, received_at DESC)
-    ''')
+    ensure_index_columns(
+        cursor,
+        'idx_retained_normal_mail_messages_body_cache',
+        'retained_normal_mail_messages',
+        ['account_id', 'folder', 'body_cached', 'received_at_sort'],
+        '''
+        CREATE INDEX idx_retained_normal_mail_messages_body_cache
+        ON retained_normal_mail_messages(account_id, folder, body_cached, received_at_sort DESC)
+        '''
+    )
 
     cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_forwarding_logs_account_created
@@ -1837,12 +1876,45 @@ def init_db():
         ON account_aliases(alias_email)
     ''')
 
+    # 回填历史保留邮件的规范化排序时间，保持旧数据库升级后分页顺序稳定。
+    backfill_retained_normal_mail_received_at_sort(conn)
+
     # 迁移现有明文数据为加密数据
     migrate_sensitive_data(conn)
 
     conn.commit()
     conn.close()
 
+
+
+def backfill_retained_normal_mail_received_at_sort(conn) -> int:
+    """为旧保留邮件行回填可排序时间戳；事务提交由调用方负责。"""
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            SELECT id, received_at
+            FROM retained_normal_mail_messages
+            WHERE COALESCE(received_at_sort, 0) = 0
+              AND COALESCE(received_at, '') <> ''
+        ''')
+    except sqlite3.OperationalError:
+        return 0
+
+    updates = []
+    for row_id, received_at in cursor.fetchall():
+        parsed = parse_mail_datetime(received_at)
+        if not parsed:
+            continue
+        updates.append((parsed.timestamp(), row_id))
+
+    if not updates:
+        return 0
+
+    cursor.executemany(
+        'UPDATE retained_normal_mail_messages SET received_at_sort = ? WHERE id = ?',
+        updates
+    )
+    return len(updates)
 
 def migrate_sensitive_data(conn):
     """迁移现有明文敏感数据为加密数据"""
