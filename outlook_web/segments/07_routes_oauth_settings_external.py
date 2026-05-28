@@ -205,11 +205,56 @@ NORMAL_MAIL_RETENTION_TEXT_COLUMNS = (
 )
 
 
+NORMAL_MAIL_RETENTION_CLEAR_STATUS_LOCK = threading.Lock()
+NORMAL_MAIL_RETENTION_CLEAR_STATUS = {
+    'state': 'idle',
+    'message': '',
+}
+
+
+def set_normal_mail_retention_clear_status(state: str, message: str):
+    with NORMAL_MAIL_RETENTION_CLEAR_STATUS_LOCK:
+        NORMAL_MAIL_RETENTION_CLEAR_STATUS.update({
+            'state': state,
+            'message': message,
+        })
+        return dict(NORMAL_MAIL_RETENTION_CLEAR_STATUS)
+
+
 def get_normal_mail_retention_clear_status():
-    return {
-        'state': 'idle',
-        'message': '',
-    }
+    with NORMAL_MAIL_RETENTION_CLEAR_STATUS_LOCK:
+        return dict(NORMAL_MAIL_RETENTION_CLEAR_STATUS)
+
+
+def clear_retained_normal_mail_cache_rows() -> int:
+    db = get_db()
+    cursor = db.execute('DELETE FROM retained_normal_mail_messages')
+    db.commit()
+    return int(cursor.rowcount if cursor.rowcount is not None else 0)
+
+
+def run_normal_mail_retention_clear_operation():
+    with app.app_context():
+        try:
+            deleted_count = clear_retained_normal_mail_cache_rows()
+        except Exception as exc:
+            set_normal_mail_retention_clear_status('failed', f'清理失败：{exc}')
+            return
+        set_normal_mail_retention_clear_status(
+            'succeeded',
+            f'已清理 {deleted_count} 封普通邮箱本地缓存邮件',
+        )
+
+
+def start_normal_mail_retention_clear_operation():
+    status = set_normal_mail_retention_clear_status('running', '正在清理普通邮箱本地缓存…')
+    worker = threading.Thread(
+        target=run_normal_mail_retention_clear_operation,
+        name='normal-mail-retention-clear',
+        daemon=True,
+    )
+    worker.start()
+    return status
 
 
 def get_normal_mail_retention_db_file_bytes() -> int:
@@ -260,6 +305,17 @@ def api_get_normal_mail_retention_status():
     return jsonify({
         'success': True,
         'status': get_normal_mail_retention_storage_stats(),
+    })
+
+
+@app.route('/api/settings/normal-mail-retention/clear', methods=['POST'])
+@login_required
+def api_clear_normal_mail_retention_cache():
+    """显式启动普通邮箱本地保留缓存清理。"""
+    status = start_normal_mail_retention_clear_operation()
+    return jsonify({
+        'success': True,
+        'status': status,
     })
 
 

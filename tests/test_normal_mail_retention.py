@@ -2,6 +2,7 @@ import importlib
 import json
 import os
 import sqlite3
+import time
 import sys
 import tempfile
 import unittest
@@ -50,6 +51,8 @@ class NormalMailRetentionTests(unittest.TestCase):
             )
             self.assertTrue(added)
             self.account = web_outlook_app.get_account_by_email('retained@example.com')
+            if hasattr(web_outlook_app, 'set_normal_mail_retention_clear_status'):
+                web_outlook_app.set_normal_mail_retention_clear_status('idle', '')
 
     def _remote_list_result(self):
         return {
@@ -246,6 +249,49 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertGreaterEqual(status['db_file_bytes'], 0)
         self.assertEqual(status['clear_status']['state'], 'idle')
         self.assertIn('message', status['clear_status'])
+
+    def _retained_message_count(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            row = db.execute(
+                'SELECT COUNT(*) AS count FROM retained_normal_mail_messages'
+            ).fetchone()
+        return int(row['count'])
+
+    def _wait_for_clear_status(self, expected_state='succeeded', attempts=20):
+        last_status = None
+        for _ in range(attempts):
+            response = self.client.get('/api/settings/normal-mail-retention/status')
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertTrue(payload['success'])
+            last_status = payload['status']['clear_status']
+            if last_status['state'] == expected_state:
+                return payload['status']
+            time.sleep(0.05)
+        self.fail(f'clear status did not become {expected_state}: {last_status}')
+
+    def test_clear_retention_cache_api_deletes_rows_without_disabling_switch(self):
+        with self.app.app_context():
+            self._seed_retention_status_rows()
+
+        response = self.client.post('/api/settings/normal-mail-retention/clear')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['status']['state'], 'running')
+
+        status = self._wait_for_clear_status()
+        self.assertEqual(status['saved_message_count'], 0)
+        self.assertEqual(status['cached_body_count'], 0)
+        self.assertEqual(self._retained_message_count(), 0)
+        with self.app.app_context():
+            saved_value = web_outlook_app.get_setting(
+                'normal_mail_local_retention_enabled',
+                'false',
+            )
+        self.assertEqual(saved_value, 'true')
 
     def _assert_graph_retained_row(self, row):
         self.assertEqual(row['folder'], 'junkemail')
