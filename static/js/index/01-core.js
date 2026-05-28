@@ -1128,7 +1128,6 @@
                 loadTags();
             }
             initColorPicker();
-            initColorPicker();
             initEmailListScroll();
             initAccountListScroll();
             initAccountPageSizeSelect();
@@ -1311,6 +1310,11 @@
         // 初始化颜色选择器
         function initColorPicker() {
             document.querySelectorAll('.color-option').forEach(option => {
+                if (option.dataset.colorPickerBound === 'true') {
+                    return;
+                }
+
+                option.dataset.colorPickerBound = 'true';
                 option.addEventListener('click', function () {
                     document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
                     this.classList.add('selected');

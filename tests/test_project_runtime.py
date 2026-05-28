@@ -1280,6 +1280,31 @@ class ProjectRuntimeTests(unittest.TestCase):
                 self.assertEqual(archive.read('invoice.txt'), b'second body')
 
 
+class FrontendColorPickerTests(unittest.TestCase):
+    def test_color_picker_initialization_block_calls_init_once(self):
+        core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
+
+        init_start = core_js.index("document.addEventListener('DOMContentLoaded'")
+        init_end = core_js.index('function handleExtensionLaunchHash', init_start)
+        init_block = core_js[init_start:init_end]
+
+        self.assertEqual(init_block.count('initColorPicker();'), 1)
+
+    def test_color_picker_binding_is_idempotent(self):
+        core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
+
+        function_start = core_js.index('function initColorPicker()')
+        function_end = core_js.index('// 初始化邮件列表滚动监听', function_start)
+        init_color_picker = core_js[function_start:function_end]
+
+        self.assertIn("option.dataset.colorPickerBound === 'true'", init_color_picker)
+        self.assertIn("option.dataset.colorPickerBound = 'true';", init_color_picker)
+        self.assertLess(
+            init_color_picker.index("option.dataset.colorPickerBound = 'true';"),
+            init_color_picker.index("option.addEventListener('click'")
+        )
+
+
 class FrontendTimezoneBootstrapTests(unittest.TestCase):
     def test_settings_js_no_longer_updates_timezone_in_add_account_flow(self):
         settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')

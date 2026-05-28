@@ -1541,13 +1541,13 @@ def email_matches_filters(account: Dict[str, Any], item: Dict[str, Any],
             return keyword in strip_html_content(body).lower()
         return False
 
-        detail = get_email_detail_graph(
-            account.get('client_id', ''),
-            account.get('refresh_token', ''),
-            str(item.get('id', '')),
-            proxy_url,
-            fallback_proxy_urls,
-        )
+    detail = get_email_detail_graph(
+        account.get('client_id', ''),
+        account.get('refresh_token', ''),
+        str(item.get('id', '')),
+        proxy_url,
+        fallback_proxy_urls,
+    )
     if not detail:
         return False
     body = str((detail.get('body') or {}).get('content', '') or '')

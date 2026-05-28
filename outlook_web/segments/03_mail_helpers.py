@@ -1116,15 +1116,15 @@ def get_raw_email_imap_generic(email_addr: str, imap_password: str, imap_host: s
     try:
         connection = create_imap_connection(imap_host, imap_port, proxy_url)
         connection.login(email_addr, imap_password)
-        selected_folder, search_mode = resolve_imap_folder(connection, provider, folder, readonly=True)
+        selected_folder, _folder_diagnostics = resolve_imap_folder(connection, provider, folder, readonly=True)
         if not selected_folder:
             return None
 
-        status, msg_data = fetch_imap_message_by_id(
+        status, msg_data, _fetch_mode, _fetch_attempts = fetch_imap_message(
             connection,
             str(message_id),
             '(RFC822)',
-            preferred_mode='uid' if search_mode == 'uid' else (search_mode or 'uid')
+            preferred_mode='uid'
         )
         if status != 'OK' or not msg_data or not msg_data[0]:
             return None

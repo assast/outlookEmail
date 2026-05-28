@@ -496,6 +496,55 @@ class ImapFolderResolutionTests(unittest.TestCase):
         self.assertEqual(result['email']['subject'], 'detail fallback payload')
         self.assertIn('detail body from sequence fetch', result['email']['body'])
 
+    def test_custom_imap_raw_fetch_uses_sequence_fallback_when_uid_fetch_has_no_payload(self):
+        raw_email = (
+            b"Subject: raw fallback payload\r\n"
+            b"From: sender@example.com\r\n"
+            b"To: user@example.com\r\n"
+            b"Date: Tue, 14 Apr 2026 08:20:50 +0000\r\n"
+            b"\r\n"
+            b"raw body from sequence fetch\r\n"
+        )
+
+        class RawFetchFallbackMail(FakeMail):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.uid_fetch_calls = []
+                self.sequence_fetch_calls = []
+
+            def uid(self, command, *args, **kwargs):
+                if command == 'FETCH':
+                    self.uid_fetch_calls.append((command, args))
+                    return 'OK', [None]
+                return super().uid(command, *args, **kwargs)
+
+            def fetch(self, message_id, query):
+                self.sequence_fetch_calls.append((message_id, query))
+                if str(message_id) == '9':
+                    return 'OK', [(
+                        b'9 (RFC822 {128}',
+                        raw_email,
+                    )]
+                return 'NO', [b'not found']
+
+        mail = RawFetchFallbackMail(selectable={'INBOX'}, list_entries=[b'(\\HasNoChildren) "." "INBOX"'])
+
+        with patch.object(web_outlook_app, 'create_imap_connection', return_value=mail):
+            result = web_outlook_app.get_raw_email_imap_generic(
+                email_addr='user@example.com',
+                imap_password='secret',
+                imap_host='imap.example.com',
+                imap_port=993,
+                message_id='9',
+                folder='inbox',
+                provider='custom',
+            )
+
+        self.assertEqual(result, raw_email)
+        self.assertEqual(mail.uid_fetch_calls, [('FETCH', ('9', '(RFC822)'))])
+        self.assertEqual(mail.sequence_fetch_calls, [('9', '(RFC822)')])
+        self.assertTrue(mail.logged_out)
+
     def test_custom_imap_uses_exists_count_when_search_returns_empty(self):
         raw_email = (
             b"Subject: exists fallback\r\n"
@@ -2552,6 +2601,46 @@ class MultiChannelForwardingTests(unittest.TestCase):
 
         self.assertEqual(email_mock.call_count, 0)
         self.assertEqual(tg_mock.call_count, 1)
+
+    def test_outlook_keyword_filter_matches_graph_detail_body(self):
+        account = {
+            'email': 'graph-forward@example.com',
+            'account_type': 'outlook',
+            'client_id': 'client-id',
+            'refresh_token': 'refresh-token',
+        }
+        item = {
+            'id': 'graph-message-1',
+            'folder': 'inbox',
+            'subject': 'regular subject',
+            'from': 'sender@example.com',
+            'body_preview': 'metadata preview without token',
+        }
+        detail = {
+            'body': {
+                'contentType': 'html',
+                'content': '<p>The Graph detail body contains unique-keyword-token.</p>',
+            }
+        }
+
+        with patch.object(web_outlook_app, 'get_account_proxy_url', return_value=''):
+            with patch.object(web_outlook_app, 'get_account_proxy_failover_urls', return_value=[]):
+                with patch.object(web_outlook_app, 'get_email_detail_graph', return_value=detail) as detail_mock:
+                    try:
+                        matched = web_outlook_app.email_matches_filters(
+                            account, item, keyword='unique-keyword-token'
+                        )
+                    except UnboundLocalError as exc:
+                        self.fail(f'Graph keyword body lookup raised UnboundLocalError: {exc}')
+
+        self.assertTrue(matched)
+        detail_mock.assert_called_once_with(
+            'client-id',
+            'refresh-token',
+            'graph-message-1',
+            '',
+            [],
+        )
 
     def test_process_forwarding_job_waits_between_accounts(self):
         with self.app.app_context():

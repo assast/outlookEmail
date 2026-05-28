@@ -39,9 +39,22 @@ def normalize_refresh_status_filter(status: Any) -> str:
     return 'all'
 
 
+def get_account_field(account: Any, field_name: str, default: Any) -> Any:
+    if account is None:
+        return default
+    if isinstance(account, dict):
+        return account.get(field_name, default)
+    try:
+        return account[field_name]
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return default
+
+
 def is_outlook_refreshable_account(account: Any) -> bool:
-    account_type = str((account or {}).get('account_type', 'outlook') if isinstance(account, dict) else account['account_type'] or 'outlook').strip().lower()
-    status = str((account or {}).get('status', 'active') if isinstance(account, dict) else account['status'] or 'active').strip().lower()
+    if account is None:
+        return False
+    account_type = str(get_account_field(account, 'account_type', 'outlook') or 'outlook').strip().lower()
+    status = str(get_account_field(account, 'status', 'active') or 'active').strip().lower()
     return account_type == 'outlook' and status == 'active'
 
 
