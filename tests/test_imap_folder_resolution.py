@@ -2512,6 +2512,71 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
         self.assertEqual(payload['stats']['last_refresh_status'], 'partial_failed')
         self.assertEqual(payload['stats']['last_refresh_time'], '2026-04-27 11:30:00')
 
+    def test_refresh_status_search_escapes_like_literals(self):
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.add_account(
+                'literal-percent@example.com',
+                'password123',
+                'client-id-percent',
+                'refresh-token-percent',
+                group_id=self.group_id,
+                remark='literal 100% ready',
+                forward_enabled=False,
+            ))
+            self.assertTrue(web_outlook_app.add_account(
+                'literal-underscore@example.com',
+                'password123',
+                'client-id-underscore',
+                'refresh-token-underscore',
+                group_id=self.group_id,
+                remark='literal under_score ready',
+                forward_enabled=False,
+            ))
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE accounts
+                SET remark = 'literal 100X ready', email = 'proxy-refresh-renamed@example.com'
+                WHERE email = ?
+                """,
+                ('proxy-refresh@outlook.com',),
+            )
+            db.commit()
+
+            percent_payload = web_outlook_app.query_refreshable_accounts(search='100%', page=1, page_size=20)
+            underscore_payload = web_outlook_app.query_refreshable_accounts(search='under_score', page=1, page_size=20)
+            ordinary_payload = web_outlook_app.query_refreshable_accounts(search='literal', page=1, page_size=20)
+
+        self.assertEqual([item['email'] for item in percent_payload['items']], ['literal-percent@example.com'])
+        self.assertEqual([item['email'] for item in underscore_payload['items']], ['literal-underscore@example.com'])
+        self.assertIn('literal-percent@example.com', [item['email'] for item in ordinary_payload['items']])
+        self.assertIn('literal-underscore@example.com', [item['email'] for item in ordinary_payload['items']])
+
+    def test_refresh_status_list_loads_account_tags_in_one_batch(self):
+        with self.app.app_context():
+            tag_id = web_outlook_app.add_tag('刷新标签', '#336699')
+            self.assertIsNotNone(tag_id)
+            self.assertTrue(web_outlook_app.add_account(
+                'tagged-refresh@example.com',
+                'password123',
+                'client-id-tagged',
+                'refresh-token-tagged',
+                group_id=self.group_id,
+                remark='带标签刷新账号',
+                forward_enabled=False,
+            ))
+            tagged_account = web_outlook_app.get_account_by_email('tagged-refresh@example.com')
+            self.assertIsNotNone(tagged_account)
+            self.assertTrue(web_outlook_app.add_account_tag(tagged_account['id'], tag_id))
+
+        with self.app.app_context():
+            with patch.object(web_outlook_app, 'get_account_tags', side_effect=AssertionError('unexpected per-account tag load')):
+                payload = web_outlook_app.query_refreshable_accounts(search='refresh', page=1, page_size=20)
+
+        tagged_items = [item for item in payload['items'] if item['email'] == 'tagged-refresh@example.com']
+        self.assertEqual(len(tagged_items), 1)
+        self.assertEqual([tag['name'] for tag in tagged_items[0]['tags']], ['刷新标签'])
+
     def test_group_api_persists_proxy_failover_fields(self):
         response = self.client.put(
             f'/api/groups/{self.group_id}',

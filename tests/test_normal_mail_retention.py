@@ -533,7 +533,6 @@ class NormalMailRetentionTests(unittest.TestCase):
             ['inbox-mid', 'inbox-old']
         )
 
-    @pytest.mark.xfail(strict=True, reason='mixed id modes currently expose duplicate retained provider ids')
     def test_local_retention_list_dedupes_mixed_id_modes_for_same_provider_id(self):
         with self.app.app_context():
             db = web_outlook_app.get_db()

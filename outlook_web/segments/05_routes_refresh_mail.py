@@ -66,6 +66,16 @@ def parse_log_pagination(limit_value: Any = None, offset_value: Any = 0,
     return max(1, min(limit, max_limit)), max(0, offset)
 
 
+def escape_sql_like_literal(value: Any, escape_char: str = '\\') -> str:
+    text = str(value or '')
+    return (
+        text
+        .replace(escape_char, escape_char + escape_char)
+        .replace('%', escape_char + '%')
+        .replace('_', escape_char + '_')
+    )
+
+
 def is_outlook_refreshable_account(account: Any) -> bool:
     if account is None:
         return False
@@ -185,9 +195,12 @@ def query_refreshable_accounts(db_conn=None, account_ids: Optional[List[int]] = 
 
     normalized_search = str(search or '').strip()
     if normalized_search:
-        where_clauses.append('(a.email LIKE ? OR COALESCE(a.remark, \'\') LIKE ? OR COALESCE(g.name, \'\') LIKE ?)')
-        like_value = f'%{normalized_search}%'
+        where_clauses.append(
+            "(a.email LIKE ? ESCAPE '\\' OR COALESCE(a.remark, '') LIKE ? ESCAPE '\\' OR COALESCE(g.name, '') LIKE ? ESCAPE '\\')"
+        )
+        like_value = f'%{escape_sql_like_literal(normalized_search)}%'
         params.extend([like_value, like_value, like_value])
+
 
     if refresh_status != 'all':
         where_clauses.append("COALESCE(NULLIF(a.last_refresh_status, ''), 'never') = ?")
@@ -243,10 +256,11 @@ def query_refreshable_accounts(db_conn=None, account_ids: Optional[List[int]] = 
         tuple([*params, page_size, offset])
     ).fetchall()
 
+    accounts = [resolve_account_record(row) for row in rows]
+    tags_by_account = get_account_tags_map([account['id'] for account in accounts], db)
     items = []
-    for row in rows:
-        account = resolve_account_record(row)
-        account['tags'] = get_account_tags(account['id'])
+    for account in accounts:
+        account['tags'] = tags_by_account.get(account['id'], [])
         items.append(serialize_account_summary(account))
 
     return {
@@ -3098,12 +3112,23 @@ def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
         folder_filter = 'AND folder = ?'
         params.append(folder_name)
 
+    dedupe_partition = 'account_id, folder, provider_message_id'
+    dedupe_order = '''
+        CASE WHEN body_cached = 1 THEN 0 ELSE 1 END,
+        received_at_sort DESC,
+        updated_at DESC,
+        id DESC
+    '''
     db = get_db()
     total_row = db.execute(
         f'''
         SELECT COUNT(*) AS count
-        FROM retained_normal_mail_messages
-        WHERE account_id = ? AND list_cached = 1 {folder_filter}
+        FROM (
+            SELECT 1
+            FROM retained_normal_mail_messages
+            WHERE account_id = ? AND list_cached = 1 {folder_filter}
+            GROUP BY account_id, folder, provider_message_id
+        ) retained_unique
         ''',
         params
     ).fetchone()
@@ -3114,8 +3139,18 @@ def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
         f'''
         SELECT provider_message_id, subject, sender, recipients, received_at,
                is_read, has_attachments, body_preview{body_column}, folder, id_mode
-        FROM retained_normal_mail_messages
-        WHERE account_id = ? AND list_cached = 1 {folder_filter}
+        FROM (
+            SELECT provider_message_id, subject, sender, recipients, received_at,
+                   is_read, has_attachments, body_preview{body_column}, folder, id_mode,
+                   received_at_sort, id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY {dedupe_partition}
+                       ORDER BY {dedupe_order}
+                   ) AS retained_rank
+            FROM retained_normal_mail_messages
+            WHERE account_id = ? AND list_cached = 1 {folder_filter}
+        ) ranked_retained
+        WHERE retained_rank = 1
         ORDER BY received_at_sort DESC, id DESC
         LIMIT ? OFFSET ?
         ''',
