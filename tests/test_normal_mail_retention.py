@@ -1076,10 +1076,45 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertIsNotNone(row['updated_at'])
         self.assertEqual(json.loads(row['attachments_json']), attachments)
 
+    def test_get_email_detail_disabled_retention_returns_detail_without_caching_body(self):
+        self._seed_graph_detail_retained_row()
+        graph_detail = self._graph_detail_payload()
+        attachments = self._graph_attachment_payload()
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'false',
+            ))
+
+        with patch.object(web_outlook_app, 'get_email_detail_graph', return_value=graph_detail) as detail_mock, \
+             patch.object(web_outlook_app, 'get_email_attachments_graph', return_value=attachments) as attachments_mock:
+            response = self.client.get(
+                '/api/email/retained@example.com/graph-detail-1?method=graph&folder=inbox&id_mode=graph'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['email']['subject'], 'Detail subject')
+        self.assertEqual(payload['email']['body'], '<p>Persist me</p>')
+        detail_mock.assert_called_once()
+        attachments_mock.assert_called_once()
+
+        rows = self._retained_detail_rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['provider_message_id'], 'graph-detail-1')
+        self.assertEqual(rows[0]['body_cached'], 0)
+        self.assertIsNone(rows[0]['body'])
+
     def test_get_email_detail_persists_successful_graph_body(self):
         self._seed_graph_detail_retained_row()
         graph_detail = self._graph_detail_payload()
         attachments = self._graph_attachment_payload()
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
 
         with patch.object(web_outlook_app, 'get_email_detail_graph', return_value=graph_detail) as detail_mock, \
              patch.object(web_outlook_app, 'get_email_attachments_graph', return_value=attachments) as attachments_mock:

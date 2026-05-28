@@ -2774,9 +2774,10 @@ def build_retained_detail_success_response(account: Dict[str, Any], folder: str,
                                            message_id: str, email_detail: Dict[str, Any],
                                            method: str, detail_source: str,
                                            id_mode: str = '') -> Dict[str, Any]:
-    upsert_retained_normal_mail_detail(
-        account, folder, message_id, email_detail, method, detail_source, id_mode
-    )
+    if is_normal_mail_local_retention_enabled():
+        upsert_retained_normal_mail_detail(
+            account, folder, message_id, email_detail, method, detail_source, id_mode
+        )
     return {'success': True, 'email': email_detail}
 
 
