@@ -3535,6 +3535,18 @@ def api_retain_email_bodies():
     account = get_account_by_email(email_addr)
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'})
+    if not is_normal_mail_local_retention_enabled():
+        return jsonify({
+            'success': False,
+            'error': '普通邮箱本地保留未启用',
+            'local_retention_enabled': False,
+            'cached_count': 0,
+            'skipped_count': len(items),
+            'failed_count': 0,
+            'limit': RETAINED_MAIL_BODY_FETCH_LIMIT,
+            'results': [],
+            'errors': [],
+        })
 
     return jsonify(retain_normal_mail_bodies(account, items))
 

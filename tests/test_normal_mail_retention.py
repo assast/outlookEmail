@@ -1194,12 +1194,51 @@ class NormalMailRetentionTests(unittest.TestCase):
         oauth_imap_mock.assert_not_called()
         generic_imap_mock.assert_not_called()
 
+    def test_retain_bodies_api_rejects_disabled_retention_without_fetching_detail(self):
+        items = [
+            {'id': 'retain-disabled-1', 'folder': 'inbox', 'id_mode': 'graph', 'method': 'graph'},
+        ]
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'false',
+            ))
+            web_outlook_app.upsert_retained_normal_mail_list_items(self.account, 'inbox', items)
+
+        with patch.object(web_outlook_app, 'get_email_detail_graph') as detail_mock, \
+             patch.object(web_outlook_app, 'get_email_attachments_graph') as attachments_mock:
+            response = self.client.post(
+                '/api/emails/retain-bodies',
+                json={
+                    'email': 'retained@example.com',
+                    'folder': 'inbox',
+                    'items': items,
+                }
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertFalse(payload['local_retention_enabled'])
+        self.assertIn('本地保留未启用', payload['error'])
+        detail_mock.assert_not_called()
+        attachments_mock.assert_not_called()
+
+        rows = self._retained_detail_rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['provider_message_id'], 'retain-disabled-1')
+        self.assertEqual(rows[0]['body_cached'], 0)
+
     def test_retain_bodies_api_fetches_and_persists_uncached_graph_bodies(self):
         items = [
             {'id': 'retain-body-1', 'folder': 'inbox', 'id_mode': 'graph', 'method': 'graph'},
             {'id': 'retain-body-2', 'folder': 'inbox', 'id_mode': 'graph', 'method': 'graph'},
         ]
         with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
             web_outlook_app.upsert_retained_normal_mail_list_items(self.account, 'inbox', items)
 
         def graph_detail(client_id, refresh_token, message_id, proxy_url, fallback_proxy_urls):
