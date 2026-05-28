@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from outlook_web.mail_datetime import parse_mail_datetime
@@ -2211,21 +2213,30 @@ def login_required(f):
     return decorated_function
 
 
+def normalize_api_key(value: Any) -> str:
+    """规范化 API Key，确保比较输入为稳定字符串。"""
+    return str(value or '').strip()
+
+
 def api_key_required(f):
     """API Key 验证装饰器（用于对外 API）"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # 从 Header 或查询参数获取 API Key
-        api_key = request.headers.get('X-API-Key') or request.args.get('api_key') or request.args.get('apikey')
+        api_key = normalize_api_key(
+            request.headers.get('X-API-Key')
+            or request.args.get('api_key')
+            or request.args.get('apikey')
+        )
         if not api_key:
             return jsonify({'success': False, 'error': '缺少 API Key，请通过 Header X-API-Key 或查询参数 api_key 提供'}), 401
 
         # 验证 API Key
-        stored_key = get_external_api_key()
+        stored_key = normalize_api_key(get_external_api_key())
         if not stored_key:
             return jsonify({'success': False, 'error': '未配置对外 API Key，请在系统设置中配置'}), 403
 
-        if api_key != stored_key:
+        if not secrets.compare_digest(api_key, stored_key):
             return jsonify({'success': False, 'error': 'API Key 无效'}), 401
 
         return f(*args, **kwargs)
