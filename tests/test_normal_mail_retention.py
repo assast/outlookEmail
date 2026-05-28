@@ -54,6 +54,8 @@ class NormalMailRetentionTests(unittest.TestCase):
             self.account = web_outlook_app.get_account_by_email('retained@example.com')
             if hasattr(web_outlook_app, 'set_normal_mail_retention_clear_status'):
                 web_outlook_app.set_normal_mail_retention_clear_status('idle', '普通邮箱本地缓存清理空闲')
+            if hasattr(web_outlook_app, 'clear_normal_mail_local_retention_enabled_cache'):
+                web_outlook_app.clear_normal_mail_local_retention_enabled_cache()
 
     def _remote_list_result(self):
         return {
@@ -86,6 +88,47 @@ class NormalMailRetentionTests(unittest.TestCase):
             'method': 'Graph API / IMAP',
             'has_more': False,
         }
+
+    def test_retention_enabled_setting_uses_process_cache(self):
+        with self.app.app_context():
+            web_outlook_app.clear_normal_mail_local_retention_enabled_cache()
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
+            self.assertTrue(web_outlook_app.is_normal_mail_local_retention_enabled())
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE settings
+                SET value = 'false'
+                WHERE key = 'normal_mail_local_retention_enabled'
+                """
+            )
+            db.commit()
+            self.assertTrue(web_outlook_app.is_normal_mail_local_retention_enabled())
+            web_outlook_app.clear_normal_mail_local_retention_enabled_cache()
+            self.assertFalse(web_outlook_app.is_normal_mail_local_retention_enabled())
+
+    def test_retention_setting_update_refreshes_process_cache(self):
+        with self.app.app_context():
+            web_outlook_app.clear_normal_mail_local_retention_enabled_cache()
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
+            self.assertTrue(web_outlook_app.is_normal_mail_local_retention_enabled())
+
+        response = self.client.put(
+            '/api/settings',
+            json={'normal_mail_local_retention_enabled': False},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        with self.app.app_context():
+            self.assertFalse(web_outlook_app.is_normal_mail_local_retention_enabled())
 
     def _retained_rows_for_account(self):
         with self.app.app_context():
@@ -338,6 +381,39 @@ class NormalMailRetentionTests(unittest.TestCase):
 
         status = self._wait_for_clear_status()
         self.assertEqual(status['clear_status']['state'], 'succeeded')
+
+    def test_clear_retained_normal_mail_cache_retries_locked_database(self):
+        with self.app.app_context():
+            self._seed_retention_status_rows()
+            db = web_outlook_app.get_db()
+            attempts = []
+
+            class FlakyDb:
+                def execute(self, sql, *args, **kwargs):
+                    if sql == 'DELETE FROM retained_normal_mail_messages' and not attempts:
+                        attempts.append('locked')
+                        raise sqlite3.OperationalError('database is locked')
+                    return db.execute(sql, *args, **kwargs)
+
+                def commit(self):
+                    return db.commit()
+
+                def rollback(self):
+                    return db.rollback()
+
+            with patch.object(
+                web_outlook_app,
+                'NORMAL_MAIL_RETENTION_CLEAR_RETRY_DELAY_SECONDS',
+                0,
+            ), patch.object(web_outlook_app, 'get_db', return_value=FlakyDb()):
+                deleted_count = web_outlook_app.clear_retained_normal_mail_cache_rows()
+
+            self.assertEqual(deleted_count, 2)
+            self.assertEqual(attempts, ['locked'])
+            row = db.execute(
+                'SELECT COUNT(*) AS count FROM retained_normal_mail_messages'
+            ).fetchone()
+            self.assertEqual(int(row['count']), 0)
 
     def _assert_graph_retained_row(self, row):
         self.assertEqual(row['folder'], 'junkemail')
@@ -822,6 +898,10 @@ class NormalMailRetentionTests(unittest.TestCase):
                 },
             ]
             web_outlook_app.upsert_retained_normal_mail_list_items(self.account, 'all', items)
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
             db.commit()
 
         with patch.object(web_outlook_app, 'fetch_account_emails') as fetch_mock:
@@ -885,6 +965,10 @@ class NormalMailRetentionTests(unittest.TestCase):
                     (self.account['id'], 'graph', 'Graph retained copy', 101.0, 1),
                 ]
             )
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
             db.commit()
 
         with patch.object(web_outlook_app, 'fetch_account_emails') as fetch_mock:
@@ -918,6 +1002,10 @@ class NormalMailRetentionTests(unittest.TestCase):
 
         with self.app.app_context():
             web_outlook_app.upsert_retained_normal_mail_list_items(self.account, 'inbox', items)
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
 
         with patch.object(web_outlook_app, 'fetch_account_emails') as fetch_mock:
             first_response = self.client.get(
@@ -1028,6 +1116,10 @@ class NormalMailRetentionTests(unittest.TestCase):
                 'graph',
                 'graph',
             )
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
 
         response = self.client.get(
             '/api/emails/retained@example.com?source=local&folder=inbox&keyword=secretneedle'
@@ -1037,6 +1129,36 @@ class NormalMailRetentionTests(unittest.TestCase):
         payload = response.get_json()
         self.assertTrue(payload['success'])
         self.assertEqual([item['id'] for item in payload['emails']], ['body-keyword-1'])
+
+    def test_email_filter_uses_cached_body_without_remote_detail(self):
+        account = {
+            'id': self.account['id'],
+            'email': 'retained@example.com',
+            'account_type': 'outlook',
+            'client_id': 'client-id',
+            'refresh_token': 'refresh-token',
+        }
+        item = {
+            'id': 'cached-body-filter',
+            'id_mode': 'uid',
+            'folder': 'inbox',
+            'subject': 'Routine subject',
+            'from': 'sender@example.com',
+            'body_preview': 'No keyword here',
+            'body': '<p>Cached body contains FastNeedle only.</p>',
+        }
+
+        with patch.object(web_outlook_app, 'get_email_detail_imap') as imap_detail_mock, \
+             patch.object(web_outlook_app, 'get_email_detail_graph') as graph_detail_mock:
+            matched = web_outlook_app.email_matches_filters(
+                account,
+                item,
+                keyword='fastneedle',
+            )
+
+        self.assertTrue(matched)
+        imap_detail_mock.assert_not_called()
+        graph_detail_mock.assert_not_called()
 
     def _seed_graph_detail_retained_row(self):
         with self.app.app_context():

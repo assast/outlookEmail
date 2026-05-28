@@ -1612,6 +1612,16 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('overflow-y: auto;', settings_css)
         self.assertIn('scrollbar-width: thin;', settings_css)
 
+    def test_retention_status_poll_uses_backoff_constants(self):
+        settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')
+
+        self.assertIn('NORMAL_MAIL_RETENTION_STATUS_INITIAL_POLL_MS = 2000', settings_js)
+        self.assertIn('NORMAL_MAIL_RETENTION_STATUS_MAX_POLL_MS = 10000', settings_js)
+        self.assertIn('function nextNormalMailRetentionStatusPollDelay()', settings_js)
+        self.assertIn('normalMailRetentionStatusPollDelayMs * 1.5', settings_js)
+        self.assertIn('resetNormalMailRetentionStatusPollDelay();', settings_js)
+        self.assertNotIn('}, 1000);', settings_js)
+
     def test_temp_email_list_uses_selected_tag_filters(self):
         temp_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '03-temp-emails.js').read_text(encoding='utf-8')
 

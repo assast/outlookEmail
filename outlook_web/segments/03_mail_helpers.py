@@ -955,7 +955,7 @@ def get_raw_email_imap(account: str, client_id: str, refresh_token: str, message
 def get_email_detail_imap(account: str, client_id: str, refresh_token: str, message_id: str,
                           folder: str = 'inbox', proxy_url: str = None,
                           fallback_proxy_urls: Optional[List[str]] = None,
-                          preferred_id_mode: str = 'sequence') -> Optional[Dict]:
+                          preferred_id_mode: str = 'uid') -> Optional[Dict]:
     """使用 IMAP 获取邮件详情"""
     access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
     if not access_token:
@@ -972,9 +972,9 @@ def get_email_detail_imap(account: str, client_id: str, refresh_token: str, mess
         if not selected_folder:
             return None
 
-        preferred_mode = str(preferred_id_mode or 'sequence').strip().lower()
+        preferred_mode = str(preferred_id_mode or 'uid').strip().lower()
         if preferred_mode not in {'uid', 'sequence'}:
-            preferred_mode = 'sequence'
+            preferred_mode = 'uid'
         status, msg_data, _fetch_mode, _fetch_attempts = fetch_imap_message(
             connection,
             message_id,

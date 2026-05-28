@@ -2002,6 +2002,10 @@ def set_setting(key: str, value: str) -> bool:
             VALUES (?, ?, CURRENT_TIMESTAMP)
         ''', (key, value))
         db.commit()
+        if key == 'normal_mail_local_retention_enabled':
+            cache_updater = globals().get('set_normal_mail_local_retention_enabled_cache')
+            if callable(cache_updater):
+                cache_updater(value)
         return True
     except Exception:
         return False

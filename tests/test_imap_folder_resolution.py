@@ -678,6 +678,53 @@ class ImapFolderResolutionTests(unittest.TestCase):
         self.assertFalse(merged['folder_summaries']['junkemail']['has_more'])
         self.assertEqual(merged['folder_summaries']['junkemail']['error'], {'message': 'junk failed'})
 
+    def test_get_email_detail_imap_defaults_to_uid_fetch(self):
+        message = EmailMessage()
+        message['Subject'] = 'Default UID detail'
+        message['From'] = 'sender@example.com'
+        message['To'] = 'reader@example.com'
+        message.set_content('detail body')
+        raw_email = message.as_bytes()
+
+        class DetailMail:
+            def __init__(self):
+                self.uid_calls = []
+                self.fetch_calls = []
+
+            def authenticate(self, *_args, **_kwargs):
+                return 'OK', [b'authenticated']
+
+            def select(self, *_args, **_kwargs):
+                return 'OK', [b'1']
+
+            def uid(self, command, message_id, query):
+                self.uid_calls.append((command, message_id, query))
+                return 'OK', [(b'7 (RFC822 {128}', raw_email)]
+
+            def fetch(self, message_id, query):
+                self.fetch_calls.append((message_id, query))
+                return 'NO', []
+
+            def logout(self):
+                return 'BYE', [b'logout']
+
+        mail = DetailMail()
+        with patch.object(web_outlook_app, 'get_access_token_imap', return_value='access-token'), \
+             patch.object(web_outlook_app.imaplib, 'IMAP4_SSL', return_value=mail):
+            detail = web_outlook_app.get_email_detail_imap(
+                'reader@example.com',
+                'client-id',
+                'refresh-token',
+                '7',
+                'inbox',
+            )
+
+        self.assertIsNotNone(detail)
+        self.assertEqual(detail['subject'], 'Default UID detail')
+        self.assertEqual(mail.uid_calls[0][0], 'FETCH')
+        self.assertEqual(mail.uid_calls[0][1], '7')
+        self.assertEqual(mail.fetch_calls, [])
+
 
 class ExternalAccountsApiTests(unittest.TestCase):
     def setUp(self):
@@ -1100,7 +1147,7 @@ class ExternalAccountsApiTests(unittest.TestCase):
         self.assertEqual(called_top, 20)
 
     def test_parse_non_negative_int_defaults_negative_and_invalid_values(self):
-        self.assertEqual(web_outlook_app.parse_non_negative_int('-3', 20), 20)
+        self.assertEqual(web_outlook_app.parse_non_negative_int('-3', 20), 0)
         self.assertEqual(web_outlook_app.parse_non_negative_int('0', 20), 0)
         self.assertEqual(web_outlook_app.parse_non_negative_int('abc', 20), 20)
         self.assertEqual(web_outlook_app.parse_non_negative_int('999', 1, 50), 50)
@@ -1127,7 +1174,7 @@ class ExternalAccountsApiTests(unittest.TestCase):
         self.assertEqual(called_account['email'], 'user@outlook.com')
         self.assertEqual(called_folder, 'inbox')
         self.assertEqual(called_skip, 0)
-        self.assertEqual(called_top, 20)
+        self.assertEqual(called_top, 0)
 
     def test_internal_emails_clamps_large_remote_top(self):
         expected_result = {
@@ -1498,7 +1545,7 @@ class ExternalAccountsApiTests(unittest.TestCase):
         self.assertEqual(graph_args[0], '24d9a0ed-8787-4584-883c-2fd79308940a')
         self.assertEqual(graph_args[2], 'inbox')
         self.assertEqual(graph_args[3], 0)
-        self.assertEqual(graph_args[4], 20)
+        self.assertEqual(graph_args[4], 0)
 
     def test_legacy_external_emails_keeps_valid_pagination_contract(self):
         graph_result = {

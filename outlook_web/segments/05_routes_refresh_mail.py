@@ -2389,9 +2389,30 @@ RETAINED_MAIL_KEY_LOOKUP_CHUNK_SIZE = 200
 RETAINED_MAIL_BODY_FETCH_LIMIT = 5
 
 
+NORMAL_MAIL_LOCAL_RETENTION_SETTING_CACHE: Optional[bool] = None
+
+
+def normalize_setting_bool(value: Any) -> bool:
+    return str(value or '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def set_normal_mail_local_retention_enabled_cache(value: Any) -> bool:
+    global NORMAL_MAIL_LOCAL_RETENTION_SETTING_CACHE
+    NORMAL_MAIL_LOCAL_RETENTION_SETTING_CACHE = normalize_setting_bool(value)
+    return NORMAL_MAIL_LOCAL_RETENTION_SETTING_CACHE
+
+
+def clear_normal_mail_local_retention_enabled_cache():
+    global NORMAL_MAIL_LOCAL_RETENTION_SETTING_CACHE
+    NORMAL_MAIL_LOCAL_RETENTION_SETTING_CACHE = None
+
+
 def is_normal_mail_local_retention_enabled() -> bool:
-    value = str(get_setting('normal_mail_local_retention_enabled', 'false')).strip().lower()
-    return value in {'1', 'true', 'yes', 'on'}
+    if NORMAL_MAIL_LOCAL_RETENTION_SETTING_CACHE is None:
+        set_normal_mail_local_retention_enabled_cache(
+            get_setting('normal_mail_local_retention_enabled', 'false')
+        )
+    return bool(NORMAL_MAIL_LOCAL_RETENTION_SETTING_CACHE)
 
 
 def retained_normal_mail_key(row: Dict[str, Any]) -> tuple:
@@ -2848,8 +2869,7 @@ def parse_non_negative_int(raw_value: Any, default: int, max_value: Optional[int
         value = int(raw_value)
     except (TypeError, ValueError):
         value = default
-    if value < 0:
-        value = default
+    value = max(0, value)
     return min(value, max_value) if max_value is not None else value
 
 

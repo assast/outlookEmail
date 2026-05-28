@@ -6,6 +6,9 @@
         let lastLoadedWebdavBackupSettings = null;
         let lastNormalMailRetentionStatus = null;
         let normalMailRetentionStatusPollTimer = null;
+        let normalMailRetentionStatusPollDelayMs = 0;
+        const NORMAL_MAIL_RETENTION_STATUS_INITIAL_POLL_MS = 2000;
+        const NORMAL_MAIL_RETENTION_STATUS_MAX_POLL_MS = 10000;
 
         function parseSettingsBoolean(value) {
             return String(value).toLowerCase() === 'true';
@@ -61,6 +64,24 @@
                 window.clearTimeout(normalMailRetentionStatusPollTimer);
                 normalMailRetentionStatusPollTimer = null;
             }
+            normalMailRetentionStatusPollDelayMs = 0;
+        }
+
+        function resetNormalMailRetentionStatusPollDelay() {
+            normalMailRetentionStatusPollDelayMs = NORMAL_MAIL_RETENTION_STATUS_INITIAL_POLL_MS;
+        }
+
+        function nextNormalMailRetentionStatusPollDelay() {
+            if (!normalMailRetentionStatusPollDelayMs) {
+                resetNormalMailRetentionStatusPollDelay();
+                return normalMailRetentionStatusPollDelayMs;
+            }
+            const delay = normalMailRetentionStatusPollDelayMs;
+            normalMailRetentionStatusPollDelayMs = Math.min(
+                NORMAL_MAIL_RETENTION_STATUS_MAX_POLL_MS,
+                normalMailRetentionStatusPollDelayMs * 1.5
+            );
+            return delay;
         }
 
         function scheduleNormalMailRetentionStatusPoll() {
@@ -68,7 +89,7 @@
             normalMailRetentionStatusPollTimer = window.setTimeout(async () => {
                 normalMailRetentionStatusPollTimer = null;
                 await loadNormalMailRetentionStatus({ silent: true });
-            }, 1000);
+            }, nextNormalMailRetentionStatusPollDelay());
         }
 
         async function loadNormalMailRetentionStatus(options = {}) {
@@ -100,6 +121,7 @@
                 if (!response.ok || !data.success) {
                     throw new Error(data.error || '启动普通邮箱本地缓存清理失败');
                 }
+                resetNormalMailRetentionStatusPollDelay();
                 updateNormalMailRetentionStats({
                     ...(lastNormalMailRetentionStatus || {}),
                     clear_status: data.status || { state: 'running', message: '正在清理普通邮箱本地缓存…' }
@@ -1231,6 +1253,7 @@
                     if (!clearResponse.ok || !clearData.success) {
                         throw new Error(clearData.error || '启动普通邮箱本地缓存清理失败');
                     }
+                    resetNormalMailRetentionStatusPollDelay();
                     updateNormalMailRetentionStats({
                         ...(lastNormalMailRetentionStatus || {}),
                         clear_status: clearData.status || { state: 'running', message: '正在清理普通邮箱本地缓存…' }

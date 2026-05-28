@@ -1537,6 +1537,10 @@ def email_matches_filters(account: Dict[str, Any], item: Dict[str, Any],
     if keyword in base_text:
         return True
 
+    cached_body = str(item.get('body') or '')
+    if cached_body and keyword in strip_html_content(cached_body).lower():
+        return True
+
     proxy_url = get_account_proxy_url(account)
     fallback_proxy_urls = get_account_proxy_failover_urls(account)
     if account.get('account_type') == 'imap':

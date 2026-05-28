@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import os
+import sqlite3
+import threading
+import time
+
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -113,16 +118,6 @@ def normalize_webdav_backup_setting_value(key: str, value) -> str:
     return str(value or '').strip()
 
 
-def parse_external_email_pagination_param(raw_value: Any, default: int, max_value: Optional[int] = None) -> int:
-    try:
-        value = int(raw_value)
-    except (TypeError, ValueError):
-        value = default
-    if value < 0:
-        value = default
-    return min(value, max_value) if max_value is not None else value
-
-
 def get_current_webdav_backup_setting_value(key: str) -> str:
     if key == 'webdav_backup_password':
         return get_setting_decrypted(key, '')
@@ -216,6 +211,8 @@ NORMAL_MAIL_RETENTION_TEXT_COLUMNS = (
 
 
 NORMAL_MAIL_RETENTION_CLEAR_STATUS_LOCK = threading.Lock()
+NORMAL_MAIL_RETENTION_CLEAR_RETRY_ATTEMPTS = 3
+NORMAL_MAIL_RETENTION_CLEAR_RETRY_DELAY_SECONDS = 0.05
 NORMAL_MAIL_RETENTION_CLEAR_STATUS = {
     'state': 'idle',
     'message': '普通邮箱本地缓存清理空闲',
@@ -236,11 +233,27 @@ def get_normal_mail_retention_clear_status():
         return dict(NORMAL_MAIL_RETENTION_CLEAR_STATUS)
 
 
+def is_sqlite_database_locked_error(exc: Exception) -> bool:
+    return isinstance(exc, sqlite3.OperationalError) and 'database is locked' in str(exc).lower()
+
+
 def clear_retained_normal_mail_cache_rows() -> int:
     db = get_db()
-    cursor = db.execute('DELETE FROM retained_normal_mail_messages')
-    db.commit()
-    return int(cursor.rowcount if cursor.rowcount is not None else 0)
+    last_error = None
+    for attempt in range(NORMAL_MAIL_RETENTION_CLEAR_RETRY_ATTEMPTS):
+        try:
+            cursor = db.execute('DELETE FROM retained_normal_mail_messages')
+            db.commit()
+            return int(cursor.rowcount if cursor.rowcount is not None else 0)
+        except sqlite3.OperationalError as exc:
+            db.rollback()
+            if not is_sqlite_database_locked_error(exc):
+                raise
+            last_error = exc
+            if attempt + 1 >= NORMAL_MAIL_RETENTION_CLEAR_RETRY_ATTEMPTS:
+                break
+            time.sleep(NORMAL_MAIL_RETENTION_CLEAR_RETRY_DELAY_SECONDS * (attempt + 1))
+    raise last_error or sqlite3.OperationalError('database is locked')
 
 
 def run_normal_mail_retention_clear_operation():
@@ -257,6 +270,11 @@ def run_normal_mail_retention_clear_operation():
 
 
 def start_normal_mail_retention_clear_operation():
+    worker = threading.Thread(
+        target=run_normal_mail_retention_clear_operation,
+        name='normal-mail-retention-clear',
+        daemon=True,
+    )
     with NORMAL_MAIL_RETENTION_CLEAR_STATUS_LOCK:
         if NORMAL_MAIL_RETENTION_CLEAR_STATUS.get('state') == 'running':
             status = dict(NORMAL_MAIL_RETENTION_CLEAR_STATUS)
@@ -266,14 +284,9 @@ def start_normal_mail_retention_clear_operation():
             'state': 'running',
             'message': '正在清理普通邮箱本地缓存…',
         })
+        worker.start()
         status = dict(NORMAL_MAIL_RETENTION_CLEAR_STATUS)
         status['already_running'] = False
-    worker = threading.Thread(
-        target=run_normal_mail_retention_clear_operation,
-        name='normal-mail-retention-clear',
-        daemon=True,
-    )
-    worker.start()
     return status
 
 
@@ -283,27 +296,36 @@ def get_normal_mail_retention_db_file_bytes() -> int:
     return max(0, int(os.path.getsize(DATABASE)))
 
 
-def build_normal_mail_retention_size_sql() -> str:
-    parts = [
-        f"length(CAST(coalesce({column}, '') AS BLOB))"
-        for column in NORMAL_MAIL_RETENTION_TEXT_COLUMNS
-    ]
-    return ' + '.join(parts)
+NORMAL_MAIL_RETENTION_SIZE_SQL_TERMS = tuple(
+    "length(CAST(coalesce(" + column + ", '') AS BLOB))"
+    for column in NORMAL_MAIL_RETENTION_TEXT_COLUMNS
+)
+NORMAL_MAIL_RETENTION_SIZE_SQL = ' + '.join(NORMAL_MAIL_RETENTION_SIZE_SQL_TERMS)
+
+
+def get_normal_mail_retention_size_sql() -> str:
+    return NORMAL_MAIL_RETENTION_SIZE_SQL
 
 
 def get_normal_mail_retention_storage_stats():
     db = get_db()
-    size_sql = build_normal_mail_retention_size_sql()
-    row = db.execute(
-        f'''
-        SELECT
-            COUNT(*) AS saved_message_count,
-            COALESCE(SUM(CASE WHEN body_cached = 1 THEN 1 ELSE 0 END), 0)
-                AS cached_body_count,
-            COALESCE(SUM({size_sql}), 0) AS estimated_retained_bytes
-        FROM retained_normal_mail_messages
-        '''
-    ).fetchone()
+    size_sql = get_normal_mail_retention_size_sql()
+    def query_retention_stats():
+        return db.execute(
+            f'''
+            SELECT
+                COUNT(*) AS saved_message_count,
+                COALESCE(SUM(CASE WHEN body_cached = 1 THEN 1 ELSE 0 END), 0)
+                    AS cached_body_count,
+                COALESCE(SUM({size_sql}), 0) AS estimated_retained_bytes
+            FROM retained_normal_mail_messages
+            '''
+        ).fetchone()
+
+    row = query_retention_stats()
+    clear_status = get_normal_mail_retention_clear_status()
+    if clear_status.get('state') == 'succeeded':
+        row = query_retention_stats()
 
     enabled_value = normalize_bool_setting_value(
         get_setting('normal_mail_local_retention_enabled', 'false')
@@ -314,7 +336,7 @@ def get_normal_mail_retention_storage_stats():
         'cached_body_count': int(row['cached_body_count'] or 0),
         'estimated_retained_bytes': int(row['estimated_retained_bytes'] or 0),
         'db_file_bytes': get_normal_mail_retention_db_file_bytes(),
-        'clear_status': get_normal_mail_retention_clear_status(),
+        'clear_status': clear_status,
     }
 
 
@@ -628,10 +650,12 @@ def api_update_settings():
     if 'normal_mail_local_retention_enabled' in data:
         retention_enabled = str(data['normal_mail_local_retention_enabled']).strip().lower()
         if retention_enabled in ('true', 'false'):
+            normalized_retention_enabled = normalize_bool_setting_value(retention_enabled)
             if set_setting(
                 'normal_mail_local_retention_enabled',
-                normalize_bool_setting_value(retention_enabled),
+                normalized_retention_enabled,
             ):
+                set_normal_mail_local_retention_enabled_cache(normalized_retention_enabled)
                 updated.append('普通邮箱本地保留开关')
             else:
                 errors.append('更新普通邮箱本地保留开关失败')
@@ -881,8 +905,8 @@ def api_external_get_emails():
     """对外 API：通过 API Key 获取邮件列表"""
     email_addr = get_query_arg_preserve_plus('email', '').strip()
     folder = request.args.get('folder', 'inbox').strip().lower()
-    skip = parse_external_email_pagination_param(request.args.get('skip', 0), 0)
-    top = parse_external_email_pagination_param(request.args.get('top', 20), 20, 50)
+    skip = parse_non_negative_int(request.args.get('skip', 0), 0)
+    top = parse_non_negative_int(request.args.get('top', 20), 20, 50)
 
     if not email_addr:
         return jsonify({'success': False, 'error': '缺少 email 参数'}), 400
