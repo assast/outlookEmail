@@ -3126,9 +3126,50 @@ def email_matches_local_retention_filters(item: Dict[str, Any], subject_contains
     return keyword in '\n'.join([subject, preview, body]).lower()
 
 
+def retained_mail_like_param(value: str) -> str:
+    return f'%{escape_sql_like_literal(str(value or "").lower())}%'
+
+
+def register_retained_mail_sql_functions(db) -> None:
+    db.create_function(
+        'retained_mail_strip_html',
+        1,
+        lambda value: strip_html_content(str(value or ''))
+    )
+
+
+def build_retained_mail_filter_sql(subject_contains: str = '',
+                                   from_contains: str = '',
+                                   keyword: str = '') -> tuple[str, List[Any]]:
+    clauses = []
+    params: List[Any] = []
+    if subject_contains:
+        clauses.append("LOWER(COALESCE(subject, '')) LIKE ? ESCAPE '\\'")
+        params.append(retained_mail_like_param(subject_contains))
+    if from_contains:
+        clauses.append("LOWER(COALESCE(sender, '')) LIKE ? ESCAPE '\\'")
+        params.append(retained_mail_like_param(from_contains))
+    if keyword:
+        keyword_param = retained_mail_like_param(keyword)
+        clauses.append(
+            """(
+                LOWER(COALESCE(subject, '')) LIKE ? ESCAPE '\\'
+                OR LOWER(COALESCE(body_preview, '')) LIKE ? ESCAPE '\\'
+                OR LOWER(retained_mail_strip_html(COALESCE(body, ''))) LIKE ? ESCAPE '\\'
+            )"""
+        )
+        params.extend([keyword_param, keyword_param, keyword_param])
+    if not clauses:
+        return '', []
+    return 'AND ' + ' AND '.join(clauses), params
+
+
 def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
                                     skip: int, top: int,
-                                    include_body: bool = False) -> Dict[str, Any]:
+                                    include_body: bool = False,
+                                    subject_contains: str = '',
+                                    from_contains: str = '',
+                                    keyword: str = '') -> Dict[str, Any]:
     folder_name = normalize_folder_name(folder)
     if folder_name not in VALID_MAIL_FOLDERS:
         return {
@@ -3150,28 +3191,15 @@ def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
         id DESC
     '''
     db = get_db()
-    total_row = db.execute(
-        f'''
-        SELECT COUNT(*) AS count
-        FROM (
-            SELECT 1
-            FROM retained_normal_mail_messages
-            WHERE account_id = ? AND list_cached = 1 {folder_filter}
-            GROUP BY account_id, folder, provider_message_id
-        ) retained_unique
-        ''',
-        params
-    ).fetchone()
-    total_count = int(total_row['count'] if total_row else 0)
-
-    body_column = ', body' if include_body else ''
-    rows = db.execute(
-        f'''
-        SELECT provider_message_id, subject, sender, recipients, received_at,
-               is_read, has_attachments, body_preview{body_column}, folder, id_mode
-        FROM (
+    if keyword:
+        register_retained_mail_sql_functions(db)
+    filter_sql, filter_params = build_retained_mail_filter_sql(
+        subject_contains, from_contains, keyword
+    )
+    cte_sql = f'''
+        WITH ranked_retained AS (
             SELECT provider_message_id, subject, sender, recipients, received_at,
-                   is_read, has_attachments, body_preview{body_column}, folder, id_mode,
+                   is_read, has_attachments, body_preview, body, folder, id_mode,
                    received_at_sort, id,
                    ROW_NUMBER() OVER (
                        PARTITION BY {dedupe_partition}
@@ -3179,12 +3207,32 @@ def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
                    ) AS retained_rank
             FROM retained_normal_mail_messages
             WHERE account_id = ? AND list_cached = 1 {folder_filter}
-        ) ranked_retained
-        WHERE retained_rank = 1
+        ),
+        filtered_retained AS (
+            SELECT *
+            FROM ranked_retained
+            WHERE retained_rank = 1 {filter_sql}
+        )
+    '''
+    total_row = db.execute(
+        cte_sql + '''
+        SELECT COUNT(*) AS count
+        FROM filtered_retained
+        ''',
+        params + filter_params
+    ).fetchone()
+    total_count = int(total_row['count'] if total_row else 0)
+
+    body_column = ', body' if include_body else ''
+    rows = db.execute(
+        cte_sql + f'''
+        SELECT provider_message_id, subject, sender, recipients, received_at,
+               is_read, has_attachments, body_preview{body_column}, folder, id_mode
+        FROM filtered_retained
         ORDER BY received_at_sort DESC, id DESC
         LIMIT ? OFFSET ?
         ''',
-        list(params) + [top + 1, skip]
+        params + filter_params + [top + 1, skip]
     ).fetchall()
 
     emails = [retained_mail_row_to_list_item(row) for row in rows[:top]]

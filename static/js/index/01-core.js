@@ -1,4 +1,4 @@
-        /* global closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, initAccountListScroll, initAccountPageSizeSelect, initAccountSearchScopeSelect, initAccountSelectionGestures, initColorPicker, initEmailListScroll, loadGroups, loadMoreCloudflareGlobalMessages, loadTags, renderEmailList, scheduleEmailListLoadCheck, searchAccounts */
+        /* global applyPendingNewMailSync, closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, hasPendingNewMailSync, initAccountListScroll, initAccountPageSizeSelect, initAccountSearchScopeSelect, initAccountSelectionGestures, initColorPicker, initEmailListScroll, loadGroups, loadMoreCloudflareGlobalMessages, loadTags, renderEmailList, scheduleEmailListLoadCheck, searchAccounts */
 
         // 全局状态
         let csrfToken = null;
@@ -425,6 +425,40 @@
             cacheKeys.forEach(cacheKey => {
                 delete emailListCache[cacheKey];
             });
+        }
+
+        function isNormalMailRetentionCache(cache) {
+            const method = String(cache?.method || '').trim().toLowerCase();
+            const methodLabel = String(cache?.method_label || '').trim().toLowerCase();
+            return cache?.local_retention === true
+                || method === 'local'
+                || methodLabel === 'local retention';
+        }
+
+        function invalidateNormalMailRetentionCaches(options = {}) {
+            Object.entries(emailListCache).forEach(([cacheKey, cacheValue]) => {
+                if (isNormalMailRetentionCache(cacheValue)) {
+                    delete emailListCache[cacheKey];
+                }
+            });
+
+            if (options.resetCurrentView === true && isNormalMailRetentionCache({
+                method: currentMethod,
+                local_retention: currentMethod === 'local'
+            })) {
+                currentEmails = [];
+                currentSkip = 0;
+                hasMoreEmails = false;
+                renderEmailList(currentEmails);
+                const methodTag = document.getElementById('methodTag');
+                if (methodTag) {
+                    methodTag.style.display = 'none';
+                }
+                const emailCount = document.getElementById('emailCount');
+                if (emailCount) {
+                    emailCount.textContent = '';
+                }
+            }
         }
 
         function canLoadMoreEmails() {
@@ -1367,6 +1401,12 @@
                     return loadMoreCloudflareGlobalMessages();
                 }
                 return;
+            }
+
+            if (typeof hasPendingNewMailSync === 'function'
+                && typeof applyPendingNewMailSync === 'function'
+                && hasPendingNewMailSync(currentAccount, currentFolder)) {
+                applyPendingNewMailSync();
             }
 
             isLoadingMore = true;

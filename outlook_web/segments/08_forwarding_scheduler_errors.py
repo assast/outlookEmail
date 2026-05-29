@@ -1426,12 +1426,17 @@ def handle_local_retention_list_request(account: Dict[str, Any], requested_email
         }
         add_resolved_account_metadata(result, requested_email, account)
         return jsonify(result)
-    include_body = bool(keyword)
-    result = fetch_retained_normal_mail_list(account, folder, skip, top, include_body=include_body)
+    result = fetch_retained_normal_mail_list(
+        account,
+        folder,
+        skip,
+        top,
+        include_body=bool(keyword),
+        subject_contains=subject_contains,
+        from_contains=from_contains,
+        keyword=keyword,
+    )
     if result.get('success'):
-        apply_email_list_filters(
-            account, result, True, subject_contains, from_contains, keyword
-        )
         add_resolved_account_metadata(result, requested_email, account)
     return jsonify(result)
 

@@ -1081,6 +1081,51 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertTrue(payload['has_more'])
         self.assertEqual([item['id'] for item in payload['emails']], ['iso-middle'])
 
+    def test_local_retention_filters_before_pagination(self):
+        items = []
+        for index in range(25):
+            is_match = index in {21, 22}
+            items.append({
+                'id': f'filtered-page-{index}',
+                'id_mode': 'uid',
+                'subject': 'Deep retained match' if is_match else f'Routine retained {index}',
+                'from': 'sender@example.com',
+                'to': 'reader@example.com',
+                'date': f'2026-05-27T12:{59 - index:02d}:00Z',
+                'is_read': True,
+                'has_attachments': False,
+                'body_preview': 'preview',
+            })
+        with self.app.app_context():
+            web_outlook_app.upsert_retained_normal_mail_list_items(self.account, 'inbox', items)
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
+
+        first_response = self.client.get(
+            '/api/emails/retained@example.com'
+            '?source=local&folder=inbox&subject_contains=deep&skip=0&top=1'
+        )
+        second_response = self.client.get(
+            '/api/emails/retained@example.com'
+            '?source=local&folder=inbox&subject_contains=deep&skip=1&top=1'
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        first_payload = first_response.get_json()
+        self.assertTrue(first_payload['success'])
+        self.assertEqual(first_payload['count'], 2)
+        self.assertTrue(first_payload['has_more'])
+        self.assertEqual([item['id'] for item in first_payload['emails']], ['filtered-page-21'])
+
+        self.assertEqual(second_response.status_code, 200)
+        second_payload = second_response.get_json()
+        self.assertTrue(second_payload['success'])
+        self.assertEqual(second_payload['count'], 2)
+        self.assertFalse(second_payload['has_more'])
+        self.assertEqual([item['id'] for item in second_payload['emails']], ['filtered-page-22'])
+
     def test_local_retention_keyword_search_checks_cached_body(self):
         with self.app.app_context():
             web_outlook_app.upsert_retained_normal_mail_list_items(

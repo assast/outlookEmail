@@ -1675,6 +1675,27 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('buildLoadMoreEmailsUrl(nextSkip)', core_js)
         self.assertNotIn('?method=${currentMethod}&folder=${currentFolder}&skip=${nextSkip}&top=20', core_js)
 
+    def test_local_retention_load_more_applies_pending_new_mail_first(self):
+        core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
+        emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+        load_more_block = core_js[
+            core_js.index('async function loadMoreEmails()'):
+            core_js.index('            isLoadingMore = true;', core_js.index('async function loadMoreEmails()'))
+        ]
+        self.assertIn('function hasPendingNewMailSync', emails_js)
+        self.assertIn('hasPendingNewMailSync(currentAccount, currentFolder)', load_more_block)
+        self.assertIn('applyPendingNewMailSync();', load_more_block)
+
+    def test_normal_mail_retention_clear_invalidates_frontend_cache(self):
+        core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
+        settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')
+
+        self.assertIn('function invalidateNormalMailRetentionCaches(options = {})', core_js)
+        self.assertIn('isNormalMailRetentionCache(cacheValue)', core_js)
+        self.assertIn("invalidateNormalMailRetentionCaches({ resetCurrentView: true });", settings_js)
+        self.assertIn('wasRetentionEnabled && !normalMailLocalRetentionEnabled', settings_js)
+
     def test_new_mail_notice_stages_rows_until_user_accepts(self):
         emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
 

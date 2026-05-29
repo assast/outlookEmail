@@ -210,6 +210,10 @@
             return `${account || ''}_${folder || 'all'}`;
         }
 
+        function hasPendingNewMailSync(account = currentAccount, folder = currentFolder) {
+            return pendingNewMailSyncs.has(getPendingNewMailSyncKey(account, folder));
+        }
+
         function updateEmailListCacheRemoteMetadata(cacheKey, data, options = {}) {
             const existingCache = emailListCache[cacheKey];
             if (!existingCache) {

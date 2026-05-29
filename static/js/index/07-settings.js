@@ -1,4 +1,4 @@
-        /* global accountsCache, allTags, closeAllModals, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, escapeHtml, formatAbsoluteDateTime, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, refreshVisibleAccountList, setAppTimeZone, setModalVisible, setSelectedForwardChannels, setShowAccountCreatedAt, setShowAccountSortOrder, setShowGroupId, setNormalMailLocalRetentionEnabled, showConfirmModal, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
+        /* global accountsCache, allTags, closeAllModals, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, escapeHtml, formatAbsoluteDateTime, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, invalidateNormalMailRetentionCaches, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, refreshVisibleAccountList, setAppTimeZone, setModalVisible, setSelectedForwardChannels, setShowAccountCreatedAt, setShowAccountSortOrder, setShowGroupId, setNormalMailLocalRetentionEnabled, showConfirmModal, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
 
         // ==================== 设置相关 ====================
         let settingsScrollSyncBound = false;
@@ -120,6 +120,9 @@
                 const data = await response.json();
                 if (!response.ok || !data.success) {
                     throw new Error(data.error || '启动普通邮箱本地缓存清理失败');
+                }
+                if (typeof invalidateNormalMailRetentionCaches === 'function') {
+                    invalidateNormalMailRetentionCaches({ resetCurrentView: true });
                 }
                 resetNormalMailRetentionStatusPollDelay();
                 updateNormalMailRetentionStats({
@@ -1246,12 +1249,19 @@
             setShowAccountSortOrder(showAccountSortOrder);
             setShowGroupId(showGroupId);
             setNormalMailLocalRetentionEnabled(normalMailLocalRetentionEnabled);
+            if (wasRetentionEnabled && !normalMailLocalRetentionEnabled
+                && typeof invalidateNormalMailRetentionCaches === 'function') {
+                invalidateNormalMailRetentionCaches({ resetCurrentView: true });
+            }
             if (shouldClearNormalMailRetentionCache) {
                 try {
                     const clearResponse = await fetch('/api/settings/normal-mail-retention/clear', { method: 'POST' });
                     const clearData = await clearResponse.json();
                     if (!clearResponse.ok || !clearData.success) {
                         throw new Error(clearData.error || '启动普通邮箱本地缓存清理失败');
+                    }
+                    if (typeof invalidateNormalMailRetentionCaches === 'function') {
+                        invalidateNormalMailRetentionCaches({ resetCurrentView: true });
                     }
                     resetNormalMailRetentionStatusPollDelay();
                     updateNormalMailRetentionStats({
