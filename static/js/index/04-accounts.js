@@ -382,8 +382,9 @@
             });
         }
 
-        // 存储待导出的分组ID
+        // 存储待导出的分组或账号 ID
         let pendingExportGroupIds = [];
+        let pendingExportAccountIds = [];
 
         // 导出选中的分组
         async function exportSelectedGroups() {
@@ -395,11 +396,26 @@
                 return;
             }
 
-            // 保存待导出的分组ID
             pendingExportGroupIds = groupIds;
+            pendingExportAccountIds = [];
 
             // 显示密码确认对话框
             hideExportModal();
+            showExportVerifyModal();
+        }
+
+        function startSelectedAccountExport(accountIds) {
+            const normalizedIds = Array.from(new Set((accountIds || [])
+                .map(accountId => parseInt(accountId, 10))
+                .filter(Number.isFinite)));
+
+            if (!normalizedIds.length) {
+                showToast('请先选择要导出的邮箱', 'error');
+                return;
+            }
+
+            pendingExportGroupIds = [];
+            pendingExportAccountIds = normalizedIds;
             showExportVerifyModal();
         }
 
@@ -448,17 +464,24 @@
 
                 const verifyToken = verifyData.verify_token;
 
+                const exportPayload = {
+                    verify_token: verifyToken
+                };
+                if (pendingExportAccountIds.length > 0) {
+                    exportPayload.account_ids = pendingExportAccountIds;
+                } else {
+                    exportPayload.group_ids = pendingExportGroupIds;
+                }
+
                 // 执行导出
                 const response = await fetch('/api/accounts/export-selected', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        group_ids: pendingExportGroupIds,
-                        verify_token: verifyToken
-                    })
+                    body: JSON.stringify(exportPayload)
                 });
 
-                if (response.ok) {
+                const contentType = response.headers.get('content-type') || '';
+                if (response.ok && !contentType.includes('application/json')) {
                     // 获取文件名
                     const contentDisposition = response.headers.get('Content-Disposition');
                     let filename = 'accounts.txt';

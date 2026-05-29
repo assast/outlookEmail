@@ -6,6 +6,16 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.56] - 2026-05-29
+
+### Added
+- 邮箱账号批量操作栏新增“导出”，可在按标签、搜索或当前列表筛选后直接导出已勾选的普通邮箱账号。
+- `/api/accounts/export-selected` 支持通过 `account_ids` 导出指定账号，同时保留原有 `group_ids` 导出选中分组能力。
+
+### Changed
+- 导出二次验证流程复用现有安全确认弹窗，并根据来源自动提交选中账号或选中分组。
+- API 文档、README 和排障文档补充选中账号导出说明。
+
 ## [2.0.55] - 2026-05-29
 
 ### Added

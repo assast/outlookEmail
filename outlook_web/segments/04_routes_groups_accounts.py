@@ -488,6 +488,41 @@ def build_group_export_content(group_ids: List[int]) -> Dict[str, Any]:
     }
 
 
+def load_accounts_by_ids_for_export(account_ids: List[int]) -> List[Dict[str, Any]]:
+    normalized_ids = normalize_account_ids(account_ids)
+    if not normalized_ids:
+        return []
+
+    db = get_db()
+    accounts_by_id = {}
+    for chunk_ids in chunk_account_ids(normalized_ids):
+        placeholders = ','.join('?' * len(chunk_ids))
+        rows = db.execute(f'''
+            SELECT a.*, g.name as group_name, g.color as group_color
+            FROM accounts a
+            LEFT JOIN groups g ON a.group_id = g.id
+            WHERE a.id IN ({placeholders})
+        ''', chunk_ids).fetchall()
+        for account in serialize_account_rows(rows, db):
+            accounts_by_id[int(account['id'])] = account
+
+    return [
+        accounts_by_id[account_id]
+        for account_id in normalized_ids
+        if account_id in accounts_by_id
+    ]
+
+
+def build_selected_account_export_content(account_ids: List[int]) -> Dict[str, Any]:
+    accounts = load_accounts_by_ids_for_export(account_ids)
+    lines = [format_account_export_line(account) for account in accounts]
+    return {
+        'content': '\n'.join(lines),
+        'total_count': len(accounts),
+        'account_ids': [int(account['id']) for account in accounts],
+    }
+
+
 def build_all_groups_export_content() -> Dict[str, Any]:
     groups = load_groups()
     return build_group_export_content([group['id'] for group in groups])
@@ -546,9 +581,10 @@ def api_export_all_accounts():
 @app.route('/api/accounts/export-selected', methods=['POST'])
 @login_required
 def api_export_selected_accounts():
-    """导出选中分组的邮箱账号为 TXT 文件（需要二次验证）"""
-    data = request.json
+    """导出选中分组或选中账号为 TXT 文件（需要二次验证）"""
+    data = request.get_json(silent=True) or {}
     group_ids = data.get('group_ids', [])
+    account_ids = data.get('account_ids', [])
     verify_token = data.get('verify_token')
 
     # 检查二次验证token（使用内存存储）
@@ -573,6 +609,31 @@ def api_export_selected_accounts():
     
     # 清除验证token（一次性使用）
     del export_verify_tokens[verify_token]
+
+    if account_ids:
+        export_payload = build_selected_account_export_content(account_ids)
+        total_count = export_payload['total_count']
+
+        if total_count == 0:
+            return jsonify({'success': False, 'error': '选中的账号不存在或没有可导出的邮箱账号'})
+
+        log_audit(
+            'export',
+            'selected_accounts',
+            ','.join(map(str, export_payload['account_ids'])),
+            f"导出选中的 {total_count} 个账号"
+        )
+
+        filename = f"selected_accounts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        encoded_filename = quote(filename)
+
+        return Response(
+            export_payload['content'],
+            mimetype='text/plain; charset=utf-8',
+            headers={
+                'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"
+            }
+        )
 
     if not group_ids:
         return jsonify({'success': False, 'error': '请选择要导出的分组'})

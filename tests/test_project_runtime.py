@@ -1004,6 +1004,54 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertIn('default-export@example.com', export_payload['content'])
         self.assertIn('group-export@example.com', export_payload['content'])
 
+    def test_export_selected_accounts_uses_selected_account_ids(self):
+        first_account_id = self._insert_account('first-selected-export@example.com')
+        second_account_id = self._insert_account('second-selected-export@example.com')
+        third_account_id = self._insert_account('third-selected-export@example.com')
+
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                UPDATE accounts
+                SET password = ?, client_id = ?, refresh_token = ?
+                WHERE id = ?
+                ''',
+                ('first-pass', 'first-client', 'first-refresh', first_account_id)
+            )
+            db.execute(
+                '''
+                UPDATE accounts
+                SET password = ?, client_id = ?, refresh_token = ?
+                WHERE id = ?
+                ''',
+                ('second-pass', 'second-client', 'second-refresh', second_account_id)
+            )
+            web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('export-pass'))
+            db.commit()
+
+        verify_response = self.client.post('/api/export/verify', json={'password': 'export-pass'})
+        self.assertEqual(verify_response.status_code, 200)
+        verify_payload = verify_response.get_json()
+        self.assertTrue(verify_payload['success'])
+
+        response = self.client.post('/api/accounts/export-selected', json={
+            'account_ids': [second_account_id, 999999, first_account_id],
+            'verify_token': verify_payload['verify_token'],
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/plain', response.content_type)
+        self.assertIn('selected_accounts_', response.headers.get('Content-Disposition', ''))
+        self.assertEqual(
+            response.get_data(as_text=True).splitlines(),
+            [
+                'second-selected-export@example.com----second-pass----second-client----second-refresh',
+                'first-selected-export@example.com----first-pass----first-client----first-refresh',
+            ]
+        )
+        self.assertNotIn('third-selected-export@example.com', response.get_data(as_text=True))
+
     def test_run_webdav_backup_uploads_all_group_export_file(self):
         self._insert_account('backup-upload@example.com', group_id=1)
         with self.app.app_context():

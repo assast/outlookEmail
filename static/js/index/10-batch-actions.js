@@ -1,4 +1,4 @@
-        /* global accountPaginationState, accountsCache, clearEmailSelection, closeModal, copyTextToClipboard, currentAccount, currentAccountListSource, currentEmailDetail, currentGroupId, deleteAccount, getSelectedForwardChannels, handleApiError, hideModal, invalidateAccountCaches, isTempEmailGroup, loadAccountsByGroup, loadGroups, loadTags, refreshVisibleAccountList, renderEmailList, selectedEmailIds, setModalVisible, showModal, showToast, updateBatchActionBar */
+        /* global accountPaginationState, accountsCache, clearEmailSelection, closeModal, copyTextToClipboard, currentAccount, currentAccountListSource, currentEmailDetail, currentGroupId, deleteAccount, getSelectedForwardChannels, handleApiError, hideModal, invalidateAccountCaches, isTempEmailGroup, loadAccountsByGroup, loadGroups, loadTags, refreshVisibleAccountList, renderEmailList, selectedEmailIds, setModalVisible, showModal, showToast, startSelectedAccountExport, updateBatchActionBar */
 
         // ==================== 批量操作 ====================
 
@@ -218,6 +218,7 @@
             const selectAllBtn = document.getElementById('accountSelectAllBtn');
             const batchRefreshBtn = document.getElementById('batchRefreshTokensBtn');
             const batchCopyBtn = document.getElementById('batchCopyEmailsBtn');
+            const batchExportBtn = document.getElementById('batchExportAccountsBtn');
             const batchEnableForwardingBtn = document.getElementById('batchEnableForwardingBtn');
             const batchDisableForwardingBtn = document.getElementById('batchDisableForwardingBtn');
             const batchAddTagBtn = document.getElementById('batchAddTagBtn');
@@ -239,6 +240,7 @@
                 : '';
 
             if (batchRefreshBtn) batchRefreshBtn.style.display = isTempContext ? 'none' : 'inline-flex';
+            if (batchExportBtn) batchExportBtn.style.display = isTempContext ? 'none' : 'inline-flex';
             if (batchEnableForwardingBtn) batchEnableForwardingBtn.style.display = isTempContext ? 'none' : 'inline-flex';
             if (batchDisableForwardingBtn) batchDisableForwardingBtn.style.display = isTempContext ? 'none' : 'inline-flex';
             if (batchMoveGroupBtn) batchMoveGroupBtn.style.display = isTempContext ? 'none' : 'inline-flex';
@@ -281,6 +283,10 @@
                             ? (checked.length > 1 ? `复制邮箱 (${checked.length})` : '复制邮箱')
                             : (checked.length > 1 ? `复制邮箱+别名 (${checked.length})` : '复制邮箱+别名');
                     }
+                }
+                if (batchExportBtn) {
+                    batchExportBtn.disabled = checked.length === 0;
+                    batchExportBtn.textContent = checked.length > 1 ? `导出 (${checked.length})` : '导出';
                 }
                 if (batchEnableForwardingBtn) {
                     batchEnableForwardingBtn.disabled = enableForwardingChecked.length === 0 || isForwardingUpdating;
@@ -327,6 +333,11 @@
                     batchCopyBtn.dataset.loading = 'false';
                     batchCopyBtn.textContent = isTempContext ? '复制邮箱' : '复制邮箱+别名';
                     batchCopyBtn.title = '';
+                }
+                if (batchExportBtn) {
+                    batchExportBtn.disabled = false;
+                    batchExportBtn.textContent = '导出';
+                    batchExportBtn.title = '';
                 }
                 if (batchEnableForwardingBtn) {
                     batchEnableForwardingBtn.disabled = false;
@@ -418,6 +429,21 @@
                 btn.dataset.loading = 'false';
                 updateBatchActionBar();
             }
+        }
+
+        function exportSelectedAccounts() {
+            if (isTempEmailGroup) {
+                showToast('临时邮箱暂不支持选中导出', 'error');
+                return;
+            }
+
+            const accountIds = getSelectedAccountIds();
+            if (!accountIds.length) {
+                showToast('请先选择要导出的邮箱', 'error');
+                return;
+            }
+
+            startSelectedAccountExport(accountIds);
         }
 
         async function refreshSelectedAccounts() {

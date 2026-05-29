@@ -51,7 +51,7 @@
 | POST | `/api/export/verify` | Session + CSRF | JSON | 获取导出二次验证令牌 |
 | GET | `/api/groups/<group_id>/export` | Session | `text/plain` 下载 | 导出单个分组账号 |
 | GET | `/api/accounts/export` | Session | `text/plain` 下载 | 导出全部账号 |
-| POST | `/api/accounts/export-selected` | Session + CSRF | `text/plain` 下载 | 导出选中分组账号 |
+| POST | `/api/accounts/export-selected` | Session + CSRF | `text/plain` 下载 | 导出选中分组或选中账号 |
 | GET | `/api/accounts` | Session | JSON | 获取账号列表 |
 | GET | `/api/accounts/search` | Session | JSON | 搜索账号 |
 | GET | `/api/accounts/<account_id>` | Session | JSON | 获取单个账号 |
@@ -494,7 +494,7 @@ curl -H "X-API-Key: your-api-key" \
 | POST | `/api/export/verify` | JSON: `password` | JSON，返回 `verify_token` |
 | GET | `/api/groups/<group_id>/export` | Query: `verify_token` | `text/plain` 文件下载 |
 | GET | `/api/accounts/export` | Query: `verify_token` | `text/plain` 文件下载 |
-| POST | `/api/accounts/export-selected` | JSON: `group_ids: number[]`、`verify_token` | `text/plain` 文件下载 |
+| POST | `/api/accounts/export-selected` | JSON: `group_ids: number[]` 或 `account_ids: number[]`、`verify_token` | `text/plain` 文件下载 |
 
 二次验证请求示例：
 
