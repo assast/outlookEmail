@@ -496,6 +496,55 @@ class ImapFolderResolutionTests(unittest.TestCase):
         self.assertEqual(result['email']['subject'], 'detail fallback payload')
         self.assertIn('detail body from sequence fetch', result['email']['body'])
 
+    def test_custom_imap_raw_fetch_uses_sequence_fallback_when_uid_fetch_has_no_payload(self):
+        raw_email = (
+            b"Subject: raw fallback payload\r\n"
+            b"From: sender@example.com\r\n"
+            b"To: user@example.com\r\n"
+            b"Date: Tue, 14 Apr 2026 08:20:50 +0000\r\n"
+            b"\r\n"
+            b"raw body from sequence fetch\r\n"
+        )
+
+        class RawFetchFallbackMail(FakeMail):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.uid_fetch_calls = []
+                self.sequence_fetch_calls = []
+
+            def uid(self, command, *args, **kwargs):
+                if command == 'FETCH':
+                    self.uid_fetch_calls.append((command, args))
+                    return 'OK', [None]
+                return super().uid(command, *args, **kwargs)
+
+            def fetch(self, message_id, query):
+                self.sequence_fetch_calls.append((message_id, query))
+                if str(message_id) == '9':
+                    return 'OK', [(
+                        b'9 (RFC822 {128}',
+                        raw_email,
+                    )]
+                return 'NO', [b'not found']
+
+        mail = RawFetchFallbackMail(selectable={'INBOX'}, list_entries=[b'(\\HasNoChildren) "." "INBOX"'])
+
+        with patch.object(web_outlook_app, 'create_imap_connection', return_value=mail):
+            result = web_outlook_app.get_raw_email_imap_generic(
+                email_addr='user@example.com',
+                imap_password='secret',
+                imap_host='imap.example.com',
+                imap_port=993,
+                message_id='9',
+                folder='inbox',
+                provider='custom',
+            )
+
+        self.assertEqual(result, raw_email)
+        self.assertEqual(mail.uid_fetch_calls, [('FETCH', ('9', '(RFC822)'))])
+        self.assertEqual(mail.sequence_fetch_calls, [('9', '(RFC822)')])
+        self.assertTrue(mail.logged_out)
+
     def test_custom_imap_uses_exists_count_when_search_returns_empty(self):
         raw_email = (
             b"Subject: exists fallback\r\n"
@@ -629,6 +678,53 @@ class ImapFolderResolutionTests(unittest.TestCase):
         self.assertFalse(merged['folder_summaries']['junkemail']['has_more'])
         self.assertEqual(merged['folder_summaries']['junkemail']['error'], {'message': 'junk failed'})
 
+    def test_get_email_detail_imap_defaults_to_uid_fetch(self):
+        message = EmailMessage()
+        message['Subject'] = 'Default UID detail'
+        message['From'] = 'sender@example.com'
+        message['To'] = 'reader@example.com'
+        message.set_content('detail body')
+        raw_email = message.as_bytes()
+
+        class DetailMail:
+            def __init__(self):
+                self.uid_calls = []
+                self.fetch_calls = []
+
+            def authenticate(self, *_args, **_kwargs):
+                return 'OK', [b'authenticated']
+
+            def select(self, *_args, **_kwargs):
+                return 'OK', [b'1']
+
+            def uid(self, command, message_id, query):
+                self.uid_calls.append((command, message_id, query))
+                return 'OK', [(b'7 (RFC822 {128}', raw_email)]
+
+            def fetch(self, message_id, query):
+                self.fetch_calls.append((message_id, query))
+                return 'NO', []
+
+            def logout(self):
+                return 'BYE', [b'logout']
+
+        mail = DetailMail()
+        with patch.object(web_outlook_app, 'get_access_token_imap', return_value='access-token'), \
+             patch.object(web_outlook_app.imaplib, 'IMAP4_SSL', return_value=mail):
+            detail = web_outlook_app.get_email_detail_imap(
+                'reader@example.com',
+                'client-id',
+                'refresh-token',
+                '7',
+                'inbox',
+            )
+
+        self.assertIsNotNone(detail)
+        self.assertEqual(detail['subject'], 'Default UID detail')
+        self.assertEqual(mail.uid_calls[0][0], 'FETCH')
+        self.assertEqual(mail.uid_calls[0][1], '7')
+        self.assertEqual(mail.fetch_calls, [])
+
 
 class ExternalAccountsApiTests(unittest.TestCase):
     def setUp(self):
@@ -665,6 +761,7 @@ class ExternalAccountsApiTests(unittest.TestCase):
 
             account = web_outlook_app.get_account_by_email('user@outlook.com')
             self.assertIsNotNone(account)
+            self.account_id = account['id']
 
             alias_ok, _, alias_errors = web_outlook_app.replace_account_aliases(
                 account['id'],
@@ -683,7 +780,247 @@ class ExternalAccountsApiTests(unittest.TestCase):
                 ''',
                 (account['id'], account['email'], 'manual', 'success', None)
             )
+            db.execute(
+                '''
+                UPDATE accounts
+                SET last_refresh_status = 'success',
+                    last_refresh_error = NULL,
+                    last_refresh_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                ''',
+                (account['id'],),
+            )
             db.commit()
+
+    def test_global_refresh_logs_clamps_invalid_and_large_pagination(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM account_refresh_logs')
+            for index in range(3):
+                db.execute(
+                    """
+                    INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message, created_at)
+                    VALUES (?, ?, 'manual', 'success', NULL, datetime('now', ?))
+                    """,
+                    (self.account_id, f'user-{index}@outlook.com', f'-{index} minutes')
+                )
+            db.commit()
+
+        invalid_response = self.client.get('/api/accounts/refresh-logs?limit=abc&offset=bad')
+        self.assertEqual(invalid_response.status_code, 200)
+        invalid_payload = invalid_response.get_json()
+        self.assertTrue(invalid_payload['success'])
+        self.assertIn('logs', invalid_payload)
+
+        large_response = self.client.get('/api/accounts/refresh-logs?limit=999999&offset=0')
+        self.assertEqual(large_response.status_code, 200)
+        with patch.object(web_outlook_app, 'get_db') as db_mock:
+            db_mock.return_value.execute.return_value.fetchall.return_value = []
+            self.client.get('/api/accounts/refresh-logs?limit=999999&offset=-5')
+        execute_args = db_mock.return_value.execute.call_args.args
+        self.assertEqual(execute_args[1], (web_outlook_app.LOG_PAGINATION_MAX_LIMIT, 0))
+
+    def test_refresh_logs_prefer_current_account_email_over_log_email(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        current_email = 'current-user@outlook.com'
+        log_email = 'old-log-user@outlook.com'
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM account_refresh_logs')
+            db.execute(
+                'UPDATE accounts SET email = ? WHERE id = ?',
+                (current_email, self.account_id),
+            )
+            db.execute(
+                '''
+                INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message, created_at)
+                VALUES (?, ?, 'manual', 'success', NULL, '2026-05-28 10:00:00')
+                ''',
+                (self.account_id, log_email),
+            )
+            db.commit()
+
+        global_response = self.client.get('/api/accounts/refresh-logs')
+        self.assertEqual(global_response.status_code, 200)
+        global_payload = global_response.get_json()
+        self.assertTrue(global_payload['success'])
+        self.assertEqual(global_payload['logs'][0]['account_email'], current_email)
+        self.assertEqual(global_payload['logs'][0]['account_id'], self.account_id)
+        self.assertEqual(global_payload['logs'][0]['refresh_type'], 'manual')
+        self.assertEqual(global_payload['logs'][0]['status'], 'success')
+        self.assertIn('created_at', global_payload['logs'][0])
+
+        account_response = self.client.get(f'/api/accounts/{self.account_id}/refresh-logs')
+        self.assertEqual(account_response.status_code, 200)
+        account_payload = account_response.get_json()
+        self.assertTrue(account_payload['success'])
+        self.assertEqual(account_payload['logs'][0]['account_email'], current_email)
+
+    def test_refresh_logs_fall_back_to_log_email_when_account_missing(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        log_email = 'deleted-account-log@outlook.com'
+        missing_account_id = self.account_id + 1000
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM account_refresh_logs')
+            db.commit()
+            db.execute('PRAGMA foreign_keys = OFF')
+            db.execute(
+                '''
+                INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message, created_at)
+                VALUES (?, ?, 'manual', 'failed', 'gone', '2026-05-28 10:00:00')
+                ''',
+                (missing_account_id, log_email),
+            )
+            db.commit()
+            db.execute('PRAGMA foreign_keys = ON')
+
+        response = self.client.get('/api/accounts/refresh-logs')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['logs'][0]['account_email'], log_email)
+        self.assertEqual(payload['logs'][0]['account_id'], missing_account_id)
+        self.assertEqual(payload['logs'][0]['error_message'], 'gone')
+
+    def test_account_refresh_logs_clamps_invalid_and_large_pagination(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        invalid_response = self.client.get(f'/api/accounts/{self.account_id}/refresh-logs?limit=abc&offset=bad')
+        self.assertEqual(invalid_response.status_code, 200)
+        payload = invalid_response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertIn('logs', payload)
+
+        with patch.object(web_outlook_app, 'get_db') as db_mock:
+            db_mock.return_value.execute.return_value.fetchall.return_value = []
+            self.client.get(f'/api/accounts/{self.account_id}/refresh-logs?limit=999999&offset=-5')
+        execute_args = db_mock.return_value.execute.call_args.args
+        self.assertEqual(execute_args[1], (self.account_id, web_outlook_app.LOG_PAGINATION_MAX_LIMIT, 0))
+
+    def test_failed_refresh_logs_keep_json_shape_with_ignored_pagination_inputs(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE accounts
+                SET last_refresh_status = 'failed',
+                    last_refresh_error = 'expired token',
+                    last_refresh_at = '2026-04-27 11:00:00'
+                WHERE id = ?
+                """,
+                (self.account_id,),
+            )
+            db.commit()
+
+        response = self.client.get('/api/accounts/refresh-logs/failed?limit=abc&offset=bad')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertIn('logs', payload)
+        self.assertTrue(payload['logs'])
+        self.assertIn('account_email', payload['logs'][0])
+        self.assertIn('refresh_type', payload['logs'][0])
+
+    def test_global_forwarding_logs_clamps_invalid_and_large_pagination(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM forwarding_logs')
+            for index in range(3):
+                db.execute(
+                    """
+                    INSERT INTO forwarding_logs (account_id, account_email, message_id, channel, status, error_message, created_at)
+                    VALUES (?, ?, ?, 'smtp', 'success', NULL, datetime('now', ?))
+                    """,
+                    (self.account_id, 'user@outlook.com', f'msg-{index}', f'-{index} minutes')
+                )
+            db.commit()
+
+        invalid_response = self.client.get('/api/accounts/forwarding-logs?limit=abc&offset=bad')
+        self.assertEqual(invalid_response.status_code, 200)
+        invalid_payload = invalid_response.get_json()
+        self.assertTrue(invalid_payload['success'])
+        self.assertIn('logs', invalid_payload)
+
+        with patch.object(web_outlook_app, 'get_db') as db_mock:
+            db_mock.return_value.execute.return_value.fetchall.return_value = []
+            self.client.get('/api/accounts/forwarding-logs?limit=999999&offset=-5')
+        execute_args = db_mock.return_value.execute.call_args.args
+        self.assertEqual(execute_args[1], (web_outlook_app.LOG_PAGINATION_MAX_LIMIT, 0))
+
+    def test_failed_forwarding_logs_clamps_invalid_and_large_pagination(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        invalid_response = self.client.get('/api/accounts/forwarding-logs/failed?limit=abc&offset=bad')
+        self.assertEqual(invalid_response.status_code, 200)
+        payload = invalid_response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertIn('logs', payload)
+
+        with patch.object(web_outlook_app, 'get_db') as db_mock:
+            db_mock.return_value.execute.return_value.fetchall.return_value = []
+            self.client.get('/api/accounts/forwarding-logs/failed?limit=999999&offset=-5')
+        execute_args = db_mock.return_value.execute.call_args.args
+        self.assertEqual(execute_args[1], (web_outlook_app.LOG_PAGINATION_MAX_LIMIT, 0))
+
+    def test_account_forwarding_logs_clamps_and_filters_by_account(self):
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM forwarding_logs')
+            db.execute(
+                """
+                INSERT INTO forwarding_logs (account_id, account_email, message_id, channel, status, error_message, created_at)
+                VALUES (?, ?, 'target-msg', 'smtp', 'failed', 'boom', datetime('now'))
+                """,
+                (self.account_id, 'user@outlook.com')
+            )
+            self.assertTrue(web_outlook_app.add_account(
+                'other@outlook.com',
+                'password123',
+                'other-client-id',
+                'other-refresh-token',
+                group_id=1,
+            ))
+            other_account = web_outlook_app.get_account_by_email('other@outlook.com')
+            self.assertIsNotNone(other_account)
+            db.execute(
+                """
+                INSERT INTO forwarding_logs (account_id, account_email, message_id, channel, status, error_message, created_at)
+                VALUES (?, ?, 'other-msg', 'smtp', 'failed', 'boom', datetime('now'))
+                """,
+                (other_account['id'], 'other@outlook.com')
+            )
+            db.commit()
+
+        invalid_response = self.client.get(f'/api/accounts/{self.account_id}/forwarding-logs?limit=abc&offset=bad')
+        self.assertEqual(invalid_response.status_code, 200)
+        payload = invalid_response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual([row['message_id'] for row in payload['logs']], ['target-msg'])
+        self.assertIn('account', payload)
+
+        with patch.object(web_outlook_app, 'get_db') as db_mock:
+            db_mock.return_value.execute.return_value.fetchall.return_value = []
+            with patch.object(web_outlook_app, 'get_account_by_id', return_value={
+                'id': self.account_id,
+                'email': 'user@outlook.com',
+                'status': 'active',
+                'forward_enabled': True,
+                'forward_last_checked_at': '',
+            }):
+                self.client.get(f'/api/accounts/{self.account_id}/forwarding-logs?limit=999999&offset=-5')
+        execute_args = db_mock.return_value.execute.call_args.args
+        self.assertEqual(execute_args[1], (self.account_id, web_outlook_app.LOG_PAGINATION_MAX_LIMIT, 0))
 
     def test_external_accounts_requires_api_key(self):
         response = self.client.get('/api/external/accounts')
@@ -700,6 +1037,38 @@ class ExternalAccountsApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertFalse(payload['success'])
         self.assertIn('API Key', payload['error'])
+
+    def test_external_accounts_rejects_mismatched_api_key(self):
+        response = self.client.get(
+            '/api/external/accounts',
+            headers={'X-API-Key': 'wrong-external-key'}
+        )
+
+        self.assertEqual(response.status_code, 401)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertEqual(payload['error'], 'API Key 无效')
+
+    def test_external_accounts_uses_constant_time_api_key_compare(self):
+        original_compare_digest = web_outlook_app.secrets.compare_digest
+
+        with patch.object(
+            web_outlook_app.secrets,
+            'compare_digest',
+            wraps=original_compare_digest,
+        ) as compare_digest_mock:
+            response = self.client.get(
+                '/api/external/accounts?group_id=1',
+                headers={'X-API-Key': ' test-external-key '}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        compare_digest_mock.assert_called_once_with(
+            'test-external-key',
+            'test-external-key',
+        )
 
     def test_internal_emails_requires_login(self):
         response = self.client.get('/api/emails/user@outlook.com?folder=inbox')
@@ -776,6 +1145,60 @@ class ExternalAccountsApiTests(unittest.TestCase):
         self.assertEqual(called_folder, 'inbox')
         self.assertEqual(called_skip, 2)
         self.assertEqual(called_top, 20)
+
+    def test_parse_non_negative_int_defaults_negative_and_invalid_values(self):
+        self.assertEqual(web_outlook_app.parse_non_negative_int('-3', 20), 0)
+        self.assertEqual(web_outlook_app.parse_non_negative_int('0', 20), 0)
+        self.assertEqual(web_outlook_app.parse_non_negative_int('abc', 20), 20)
+        self.assertEqual(web_outlook_app.parse_non_negative_int('999', 1, 50), 50)
+
+    def test_internal_emails_clamps_invalid_remote_pagination(self):
+        expected_result = {
+            'success': True,
+            'emails': [],
+            'method': 'Graph API',
+            'has_more': False,
+        }
+
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+
+        with patch.object(web_outlook_app, 'fetch_account_emails', return_value=expected_result) as fetch_mock:
+            response = self.client.get('/api/emails/user@outlook.com?folder=inbox&skip=abc&top=-3')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        called_account, called_folder, called_skip, called_top = fetch_mock.call_args.args
+        self.assertEqual(called_account['email'], 'user@outlook.com')
+        self.assertEqual(called_folder, 'inbox')
+        self.assertEqual(called_skip, 0)
+        self.assertEqual(called_top, 0)
+
+    def test_internal_emails_clamps_large_remote_top(self):
+        expected_result = {
+            'success': True,
+            'emails': [],
+            'method': 'Graph API',
+            'has_more': False,
+        }
+
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+
+        with patch.object(web_outlook_app, 'fetch_account_emails', return_value=expected_result) as fetch_mock:
+            response = self.client.get('/api/emails/user@outlook.com?folder=inbox&skip=-5&top=999')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        called_account, called_folder, called_skip, called_top = fetch_mock.call_args.args
+        self.assertEqual(called_account['email'], 'user@outlook.com')
+        self.assertEqual(called_folder, 'inbox')
+        self.assertEqual(called_skip, 0)
+        self.assertEqual(called_top, 50)
 
     def test_internal_emails_plus_address_prefers_exact_match(self):
         with self.app.app_context():
@@ -1061,6 +1484,102 @@ class ExternalAccountsApiTests(unittest.TestCase):
         self.assertEqual(called_folder, 'inbox')
         self.assertEqual(called_skip, 0)
         self.assertEqual(called_top, 1)
+
+    def test_external_emails_clamps_invalid_remote_pagination(self):
+        expected_result = {
+            'success': True,
+            'emails': [],
+            'method': 'Graph API',
+            'has_more': False,
+        }
+
+        with patch.object(web_outlook_app, 'fetch_account_emails', return_value=expected_result) as fetch_mock:
+            response = self.client.get(
+                '/api/external/emails?email=user@outlook.com&folder=inbox&skip=bad&top=999',
+                headers={'X-API-Key': 'test-external-key'}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        called_account, called_folder, called_skip, called_top = fetch_mock.call_args.args
+        self.assertEqual(called_account['email'], 'user@outlook.com')
+        self.assertEqual(called_folder, 'inbox')
+        self.assertEqual(called_skip, 0)
+        self.assertEqual(called_top, 50)
+
+    def test_legacy_external_emails_clamps_non_numeric_and_negative_pagination(self):
+        expected_result = {
+            'success': True,
+            'emails': [],
+            'method': 'Graph API',
+            'has_more': False,
+        }
+
+        original_view = self.app.view_functions['api_external_get_emails']
+        self.app.view_functions['api_external_get_emails'] = web_outlook_app.api_key_required(
+            web_outlook_app.api_external_get_emails
+        )
+        try:
+            with patch.object(web_outlook_app, 'get_emails_graph', return_value=expected_result) as graph_mock, \
+                    patch.object(web_outlook_app, 'get_emails_imap_with_server') as imap_mock:
+                response = self.client.get(
+                    '/api/external/emails?email=user@outlook.com&folder=inbox&skip=abc&top=-3',
+                    headers={'X-API-Key': 'test-external-key'},
+                )
+        finally:
+            self.app.view_functions['api_external_get_emails'] = original_view
+
+        status_code = response.status_code
+        self.assertNotEqual(status_code, 500)
+        self.assertEqual(status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['method'], 'Graph API')
+        self.assertIn('emails', payload)
+        self.assertIn('has_more', payload)
+        imap_mock.assert_not_called()
+
+        graph_args = graph_mock.call_args.args
+        self.assertEqual(graph_args[0], '24d9a0ed-8787-4584-883c-2fd79308940a')
+        self.assertEqual(graph_args[2], 'inbox')
+        self.assertEqual(graph_args[3], 0)
+        self.assertEqual(graph_args[4], 0)
+
+    def test_legacy_external_emails_keeps_valid_pagination_contract(self):
+        graph_result = {
+            'success': True,
+            'emails': [
+                {'id': 'legacy-1'},
+                {'id': 'legacy-2'},
+            ],
+        }
+
+        original_view = self.app.view_functions['api_external_get_emails']
+        self.app.view_functions['api_external_get_emails'] = web_outlook_app.api_key_required(
+            web_outlook_app.api_external_get_emails
+        )
+        try:
+            with patch.object(web_outlook_app, 'get_emails_graph', return_value=graph_result) as graph_mock:
+                response = self.client.get(
+                    '/api/external/emails?email=user@outlook.com&folder=inbox&skip=2&top=3',
+                    headers={'X-API-Key': 'test-external-key'},
+                )
+        finally:
+            self.app.view_functions['api_external_get_emails'] = original_view
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['method'], 'Graph API')
+        self.assertFalse(payload['has_more'])
+        self.assertEqual([item['id'] for item in payload['emails']], ['legacy-1', 'legacy-2'])
+
+        graph_args = graph_mock.call_args.args
+        self.assertEqual(graph_args[2], 'inbox')
+        self.assertEqual(graph_args[3], 2)
+        self.assertEqual(graph_args[4], 3)
 
     def test_external_emails_plus_address_falls_back_to_alias_with_plus(self):
         with self.app.app_context():
@@ -2200,6 +2719,71 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
         self.assertEqual(payload['stats']['last_refresh_status'], 'partial_failed')
         self.assertEqual(payload['stats']['last_refresh_time'], '2026-04-27 11:30:00')
 
+    def test_refresh_status_search_escapes_like_literals(self):
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.add_account(
+                'literal-percent@example.com',
+                'password123',
+                'client-id-percent',
+                'refresh-token-percent',
+                group_id=self.group_id,
+                remark='literal 100% ready',
+                forward_enabled=False,
+            ))
+            self.assertTrue(web_outlook_app.add_account(
+                'literal-underscore@example.com',
+                'password123',
+                'client-id-underscore',
+                'refresh-token-underscore',
+                group_id=self.group_id,
+                remark='literal under_score ready',
+                forward_enabled=False,
+            ))
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE accounts
+                SET remark = 'literal 100X ready', email = 'proxy-refresh-renamed@example.com'
+                WHERE email = ?
+                """,
+                ('proxy-refresh@outlook.com',),
+            )
+            db.commit()
+
+            percent_payload = web_outlook_app.query_refreshable_accounts(search='100%', page=1, page_size=20)
+            underscore_payload = web_outlook_app.query_refreshable_accounts(search='under_score', page=1, page_size=20)
+            ordinary_payload = web_outlook_app.query_refreshable_accounts(search='literal', page=1, page_size=20)
+
+        self.assertEqual([item['email'] for item in percent_payload['items']], ['literal-percent@example.com'])
+        self.assertEqual([item['email'] for item in underscore_payload['items']], ['literal-underscore@example.com'])
+        self.assertIn('literal-percent@example.com', [item['email'] for item in ordinary_payload['items']])
+        self.assertIn('literal-underscore@example.com', [item['email'] for item in ordinary_payload['items']])
+
+    def test_refresh_status_list_loads_account_tags_in_one_batch(self):
+        with self.app.app_context():
+            tag_id = web_outlook_app.add_tag('刷新标签', '#336699')
+            self.assertIsNotNone(tag_id)
+            self.assertTrue(web_outlook_app.add_account(
+                'tagged-refresh@example.com',
+                'password123',
+                'client-id-tagged',
+                'refresh-token-tagged',
+                group_id=self.group_id,
+                remark='带标签刷新账号',
+                forward_enabled=False,
+            ))
+            tagged_account = web_outlook_app.get_account_by_email('tagged-refresh@example.com')
+            self.assertIsNotNone(tagged_account)
+            self.assertTrue(web_outlook_app.add_account_tag(tagged_account['id'], tag_id))
+
+        with self.app.app_context():
+            with patch.object(web_outlook_app, 'get_account_tags', side_effect=AssertionError('unexpected per-account tag load')):
+                payload = web_outlook_app.query_refreshable_accounts(search='refresh', page=1, page_size=20)
+
+        tagged_items = [item for item in payload['items'] if item['email'] == 'tagged-refresh@example.com']
+        self.assertEqual(len(tagged_items), 1)
+        self.assertEqual([tag['name'] for tag in tagged_items[0]['tags']], ['刷新标签'])
+
     def test_group_api_persists_proxy_failover_fields(self):
         response = self.client.put(
             f'/api/groups/{self.group_id}',
@@ -2552,6 +3136,87 @@ class MultiChannelForwardingTests(unittest.TestCase):
 
         self.assertEqual(email_mock.call_count, 0)
         self.assertEqual(tg_mock.call_count, 1)
+
+    def test_outlook_keyword_filter_matches_graph_detail_body(self):
+        account = {
+            'email': 'graph-forward@example.com',
+            'account_type': 'outlook',
+            'client_id': 'client-id',
+            'refresh_token': 'refresh-token',
+        }
+        item = {
+            'id': 'graph-message-1',
+            'folder': 'inbox',
+            'subject': 'regular subject',
+            'from': 'sender@example.com',
+            'body_preview': 'metadata preview without token',
+        }
+        detail = {
+            'body': {
+                'contentType': 'html',
+                'content': '<p>The Graph detail body contains unique-keyword-token.</p>',
+            }
+        }
+
+        with patch.object(web_outlook_app, 'get_account_proxy_url', return_value=''):
+            with patch.object(web_outlook_app, 'get_account_proxy_failover_urls', return_value=[]):
+                with patch.object(web_outlook_app, 'get_email_detail_graph', return_value=detail) as detail_mock:
+                    try:
+                        matched = web_outlook_app.email_matches_filters(
+                            account, item, keyword='unique-keyword-token'
+                        )
+                    except UnboundLocalError as exc:
+                        self.fail(f'Graph keyword body lookup raised UnboundLocalError: {exc}')
+
+        self.assertTrue(matched)
+        detail_mock.assert_called_once_with(
+            'client-id',
+            'refresh-token',
+            'graph-message-1',
+            '',
+            [],
+        )
+
+    def test_outlook_keyword_filter_matches_oauth_imap_detail_body_for_imap_ids(self):
+        account = {
+            'email': 'imap-forward@example.com',
+            'account_type': 'outlook',
+            'client_id': 'client-id',
+            'refresh_token': 'refresh-token',
+        }
+        item = {
+            'id': '42',
+            'id_mode': 'uid',
+            'folder': 'inbox',
+            'subject': 'regular subject',
+            'from': 'sender@example.com',
+            'body_preview': 'metadata preview without token',
+        }
+        detail = {
+            'body': '<p>The IMAP detail body contains unique-imap-token.</p>',
+            'body_type': 'html',
+        }
+
+        with patch.object(web_outlook_app, 'get_account_proxy_url', return_value='proxy-url'):
+            with patch.object(web_outlook_app, 'get_account_proxy_failover_urls', return_value=['fallback-proxy']):
+                with patch.object(web_outlook_app, 'get_email_detail_imap', return_value=detail) as imap_detail_mock:
+                    with patch.object(web_outlook_app, 'get_email_detail_graph') as graph_detail_mock:
+                        matched = web_outlook_app.email_matches_filters(
+                            account, item, keyword='unique-imap-token'
+                        )
+
+        self.assertTrue(matched)
+        imap_detail_mock.assert_called_once_with(
+            'imap-forward@example.com',
+            'client-id',
+            'refresh-token',
+            '42',
+            'inbox',
+            'proxy-url',
+            ['fallback-proxy'],
+            'uid',
+        )
+        graph_detail_mock.assert_not_called()
 
     def test_process_forwarding_job_waits_between_accounts(self):
         with self.app.app_context():

@@ -1,3 +1,4 @@
+import atexit
 import importlib
 import json
 import os
@@ -15,10 +16,7 @@ os.environ['DATABASE_PATH'] = str(temp_dir / 'test.db')
 os.environ['DOCKER_UPDATE_STATE_FILE'] = str(temp_dir / 'docker_update_state.json')
 
 web_outlook_app = importlib.import_module('web_outlook_app')
-
-
-def tearDownModule():
-    shutil.rmtree(temp_dir, ignore_errors=True)
+atexit.register(lambda: shutil.rmtree(temp_dir, ignore_errors=True))
 
 
 class DockerUpdateTests(unittest.TestCase):

@@ -6,6 +6,15 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Added
+- API 文档补充普通邮箱本地保留统计、清理和正文补齐接口说明，并记录 `id_mode` 在详情与附件下载中的用法。
+
+### Changed
+- README 与本地保留说明补充安全分页解析、清理任务退避轮询、SQLite 锁重试和关键词过滤优先使用缓存正文的行为。
+
+### Fixed
+- 修复文档中未明确说明普通邮箱分页负数按 `0` 处理、OAuth IMAP 默认使用 UID、清理缓存重复请求只复用运行中状态的问题。
+
 ## [2.0.54] - 2026-05-23
 
 ### Added

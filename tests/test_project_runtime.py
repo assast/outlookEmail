@@ -599,6 +599,79 @@ class ProjectRuntimeTests(unittest.TestCase):
 
         self.assertIn('sort_order', columns)
 
+    def test_init_db_creates_retained_normal_mail_schema(self):
+        expected_columns = {
+            'account_id',
+            'folder',
+            'provider_message_id',
+            'id_mode',
+            'subject',
+            'sender',
+            'recipients',
+            'cc',
+            'received_at',
+            'received_at_sort',
+            'is_read',
+            'has_attachments',
+            'body_preview',
+            'body',
+            'body_type',
+            'attachments_json',
+            'list_cached',
+            'body_cached',
+            'list_cached_at',
+            'body_cached_at',
+            'last_synced_at',
+            'created_at',
+            'updated_at',
+        }
+
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            columns = {
+                row['name']
+                for row in db.execute("PRAGMA table_info(retained_normal_mail_messages)").fetchall()
+            }
+            indexes = {
+                row['name']: bool(row['unique'])
+                for row in db.execute("PRAGMA index_list(retained_normal_mail_messages)").fetchall()
+            }
+            unique_columns = [
+                row['name']
+                for row in db.execute(
+                    "PRAGMA index_info(ux_retained_normal_mail_messages_key)"
+                ).fetchall()
+            ]
+            list_index_columns = [
+                row['name']
+                for row in db.execute(
+                    "PRAGMA index_info(idx_retained_normal_mail_messages_list)"
+                ).fetchall()
+            ]
+            body_cache_index_columns = [
+                row['name']
+                for row in db.execute(
+                    "PRAGMA index_info(idx_retained_normal_mail_messages_body_cache)"
+                ).fetchall()
+            ]
+
+        self.assertTrue(expected_columns.issubset(columns))
+        self.assertTrue(indexes['ux_retained_normal_mail_messages_key'])
+        self.assertIn('idx_retained_normal_mail_messages_list', indexes)
+        self.assertIn('idx_retained_normal_mail_messages_body_cache', indexes)
+        self.assertEqual(
+            unique_columns,
+            ['account_id', 'folder', 'provider_message_id', 'id_mode']
+        )
+        self.assertEqual(
+            list_index_columns,
+            ['account_id', 'folder', 'received_at_sort', 'id']
+        )
+        self.assertEqual(
+            body_cache_index_columns,
+            ['account_id', 'folder', 'body_cached', 'received_at_sort']
+        )
+
     def test_account_sort_order_roundtrips_through_account_apis(self):
         account_id = self._insert_account('sort@example.com')
 
@@ -1114,6 +1187,205 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertEqual(put_mock.call_args.kwargs['auth'], ('manual-user', 'manual-pass'))
         self.assertIn('manual-upload@example.com', put_mock.call_args.kwargs['data'].decode('utf-8'))
 
+    def test_download_all_oauth_imap_attachments_uses_requested_id_mode(self):
+        account_id = self._insert_account('user@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE accounts
+                SET client_id = 'client-id', refresh_token = 'refresh-token'
+                WHERE id = ?
+                """,
+                (account_id,),
+            )
+            db.commit()
+
+        detail = {'attachments': [{'id': 'attachment-1', 'name': 'report.txt'}]}
+        with patch.object(web_outlook_app, 'get_email_detail_imap', return_value=detail) as detail_mock, \
+                patch.object(web_outlook_app, 'download_email_attachment_for_account', return_value={
+                    'success': True,
+                    'filename': 'report.txt',
+                    'content_type': 'text/plain',
+                    'content': b'attachment body',
+                }):
+            response = self.client.get(
+                '/api/email/user@example.com/42/attachments/download-all'
+                '?method=imap&folder=inbox&id_mode=sequence'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
+        detail_mock.assert_called_once_with(
+            'user@example.com',
+            'client-id',
+            'refresh-token',
+            '42',
+            'inbox',
+            '',
+            ['', ''],
+            'sequence',
+        )
+
+    def test_single_oauth_imap_attachment_download_uses_uid_id_mode(self):
+        account_id = self._insert_account('user@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE accounts
+                SET client_id = 'client-id', refresh_token = 'refresh-token'
+                WHERE id = ?
+                """,
+                (account_id,),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'download_email_attachment_imap_result', return_value={
+            'success': True,
+            'filename': 'report.txt',
+            'content_type': 'text/plain',
+            'content': b'attachment body',
+        }) as download_mock:
+            response = self.client.get(
+                '/api/email/user@example.com/42/attachments/attachment-1'
+                '?method=imap&folder=inbox&id_mode=uid'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b'attachment body')
+        self.assertIn("filename*=UTF-8''report.txt", response.headers.get('Content-Disposition', ''))
+        download_mock.assert_called_once_with(
+            'user@example.com',
+            'client-id',
+            'refresh-token',
+            '42',
+            'attachment-1',
+            'inbox',
+            '',
+            ['', ''],
+            'uid',
+        )
+
+    def test_single_oauth_imap_attachment_download_uses_sequence_id_mode(self):
+        account_id = self._insert_account('user@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE accounts
+                SET client_id = 'client-id', refresh_token = 'refresh-token'
+                WHERE id = ?
+                """,
+                (account_id,),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'download_email_attachment_imap_result', return_value={
+            'success': True,
+            'filename': 'report.txt',
+            'content_type': 'text/plain',
+            'content': b'attachment body',
+        }) as download_mock:
+            response = self.client.get(
+                '/api/email/user@example.com/42/attachments/attachment-1'
+                '?method=imap&folder=inbox&id_mode=sequence'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b'attachment body')
+        download_mock.assert_called_once_with(
+            'user@example.com',
+            'client-id',
+            'refresh-token',
+            '42',
+            'attachment-1',
+            'inbox',
+            '',
+            ['', ''],
+            'sequence',
+        )
+
+    def test_graph_attachment_download_ignores_id_mode_contract(self):
+        account_id = self._insert_account('user@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                """
+                UPDATE accounts
+                SET client_id = 'client-id', refresh_token = 'refresh-token'
+                WHERE id = ?
+                """,
+                (account_id,),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'download_email_attachment_graph_result', return_value={
+            'success': True,
+            'filename': 'graph.txt',
+            'content_type': 'text/plain',
+            'content': b'graph body',
+        }) as graph_download_mock, \
+                patch.object(web_outlook_app, 'download_email_attachment_imap_result') as imap_download_mock:
+            response = self.client.get(
+                '/api/email/user@example.com/graph-message/attachments/graph-attachment'
+                '?method=graph&folder=inbox&id_mode=sequence'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b'graph body')
+        self.assertIn("filename*=UTF-8''graph.txt", response.headers.get('Content-Disposition', ''))
+        graph_download_mock.assert_called_once_with(
+            'client-id',
+            'refresh-token',
+            'graph-message',
+            'graph-attachment',
+            '',
+            ['', ''],
+        )
+        imap_download_mock.assert_not_called()
+
+    def test_standard_imap_attachment_download_still_works_without_id_mode(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                INSERT INTO accounts (
+                    email, password, client_id, refresh_token,
+                    group_id, remark, status, account_type, provider,
+                    imap_host, imap_port, imap_password, forward_enabled
+                )
+                VALUES (?, '', '', '', 1, '', 'active', 'imap', 'custom', 'imap.example.com', 993, 'secret', 0)
+                ''',
+                ('imap-user@example.com',),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'download_email_attachment_imap_generic_result', return_value={
+            'success': True,
+            'filename': 'imap.txt',
+            'content_type': 'text/plain',
+            'content': b'imap body',
+        }) as generic_download_mock:
+            response = self.client.get(
+                '/api/email/imap-user@example.com/imap-message/attachments/imap-attachment'
+                '?method=imap&folder=inbox'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b'imap body')
+        generic_download_mock.assert_called_once_with(
+            'imap-user@example.com',
+            'secret',
+            'imap.example.com',
+            993,
+            'imap-message',
+            'imap-attachment',
+            'inbox',
+            'custom',
+            '',
+        )
+
     def test_imap_attachment_detail_and_download_route(self):
         with self.app.app_context():
             db = web_outlook_app.get_db()
@@ -1207,6 +1479,89 @@ class ProjectRuntimeTests(unittest.TestCase):
                 self.assertEqual(archive.read('invoice.txt'), b'second body')
 
 
+class FrontendColorPickerTests(unittest.TestCase):
+    def test_color_picker_initialization_block_calls_init_once(self):
+        core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
+
+        init_start = core_js.index("document.addEventListener('DOMContentLoaded'")
+        init_end = core_js.index('function handleExtensionLaunchHash', init_start)
+        init_block = core_js[init_start:init_end]
+
+        self.assertEqual(init_block.count('initColorPicker();'), 1)
+
+    def test_color_picker_binding_is_idempotent(self):
+        core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
+
+        function_start = core_js.index('function initColorPicker()')
+        function_end = core_js.index('// 初始化邮件列表滚动监听', function_start)
+        init_color_picker = core_js[function_start:function_end]
+
+        self.assertIn("option.dataset.colorPickerBound === 'true'", init_color_picker)
+        self.assertIn("option.dataset.colorPickerBound = 'true';", init_color_picker)
+        self.assertLess(
+            init_color_picker.index("option.dataset.colorPickerBound = 'true';"),
+            init_color_picker.index("option.addEventListener('click'")
+        )
+
+
+class FrontendEmailListSecurityTests(unittest.TestCase):
+    def setUp(self):
+        self.emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+    def test_email_rows_use_delegated_clicks_without_inline_handlers(self):
+        self.assertNotIn('onclick="${clickHandler}', self.emails_js)
+        self.assertNotIn("onclick=\"${clickHandler}('${email.id}', ${index})\"", self.emails_js)
+        self.assertIn('data-email-id="${escapeHtml(String(email.id || \'\'))}"', self.emails_js)
+        self.assertIn('data-email-index="${index}"', self.emails_js)
+        self.assertIn('function handleEmailListClick(event)', self.emails_js)
+        self.assertIn("container.addEventListener('click', handleEmailListClick);", self.emails_js)
+        self.assertIn('selectEmail(emailId, emailIndex);', self.emails_js)
+
+    def test_email_checkbox_uses_delegated_click_without_inline_toggle(self):
+        self.assertNotIn("toggleEmailSelection('${email.id}')", self.emails_js)
+        self.assertIn('event.stopPropagation();', self.emails_js)
+        self.assertIn('toggleEmailSelection(checkboxWrapper.dataset.emailId);', self.emails_js)
+        self.assertIn('class="email-checkbox-wrapper" data-email-id=', self.emails_js)
+
+    def test_detail_load_error_message_is_rendered_as_text(self):
+        self.assertNotIn("${data.error && data.error.message ? data.error.message : '加载失败'}", self.emails_js)
+        self.assertIn("const errorText = container.querySelector('.empty-state-text');", self.emails_js)
+        self.assertIn("errorText.textContent = data.error && data.error.message ? data.error.message : '加载失败';", self.emails_js)
+
+    def test_delete_emails_removes_matching_cached_rows_and_preserves_unrelated_detail(self):
+        self.assertIn('function removeDeletedEmailsFromCachedLists(deletedIds, account = currentAccount)', self.emails_js)
+        self.assertIn('cacheValue.emails = cacheValue.emails.filter(email => !normalizedIds.has(String(email.id)));', self.emails_js)
+        self.assertIn('removeDeletedEmailsFromCachedLists(deletedIds);', self.emails_js)
+        self.assertIn('if (currentEmailDetail && deletedIds.has(String(currentEmailDetail.id)))', self.emails_js)
+
+
+class FrontendEmailBodyRetentionAndIframeTests(unittest.TestCase):
+    def setUp(self):
+        self.emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+    def test_body_retention_failed_requests_are_retryable(self):
+        self.assertIn('const requestedKeys = items', self.emails_js)
+        self.assertIn('requestedKeys.forEach(key => requestedBodyRetentionKeys.add(key));', self.emails_js)
+        self.assertIn('requestedKeys.forEach(key => requestedBodyRetentionKeys.delete(key));', self.emails_js)
+        self.assertIn('if (data && data.success === false)', self.emails_js)
+
+    def test_normal_detail_iframe_resize_resources_are_cleaned(self):
+        self.assertIn('const normalDetailIframeResizeResources = { timers: [], observer: null };', self.emails_js)
+        self.assertIn('function cleanupNormalDetailIframeResizeResources()', self.emails_js)
+        self.assertIn('cleanupNormalDetailIframeResizeResources();', self.emails_js)
+        self.assertIn("const container = document.getElementById('emailDetail');", self.emails_js)
+        self.assertIn('normalDetailIframeResizeResources.timers.push(window.setTimeout(adjustHeight, delay));', self.emails_js)
+        self.assertIn('resources.observer.disconnect();', self.emails_js)
+        self.assertIn('if (!iframe.isConnected)', self.emails_js)
+
+    def test_fullscreen_iframe_resize_resources_are_cleaned(self):
+        self.assertIn('const fullscreenIframeResizeResources = { timers: [], observer: null };', self.emails_js)
+        self.assertIn('function cleanupFullscreenIframeResizeResources()', self.emails_js)
+        self.assertIn('cleanupFullscreenIframeResizeResources();', self.emails_js)
+        self.assertIn("const modal = document.getElementById('fullscreenEmailModal');", self.emails_js)
+        self.assertIn('fullscreenIframeResizeResources.timers.push(window.setTimeout(adjustHeight, delay));', self.emails_js)
+        self.assertIn('resources.observer.disconnect();', self.emails_js)
+
 class FrontendTimezoneBootstrapTests(unittest.TestCase):
     def test_settings_js_no_longer_updates_timezone_in_add_account_flow(self):
         settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')
@@ -1257,6 +1612,16 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('overflow-y: auto;', settings_css)
         self.assertIn('scrollbar-width: thin;', settings_css)
 
+    def test_retention_status_poll_uses_backoff_constants(self):
+        settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')
+
+        self.assertIn('NORMAL_MAIL_RETENTION_STATUS_INITIAL_POLL_MS = 2000', settings_js)
+        self.assertIn('NORMAL_MAIL_RETENTION_STATUS_MAX_POLL_MS = 10000', settings_js)
+        self.assertIn('function nextNormalMailRetentionStatusPollDelay()', settings_js)
+        self.assertIn('normalMailRetentionStatusPollDelayMs * 1.5', settings_js)
+        self.assertIn('resetNormalMailRetentionStatusPollDelay();', settings_js)
+        self.assertNotIn('}, 1000);', settings_js)
+
     def test_temp_email_list_uses_selected_tag_filters(self):
         temp_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '03-temp-emails.js').read_text(encoding='utf-8')
 
@@ -1282,6 +1647,16 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
             settings_js.index("showToast('设置已保存，但列表刷新失败，请刷新页面', 'warning');")
         )
 
+    def test_attachment_download_url_builders_include_id_mode(self):
+        emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+        self.assertIn('function appendEmailIdModeParam(query, email)', emails_js)
+        self.assertIn("query.set('id_mode', idMode);", emails_js)
+        self.assertIn('appendEmailIdModeParam(query, email);', emails_js)
+        self.assertIn('function buildAttachmentDownloadUrl(email, attachment)', emails_js)
+        self.assertIn('function buildAllAttachmentsDownloadUrl(email)', emails_js)
+        self.assertIn('new URLSearchParams()', emails_js)
+
     def test_attachment_download_links_use_busy_fetch_handler(self):
         emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
 
@@ -1290,6 +1665,54 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn("link.textContent = isDownloading ? '打包中...' : link.dataset.defaultLabel;", emails_js)
         self.assertIn("action.textContent = isDownloading ? '下载中...' : '下载';", emails_js)
         self.assertIn("showToast(pendingMessage, 'info');", emails_js)
+
+    def test_local_retention_load_more_keeps_source_local(self):
+        core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
+
+        self.assertIn('function buildLoadMoreEmailsUrl(nextSkip)', core_js)
+        self.assertIn("query.set('source', 'local');", core_js)
+        self.assertIn("currentMethod === 'local' || cache?.local_retention === true", core_js)
+        self.assertIn('buildLoadMoreEmailsUrl(nextSkip)', core_js)
+        self.assertNotIn('?method=${currentMethod}&folder=${currentFolder}&skip=${nextSkip}&top=20', core_js)
+
+    def test_new_mail_notice_stages_rows_until_user_accepts(self):
+        emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+        queue_start = emails_js.index('function queuePendingNewMailSync')
+        apply_start = emails_js.index('function applyPendingNewMailSync')
+        queue_block = emails_js[queue_start:apply_start]
+        apply_block = emails_js[apply_start:emails_js.index('function applyMergedRemoteEmailSync')]
+
+        self.assertIn('pendingNewMailSyncs.set(syncKey', queue_block)
+        self.assertIn('announceNewlySyncedEmailRows(data, newlySyncedRows, options.folder, syncKey);', queue_block)
+        self.assertNotIn('currentEmails =', queue_block)
+        self.assertNotIn('renderEmailList(currentEmails);', queue_block)
+        self.assertNotIn('mergedEmails:', queue_block)
+
+        self.assertIn('const mergeResult = mergeEmailListByStableKey(', apply_block)
+        self.assertIn('currentEmails = mergeResult.emails;', apply_block)
+        self.assertIn('renderEmailList(currentEmails);', apply_block)
+        self.assertIn('requestBodyRetentionForNewRows(newlySyncedRows, pending.options.folder);', apply_block)
+        self.assertIn('scheduleNewEmailHighlightClear();', apply_block)
+
+        self.assertIn("notice.setAttribute('role', 'button');", emails_js)
+        self.assertIn("notice.setAttribute('tabindex', '0');", emails_js)
+        self.assertIn('notice.replaceChildren();', emails_js)
+        self.assertIn("hint.textContent = '点击显示';", emails_js)
+        self.assertIn('NEW_EMAIL_HIGHLIGHT_CLEAR_DELAY_MS', emails_js)
+        self.assertNotIn('已自动显示', emails_js)
+        self.assertNotIn('cacheRemoteEmailSyncResult', emails_js)
+
+    def test_provider_fallback_uses_id_mode_for_detail_raw_and_attachments(self):
+        emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+        self.assertIn('function getCurrentEmailRemoteActionMethod(emailItem = {})', emails_js)
+        self.assertIn("if (idMode === 'graph')", emails_js)
+        self.assertIn("if (idMode === 'uid' || idMode === 'sequence')", emails_js)
+        self.assertIn('method: getCurrentEmailRemoteActionMethod(selectedEmail)', emails_js)
+        self.assertIn("query.set('method', getCurrentEmailRemoteActionMethod(email));", emails_js)
+        self.assertIn('const method = encodeURIComponent(getCurrentEmailRemoteActionMethod(currentEmailDetail));', emails_js)
+        self.assertIn("id_mode: data.email?.id_mode || selectedEmail?.id_mode || ''", emails_js)
 
     def test_account_sort_ui_uses_sort_order_and_created_at(self):
         layout_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'layout.html').read_text(encoding='utf-8')

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import secrets
+
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from outlook_web.mail_datetime import parse_mail_datetime
 
 if TYPE_CHECKING:
     # These segmented files are executed into the shared `web_outlook_app`
@@ -815,8 +819,6 @@ def get_emails_imap(account: str, client_id: str, refresh_token: str, folder: st
     )
 
 
-def get_emails_imap_with_server(account: str, client_id: str, refresh_token: str, folder: str = 'inbox', skip: int = 0, top: int = 20, server: str = IMAP_SERVER_NEW, proxy_url: str = None) -> Dict[str, Any]:
-    """使用 IMAP 获取邮件列表（支持分页、文件夹选择和服务器选择）"""
 def get_emails_imap_with_server(account: str, client_id: str, refresh_token: str, folder: str = 'inbox',
                                 skip: int = 0, top: int = 20, server: str = IMAP_SERVER_NEW,
                                 proxy_url: str = None,
@@ -952,7 +954,8 @@ def get_raw_email_imap(account: str, client_id: str, refresh_token: str, message
 
 def get_email_detail_imap(account: str, client_id: str, refresh_token: str, message_id: str,
                           folder: str = 'inbox', proxy_url: str = None,
-                          fallback_proxy_urls: Optional[List[str]] = None) -> Optional[Dict]:
+                          fallback_proxy_urls: Optional[List[str]] = None,
+                          preferred_id_mode: str = 'uid') -> Optional[Dict]:
     """使用 IMAP 获取邮件详情"""
     access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
     if not access_token:
@@ -969,13 +972,27 @@ def get_email_detail_imap(account: str, client_id: str, refresh_token: str, mess
         if not selected_folder:
             return None
 
-        status, msg_data = connection.fetch(message_id.encode() if isinstance(message_id, str) else message_id, '(RFC822)')
-        if status != 'OK' or not msg_data or not msg_data[0]:
+        preferred_mode = str(preferred_id_mode or 'uid').strip().lower()
+        if preferred_mode not in {'uid', 'sequence'}:
+            preferred_mode = 'uid'
+        status, msg_data, _fetch_mode, _fetch_attempts = fetch_imap_message(
+            connection,
+            message_id,
+            '(RFC822)',
+            preferred_mode=preferred_mode
+        )
+        if status != 'OK' or not msg_data:
             return None
 
-        raw_email = msg_data[0][1]
+        raw_email, fetch_response_text = parse_imap_fetch_response(msg_data)
+        if not raw_email:
+            return None
         msg = email.message_from_bytes(raw_email)
-        return build_email_detail_from_message(msg, str(message_id))
+        return build_email_detail_from_message(
+            msg,
+            str(message_id),
+            extract_imap_internaldate(fetch_response_text)
+        )
     except Exception:
         return None
     finally:
@@ -1114,15 +1131,15 @@ def get_raw_email_imap_generic(email_addr: str, imap_password: str, imap_host: s
     try:
         connection = create_imap_connection(imap_host, imap_port, proxy_url)
         connection.login(email_addr, imap_password)
-        selected_folder, search_mode = resolve_imap_folder(connection, provider, folder, readonly=True)
+        selected_folder, _folder_diagnostics = resolve_imap_folder(connection, provider, folder, readonly=True)
         if not selected_folder:
             return None
 
-        status, msg_data = fetch_imap_message_by_id(
+        status, msg_data, _fetch_mode, _fetch_attempts = fetch_imap_message(
             connection,
             str(message_id),
             '(RFC822)',
-            preferred_mode='uid' if search_mode == 'uid' else (search_mode or 'uid')
+            preferred_mode='uid'
         )
         if status != 'OK' or not msg_data or not msg_data[0]:
             return None
@@ -1974,7 +1991,8 @@ def get_email_detail_imap_generic_result(email_addr: str, imap_password: str, im
 
 def download_email_attachment_imap_result(account: str, client_id: str, refresh_token: str, message_id: str,
                                           attachment_id: str, folder: str = 'inbox', proxy_url: str = None,
-                                          fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+                                          fallback_proxy_urls: Optional[List[str]] = None,
+                                          preferred_id_mode: str = 'uid') -> Dict[str, Any]:
     """使用 Outlook IMAP 下载邮件附件"""
     access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
     if not access_token:
@@ -2009,8 +2027,16 @@ def download_email_attachment_imap_result(account: str, client_id: str, refresh_
                 )
             }
 
-        status, msg_data = connection.fetch(message_id.encode() if isinstance(message_id, str) else message_id, '(RFC822)')
-        if status != 'OK' or not msg_data or not msg_data[0]:
+        preferred_mode = str(preferred_id_mode or 'uid').strip().lower()
+        if preferred_mode not in {'uid', 'sequence'}:
+            preferred_mode = 'uid'
+        status, msg_data, _fetch_mode, fetch_attempts = fetch_imap_message(
+            connection,
+            message_id,
+            '(RFC822)',
+            preferred_mode=preferred_mode,
+        )
+        if status != 'OK' or not msg_data:
             return {
                 'success': False,
                 'error': build_error_payload(
@@ -2018,11 +2044,22 @@ def download_email_attachment_imap_result(account: str, client_id: str, refresh_
                     '获取附件失败',
                     'IMAPFetchError',
                     502,
-                    {'message_id': str(message_id)}
+                    {'message_id': str(message_id), 'fetch_attempts': fetch_attempts[:10]}
                 )
             }
 
-        raw_email = msg_data[0][1]
+        raw_email, _fetch_response_text = parse_imap_fetch_response(msg_data)
+        if not raw_email:
+            return {
+                'success': False,
+                'error': build_error_payload(
+                    'ATTACHMENT_FETCH_FAILED',
+                    '获取附件失败',
+                    'IMAPFetchError',
+                    502,
+                    {'message_id': str(message_id), 'fetch_attempts': fetch_attempts[:10]}
+                )
+            }
         msg = email.message_from_bytes(raw_email)
         attachment = get_message_attachment_by_id(msg, attachment_id)
         if not attachment:
@@ -2192,23 +2229,8 @@ def download_email_attachment_imap_generic_result(email_addr: str, imap_password
 
 
 def parse_email_datetime(value: str) -> Optional[datetime]:
-    if not value:
-        return None
-    try:
-        value_str = str(value).strip()
-        value_str = re.sub(r'\s+\([A-Za-z0-9_./+-]+\)$', '', value_str)
-        if re.match(r'^\d{4}-\d{2}-\d{2}T', value_str):
-            normalized = value_str.replace('Z', '+00:00')
-            dt = datetime.fromisoformat(normalized)
-        elif re.match(r'^\d{1,2}-[A-Za-z]{3}-\d{4} \d{2}:\d{2}:\d{2} [+-]\d{4}$', value_str):
-            dt = datetime.strptime(value_str, '%d-%b-%Y %H:%M:%S %z')
-        else:
-            dt = parsedate_to_datetime(value_str)
-        if dt.tzinfo is not None:
-            return dt.astimezone().replace(tzinfo=None)
-        return dt
-    except Exception:
-        return None
+    """兼容旧共享全局名，实际实现位于 outlook_web.mail_datetime。"""
+    return parse_mail_datetime(value)
 
 
 def login_required(f):
@@ -2224,21 +2246,30 @@ def login_required(f):
     return decorated_function
 
 
+def normalize_api_key(value: Any) -> str:
+    """规范化 API Key，确保比较输入为稳定字符串。"""
+    return str(value or '').strip()
+
+
 def api_key_required(f):
     """API Key 验证装饰器（用于对外 API）"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # 从 Header 或查询参数获取 API Key
-        api_key = request.headers.get('X-API-Key') or request.args.get('api_key') or request.args.get('apikey')
+        api_key = normalize_api_key(
+            request.headers.get('X-API-Key')
+            or request.args.get('api_key')
+            or request.args.get('apikey')
+        )
         if not api_key:
             return jsonify({'success': False, 'error': '缺少 API Key，请通过 Header X-API-Key 或查询参数 api_key 提供'}), 401
 
         # 验证 API Key
-        stored_key = get_external_api_key()
+        stored_key = normalize_api_key(get_external_api_key())
         if not stored_key:
             return jsonify({'success': False, 'error': '未配置对外 API Key，请在系统设置中配置'}), 403
 
-        if api_key != stored_key:
+        if not secrets.compare_digest(api_key, stored_key):
             return jsonify({'success': False, 'error': 'API Key 无效'}), 401
 
         return f(*args, **kwargs)
