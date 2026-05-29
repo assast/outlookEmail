@@ -875,6 +875,9 @@
                     document.getElementById('editImapHost').value = acc.imap_host || '';
                     document.getElementById('editImapPort').value = acc.imap_port || 993;
                     document.getElementById('editGroupSelect').value = acc.group_id || 1;
+                    document.getElementById('editProxyUrl').value = acc.proxy_url || '';
+                    document.getElementById('editFallbackProxyUrl1').value = acc.fallback_proxy_url_1 || '';
+                    document.getElementById('editFallbackProxyUrl2').value = acc.fallback_proxy_url_2 || '';
                     document.getElementById('editSortOrder').value = Number(acc.sort_order || 0);
                     document.getElementById('editRemark').value = acc.remark || '';
                     document.getElementById('editAliases').value = Array.isArray(acc.aliases) ? acc.aliases.join('\n') : '';
@@ -913,6 +916,9 @@
                 imap_port: Number.isFinite(imapPort) ? imapPort : 993,
                 imap_password: document.getElementById('editImapPassword')?.value || '',
                 group_id: newGroupId,
+                proxy_url: document.getElementById('editProxyUrl')?.value.trim() || '',
+                fallback_proxy_url_1: document.getElementById('editFallbackProxyUrl1')?.value.trim() || '',
+                fallback_proxy_url_2: document.getElementById('editFallbackProxyUrl2')?.value.trim() || '',
                 sort_order: Number.isFinite(sortOrder) ? Math.max(0, sortOrder) : 0,
                 remark: document.getElementById('editRemark').value.trim(),
                 aliases: document.getElementById('editAliases')?.value

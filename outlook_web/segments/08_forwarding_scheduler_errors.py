@@ -1291,6 +1291,14 @@ def api_update_account_v2(account_id):
     remark = sanitize_input(data.get('remark', ''), max_length=200)
     status = data.get('status', 'active')
     forward_enabled = bool(data.get('forward_enabled', False))
+    current_account = get_account_by_id(account_id) or {}
+    proxy_url = str(data.get('proxy_url', current_account.get('proxy_url', '')) or '').strip()
+    fallback_proxy_url_1 = str(
+        data.get('fallback_proxy_url_1', current_account.get('fallback_proxy_url_1', '')) or ''
+    ).strip()
+    fallback_proxy_url_2 = str(
+        data.get('fallback_proxy_url_2', current_account.get('fallback_proxy_url_2', '')) or ''
+    ).strip()
     aliases_provided = 'aliases' in data
     aliases = parse_alias_payload(data.get('aliases', [])) if aliases_provided else []
 
@@ -1350,7 +1358,10 @@ def api_update_account_v2(account_id):
         imap_host,
         imap_port,
         imap_password,
-        forward_enabled
+        forward_enabled,
+        proxy_url,
+        fallback_proxy_url_1,
+        fallback_proxy_url_2
     ):
         cleaned_aliases = get_account_aliases(account_id)
         if aliases_provided:

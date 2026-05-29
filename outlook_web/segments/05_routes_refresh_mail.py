@@ -3402,7 +3402,7 @@ def fetch_account_folder_emails(account: Dict[str, Any], folder: str, skip: int,
     all_errors['graph'] = graph_error
     if is_transport_error_payload(graph_error):
         connection_error_message = (
-            '代理连接失败或请求超时，请检查分组代理设置'
+            '代理连接失败或请求超时，请检查账号代理或分组代理设置'
             if proxy_url
             else '连接 Microsoft 服务失败或超时，请检查服务器网络、DNS 或上游访问能力'
         )

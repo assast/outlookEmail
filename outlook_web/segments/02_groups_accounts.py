@@ -799,20 +799,37 @@ def get_account_proxy_url(account: Optional[Dict[str, Any]]) -> str:
     return proxy_config.get('proxy_url', '') or ''
 
 
+def get_empty_proxy_config() -> Dict[str, str]:
+    return {
+        'proxy_url': '',
+        'fallback_proxy_url_1': '',
+        'fallback_proxy_url_2': '',
+    }
+
+
+def get_account_override_proxy_config(account: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    if not account:
+        return get_empty_proxy_config()
+    return {
+        'proxy_url': str(account.get('proxy_url', '') or '').strip(),
+        'fallback_proxy_url_1': str(account.get('fallback_proxy_url_1', '') or '').strip(),
+        'fallback_proxy_url_2': str(account.get('fallback_proxy_url_2', '') or '').strip(),
+    }
+
+
+def account_has_proxy_override(account: Optional[Dict[str, Any]]) -> bool:
+    account_proxy_config = get_account_override_proxy_config(account)
+    return any(account_proxy_config.values())
+
+
 def get_account_proxy_config(account: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    if account_has_proxy_override(account):
+        return get_account_override_proxy_config(account)
     if not account or not account.get('group_id'):
-        return {
-            'proxy_url': '',
-            'fallback_proxy_url_1': '',
-            'fallback_proxy_url_2': '',
-        }
+        return get_empty_proxy_config()
     group = get_group_by_id(account['group_id'])
     if not group:
-        return {
-            'proxy_url': '',
-            'fallback_proxy_url_1': '',
-            'fallback_proxy_url_2': '',
-        }
+        return get_empty_proxy_config()
     return {
         'proxy_url': group.get('proxy_url', '') or '',
         'fallback_proxy_url_1': group.get('fallback_proxy_url_1', '') or '',
@@ -930,6 +947,7 @@ def serialize_account_summary(account: Dict[str, Any], last_refresh_log: Optiona
         'account_type': account.get('account_type', 'outlook'),
         'provider': account.get('provider', 'outlook'),
         'forward_enabled': bool(account.get('forward_enabled')),
+        'proxy_override_enabled': account_has_proxy_override(account),
         'last_refresh_at': refresh_state['last_refresh_at'],
         'last_refresh_status': refresh_state['last_refresh_status'],
         'last_refresh_error': refresh_state['last_refresh_error'],
@@ -951,9 +969,9 @@ ACCOUNT_INSERT_SQL = '''
     INSERT OR IGNORE INTO accounts (
         email, password, client_id, refresh_token, group_id, sort_order, remark,
         status, account_type, provider, imap_host, imap_port, imap_password, forward_enabled,
-        forward_last_checked_at
+        forward_last_checked_at, proxy_url, fallback_proxy_url_1, fallback_proxy_url_2
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 '''
 
 
@@ -961,7 +979,9 @@ def build_account_insert_values(email_addr: str, password: str, client_id: str =
                                 group_id: int = 1, remark: str = '', account_type: str = 'outlook',
                                 provider: str = 'outlook', imap_host: str = '', imap_port: int = 993,
                                 imap_password: str = '', forward_enabled: bool = False,
-                                sort_order: Optional[int] = None, status: str = 'active') -> tuple:
+                                sort_order: Optional[int] = None, status: str = 'active',
+                                proxy_url: str = '', fallback_proxy_url_1: str = '',
+                                fallback_proxy_url_2: str = '') -> tuple:
     encrypted_password = encrypt_data(password) if password else password
     encrypted_refresh_token = encrypt_data(refresh_token) if refresh_token else refresh_token
     encrypted_imap_password = encrypt_data(imap_password) if imap_password else imap_password
@@ -989,6 +1009,9 @@ def build_account_insert_values(email_addr: str, password: str, client_id: str =
         encrypted_imap_password,
         1 if forward_enabled else 0,
         datetime.now(timezone.utc).isoformat() if forward_enabled else None,
+        str(proxy_url or '').strip(),
+        str(fallback_proxy_url_1 or '').strip(),
+        str(fallback_proxy_url_2 or '').strip(),
     )
 
 
@@ -996,7 +1019,9 @@ def add_account(email_addr: str, password: str, client_id: str = '', refresh_tok
                 group_id: int = 1, remark: str = '', account_type: str = 'outlook',
                 provider: str = 'outlook', imap_host: str = '', imap_port: int = 993,
                 imap_password: str = '', forward_enabled: bool = False,
-                sort_order: Optional[int] = None, status: str = 'active') -> bool:
+                sort_order: Optional[int] = None, status: str = 'active',
+                proxy_url: str = '', fallback_proxy_url_1: str = '',
+                fallback_proxy_url_2: str = '') -> bool:
     """添加邮箱账号"""
     db = get_db()
     try:
@@ -1004,7 +1029,8 @@ def add_account(email_addr: str, password: str, client_id: str = '', refresh_tok
         db.execute(ACCOUNT_INSERT_SQL, build_account_insert_values(
             email_addr, password, client_id, refresh_token, group_id, remark,
             account_type, provider, imap_host, imap_port, imap_password,
-            forward_enabled, sort_order, status
+            forward_enabled, sort_order, status,
+            proxy_url, fallback_proxy_url_1, fallback_proxy_url_2
         ))
         db.commit()
         return db.total_changes > before_changes
@@ -1015,7 +1041,9 @@ def add_account(email_addr: str, password: str, client_id: str = '', refresh_tok
 def add_accounts_bulk(parsed_accounts: List[Dict[str, Any]], group_id: int = 1,
                       forward_enabled: bool = False,
                       sort_order: Optional[int] = None, remark: str = '',
-                      status: str = 'active', tag_ids: Optional[List[int]] = None) -> Dict[str, int]:
+                      status: str = 'active', tag_ids: Optional[List[int]] = None,
+                      proxy_url: str = '', fallback_proxy_url_1: str = '',
+                      fallback_proxy_url_2: str = '') -> Dict[str, int]:
     """批量添加邮箱账号，单事务写入，重复邮箱自动跳过。"""
     if not parsed_accounts:
         return {'added_count': 0, 'skipped_count': 0}
@@ -1046,7 +1074,10 @@ def add_accounts_bulk(parsed_accounts: List[Dict[str, Any]], group_id: int = 1,
             parsed.get('imap_password', ''),
             forward_enabled,
             sort_order,
-            normalized_status
+            normalized_status,
+            proxy_url,
+            fallback_proxy_url_1,
+            fallback_proxy_url_2
         )
         for parsed in parsed_accounts
     ]
@@ -1079,7 +1110,8 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
                    refresh_token: str, group_id: int, sort_order: Optional[int], remark: str, status: str,
                    account_type: str = 'outlook', provider: str = 'outlook',
                    imap_host: str = '', imap_port: int = 993, imap_password: str = '',
-                   forward_enabled: bool = False) -> bool:
+                   forward_enabled: bool = False, proxy_url: str = '',
+                   fallback_proxy_url_1: str = '', fallback_proxy_url_2: str = '') -> bool:
     """更新邮箱账号"""
     db = get_db()
     try:
@@ -1088,6 +1120,9 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
         encrypted_refresh_token = encrypt_data(refresh_token) if refresh_token else refresh_token
         encrypted_imap_password = encrypt_data(imap_password) if imap_password else imap_password
         normalized_sort_order = parse_account_sort_order_input(sort_order)
+        normalized_proxy_url = str(proxy_url or '').strip()
+        normalized_fallback_proxy_url_1 = str(fallback_proxy_url_1 or '').strip()
+        normalized_fallback_proxy_url_2 = str(fallback_proxy_url_2 or '').strip()
 
         current_account = db.execute(
             'SELECT forward_enabled, forward_last_checked_at FROM accounts WHERE id = ?',
@@ -1103,13 +1138,15 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
                 SET email = ?, password = ?, client_id = ?, refresh_token = ?,
                     group_id = ?, sort_order = ?, remark = ?, status = ?, account_type = ?, provider = ?,
                     imap_host = ?, imap_port = ?, imap_password = ?, forward_enabled = ?,
-                    forward_last_checked_at = ?, updated_at = CURRENT_TIMESTAMP
+                    forward_last_checked_at = ?, proxy_url = ?, fallback_proxy_url_1 = ?,
+                    fallback_proxy_url_2 = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ''', (
                 email_addr, encrypted_password, client_id, encrypted_refresh_token, group_id, normalized_sort_order,
                 remark, status,
                 account_type, provider, imap_host, imap_port, encrypted_imap_password, 1,
-                datetime.now(timezone.utc).isoformat(), account_id
+                datetime.now(timezone.utc).isoformat(), normalized_proxy_url,
+                normalized_fallback_proxy_url_1, normalized_fallback_proxy_url_2, account_id
             ))
         else:
             db.execute('''
@@ -1117,13 +1154,14 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
                 SET email = ?, password = ?, client_id = ?, refresh_token = ?,
                     group_id = ?, sort_order = ?, remark = ?, status = ?, account_type = ?, provider = ?,
                     imap_host = ?, imap_port = ?, imap_password = ?, forward_enabled = ?,
+                    proxy_url = ?, fallback_proxy_url_1 = ?, fallback_proxy_url_2 = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ''', (
                 email_addr, encrypted_password, client_id, encrypted_refresh_token, group_id, normalized_sort_order,
                 remark, status,
                 account_type, provider, imap_host, imap_port, encrypted_imap_password, 1 if forward_enabled else 0,
-                account_id
+                normalized_proxy_url, normalized_fallback_proxy_url_1, normalized_fallback_proxy_url_2, account_id
             ))
         db.commit()
         return True
@@ -2336,6 +2374,81 @@ def update_accounts_forwarding_by_ids(account_ids: List[int], forward_enabled: b
                     ''',
                     updated_ids
                 )
+            db.commit()
+
+        return {
+            'success': True,
+            'updated_count': len(updated_ids),
+            'updated_accounts': updated_accounts,
+            'unchanged_count': unchanged_count,
+            'missing_ids': missing_ids,
+        }
+    except Exception as e:
+        db.rollback()
+        return {'success': False, 'error': str(e)}
+
+
+def update_accounts_proxy_by_ids(account_ids: List[int], proxy_url: str = '',
+                                 fallback_proxy_url_1: str = '',
+                                 fallback_proxy_url_2: str = '') -> Dict[str, Any]:
+    """批量更新账号级代理配置，三项全空表示清空账号覆盖并继承分组。"""
+    db = get_db()
+    normalized_ids = normalize_account_ids(account_ids)
+
+    if not normalized_ids:
+        return {'success': False, 'error': '请选择要修改的账号'}
+
+    placeholders = ','.join('?' * len(normalized_ids))
+    rows = db.execute(
+        f'''
+        SELECT id, email, proxy_url, fallback_proxy_url_1, fallback_proxy_url_2
+        FROM accounts
+        WHERE id IN ({placeholders})
+        ORDER BY email COLLATE NOCASE ASC
+        ''',
+        normalized_ids
+    ).fetchall()
+
+    if not rows:
+        return {'success': False, 'error': '未找到可修改的账号'}
+
+    target_proxy_url = str(proxy_url or '').strip()
+    target_fallback_proxy_url_1 = str(fallback_proxy_url_1 or '').strip()
+    target_fallback_proxy_url_2 = str(fallback_proxy_url_2 or '').strip()
+    existing_ids = [row['id'] for row in rows]
+    existing_id_set = set(existing_ids)
+    missing_ids = [account_id for account_id in normalized_ids if account_id not in existing_id_set]
+
+    updated_rows = [
+        row for row in rows
+        if (
+            str(row['proxy_url'] or '') != target_proxy_url
+            or str(row['fallback_proxy_url_1'] or '') != target_fallback_proxy_url_1
+            or str(row['fallback_proxy_url_2'] or '') != target_fallback_proxy_url_2
+        )
+    ]
+    updated_ids = [row['id'] for row in updated_rows]
+    updated_accounts = [{'id': row['id'], 'email': row['email']} for row in updated_rows]
+    unchanged_count = len(rows) - len(updated_rows)
+
+    try:
+        if updated_ids:
+            update_placeholders = ','.join('?' * len(updated_ids))
+            db.execute(
+                f'''
+                UPDATE accounts
+                SET proxy_url = ?,
+                    fallback_proxy_url_1 = ?,
+                    fallback_proxy_url_2 = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id IN ({update_placeholders})
+                ''',
+                [
+                    target_proxy_url,
+                    target_fallback_proxy_url_1,
+                    target_fallback_proxy_url_2,
+                ] + updated_ids
+            )
             db.commit()
 
         return {

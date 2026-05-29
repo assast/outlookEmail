@@ -1049,6 +1049,9 @@ def init_db():
             imap_password TEXT,
             forward_enabled INTEGER DEFAULT 0,
             forward_last_checked_at TIMESTAMP,
+            proxy_url TEXT DEFAULT '',
+            fallback_proxy_url_1 TEXT DEFAULT '',
+            fallback_proxy_url_2 TEXT DEFAULT '',
             last_refresh_at TIMESTAMP,
             last_refresh_status TEXT DEFAULT 'never',
             last_refresh_error TEXT,
@@ -1367,6 +1370,12 @@ def init_db():
         cursor.execute('ALTER TABLE accounts ADD COLUMN forward_enabled INTEGER DEFAULT 0')
     if 'forward_last_checked_at' not in columns:
         cursor.execute('ALTER TABLE accounts ADD COLUMN forward_last_checked_at TIMESTAMP')
+    if 'proxy_url' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN proxy_url TEXT')
+    if 'fallback_proxy_url_1' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN fallback_proxy_url_1 TEXT')
+    if 'fallback_proxy_url_2' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN fallback_proxy_url_2 TEXT')
     
     # 检查 groups 表是否有 is_system 列
     cursor.execute("PRAGMA table_info(groups)")

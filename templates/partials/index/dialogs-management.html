@@ -788,6 +788,38 @@
             </div>
         </div>
     </div>
+    <!-- 批量代理设置模态框 -->
+    <div class="modal" id="batchProxyModal" onmousedown="if(event.target === this) hideBatchProxyModal()">
+        <div class="modal-content" style="width: 460px;">
+            <div class="modal-header">
+                <h3>设置账号代理</h3>
+                <button class="modal-close" onclick="hideBatchProxyModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">账号代理</label>
+                    <input type="text" class="form-input" id="batchProxyUrl"
+                        placeholder="http://host:port、socks5://host:port 或 direct">
+                    <div class="form-hint">应用到已勾选账号；留空并提交会清空账号级代理，改为继承分组代理。</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">回退代理 1</label>
+                    <input type="text" class="form-input" id="batchFallbackProxyUrl1"
+                        placeholder="http://host:port、socks5://host:port 或 direct">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">回退代理 2</label>
+                    <input type="text" class="form-input" id="batchFallbackProxyUrl2"
+                        placeholder="http://host:port、socks5://host:port 或 direct">
+                    <div class="form-hint">填写 <code>direct</code> 或 <code>直连</code> 可显式直连。</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideBatchProxyModal()">取消</button>
+                <button class="btn btn-primary" onclick="confirmBatchProxy()">确认设置</button>
+            </div>
+        </div>
+    </div>
     <!-- Error 详情模态框 -->
     <div class="modal" id="errorDetailModal" onmousedown="if(event.target === this) hideErrorDetailModal()">
         <div class="modal-content" style="width: 700px; max-width: 90vw;">
@@ -923,22 +955,37 @@
             </div>
             <div class="modal-body release-notice-body">
                 <div class="release-notice-version">当前版本：v{{ app_version }}</div>
-                <div class="release-notice-grid">
-                    <div class="release-notice-card">
-                        <div class="release-notice-card-title">选中账号导出</div>
-                        <p>邮箱列表批量操作栏新增“导出”，可直接导出当前勾选的普通邮箱账号。</p>
+                <div class="release-notice-list">
+                    <div class="release-notice-card release-notice-entry">
+                        <div class="release-notice-entry-header">
+                            <div class="release-notice-card-title">v2.0.57</div>
+                            <span class="release-notice-badge">最新</span>
+                        </div>
+                        <ul>
+                            <li>新增账号级代理，支持主代理和两级回退代理，优先覆盖所属分组代理。</li>
+                            <li>邮箱账号批量操作栏新增“代理”，可批量设置或清空账号级代理。</li>
+                            <li>代理错误提示会同时指向账号代理和分组代理，并修复批量代理确认弹窗层级。</li>
+                        </ul>
                     </div>
-                    <div class="release-notice-card">
-                        <div class="release-notice-card-title">适配筛选场景</div>
-                        <p>按标签、搜索或当前列表筛选后，只需勾选目标账号即可导出，无需临时移动分组。</p>
+                    <div class="release-notice-card release-notice-entry">
+                        <div class="release-notice-entry-header">
+                            <div class="release-notice-card-title">v2.0.56</div>
+                        </div>
+                        <ul>
+                            <li>邮箱账号批量操作栏新增“导出”，可直接导出当前勾选的普通邮箱账号。</li>
+                            <li>支持按标签、搜索或当前列表筛选后导出选中账号，无需临时移动分组。</li>
+                            <li>选中账号导出继续使用登录密码二次验证，并兼容原有选中分组导出接口。</li>
+                        </ul>
                     </div>
-                    <div class="release-notice-card">
-                        <div class="release-notice-card-title">沿用安全验证</div>
-                        <p>选中账号导出继续使用登录密码二次验证，导出文件格式与现有账号导出保持一致。</p>
-                    </div>
-                    <div class="release-notice-card">
-                        <div class="release-notice-card-title">接口保持兼容</div>
-                        <p>选中分组导出接口继续兼容，新增通过账号 ID 导出指定账号的能力。</p>
+                    <div class="release-notice-card release-notice-entry">
+                        <div class="release-notice-entry-header">
+                            <div class="release-notice-card-title">v2.0.55</div>
+                        </div>
+                        <ul>
+                            <li>新增普通邮箱本地保留，可缓存列表元数据和已读取正文，网络失败时可回退展示。</li>
+                            <li>普通邮箱列表本地优先渲染，远程同步发现新邮件后提示合并。</li>
+                            <li>设置页新增本地保留开关、存储统计和清理缓存操作。</li>
+                        </ul>
                     </div>
                 </div>
                 <div class="release-notice-hint">

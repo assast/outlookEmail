@@ -16,6 +16,10 @@
             display: flex;
         }
 
+        #genericConfirmModal {
+            z-index: 2200;
+        }
+
         .modal-content {
             background-color: #ffffff;
             border-radius: 12px;
@@ -1712,6 +1716,11 @@
             gap: 12px;
         }
 
+        .release-notice-list {
+            display: grid;
+            gap: 12px;
+        }
+
         .release-notice-card {
             border: 1px solid #e5e5e5;
             border-radius: 8px;
@@ -1719,18 +1728,49 @@
             background: #ffffff;
         }
 
+        .release-notice-entry {
+            display: grid;
+            gap: 10px;
+        }
+
+        .release-notice-entry-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .release-notice-badge {
+            flex: 0 0 auto;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: #eaf4ff;
+            color: #0f5ea8;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
         .release-notice-card-title {
-            margin-bottom: 8px;
+            margin-bottom: 0;
             color: #1a1a1a;
             font-size: 14px;
             font-weight: 700;
         }
 
-        .release-notice-card p {
+        .release-notice-card p,
+        .release-notice-card ul {
             margin: 0;
             color: #666;
             font-size: 13px;
             line-height: 1.6;
+        }
+
+        .release-notice-card ul {
+            padding-left: 18px;
+        }
+
+        .release-notice-card li + li {
+            margin-top: 4px;
         }
 
         .release-notice-hint {

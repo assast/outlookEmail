@@ -2095,6 +2095,172 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
         self.assertEqual(log_row['status'], 'success')
         self.assertIsNone(log_row['error_message'])
 
+    def test_account_proxy_config_overrides_group_proxy(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                UPDATE accounts
+                SET proxy_url = ?,
+                    fallback_proxy_url_1 = ?,
+                    fallback_proxy_url_2 = ?
+                WHERE id = ?
+                ''',
+                (
+                    'http://account-primary:7890',
+                    'socks5://account-fallback:1080',
+                    'direct',
+                    self.account_id,
+                ),
+            )
+            db.commit()
+
+            account = web_outlook_app.get_account_by_id(self.account_id)
+            self.assertEqual(web_outlook_app.get_account_proxy_url(account), 'http://account-primary:7890')
+            self.assertEqual(
+                web_outlook_app.get_account_proxy_failover_urls(account),
+                ['socks5://account-fallback:1080', 'direct'],
+            )
+
+            db.execute(
+                '''
+                UPDATE accounts
+                SET proxy_url = '',
+                    fallback_proxy_url_1 = '',
+                    fallback_proxy_url_2 = ''
+                WHERE id = ?
+                ''',
+                (self.account_id,),
+            )
+            db.commit()
+
+            inherited_account = web_outlook_app.get_account_by_id(self.account_id)
+            self.assertEqual(web_outlook_app.get_account_proxy_url(inherited_account), 'socks5://127.0.0.1:1080')
+            self.assertEqual(
+                web_outlook_app.get_account_proxy_failover_urls(inherited_account),
+                ['http://127.0.0.1:7891', 'direct'],
+            )
+
+    def test_account_api_persists_proxy_fields(self):
+        response = self.client.put(
+            f'/api/accounts/{self.account_id}',
+            json={
+                'email': 'proxy-refresh@outlook.com',
+                'password': 'password123',
+                'client_id': '24d9a0ed-8787-4584-883c-2fd79308940a',
+                'refresh_token': '0.AXEA_refresh',
+                'group_id': self.group_id,
+                'remark': '代理刷新测试账号',
+                'status': 'active',
+                'account_type': 'outlook',
+                'provider': 'outlook',
+                'forward_enabled': False,
+                'proxy_url': 'socks5://account-api:1080',
+                'fallback_proxy_url_1': 'http://account-api-fallback:7890',
+                'fallback_proxy_url_2': '直连',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        response = self.client.get(f'/api/accounts/{self.account_id}')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['account']['proxy_url'], 'socks5://account-api:1080')
+        self.assertEqual(payload['account']['fallback_proxy_url_1'], 'http://account-api-fallback:7890')
+        self.assertEqual(payload['account']['fallback_proxy_url_2'], '直连')
+        self.assertTrue(payload['account']['proxy_override_enabled'])
+
+        response = self.client.put(
+            f'/api/accounts/{self.account_id}',
+            json={
+                'email': 'proxy-refresh@outlook.com',
+                'password': 'password123',
+                'client_id': '24d9a0ed-8787-4584-883c-2fd79308940a',
+                'refresh_token': '0.AXEA_refresh',
+                'group_id': self.group_id,
+                'remark': '代理刷新测试账号-未传代理字段',
+                'status': 'active',
+                'account_type': 'outlook',
+                'provider': 'outlook',
+                'forward_enabled': False,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        response = self.client.get(f'/api/accounts/{self.account_id}')
+        payload = response.get_json()
+        self.assertEqual(payload['account']['proxy_url'], 'socks5://account-api:1080')
+        self.assertEqual(payload['account']['fallback_proxy_url_1'], 'http://account-api-fallback:7890')
+        self.assertEqual(payload['account']['fallback_proxy_url_2'], '直连')
+
+    def test_batch_update_account_proxy_sets_and_clears_override(self):
+        with self.app.app_context():
+            added = web_outlook_app.add_account(
+                'proxy-refresh-batch@outlook.com',
+                'password123',
+                '24d9a0ed-8787-4584-883c-2fd79308940a',
+                '0.AXEA_refresh_batch',
+                group_id=self.group_id,
+            )
+            self.assertTrue(added)
+            second_account = web_outlook_app.get_account_by_email('proxy-refresh-batch@outlook.com')
+            self.assertIsNotNone(second_account)
+            second_account_id = second_account['id']
+
+        response = self.client.post(
+            '/api/accounts/batch-update-proxy',
+            json={
+                'account_ids': [self.account_id, second_account_id],
+                'proxy_url': 'http://batch-primary:7890',
+                'fallback_proxy_url_1': 'socks5://batch-fallback:1080',
+                'fallback_proxy_url_2': 'direct',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['updated_count'], 2)
+
+        with self.app.app_context():
+            first_account = web_outlook_app.get_account_by_id(self.account_id)
+            second_account = web_outlook_app.get_account_by_id(second_account_id)
+            for account in (first_account, second_account):
+                self.assertEqual(web_outlook_app.get_account_proxy_url(account), 'http://batch-primary:7890')
+                self.assertEqual(
+                    web_outlook_app.get_account_proxy_failover_urls(account),
+                    ['socks5://batch-fallback:1080', 'direct'],
+                )
+
+        response = self.client.post(
+            '/api/accounts/batch-update-proxy',
+            json={
+                'account_ids': [self.account_id, second_account_id],
+                'proxy_url': '',
+                'fallback_proxy_url_1': '',
+                'fallback_proxy_url_2': '',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['updated_count'], 2)
+
+        with self.app.app_context():
+            first_account = web_outlook_app.get_account_by_id(self.account_id)
+            second_account = web_outlook_app.get_account_by_id(second_account_id)
+            for account in (first_account, second_account):
+                self.assertFalse(web_outlook_app.account_has_proxy_override(account))
+                self.assertEqual(web_outlook_app.get_account_proxy_url(account), 'socks5://127.0.0.1:1080')
+
     def test_refresh_account_uses_delegated_graph_scope_before_default_scope(self):
         class FakeResponse:
             status_code = 200

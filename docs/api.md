@@ -64,6 +64,7 @@
 | PUT | `/api/accounts/<account_id>/aliases` | Session + CSRF | JSON | 整体替换账号别名 |
 | POST | `/api/accounts/batch-update-group` | Session + CSRF | JSON | 批量改分组 |
 | POST | `/api/accounts/batch-update-forwarding` | Session + CSRF | JSON | 批量改转发开关 |
+| POST | `/api/accounts/batch-update-proxy` | Session + CSRF | JSON | 批量改账号级代理 |
 | GET | `/api/tags` | Session | JSON | 获取标签列表 |
 | POST | `/api/tags` | Session + CSRF | JSON | 创建标签 |
 | DELETE | `/api/tags/<tag_id>` | Session + CSRF | JSON | 删除标签 |
@@ -577,6 +578,9 @@ curl -H "X-API-Key: your-api-key" \
 | `remark` | string | 否 | 本次新增账号统一备注，不改变 `account_string` 每行格式 |
 | `status` | string | 否 | 本次新增账号统一状态：`active` 或 `inactive` |
 | `tag_ids` | array | 否 | 本次新增账号统一绑定的标签 ID 列表 |
+| `proxy_url` | string | 否 | 本次新增账号统一使用的账号级主代理；留空继承分组代理 |
+| `fallback_proxy_url_1` | string | 否 | 本次新增账号统一使用的账号级回退代理 1 |
+| `fallback_proxy_url_2` | string | 否 | 本次新增账号统一使用的账号级回退代理 2 |
 
 #### 响应重点字段
 
@@ -605,7 +609,10 @@ curl -H "X-API-Key: your-api-key" \
   "forward_enabled": false,
   "remark": "批次 A",
   "status": "active",
-  "tag_ids": [1, 2]
+  "tag_ids": [1, 2],
+  "proxy_url": "socks5://127.0.0.1:1080",
+  "fallback_proxy_url_1": "direct",
+  "fallback_proxy_url_2": ""
 }
 ```
 
@@ -624,7 +631,11 @@ curl -H "X-API-Key: your-api-key" \
     "aliases": ["alias@example.com", "login@example.com"],
     "alias_count": 2,
     "matched_alias": "",
-    "forward_enabled": true
+    "forward_enabled": true,
+    "proxy_url": "socks5://127.0.0.1:1080",
+    "fallback_proxy_url_1": "direct",
+    "fallback_proxy_url_2": "",
+    "proxy_override_enabled": true
   }
 }
 ```
@@ -636,6 +647,7 @@ curl -H "X-API-Key: your-api-key" \
 - 若请求体只有 `status`，则只更新账号状态
 - 支持 Outlook 账号和 IMAP 账号
 - 现在支持直接在更新账号时一起保存别名
+- `proxy_url`、`fallback_proxy_url_1`、`fallback_proxy_url_2` 未传时保留账号现有代理配置；显式传空字符串可清空账号覆盖
 
 #### 请求体常用字段
 
@@ -654,6 +666,9 @@ curl -H "X-API-Key: your-api-key" \
 | `remark` | string | 否 | 备注 |
 | `status` | string | 否 | `active` 等状态值 |
 | `forward_enabled` | bool | 否 | 是否开启转发 |
+| `proxy_url` | string | 否 | 账号级主代理；留空且回退代理也为空时继承分组代理 |
+| `fallback_proxy_url_1` | string | 否 | 账号级回退代理 1，支持 `direct` / `直连` |
+| `fallback_proxy_url_2` | string | 否 | 账号级回退代理 2，支持 `direct` / `直连` |
 | `aliases` | array<string> | 否 | 账号别名列表；若传入则按新列表整体替换 |
 
 #### 请求示例
@@ -667,6 +682,9 @@ curl -H "X-API-Key: your-api-key" \
   "remark": "主账号",
   "status": "active",
   "forward_enabled": true,
+  "proxy_url": "socks5://127.0.0.1:1080",
+  "fallback_proxy_url_1": "direct",
+  "fallback_proxy_url_2": "",
   "aliases": [
     "alias@example.com",
     "login@example.com"
@@ -714,6 +732,39 @@ curl -H "X-API-Key: your-api-key" \
 | `updated_count` | 实际状态发生变化的账号数量 |
 | `updated_accounts` | 被更新的账号列表 |
 | `unchanged_count` | 原本就处于目标状态的账号数量 |
+| `missing_ids` | 未命中的账号 ID |
+
+### POST `/api/accounts/batch-update-proxy`
+
+批量设置或清空账号级代理。账号级代理三项全空时，该账号会继续继承所属分组代理；任一项非空时，账号级配置优先于分组配置。
+
+#### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `account_ids` | array<int> | 是 | 账号 ID 列表 |
+| `proxy_url` | string | 否 | 账号级主代理，支持 `direct` / `直连` |
+| `fallback_proxy_url_1` | string | 否 | 回退代理 1 |
+| `fallback_proxy_url_2` | string | 否 | 回退代理 2 |
+
+#### 请求示例
+
+```json
+{
+  "account_ids": [1, 2, 3],
+  "proxy_url": "socks5://127.0.0.1:1080",
+  "fallback_proxy_url_1": "direct",
+  "fallback_proxy_url_2": ""
+}
+```
+
+#### 响应重点字段
+
+| 字段 | 说明 |
+| --- | --- |
+| `updated_count` | 实际代理配置发生变化的账号数量 |
+| `updated_accounts` | 被更新的账号列表 |
+| `unchanged_count` | 原本就处于目标代理配置的账号数量 |
 | `missing_ids` | 未命中的账号 ID |
 
 ### GET `/api/accounts/<account_id>/aliases`
@@ -1821,7 +1872,7 @@ Telegram 测试：
 
 ### 代理使用
 
-账号邮箱相关 API 当前会优先继承账号所属分组的 `proxy_url`：
+账号邮箱相关 API 当前会优先使用账号级代理配置；账号 `proxy_url`、`fallback_proxy_url_1`、`fallback_proxy_url_2` 三项全空时，才继承账号所属分组的代理配置：
 
 - Graph token 获取
 - Graph 邮件列表

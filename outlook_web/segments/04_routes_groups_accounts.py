@@ -1123,6 +1123,48 @@ def api_batch_update_account_forwarding():
     })
 
 
+@app.route('/api/accounts/batch-update-proxy', methods=['POST'])
+@login_required
+def api_batch_update_account_proxy():
+    """批量更新账号级代理配置"""
+    data = request.json or {}
+    result = update_accounts_proxy_by_ids(
+        data.get('account_ids', []),
+        str(data.get('proxy_url', '') or '').strip(),
+        str(data.get('fallback_proxy_url_1', '') or '').strip(),
+        str(data.get('fallback_proxy_url_2', '') or '').strip(),
+    )
+    if not result.get('success'):
+        return jsonify(result)
+
+    updated_count = result.get('updated_count', 0)
+    unchanged_count = result.get('unchanged_count', 0)
+    is_clearing = not any((
+        str(data.get('proxy_url', '') or '').strip(),
+        str(data.get('fallback_proxy_url_1', '') or '').strip(),
+        str(data.get('fallback_proxy_url_2', '') or '').strip(),
+    ))
+
+    if updated_count:
+        action_label = '清空账号代理，改为继承分组代理' if is_clearing else '设置账号代理'
+        message = f'已为 {updated_count} 个账号{action_label}'
+        if unchanged_count:
+            message += f'，{unchanged_count} 个账号无需更新'
+    elif unchanged_count:
+        message = f'所选 {unchanged_count} 个账号代理配置无需更新'
+    else:
+        message = '没有可更新的账号'
+
+    return jsonify({
+        'success': True,
+        'message': message,
+        'updated_count': updated_count,
+        'updated_accounts': result.get('updated_accounts', []),
+        'unchanged_count': unchanged_count,
+        'missing_ids': result.get('missing_ids', []),
+    })
+
+
 
 @app.route('/api/accounts/search', methods=['GET'])
 @login_required
@@ -1189,6 +1231,10 @@ def api_get_account(account_id):
             'matched_alias': account.get('matched_alias', ''),
             'forward_enabled': bool(account.get('forward_enabled')),
             'forward_last_checked_at': account.get('forward_last_checked_at', ''),
+            'proxy_url': account.get('proxy_url', '') or '',
+            'fallback_proxy_url_1': account.get('fallback_proxy_url_1', '') or '',
+            'fallback_proxy_url_2': account.get('fallback_proxy_url_2', '') or '',
+            'proxy_override_enabled': account_has_proxy_override(account),
             'group_id': account.get('group_id'),
             'group_name': account.get('group_name', '默认分组'),
             'sort_order': normalize_account_sort_order(account.get('sort_order', 0)),
@@ -1261,6 +1307,9 @@ def api_add_account():
     remark = sanitize_input(str(data.get('remark', '') or '').strip(), max_length=500)
     status = normalize_account_status(data.get('status', 'active'))
     tag_ids = normalize_tag_ids_input(data.get('tag_ids', []))
+    proxy_url = str(data.get('proxy_url', '') or '').strip()
+    fallback_proxy_url_1 = str(data.get('fallback_proxy_url_1', '') or '').strip()
+    fallback_proxy_url_2 = str(data.get('fallback_proxy_url_2', '') or '').strip()
     imap_host = (data.get('imap_host', '') or '').strip()
     try:
         imap_port = int(data.get('imap_port', 993) or 993)
@@ -1286,7 +1335,18 @@ def api_add_account():
         else:
             invalid_count += 1
 
-    result = add_accounts_bulk(parsed_accounts, group_id, forward_enabled, sort_order, remark, status, tag_ids)
+    result = add_accounts_bulk(
+        parsed_accounts,
+        group_id,
+        forward_enabled,
+        sort_order,
+        remark,
+        status,
+        tag_ids,
+        proxy_url,
+        fallback_proxy_url_1,
+        fallback_proxy_url_2,
+    )
     added = result.get('added_count', 0)
     skipped_count = result.get('skipped_count', 0)
     tagged_count = result.get('tagged_count', 0)
@@ -1342,6 +1402,14 @@ def api_update_account(account_id):
     remark = sanitize_input(data.get('remark', ''), max_length=200)
     status = data.get('status', 'active')
     forward_enabled = bool(data.get('forward_enabled', False))
+    current_account = get_account_by_id(account_id) or {}
+    proxy_url = str(data.get('proxy_url', current_account.get('proxy_url', '')) or '').strip()
+    fallback_proxy_url_1 = str(
+        data.get('fallback_proxy_url_1', current_account.get('fallback_proxy_url_1', '')) or ''
+    ).strip()
+    fallback_proxy_url_2 = str(
+        data.get('fallback_proxy_url_2', current_account.get('fallback_proxy_url_2', '')) or ''
+    ).strip()
     aliases_provided = 'aliases' in data
     aliases = parse_alias_payload(data.get('aliases', [])) if aliases_provided else []
 
@@ -1378,7 +1446,8 @@ def api_update_account(account_id):
 
     if update_account(
         account_id, email_addr, password, client_id, refresh_token, group_id, sort_order, remark, status,
-        account_type, provider, imap_host, imap_port, imap_password, forward_enabled
+        account_type, provider, imap_host, imap_port, imap_password, forward_enabled,
+        proxy_url, fallback_proxy_url_1, fallback_proxy_url_2
     ):
         cleaned_aliases = get_account_aliases(account_id)
         if aliases_provided:

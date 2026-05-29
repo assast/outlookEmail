@@ -920,7 +920,7 @@ def api_external_get_emails():
     if not account:
         return jsonify({'success': False, 'error': '邮箱账号不存在'}), 404
 
-    # 获取分组代理设置
+    # 获取代理设置：账号级配置优先，未配置时继承分组代理
     proxy_url = get_account_proxy_url(account)
     fallback_proxy_urls = get_account_proxy_failover_urls(account)
 
@@ -950,7 +950,7 @@ def api_external_get_emails():
         graph_error = graph_result.get('error')
         all_errors['graph'] = graph_error
         if isinstance(graph_error, dict) and graph_error.get('type') in ('ProxyError', 'ConnectionError'):
-            return jsonify({'success': False, 'error': '代理连接失败', 'details': all_errors})
+            return jsonify({'success': False, 'error': '账号代理或分组代理连接失败', 'details': all_errors})
 
     # 2. 尝试新版 IMAP
     imap_new_result = get_emails_imap_with_server(
