@@ -499,7 +499,7 @@
                 syncAccountPageSizeSelect();
                 updateTagFilter();
                 if (searchInput) {
-                    searchInput.placeholder = '搜索邮箱地址、别名、备注或标签...';
+                    searchInput.placeholder = '邮箱、别名、备注或标签';
                 }
             }
         }
