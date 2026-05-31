@@ -289,6 +289,26 @@ def build_account_tag_filter_clause(tag_ids: Any = None, include_untagged: bool 
     return '(' + ' OR '.join(clauses) + ')', params
 
 
+ACCOUNT_SEARCH_MAX_TERMS = 200
+
+
+def normalize_account_search_terms(query: Any) -> List[str]:
+    normalized_query = str(query or '').strip()
+    if not normalized_query:
+        return []
+
+    raw_terms = [term.strip() for term in re.split(r'\s+', normalized_query) if term.strip()]
+    terms: List[str] = []
+    seen = set()
+    for raw_term in raw_terms:
+        normalized = raw_term.lower()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        terms.append(raw_term)
+    return terms
+
+
 def build_account_where_clause(group_id: int = None, query: str = '',
                                tag_ids: Any = None, include_untagged: bool = False) -> tuple[str, List[Any]]:
     clauses = []
@@ -300,9 +320,13 @@ def build_account_where_clause(group_id: int = None, query: str = '',
 
     normalized_query = str(query or '').strip()
     if normalized_query:
-        like_query = f'%{normalized_query}%'
-        clauses.append('(a.email LIKE ? OR a.remark LIKE ? OR t.name LIKE ? OR aa.alias_email LIKE ?)')
-        params.extend([like_query, like_query, like_query, like_query])
+        search_term_clauses = []
+        for term in normalize_account_search_terms(normalized_query):
+            like_query = f'%{term}%'
+            search_term_clauses.append('(a.email LIKE ? OR a.remark LIKE ? OR t.name LIKE ? OR aa.alias_email LIKE ?)')
+            params.extend([like_query, like_query, like_query, like_query])
+        if search_term_clauses:
+            clauses.append('(' + ' OR '.join(search_term_clauses) + ')')
 
     tag_clause, tag_params = build_account_tag_filter_clause(tag_ids, include_untagged)
     if tag_clause:

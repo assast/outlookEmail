@@ -100,6 +100,31 @@ class ProjectRuntimeTests(unittest.TestCase):
             db.commit()
             return cleaned_aliases
 
+    def _create_tag(self, name: str, color: str = '#0078d4') -> int:
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            cursor = db.execute(
+                'INSERT INTO tags (name, color) VALUES (?, ?)',
+                (name, color)
+            )
+            db.commit()
+            return int(cursor.lastrowid)
+
+    def _tag_account(self, account_id: int, tag_id: int):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                'INSERT INTO account_tags (account_id, tag_id) VALUES (?, ?)',
+                (account_id, tag_id)
+            )
+            db.commit()
+
+    def _set_account_remark(self, account_id: int, remark: str):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('UPDATE accounts SET remark = ? WHERE id = ?', (remark, account_id))
+            db.commit()
+
     def _project_accounts(self, project_key: str):
         response = self.client.get(f'/api/projects/{project_key}/accounts')
         self.assertEqual(response.status_code, 200)
@@ -738,6 +763,106 @@ class ProjectRuntimeTests(unittest.TestCase):
         all_payload = all_response.get_json()
         self.assertTrue(all_payload['success'])
         self.assertEqual(all_payload['total'], 3)
+
+    def test_account_search_accepts_whitespace_separated_email_list(self):
+        self._insert_account('multi-first@example.com')
+        self._insert_account('multi-second@example.com')
+        alias_owner_id = self._insert_account('multi-alias-owner@example.com')
+        self._set_aliases(alias_owner_id, 'multi-alias-owner@example.com', ['multi-alias@example.com'])
+        self._insert_account('multi-other@example.com')
+
+        response = self.client.get('/api/accounts/search', query_string={
+            'q': 'multi-second@example.com\nmulti-alias@example.com multi-first@example.com',
+            'sort_by': 'email',
+            'sort_order': 'asc',
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['total'], 3)
+        self.assertEqual(
+            [account['email'] for account in payload['accounts']],
+            [
+                'multi-alias-owner@example.com',
+                'multi-first@example.com',
+                'multi-second@example.com',
+            ]
+        )
+
+    def test_account_search_splits_keywords_across_email_alias_remark_and_tag(self):
+        email_match_id = self._insert_account('keyword-email@example.com')
+        remark_match_id = self._insert_account('keyword-remark-owner@example.com')
+        tag_match_id = self._insert_account('keyword-tag-owner@example.com')
+        alias_match_id = self._insert_account('keyword-alias-owner@example.com')
+        self._insert_account('keyword-other@example.com')
+
+        self._set_account_remark(remark_match_id, '客户备注命中')
+        tag_id = self._create_tag('重点标签')
+        self._tag_account(tag_match_id, tag_id)
+        self._set_aliases(alias_match_id, 'keyword-alias-owner@example.com', ['keyword-alias@example.com'])
+
+        response = self.client.get('/api/accounts/search', query_string={
+            'q': 'keyword-email\n客户备注 重点标签 keyword-alias@example.com',
+            'sort_by': 'email',
+            'sort_order': 'asc',
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['total'], 4)
+        self.assertEqual(
+            [account['id'] for account in payload['accounts']],
+            [
+                alias_match_id,
+                email_match_id,
+                remark_match_id,
+                tag_match_id,
+            ]
+        )
+
+    def test_account_search_rejects_more_than_200_keywords(self):
+        response = self.client.get('/api/accounts/search', query_string={
+            'q': ' '.join(f'keyword-limit-{index}' for index in range(201)),
+        })
+        self.assertEqual(response.status_code, 400)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertEqual(payload['error'], '搜索关键词最多支持 200 个')
+
+    def test_account_search_email_list_combines_group_scope_and_tag_filter(self):
+        target_group_id = self._create_group('组合搜索分组')
+        other_group_id = self._create_group('其他搜索分组')
+        tag_id = self._create_tag('组合标签')
+
+        primary_id = self._insert_account('combo-primary@example.com', group_id=target_group_id)
+        alias_owner_id = self._insert_account('combo-alias-owner@example.com', group_id=target_group_id)
+        self._set_aliases(alias_owner_id, 'combo-alias-owner@example.com', ['combo-alias@example.com'])
+        untagged_id = self._insert_account('combo-untagged@example.com', group_id=target_group_id)
+        outside_group_id = self._insert_account('combo-outside@example.com', group_id=other_group_id)
+
+        self._tag_account(primary_id, tag_id)
+        self._tag_account(alias_owner_id, tag_id)
+        self._tag_account(outside_group_id, tag_id)
+
+        response = self.client.get('/api/accounts/search', query_string={
+            'q': 'combo-primary@example.com combo-alias@example.com combo-untagged@example.com combo-outside@example.com',
+            'group_id': target_group_id,
+            'tag_ids': str(tag_id),
+            'sort_by': 'email',
+            'sort_order': 'asc',
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['total'], 2)
+        self.assertEqual(
+            [account['email'] for account in payload['accounts']],
+            [
+                'combo-alias-owner@example.com',
+                'combo-primary@example.com',
+            ]
+        )
+        self.assertNotIn(untagged_id, [account['id'] for account in payload['accounts']])
 
     def test_add_account_without_sort_order_uses_created_at_fallback(self):
         response = self.client.post(
@@ -1675,6 +1800,21 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
 
         self.assertIn('selectedTagFilters.size > 0', temp_js)
         self.assertNotIn('selectedTagIds', temp_js)
+
+    def test_temp_email_cloudflare_global_search_is_case_insensitive(self):
+        temp_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '03-temp-emails.js').read_text(encoding='utf-8')
+
+        self.assertIn('const normalizedSearchQuery = searchQuery.toLowerCase();', temp_js)
+        self.assertIn('cloudflareGlobalLabel.toLowerCase().includes(normalizedSearchQuery)', temp_js)
+
+    def test_account_search_terms_are_not_limited_to_emails(self):
+        groups_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '02-groups.js').read_text(encoding='utf-8')
+
+        self.assertNotIn('isAccountEmailSearchTerm', groups_js)
+        self.assertNotIn('splitTerms.every', groups_js)
+        self.assertIn('return Array.from(new Set(splitTerms));', groups_js)
+        self.assertIn('ACCOUNT_SEARCH_MAX_TERMS = 200', groups_js)
+        self.assertIn('搜索关键词最多支持 200 个', groups_js)
 
     def test_save_settings_separates_saved_refresh_failure(self):
         settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')

@@ -1177,6 +1177,9 @@ def api_search_accounts():
     if not query:
         return jsonify(build_account_list_response([], 0, list_args['limit'], list_args['offset']))
 
+    if len(normalize_account_search_terms(query)) > ACCOUNT_SEARCH_MAX_TERMS:
+        return jsonify({'success': False, 'error': f'搜索关键词最多支持 {ACCOUNT_SEARCH_MAX_TERMS} 个'}), 400
+
     accounts = search_account_records(
         query,
         group_id=group_id,

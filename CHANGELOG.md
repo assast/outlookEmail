@@ -6,6 +6,17 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.58] - 2026-06-01
+
+### Added
+- 账号搜索支持空格或换行分隔多个关键词，任一关键词命中主邮箱、别名邮箱、备注或标签即返回结果。
+- 搜索框改为多行输入，便于批量粘贴邮箱或关键词，并限制最多 `200` 个唯一关键词。
+
+### Changed
+- `/api/accounts/search` 的 `q` 参数改为多关键词 OR 搜索语义，并在超过关键词上限时返回明确错误。
+- 临时邮箱列表搜索复用多关键词匹配逻辑，并保持 Cloudflare 全局入口大小写不敏感。
+- API 文档同步说明多关键词搜索规则和数量上限。
+
 ## [2.0.57] - 2026-05-29
 
 ### Added

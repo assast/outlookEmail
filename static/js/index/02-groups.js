@@ -2,6 +2,8 @@
 
         // ==================== 分组相关 ====================
 
+        const ACCOUNT_SEARCH_MAX_TERMS = 200;
+
         // 加载分组列表
         async function loadGroups() {
             const container = document.getElementById('groupList');
@@ -1143,22 +1145,42 @@
             }
         }
 
+        function getAccountSearchTerms(query) {
+            const normalizedQuery = String(query || '').trim().toLowerCase();
+            if (!normalizedQuery) {
+                return [];
+            }
+
+            const splitTerms = normalizedQuery.split(/\s+/).filter(Boolean);
+            return Array.from(new Set(splitTerms));
+        }
+
+        function matchesAccountSearchTerms(fields, query) {
+            const terms = getAccountSearchTerms(query);
+            if (!terms.length) {
+                return true;
+            }
+
+            const normalizedFields = fields.map(value => String(value || '').toLowerCase());
+            return terms.some(term => normalizedFields.some(value => value.includes(term)));
+        }
+
         // 应用筛选和排序
         function applyFiltersAndSort(accounts) {
             let result = [...accounts];
 
-            const searchQuery = (document.getElementById('globalSearch')?.value || '').trim().toLowerCase();
+            const searchQuery = (document.getElementById('globalSearch')?.value || '').trim();
 
             if (searchQuery) {
                 result = result.filter(acc => {
-                    const aliasText = Array.isArray(acc.aliases) ? acc.aliases.join('\n').toLowerCase() : '';
-                    const tagText = Array.isArray(acc.tags) ? acc.tags.map(tag => String(tag.name || '')).join('\n').toLowerCase() : '';
-                    const remarkText = String(acc.remark || '').toLowerCase();
-                    const emailText = String(acc.email || '').toLowerCase();
-                    return emailText.includes(searchQuery)
-                        || aliasText.includes(searchQuery)
-                        || remarkText.includes(searchQuery)
-                        || tagText.includes(searchQuery);
+                    const aliasText = Array.isArray(acc.aliases) ? acc.aliases.join('\n') : '';
+                    const tagText = Array.isArray(acc.tags) ? acc.tags.map(tag => String(tag.name || '')).join('\n') : '';
+                    return matchesAccountSearchTerms([
+                        acc.email,
+                        aliasText,
+                        acc.remark,
+                        tagText
+                    ], searchQuery);
                 });
             }
 
@@ -1268,6 +1290,16 @@
                 return;
             }
 
+            if (getAccountSearchTerms(query).length > ACCOUNT_SEARCH_MAX_TERMS) {
+                const message = '搜索关键词最多支持 200 个';
+                if (append) {
+                    showToast(message, 'warning');
+                } else {
+                    container.innerHTML = `<div class="empty-state"><div class="empty-state-text">${escapeHtml(message)}</div></div>`;
+                }
+                return;
+            }
+
             if (isTempEmailGroup) {
                 if (accountsCache['temp']) {
                     renderTempEmailList(accountsCache['temp']);
@@ -1307,7 +1339,8 @@
                     updateAccountPaginationState('search', `${getAccountSearchScopeKey()}:${query}`, data, nextAccounts.length);
                     renderFilteredAccountList(nextAccounts);
                 } else {
-                    container.innerHTML = '<div class="empty-state"><div class="empty-state-text">搜索失败</div></div>';
+                    const message = data.error || '搜索失败';
+                    container.innerHTML = `<div class="empty-state"><div class="empty-state-text">${escapeHtml(message)}</div></div>`;
                 }
             } catch (error) {
                 console.error('搜索失败:', error);

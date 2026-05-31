@@ -94,9 +94,17 @@
             border: 1px solid #d9dce3;
             border-radius: 10px;
             font-size: 13px;
+            line-height: 18px;
             outline: none;
             background-color: #ffffff;
+            box-sizing: border-box;
             transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+        }
+
+        textarea.search-input {
+            min-height: 58px;
+            max-height: 108px;
+            resize: vertical;
         }
 
         .search-input:focus {

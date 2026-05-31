@@ -50,18 +50,18 @@
 
             // 渠道筛选
             const filter = localStorage.getItem('outlook_temp_email_filter') || 'all';
-            const searchQuery = (document.getElementById('globalSearch')?.value || '').trim().toLowerCase();
+            const searchQuery = (document.getElementById('globalSearch')?.value || '').trim();
+            const normalizedSearchQuery = searchQuery.toLowerCase();
             let filtered = filter === 'all'
                 ? [...currentAccountListSource]
                 : currentAccountListSource.filter(e => e.provider === filter);
 
             if (searchQuery) {
                 filtered = filtered.filter(email => {
-                    const emailText = String(email.email || '').toLowerCase();
                     const tagText = Array.isArray(email.tags)
-                        ? email.tags.map(tag => String(tag.name || '')).join('\n').toLowerCase()
+                        ? email.tags.map(tag => String(tag.name || '')).join('\n')
                         : '';
-                    return emailText.includes(searchQuery) || tagText.includes(searchQuery);
+                    return matchesAccountSearchTerms([email.email, tagText], searchQuery);
                 });
             }
 
@@ -78,7 +78,7 @@
 
             const cloudflareGlobalLabel = 'Cloudflare所有邮件';
             const showCloudflareGlobalEntry = (filter === 'all' || filter === 'cloudflare') &&
-                (!searchQuery || cloudflareGlobalLabel.toLowerCase().includes(searchQuery));
+                (!searchQuery || cloudflareGlobalLabel.toLowerCase().includes(normalizedSearchQuery));
 
             if (filtered.length === 0 && !showCloudflareGlobalEntry) {
                 const providerName = filter === 'duckmail' ? 'DuckMail' : (filter === 'cloudflare' ? 'Cloudflare' : 'GPTMail');
