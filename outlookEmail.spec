@@ -1,6 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import ast
+import os
+import sys
 from pathlib import Path
 
 
@@ -36,6 +38,9 @@ def collect_segment_hiddenimports():
 
 
 hiddenimports = collect_segment_hiddenimports()
+app_version = (project_root / "VERSION").read_text(encoding="utf-8").strip()
+codesign_identity = os.getenv("MACOS_CODESIGN_IDENTITY") or None
+entitlements_file = os.getenv("MACOS_ENTITLEMENTS_FILE") or None
 
 
 a = Analysis(
@@ -52,23 +57,66 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.datas,
-    [],
-    name="OutlookEmail",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-)
+if sys.platform == "darwin":
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name="OutlookEmail",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=codesign_identity,
+        entitlements_file=entitlements_file,
+    )
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.datas,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        name="OutlookEmail",
+    )
+    app = BUNDLE(
+        coll,
+        name="OutlookEmail.app",
+        icon=None,
+        bundle_identifier="org.assast.outlookemail",
+        info_plist={
+            "CFBundleName": "OutlookEmail",
+            "CFBundleDisplayName": "OutlookEmail",
+            "CFBundleShortVersionString": app_version,
+            "CFBundleVersion": app_version,
+            "NSHighResolutionCapable": True,
+        },
+    )
+else:
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.datas,
+        [],
+        name="OutlookEmail",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=codesign_identity,
+        entitlements_file=entitlements_file,
+    )

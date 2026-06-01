@@ -6,8 +6,15 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.59] - 2026-06-01
+
+### Added
+- 新增 macOS DMG 安装包构建脚本，支持生成可拖拽安装的 `OutlookEmail.app` 安装包。
+- GitHub Release 工作流新增 macOS x64 和 arm64 安装包产物，并在上传前校验二进制架构。
+
 ### Changed
 - 搜索框保留多行输入能力，但默认展示高度收敛为一行，并缩小、压缩占位提示文案。
+- PyInstaller 打包配置在 macOS 下改为 `.app` bundle，Windows `exe` 构建保持原有 onefile 行为。
 
 ## [2.0.58] - 2026-06-01
 

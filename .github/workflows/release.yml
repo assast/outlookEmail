@@ -80,10 +80,72 @@ jobs:
           name: windows-exe
           path: ${{ steps.package.outputs.asset_name }}
 
+  build-macos-dmg:
+    needs: resolve-release
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x64
+          - runner: macos-15
+            arch: arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build macOS DMG
+        shell: bash
+        env:
+          OUTLOOK_EMAIL_MACOS_ARCH: ${{ matrix.arch }}
+        run: scripts/build-macos-dmg.sh
+
+      - name: Verify macOS binary architecture
+        shell: bash
+        run: |
+          binary="dist/OutlookEmail.app/Contents/MacOS/OutlookEmail"
+          file_output="$(file "$binary")"
+          echo "$file_output"
+
+          case "${{ matrix.arch }}" in
+            x64)
+              echo "$file_output" | grep -q "x86_64"
+              ;;
+            arm64)
+              echo "$file_output" | grep -q "arm64"
+              ;;
+            *)
+              echo "::error::Unsupported macOS architecture: ${{ matrix.arch }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-dmg-${{ matrix.arch }}
+          path: dist/OutlookEmail-macos-${{ matrix.arch }}-${{ needs.resolve-release.outputs.version }}.dmg
+
   prepare-release:
     needs:
       - resolve-release
       - build-windows-exe
+      - build-macos-dmg
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -165,6 +227,7 @@ jobs:
     needs:
       - resolve-release
       - build-windows-exe
+      - build-macos-dmg
       - prepare-release
       - docker-release
     runs-on: ubuntu-latest
@@ -177,6 +240,13 @@ jobs:
         with:
           name: windows-exe
           path: release-assets
+
+      - name: Download macOS DMG packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: macos-dmg-*
+          path: release-assets
+          merge-multiple: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
