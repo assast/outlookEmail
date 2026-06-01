@@ -4,6 +4,7 @@ import os
 import pathlib
 import sys
 import tempfile
+import types
 import unittest
 import zipfile
 from email.message import EmailMessage
@@ -2074,6 +2075,79 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('.refresh-account-select-checkbox', modal_css)
         self.assertIn('.refresh-filter-chip', modal_css)
         self.assertNotIn('.refresh-progress-banner', modal_css)
+
+
+class DesktopPackagedRuntimeTests(unittest.TestCase):
+    def test_frozen_macos_main_uses_desktop_app_runner(self):
+        runner_calls = []
+
+        def fake_run_desktop_app(access_url, host, port):
+            runner_calls.append((access_url, host, port))
+
+        with patch.dict(os.environ, {
+            'PORT': '51234',
+            'HOST': '127.0.0.1',
+            'FLASK_ENV': 'production',
+        }, clear=False), \
+             patch.object(web_outlook_app, 'is_frozen', return_value=True), \
+             patch.object(web_outlook_app.os, 'name', 'posix'), \
+             patch.object(web_outlook_app.sys, 'platform', 'darwin'), \
+             patch.object(web_outlook_app, 'run_desktop_app', side_effect=fake_run_desktop_app), \
+             patch.object(web_outlook_app, 'init_scheduler') as init_scheduler, \
+             patch.object(web_outlook_app.app, 'run') as app_run, \
+             patch('builtins.print'):
+            web_outlook_app.main()
+
+        self.assertEqual(runner_calls, [('http://127.0.0.1:51234', '127.0.0.1', 51234)])
+        init_scheduler.assert_not_called()
+        app_run.assert_not_called()
+
+    def test_desktop_app_tray_exit_stops_background_server(self):
+        events = []
+
+        class FakeServer:
+            def __init__(self, host, port):
+                events.append(('server', host, port))
+
+            def start(self):
+                events.append('start')
+
+            def stop(self):
+                events.append('stop')
+
+        class FakeTimer:
+            def __init__(self, delay, callback):
+                self.delay = delay
+                self.callback = callback
+
+            def start(self):
+                events.append(('timer', self.delay))
+
+        class FakeTrayApp:
+            def __init__(self, tooltip, on_open, on_exit):
+                self.tooltip = tooltip
+                self.on_open = on_open
+                self.on_exit = on_exit
+
+            def run(self):
+                events.append(('tray', self.tooltip))
+                self.on_exit()
+
+        fake_tray_module = types.ModuleType('outlook_web.windows_tray')
+        fake_tray_module.WindowsTrayApp = FakeTrayApp
+
+        with patch.object(web_outlook_app, 'DesktopServer', FakeServer), \
+             patch.object(web_outlook_app.threading, 'Timer', FakeTimer), \
+             patch.dict(sys.modules, {'outlook_web.windows_tray': fake_tray_module}):
+            web_outlook_app.run_desktop_app('http://127.0.0.1:51234', '127.0.0.1', 51234)
+
+        self.assertEqual(events, [
+            ('server', '127.0.0.1', 51234),
+            'start',
+            ('timer', 1.0),
+            ('tray', 'OutlookEmail'),
+            'stop',
+        ])
 
 class SchedulerTimezoneMigrationTests(unittest.TestCase):
     def setUp(self):
