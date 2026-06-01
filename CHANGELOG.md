@@ -7,7 +7,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ## [Unreleased]
 
 ### Changed
-- 搜索框保留多行输入能力，但默认展示高度收敛为一行，并缩小占位提示文字。
+- 搜索框保留多行输入能力，但默认展示高度收敛为一行，并缩小、压缩占位提示文案。
 
 ## [2.0.58] - 2026-06-01
 
