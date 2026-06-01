@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.60] - 2026-06-01
+
+### Fixed
+- 修复 macOS DMG 安装的桌面应用打开后缺少可用退出入口的问题；macOS 打包运行时现在复用可控桌面服务，并可通过状态栏菜单退出时停止后台服务。
+
 ## [2.0.59] - 2026-06-01
 
 ### Added

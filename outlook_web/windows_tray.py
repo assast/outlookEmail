@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Windows tray integration for the packaged desktop app."""
+"""Tray/status-bar integration for the packaged desktop app."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import pystray
 
 
 class WindowsTrayApp:
-    """Tray app backed by pystray."""
+    """Tray/status-bar app backed by pystray."""
 
     def __init__(self, tooltip: str, on_open: Callable[[], None], on_exit: Callable[[], None]):
         self.tooltip = tooltip[:127]

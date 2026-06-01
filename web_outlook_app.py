@@ -3,6 +3,7 @@
 """Compatibility entrypoint for the segmented Outlook web app."""
 
 import os
+import sys
 import threading
 import webbrowser
 from pathlib import Path
@@ -79,7 +80,7 @@ class DesktopServer:
                     pass
 
 
-def run_windows_desktop(access_url: str, host: str, port: int) -> None:
+def run_desktop_app(access_url: str, host: str, port: int) -> None:
     from outlook_web.windows_tray import WindowsTrayApp
 
     server = DesktopServer(host, port)
@@ -93,6 +94,10 @@ def run_windows_desktop(access_url: str, host: str, port: int) -> None:
 
     threading.Timer(1.0, open_ui).start()
     WindowsTrayApp("OutlookEmail", open_ui, exit_app).run()
+
+
+def run_windows_desktop(access_url: str, host: str, port: int) -> None:
+    run_desktop_app(access_url, host, port)
 
 
 def main():
@@ -110,8 +115,8 @@ def main():
     print("=" * 60)
 
     try:
-        if is_frozen() and os.name == "nt":
-            run_windows_desktop(access_url, host, port)
+        if is_frozen() and (os.name == "nt" or sys.platform == "darwin"):
+            run_desktop_app(access_url, host, port)
             return
 
         if is_frozen():
