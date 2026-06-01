@@ -102,9 +102,15 @@
         }
 
         textarea.search-input {
-            min-height: 58px;
-            max-height: 108px;
-            resize: vertical;
+            height: 40px;
+            min-height: 40px;
+            max-height: 40px;
+            resize: none;
+            overflow-y: auto;
+        }
+
+        .search-input::placeholder {
+            font-size: 12px;
         }
 
         .search-input:focus {
