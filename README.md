@@ -41,8 +41,8 @@ admin123
 说明：
 
 - macOS 数据默认保存在 `~/Library/Application Support/OutlookEmail`
-- 如果 macOS 提示安装包损坏，可执行
-  `sudo xattr -rd com.apple.quarantine /Applications/OutlookEmail.app` 然后重试
+- 如果 macOS 提示Apple无法验证“OutlookEmail”是否包含可能危害Mac安全或泄漏隐私的恶意软件。可执行下面命令然后重试
+  `sudo xattr -rd com.apple.quarantine /Applications/OutlookEmail.app` 
 - 默认登录密码仍然是 `admin123`，首次登录后建议立即修改
 
 ### 方式三：使用 Docker（推荐服务器部署）
