@@ -133,6 +133,163 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertTrue(payload['success'])
         return payload['data']['accounts']
 
+    def test_account_detail_hides_saved_password_fields(self):
+        account_id = self._insert_account('hidden-secret@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                UPDATE accounts
+                SET password = ?, imap_password = ?
+                WHERE id = ?
+                ''',
+                ('saved-password', 'saved-imap-password', account_id)
+            )
+            db.commit()
+
+        response = self.client.get(f'/api/accounts/{account_id}')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        account = payload['account']
+        self.assertNotIn('password', account)
+        self.assertNotIn('imap_password', account)
+        self.assertTrue(account['has_password'])
+        self.assertTrue(account['has_imap_password'])
+
+    def test_account_secrets_require_login_password(self):
+        account_id = self._insert_account('secret-verify@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                UPDATE accounts
+                SET password = ?, imap_password = ?
+                WHERE id = ?
+                ''',
+                ('account-password', 'imap-password', account_id)
+            )
+            web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('secret-pass'))
+            db.commit()
+
+        wrong_response = self.client.post(
+            f'/api/accounts/{account_id}/secrets',
+            json={'password': 'wrong-pass'}
+        )
+        self.assertEqual(wrong_response.status_code, 200)
+        wrong_payload = wrong_response.get_json()
+        self.assertFalse(wrong_payload['success'])
+        self.assertNotIn('secrets', wrong_payload)
+
+        response = self.client.post(
+            f'/api/accounts/{account_id}/secrets',
+            json={'password': 'secret-pass'}
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['secrets']['password'], 'account-password')
+        self.assertEqual(payload['secrets']['imap_password'], 'imap-password')
+
+    def test_account_secrets_can_reveal_single_requested_field(self):
+        account_id = self._insert_account('single-secret@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                UPDATE accounts
+                SET password = ?, imap_password = ?
+                WHERE id = ?
+                ''',
+                ('account-password', 'imap-password', account_id)
+            )
+            web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('secret-pass'))
+            db.commit()
+
+        response = self.client.post(
+            f'/api/accounts/{account_id}/secrets',
+            json={'password': 'secret-pass', 'field': 'password'}
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['secrets'], {'password': 'account-password'})
+
+        invalid_response = self.client.post(
+            f'/api/accounts/{account_id}/secrets',
+            json={'password': 'secret-pass', 'field': 'refresh_token'}
+        )
+        self.assertEqual(invalid_response.status_code, 400)
+        invalid_payload = invalid_response.get_json()
+        self.assertFalse(invalid_payload['success'])
+        self.assertNotIn('secrets', invalid_payload)
+
+    def test_update_account_preserves_password_when_field_is_omitted(self):
+        account_id = self._insert_account('preserve-password@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                UPDATE accounts
+                SET password = ?, client_id = ?, refresh_token = ?
+                WHERE id = ?
+                ''',
+                ('old-password', 'old-client', 'old-refresh', account_id)
+            )
+            db.commit()
+
+        response = self.client.put(f'/api/accounts/{account_id}', json={
+            'email': 'preserve-password@example.com',
+            'client_id': 'new-client',
+            'refresh_token': 'new-refresh',
+            'account_type': 'outlook',
+            'provider': 'outlook',
+            'group_id': 1,
+            'remark': 'updated without password',
+            'status': 'active',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()['success'])
+
+        with self.app.app_context():
+            account = web_outlook_app.get_account_by_id(account_id)
+        self.assertEqual(account['password'], 'old-password')
+        self.assertEqual(account['client_id'], 'new-client')
+        self.assertEqual(account['remark'], 'updated without password')
+
+    def test_update_imap_account_preserves_imap_password_when_field_is_omitted(self):
+        account_id = self._insert_account('preserve-imap@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                UPDATE accounts
+                SET account_type = ?, provider = ?, client_id = ?, refresh_token = ?,
+                    imap_host = ?, imap_port = ?, imap_password = ?
+                WHERE id = ?
+                ''',
+                ('imap', 'gmail', '', '', 'imap.gmail.com', 993, 'old-imap-password', account_id)
+            )
+            db.commit()
+
+        response = self.client.put(f'/api/accounts/{account_id}', json={
+            'email': 'preserve-imap@example.com',
+            'account_type': 'imap',
+            'provider': 'gmail',
+            'imap_host': '',
+            'imap_port': 993,
+            'group_id': 1,
+            'remark': 'updated without imap password',
+            'status': 'active',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()['success'])
+
+        with self.app.app_context():
+            account = web_outlook_app.get_account_by_id(account_id)
+        self.assertEqual(account['imap_password'], 'old-imap-password')
+        self.assertEqual(account['remark'], 'updated without imap password')
+
     def test_accounts_api_imports_and_pages_ten_thousand_accounts(self):
         account_lines = [
             f'bulk{i:05d}@example.com----imap-password-{i}'

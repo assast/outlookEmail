@@ -1221,14 +1221,14 @@ def api_get_account(account_id):
         'account': {
             'id': account['id'],
             'email': account['email'],
-            'password': account['password'],
+            'has_password': bool(account.get('password')),
             'client_id': account['client_id'],
             'refresh_token': account['refresh_token'],
             'account_type': account.get('account_type', 'outlook'),
             'provider': account.get('provider', 'outlook'),
             'imap_host': account.get('imap_host', ''),
             'imap_port': account.get('imap_port', 993),
-            'imap_password': account.get('imap_password', ''),
+            'has_imap_password': bool(account.get('imap_password')),
             'aliases': account.get('aliases', []),
             'alias_count': account.get('alias_count', 0),
             'matched_alias': account.get('matched_alias', ''),
@@ -1246,6 +1246,43 @@ def api_get_account(account_id):
             'created_at': account.get('created_at', ''),
             'updated_at': account.get('updated_at', '')
         }
+    })
+
+
+@app.route('/api/accounts/<int:account_id>/secrets', methods=['POST'])
+@login_required
+def api_get_account_secrets(account_id):
+    """二次验证后获取账号敏感密码字段"""
+    account = get_account_by_id(account_id)
+    if not account:
+        return jsonify({'success': False, 'error': '账号不存在'}), 404
+
+    data = request.get_json(silent=True) or {}
+    password = str(data.get('password') or '')
+    requested_field = str(data.get('field') or '').strip()
+    if not password:
+        return jsonify({'success': False, 'error': '请输入登录密码'})
+    if requested_field and requested_field not in {'password', 'imap_password'}:
+        return jsonify({'success': False, 'error': '密码字段无效'}), 400
+
+    if not verify_login_password(password):
+        return jsonify({'success': False, 'error': '密码错误'})
+
+    secrets_payload = {}
+    if not requested_field or requested_field == 'password':
+        secrets_payload['password'] = account.get('password', '') or ''
+    if not requested_field or requested_field == 'imap_password':
+        secrets_payload['imap_password'] = account.get('imap_password', '') or ''
+
+    log_audit(
+        'reveal_secret',
+        'account',
+        str(account_id),
+        f"二次验证后查看账号 '{account.get('email', '')}' 的{requested_field or '密码'}字段"
+    )
+    return jsonify({
+        'success': True,
+        'secrets': secrets_payload
     })
 
 
@@ -1391,21 +1428,21 @@ def api_update_account(account_id):
         # 只更新状态
         return api_update_account_status(account_id, data['status'])
 
+    current_account = get_account_by_id(account_id) or {}
     email_addr = data.get('email', '')
-    password = data.get('password', '')
+    password = data['password'] if 'password' in data else current_account.get('password', '')
     client_id = data.get('client_id', '')
     refresh_token = data.get('refresh_token', '')
     account_type = data.get('account_type', 'outlook')
     provider = data.get('provider', 'outlook')
     imap_host = (data.get('imap_host', '') or '').strip()
     imap_port = data.get('imap_port', 993)
-    imap_password = data.get('imap_password', '')
+    imap_password = data['imap_password'] if 'imap_password' in data else current_account.get('imap_password', '')
     group_id = data.get('group_id', 1)
     sort_order = parse_account_sort_order_input(data.get('sort_order')) if 'sort_order' in data else None
     remark = sanitize_input(data.get('remark', ''), max_length=200)
     status = data.get('status', 'active')
     forward_enabled = bool(data.get('forward_enabled', False))
-    current_account = get_account_by_id(account_id) or {}
     proxy_url = str(data.get('proxy_url', current_account.get('proxy_url', '')) or '').strip()
     fallback_proxy_url_1 = str(
         data.get('fallback_proxy_url_1', current_account.get('fallback_proxy_url_1', '')) or ''

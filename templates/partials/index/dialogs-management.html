@@ -958,8 +958,18 @@
                 <div class="release-notice-list">
                     <div class="release-notice-card release-notice-entry">
                         <div class="release-notice-entry-header">
-                            <div class="release-notice-card-title">v2.0.60</div>
+                            <div class="release-notice-card-title">v2.0.61</div>
                             <span class="release-notice-badge">最新</span>
+                        </div>
+                        <ul>
+                            <li>账号密码和 IMAP 密码默认隐藏，查看前需要再次输入登录密码。</li>
+                            <li>编辑账号时可通过输入框内的小眼睛按钮完成验证并显示密码。</li>
+                            <li>账号详情 API 不再返回密码明文，需通过 secrets 接口二次验证获取。</li>
+                        </ul>
+                    </div>
+                    <div class="release-notice-card release-notice-entry">
+                        <div class="release-notice-entry-header">
+                            <div class="release-notice-card-title">v2.0.60</div>
                         </div>
                         <ul>
                             <li>修复 macOS 安装包打开后缺少可用退出入口的问题。</li>
@@ -974,16 +984,6 @@
                             <li>搜索框保留多行输入能力，默认展示高度收敛为一行，日常浏览更紧凑。</li>
                             <li>新增 macOS DMG 安装包发布产物，支持 Apple Silicon 和 Intel Mac。</li>
                             <li>发布流程会校验 macOS 安装包架构，降低下载到错误架构产物的风险。</li>
-                        </ul>
-                    </div>
-                    <div class="release-notice-card release-notice-entry">
-                        <div class="release-notice-entry-header">
-                            <div class="release-notice-card-title">v2.0.58</div>
-                        </div>
-                        <ul>
-                            <li>账号搜索支持多个关键词，空格或换行分隔后任一命中即可返回结果。</li>
-                            <li>多个关键词可同时匹配主邮箱、别名邮箱、备注和标签，最多支持 200 个。</li>
-                            <li>搜索框改为多行输入，批量粘贴邮箱或关键词更方便。</li>
                         </ul>
                     </div>
                 </div>

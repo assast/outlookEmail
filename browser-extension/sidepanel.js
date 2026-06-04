@@ -602,7 +602,7 @@
         <div class="card">
           <div class="item-title">编辑账号</div>
           <label><span>邮箱</span><input id="editEmail" value="${escapeHtml(account.email || '')}"></label>
-          <label><span>账号密码</span><input id="editPassword" value="${escapeHtml(account.password || '')}"></label>
+          <label><span>账号密码</span><input id="editPassword" value="" placeholder="${account.has_password ? '已保存，需在 Web 端验证后查看' : ''}"></label>
           <div class="row">
             <label><span>类型</span><select id="editProvider">${renderOptions(normalProviders, provider)}</select></label>
             <label><span>分组</span><select id="editGroup">${groupOptions(groups, account.group_id, false)}</select></label>
@@ -614,7 +614,7 @@
               <label><span>IMAP 主机</span><input id="editImapHost" value="${escapeHtml(account.imap_host || '')}"></label>
               <label><span>IMAP 端口</span><input id="editImapPort" type="number" value="${escapeHtml(account.imap_port || 993)}"></label>
             </div>
-            <label><span>IMAP 密码</span><input id="editImapPassword" value="${escapeHtml(account.imap_password || '')}"></label>
+            <label><span>IMAP 密码</span><input id="editImapPassword" value="" placeholder="${account.has_imap_password ? '已保存，需在 Web 端验证后查看' : ''}"></label>
           </div>
           <div class="row">
             <label><span>状态</span><select id="editStatus">${renderOptions([['active', 'active'], ['inactive', 'inactive']], account.status || 'active')}</select></label>
@@ -642,16 +642,16 @@
       getEl('btnSaveAccount').addEventListener('click', () => runAction(config, async () => {
         const selectedProvider = valueOf('editProvider');
         const isOutlook = selectedProvider === 'outlook';
+        const passwordValue = valueOf('editPassword');
+        const imapPasswordValue = valueOf('editImapPassword');
         const body = {
           email: valueOf('editEmail'),
-          password: valueOf('editPassword'),
           client_id: valueOf('editClientId'),
           refresh_token: valueOf('editRefreshToken'),
           account_type: isOutlook ? 'outlook' : 'imap',
           provider: selectedProvider,
           imap_host: valueOf('editImapHost'),
           imap_port: toInt(valueOf('editImapPort'), 993),
-          imap_password: valueOf('editImapPassword'),
           group_id: Number(valueOf('editGroup')),
           sort_order: valueOf('editSortOrder'),
           remark: valueOf('editRemark'),
@@ -659,6 +659,12 @@
           forward_enabled: checked('editForwardEnabled'),
           aliases: valueOf('editAliases').split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean),
         };
+        if (passwordValue || !account.has_password) {
+          body.password = passwordValue;
+        }
+        if (imapPasswordValue || !account.has_imap_password) {
+          body.imap_password = imapPasswordValue;
+        }
         const payload = await Api.apiRequest(config, `/api/accounts/${accountId}`, {
           method: 'PUT',
           body,

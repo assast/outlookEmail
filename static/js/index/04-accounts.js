@@ -164,6 +164,9 @@
 
         // 隐藏编辑账号模态框
         function hideEditAccountModal() {
+            if (typeof clearEditAccountSecrets === 'function') {
+                clearEditAccountSecrets();
+            }
             hideModal('editAccountModal');
         }
 

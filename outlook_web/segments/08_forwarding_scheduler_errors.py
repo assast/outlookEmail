@@ -1278,20 +1278,20 @@ def api_update_account_v2(account_id):
     if 'status' in data and len(data) == 1:
         return api_update_account_status(account_id, data['status'])
 
+    current_account = get_account_by_id(account_id) or {}
     email_addr = (data.get('email', '') or '').strip()
-    password = data.get('password', '') or ''
+    password = data['password'] if 'password' in data else current_account.get('password', '')
     client_id = (data.get('client_id', '') or '').strip()
     refresh_token = (data.get('refresh_token', '') or '').strip()
     account_type = (data.get('account_type', 'outlook') or 'outlook').strip().lower()
     provider = (data.get('provider', 'outlook') or 'outlook').strip().lower()
     imap_host = (data.get('imap_host', '') or '').strip()
-    imap_password = data.get('imap_password', '') or ''
+    imap_password = data['imap_password'] if 'imap_password' in data else current_account.get('imap_password', '')
     group_id = data.get('group_id', 1)
     sort_order = parse_account_sort_order_input(data.get('sort_order')) if 'sort_order' in data else None
     remark = sanitize_input(data.get('remark', ''), max_length=200)
     status = data.get('status', 'active')
     forward_enabled = bool(data.get('forward_enabled', False))
-    current_account = get_account_by_id(account_id) or {}
     proxy_url = str(data.get('proxy_url', current_account.get('proxy_url', '')) or '').strip()
     fallback_proxy_url_1 = str(
         data.get('fallback_proxy_url_1', current_account.get('fallback_proxy_url_1', '')) or ''

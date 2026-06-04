@@ -6,6 +6,19 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.61] - 2026-06-04
+
+### Added
+- 账号编辑页新增账号密码和 IMAP 密码展示二次验证，已保存密码默认隐藏，仅在输入当前登录密码后显示。
+
+### Changed
+- `GET /api/accounts/<id>` 不再返回账号密码和 IMAP 密码明文，只返回 `has_password` / `has_imap_password` 标记；查看密码必须调用 `/api/accounts/<id>/secrets` 并完成登录密码二次验证。
+- Web 端账号密码展示入口改为输入框内的小眼睛按钮，验证弹窗会覆盖在编辑弹窗上方，验证后可直接在原编辑弹窗查看密码。
+- 浏览器扩展账号编辑页适配密码隐藏逻辑，未填写密码时保留已保存密码。
+
+### Fixed
+- 修复账号编辑时省略 `password` 或 `imap_password` 字段会清空已保存密码的问题。
+
 ## [2.0.60] - 2026-06-01
 
 ### Fixed

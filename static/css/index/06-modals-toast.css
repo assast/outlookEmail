@@ -20,6 +20,10 @@
             z-index: 2200;
         }
 
+        #accountSecretVerifyModal {
+            z-index: 2200;
+        }
+
         .modal-content {
             background-color: #ffffff;
             border-radius: 12px;
@@ -150,6 +154,48 @@
         .form-input:focus {
             outline: none;
             border-color: #1a1a1a;
+        }
+
+        .secret-input-row {
+            position: relative;
+        }
+
+        .secret-input-row .form-input {
+            padding-right: 48px;
+        }
+
+        .secret-reveal-btn {
+            position: absolute;
+            top: 1px;
+            right: 1px;
+            width: 38px;
+            height: calc(100% - 2px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            border-left: 1px solid #e5e5e5;
+            border-radius: 0 5px 5px 0;
+            background: transparent;
+            color: #4b5563;
+            cursor: pointer;
+            transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+        }
+
+        .secret-reveal-btn:hover {
+            background: #f7f8fa;
+            border-color: #c7ccd1;
+            color: #1f2937;
+        }
+
+        .secret-reveal-btn:focus-visible {
+            outline: 2px solid #1a1a1a;
+            outline-offset: 2px;
+        }
+
+        .secret-reveal-btn svg {
+            width: 18px;
+            height: 18px;
         }
 
         .form-textarea {

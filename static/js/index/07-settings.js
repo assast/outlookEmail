@@ -1,4 +1,4 @@
-        /* global accountsCache, allTags, closeAllModals, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, escapeHtml, formatAbsoluteDateTime, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, invalidateNormalMailRetentionCaches, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, refreshVisibleAccountList, setAppTimeZone, setModalVisible, setSelectedForwardChannels, setShowAccountCreatedAt, setShowAccountSortOrder, setShowGroupId, setNormalMailLocalRetentionEnabled, showConfirmModal, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
+        /* global accountsCache, allTags, closeAllModals, closeMobilePanels, closeNavbarActionsMenu, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, escapeHtml, formatAbsoluteDateTime, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, invalidateNormalMailRetentionCaches, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, refreshVisibleAccountList, setAppTimeZone, setModalVisible, setSelectedForwardChannels, setShowAccountCreatedAt, setShowAccountSortOrder, setShowGroupId, setNormalMailLocalRetentionEnabled, showConfirmModal, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
 
         // ==================== 设置相关 ====================
         let settingsScrollSyncBound = false;
@@ -9,6 +9,11 @@
         let normalMailRetentionStatusPollDelayMs = 0;
         const NORMAL_MAIL_RETENTION_STATUS_INITIAL_POLL_MS = 2000;
         const NORMAL_MAIL_RETENTION_STATUS_MAX_POLL_MS = 10000;
+        const LOCKED_ACCOUNT_SECRET_PLACEHOLDER = '已保存，验证后显示';
+        let editAccountSecretState = {
+            accountId: '',
+            pendingField: ''
+        };
 
         function parseSettingsBoolean(value) {
             return String(value).toLowerCase() === 'true';
@@ -20,6 +25,123 @@
             if (value < 1024 * 1024) return `${(value / 1024).toFixed(1).replace(/\.0$/, '')} KB`;
             if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} MB`;
             return `${(value / 1024 / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} GB`;
+        }
+
+        function resetEditSecretInput(inputId, buttonId, hasSavedValue, emptyPlaceholder = '') {
+            const input = document.getElementById(inputId);
+            const button = document.getElementById(buttonId);
+            if (!input) return;
+
+            input.value = '';
+            input.placeholder = hasSavedValue ? LOCKED_ACCOUNT_SECRET_PLACEHOLDER : emptyPlaceholder;
+            input.dataset.secretHasSaved = hasSavedValue ? 'true' : 'false';
+            input.dataset.secretLoaded = hasSavedValue ? 'false' : 'true';
+            if (button) {
+                button.style.display = hasSavedValue ? '' : 'none';
+            }
+        }
+
+        function setEditSecretInputValue(inputId, buttonId, value, emptyPlaceholder = '') {
+            const input = document.getElementById(inputId);
+            const button = document.getElementById(buttonId);
+            if (!input) return;
+
+            input.value = value || '';
+            input.placeholder = emptyPlaceholder;
+            input.dataset.secretHasSaved = input.value ? 'true' : 'false';
+            input.dataset.secretLoaded = 'true';
+            if (button) {
+                button.style.display = 'none';
+            }
+        }
+
+        function clearEditAccountSecrets() {
+            resetEditSecretInput('editPassword', 'revealEditPasswordBtn', false, '可选');
+            resetEditSecretInput('editImapPassword', 'revealEditImapPasswordBtn', false, '');
+            const verifyInput = document.getElementById('accountSecretVerifyPassword');
+            if (verifyInput) {
+                verifyInput.value = '';
+            }
+            editAccountSecretState = {
+                accountId: '',
+                pendingField: ''
+            };
+        }
+
+        function shouldSubmitSecretInput(input) {
+            return !!input && (input.dataset.secretLoaded === 'true' || !!input.value);
+        }
+
+        function showAccountSecretVerifyModal(fieldName) {
+            const accountId = document.getElementById('editAccountId')?.value || '';
+            if (!accountId) {
+                showToast('请先打开账号编辑窗口', 'error');
+                return;
+            }
+
+            editAccountSecretState.accountId = accountId;
+            editAccountSecretState.pendingField = fieldName || '';
+            closeNavbarActionsMenu();
+            closeMobilePanels();
+            setModalVisible('accountSecretVerifyModal', true);
+
+            const verifyInput = document.getElementById('accountSecretVerifyPassword');
+            if (verifyInput) {
+                verifyInput.value = '';
+                verifyInput.focus();
+            }
+        }
+
+        function hideAccountSecretVerifyModal() {
+            hideModal('accountSecretVerifyModal');
+            const verifyInput = document.getElementById('accountSecretVerifyPassword');
+            if (verifyInput) {
+                verifyInput.value = '';
+            }
+        }
+
+        async function confirmAccountSecretVerify() {
+            const accountId = editAccountSecretState.accountId || document.getElementById('editAccountId')?.value || '';
+            const verifyInput = document.getElementById('accountSecretVerifyPassword');
+            const password = verifyInput?.value || '';
+
+            if (!accountId) {
+                showToast('请先打开账号编辑窗口', 'error');
+                return;
+            }
+            if (!password) {
+                showToast('请输入登录密码', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/accounts/${accountId}/secrets`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        password,
+                        field: editAccountSecretState.pendingField || ''
+                    })
+                });
+                const data = await response.json();
+
+                if (!data.success) {
+                    handleApiError(data, '验证失败');
+                    return;
+                }
+
+                const secrets = data.secrets || {};
+                if (Object.prototype.hasOwnProperty.call(secrets, 'password')) {
+                    setEditSecretInputValue('editPassword', 'revealEditPasswordBtn', secrets.password || '', '可选');
+                }
+                if (Object.prototype.hasOwnProperty.call(secrets, 'imap_password')) {
+                    setEditSecretInputValue('editImapPassword', 'revealEditImapPasswordBtn', secrets.imap_password || '', '');
+                }
+                hideAccountSecretVerifyModal();
+                showToast('验证通过，已显示账号密码', 'success');
+            } catch (error) {
+                showToast('验证失败', 'error');
+            }
         }
 
         function updateNormalMailRetentionStats(status = {}) {
@@ -866,12 +988,14 @@
                 if (data.success) {
                     closeAllModals();
                     const acc = data.account;
+                    editAccountSecretState.accountId = String(acc.id || '');
+                    editAccountSecretState.pendingField = '';
                     document.getElementById('editAccountId').value = acc.id;
                     document.getElementById('editEmail').value = acc.email || '';
-                    document.getElementById('editPassword').value = acc.password || '';
+                    resetEditSecretInput('editPassword', 'revealEditPasswordBtn', !!acc.has_password, '可选');
                     document.getElementById('editClientId').value = acc.client_id || '';
                     document.getElementById('editRefreshToken').value = acc.refresh_token || '';
-                    document.getElementById('editImapPassword').value = acc.imap_password || '';
+                    resetEditSecretInput('editImapPassword', 'revealEditImapPasswordBtn', !!acc.has_imap_password, '');
                     document.getElementById('editImapHost').value = acc.imap_host || '';
                     document.getElementById('editImapPort').value = acc.imap_port || 993;
                     document.getElementById('editGroupSelect').value = acc.group_id || 1;
@@ -904,17 +1028,22 @@
             const isOutlook = provider === 'outlook';
             const imapPort = parseInt(document.getElementById('editImapPort')?.value || '993', 10);
             const sortOrder = parseInt(document.getElementById('editSortOrder')?.value || '0', 10);
+            const passwordInput = document.getElementById('editPassword');
+            const imapPasswordInput = document.getElementById('editImapPassword');
+            const imapPasswordValue = imapPasswordInput?.value || '';
+            const imapPasswordLockedWithSavedValue = (
+                imapPasswordInput?.dataset.secretHasSaved === 'true'
+                && imapPasswordInput?.dataset.secretLoaded !== 'true'
+            );
 
             const data = {
                 email: document.getElementById('editEmail').value.trim(),
-                password: document.getElementById('editPassword').value,
                 client_id: document.getElementById('editClientId').value.trim(),
                 refresh_token: document.getElementById('editRefreshToken').value.trim(),
                 account_type: isOutlook ? 'outlook' : 'imap',
                 provider,
                 imap_host: document.getElementById('editImapHost')?.value.trim() || '',
                 imap_port: Number.isFinite(imapPort) ? imapPort : 993,
-                imap_password: document.getElementById('editImapPassword')?.value || '',
                 group_id: newGroupId,
                 proxy_url: document.getElementById('editProxyUrl')?.value.trim() || '',
                 fallback_proxy_url_1: document.getElementById('editFallbackProxyUrl1')?.value.trim() || '',
@@ -928,6 +1057,12 @@
                 status: document.getElementById('editStatus').value,
                 forward_enabled: !!document.getElementById('editForwardEnabled')?.checked
             };
+            if (shouldSubmitSecretInput(passwordInput)) {
+                data.password = passwordInput.value;
+            }
+            if (shouldSubmitSecretInput(imapPasswordInput)) {
+                data.imap_password = imapPasswordValue;
+            }
 
             if (isOutlook) {
                 if (!data.email || !data.client_id || !data.refresh_token) {
@@ -935,7 +1070,7 @@
                     return;
                 }
             } else {
-                if (!data.email || !data.imap_password) {
+                if (!data.email || (!imapPasswordValue && !imapPasswordLockedWithSavedValue)) {
                     showToast('邮箱和 IMAP 密码不能为空', 'error');
                     return;
                 }

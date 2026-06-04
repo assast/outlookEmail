@@ -1134,6 +1134,10 @@
                 exportVerifyPassword.value = '';
             }
 
+            if (typeof clearEditAccountSecrets === 'function') {
+                clearEditAccountSecrets();
+            }
+
             resetRefreshModalRuntime();
             hideForwardingLogs();
             hideFailedForwardingLogs();

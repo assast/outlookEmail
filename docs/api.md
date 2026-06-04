@@ -54,7 +54,8 @@
 | POST | `/api/accounts/export-selected` | Session + CSRF | `text/plain` 下载 | 导出选中分组或选中账号 |
 | GET | `/api/accounts` | Session | JSON | 获取账号列表 |
 | GET | `/api/accounts/search` | Session | JSON | 搜索账号 |
-| GET | `/api/accounts/<account_id>` | Session | JSON | 获取单个账号 |
+| GET | `/api/accounts/<account_id>` | Session | JSON | 获取单个账号，不返回账号密码和 IMAP 密码明文 |
+| POST | `/api/accounts/<account_id>/secrets` | Session + CSRF | JSON | 二次验证后获取账号密码和 IMAP 密码 |
 | POST | `/api/accounts` | Session + CSRF | JSON | 批量导入账号 |
 | PUT | `/api/accounts/<account_id>` | Session + CSRF | JSON | 更新账号 |
 | DELETE | `/api/accounts/<account_id>` | Session + CSRF | JSON | 按 ID 删除账号 |
@@ -189,6 +190,30 @@ Content-Type: application/json
 X-CSRFToken: <csrf-token>
 Cookie: session=<session-cookie>
 ```
+
+### 账号密码二次验证
+
+`GET /api/accounts/<account_id>` 只返回 `has_password` 和 `has_imap_password` 标记，不返回账号密码或 IMAP 密码明文。需要展示密码时，调用 `POST /api/accounts/<account_id>/secrets` 并在 JSON 请求体中传入当前 Web 登录密码。`field` 可选值为 `password` 或 `imap_password`，用于只获取当前要展示的密码字段；不传 `field` 时兼容返回两个字段：
+
+```json
+{
+  "password": "web-login-password",
+  "field": "password"
+}
+```
+
+验证成功后返回：
+
+```json
+{
+  "success": true,
+  "secrets": {
+    "password": "account-password"
+  }
+}
+```
+
+更新账号时，如果请求体省略 `password` 或 `imap_password` 字段，后端会保留已有值；只有显式传入该字段时才会更新对应密码。
 
 ### 通用响应约定
 
@@ -620,6 +645,8 @@ curl -H "X-API-Key: your-api-key" \
 
 获取单个账号详情。
 
+账号详情不会返回 `password` 或 `imap_password` 明文，只返回 `has_password` 和 `has_imap_password` 标记。需要查看已保存的账号密码时，必须调用 `POST /api/accounts/<account_id>/secrets` 并传入当前 Web 登录密码完成二次验证。
+
 #### 响应补充字段
 
 ```json
@@ -628,6 +655,10 @@ curl -H "X-API-Key: your-api-key" \
   "account": {
     "id": 1,
     "email": "user@outlook.com",
+    "has_password": true,
+    "has_imap_password": false,
+    "client_id": "xxx",
+    "refresh_token": "xxx",
     "aliases": ["alias@example.com", "login@example.com"],
     "alias_count": 2,
     "matched_alias": "",
@@ -636,6 +667,31 @@ curl -H "X-API-Key: your-api-key" \
     "fallback_proxy_url_1": "direct",
     "fallback_proxy_url_2": "",
     "proxy_override_enabled": true
+  }
+}
+```
+
+#### 查看密码
+
+```http
+POST /api/accounts/1/secrets
+Content-Type: application/json
+```
+
+```json
+{
+  "password": "web-login-password",
+  "field": "password"
+}
+```
+
+`field` 可选值为 `password` 或 `imap_password`；不传 `field` 时兼容返回两个密码字段。验证通过后返回：
+
+```json
+{
+  "success": true,
+  "secrets": {
+    "password": "account-password"
   }
 }
 ```
