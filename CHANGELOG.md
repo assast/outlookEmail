@@ -6,6 +6,16 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.63] - 2026-06-04
+
+### Added
+- 新版本提示弹框改为在检测到远端新版本时展示，并显示最近 3 次更新记录。
+- 新版本弹框新增“前往下载”和 Docker 在线更新入口；未启用 Docker 在线更新时保留配置说明。
+
+### Changed
+- 版本状态接口新增远端更新说明解析，优先从远端 `CHANGELOG.md` 提取最近 3 个版本小节，并保留原有 `release_notes.items` 兼容字段。
+- 新版本提示按远端最新版本去重，不再在用户已经更新后按当前运行版本弹出。
+
 ## [2.0.62] - 2026-06-04
 
 ### Changed

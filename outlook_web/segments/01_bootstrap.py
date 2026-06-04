@@ -155,6 +155,10 @@ RAW_VERSION_URL = os.getenv(
     'RAW_VERSION_URL',
     f'https://raw.githubusercontent.com/{REPOSITORY_OWNER}/{REPOSITORY_NAME}/main/VERSION',
 )
+RAW_CHANGELOG_URL = os.getenv(
+    'RAW_CHANGELOG_URL',
+    f'https://raw.githubusercontent.com/{REPOSITORY_OWNER}/{REPOSITORY_NAME}/main/CHANGELOG.md',
+)
 VERSION_CHECK_TIMEOUT = max(2, int(os.getenv('VERSION_CHECK_TIMEOUT', '5')))
 VERSION_CHECK_CACHE_TTL = max(60, int(os.getenv('VERSION_CHECK_CACHE_TTL', '900')))
 VERSION_CHECK_CACHE_LOCK = threading.Lock()
@@ -212,9 +216,139 @@ def _safe_response_json(response: requests.Response) -> Dict[str, Any]:
     return {}
 
 
+def _clean_release_note_line(line: str) -> str:
+    text = re.sub(r'^\s*(?:[-*+]|\d+\.)\s+', '', str(line or '').strip())
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    text = re.sub(r'[`*_]+', '', text)
+    return text.strip()
+
+
+def _extract_release_note_items(markdown_text: str, version: str = '') -> List[str]:
+    normalized_version = normalize_version_label(version)
+    plain_version = normalized_version.lstrip('v')
+    lines = str(markdown_text or '').splitlines()
+    selected_lines = lines
+
+    if plain_version:
+        heading_pattern = re.compile(
+            rf'^##+\s+(?:\[\s*v?{re.escape(plain_version)}\s*\]|v?{re.escape(plain_version)})(?:\s|$)',
+            flags=re.IGNORECASE,
+        )
+        start_index = None
+        for index, line in enumerate(lines):
+            if heading_pattern.search(line.strip()):
+                start_index = index + 1
+                break
+        if start_index is not None:
+            end_index = len(lines)
+            for index in range(start_index, len(lines)):
+                if re.match(r'^##\s+', lines[index].strip()):
+                    end_index = index
+                    break
+            selected_lines = lines[start_index:end_index]
+
+    items: List[str] = []
+    for line in selected_lines:
+        if not re.match(r'^\s*(?:[-*+]|\d+\.)\s+', line):
+            continue
+        item = _clean_release_note_line(line)
+        if item:
+            items.append(item)
+        if len(items) >= 8:
+            break
+
+    return items
+
+
+def _release_note_entry(title: str, items: List[str], url: str = '') -> Dict[str, Any]:
+    return {
+        'title': title,
+        'items': items,
+        'url': url,
+    }
+
+
+def _extract_changelog_release_entries(markdown_text: str, limit: int = 3) -> List[Dict[str, Any]]:
+    lines = str(markdown_text or '').splitlines()
+    headings: List[tuple[int, str, str]] = []
+    heading_pattern = re.compile(r'^##\s+(?:\[\s*(v?\d+\.\d+\.\d+[^]\s]*)\s*\]|(v?\d+\.\d+\.\d+[^\s]*))', flags=re.IGNORECASE)
+
+    for index, line in enumerate(lines):
+        match = heading_pattern.match(line.strip())
+        if not match:
+            continue
+        version = normalize_version_label(match.group(1) or match.group(2) or '')
+        if version:
+            headings.append((index, version, line.strip()))
+
+    entries: List[Dict[str, Any]] = []
+    for heading_index, version, _heading_text in headings[:limit]:
+        end_index = len(lines)
+        for index in range(heading_index + 1, len(lines)):
+            if re.match(r'^##\s+', lines[index].strip()):
+                end_index = index
+                break
+        items = _extract_release_note_items('\n'.join(lines[heading_index + 1:end_index]))
+        if items:
+            entries.append(_release_note_entry(version, items, CHANGELOG_URL))
+
+    return entries
+
+
+def _empty_release_notes() -> Dict[str, Any]:
+    return {
+        'source': '',
+        'title': '',
+        'items': [],
+        'entries': [],
+        'url': '',
+    }
+
+
+def build_release_notes_payload(source: str, title: str, body: str, url: str, version: str) -> Dict[str, Any]:
+    items = _extract_release_note_items(body, version)
+    if not items:
+        return _empty_release_notes()
+    entry = _release_note_entry(title or version, items, url)
+    return {
+        'source': source,
+        'title': entry['title'],
+        'items': items,
+        'entries': [entry],
+        'url': url,
+    }
+
+
+def fetch_changelog_release_notes(version: str) -> Dict[str, Any]:
+    response = requests.get(
+        RAW_CHANGELOG_URL,
+        headers=_version_request_headers(),
+        timeout=VERSION_CHECK_TIMEOUT,
+    )
+    response.raise_for_status()
+    entries = _extract_changelog_release_entries(response.text, limit=3)
+    if not entries:
+        return build_release_notes_payload(
+            'changelog',
+            version,
+            response.text,
+            CHANGELOG_URL,
+            version,
+        )
+    return {
+        'source': 'changelog',
+        'title': entries[0]['title'],
+        'items': entries[0]['items'],
+        'entries': entries,
+        'url': CHANGELOG_URL,
+    }
+
+
 def fetch_remote_version_snapshot() -> Dict[str, Any]:
     release_version = ''
     release_url = ''
+    release_title = ''
+    release_body = ''
     repository_version = ''
     errors = []
 
@@ -228,6 +362,8 @@ def fetch_remote_version_snapshot() -> Dict[str, Any]:
         release_payload = _safe_response_json(release_response)
         release_version = normalize_version_label(release_payload.get('tag_name', ''))
         release_url = str(release_payload.get('html_url', '')).strip()
+        release_title = str(release_payload.get('name', '')).strip()
+        release_body = str(release_payload.get('body', '')).strip()
     except Exception as exc:
         errors.append(f'release:{exc}')
 
@@ -245,6 +381,8 @@ def fetch_remote_version_snapshot() -> Dict[str, Any]:
     return {
         'release_version': release_version,
         'release_url': release_url,
+        'release_title': release_title,
+        'release_body': release_body,
         'repository_version': repository_version,
         'errors': errors,
     }
@@ -287,6 +425,7 @@ def build_version_status_payload() -> Dict[str, Any]:
         'changelog_url': CHANGELOG_URL,
         'checked_at': datetime.now(timezone.utc).isoformat(),
         'errors': snapshot['errors'],
+        'release_notes': _empty_release_notes(),
     }
 
     if current_parts is None:
@@ -309,8 +448,21 @@ def build_version_status_payload() -> Dict[str, Any]:
         payload['badge_label'] = '可更新'
         if latest_source == 'release':
             payload['hint'] = f'发现新版本 {latest_version}'
+            payload['release_notes'] = build_release_notes_payload(
+                'release',
+                snapshot.get('release_title') or latest_version,
+                snapshot.get('release_body', ''),
+                snapshot.get('release_url') or latest_url,
+                latest_version,
+            )
         else:
             payload['hint'] = f'仓库最新版本为 {latest_version}'
+        try:
+            changelog_release_notes = fetch_changelog_release_notes(latest_version)
+            if changelog_release_notes['items']:
+                payload['release_notes'] = changelog_release_notes
+        except Exception as exc:
+            payload['errors'].append(f'changelog:{exc}')
         return payload
 
     if current_vs_release is not None and current_vs_release > 0:

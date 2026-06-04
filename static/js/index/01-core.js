@@ -53,7 +53,7 @@
         const REFRESH_STREAM_STALL_TIMEOUT_MS = 70000;
         const VERSION_STATUS_REQUEST_TIMEOUT_MS = 12000;
         const DOCKER_UPDATE_REQUEST_TIMEOUT_MS = 20000;
-        const RELEASE_NOTICE_SEEN_VERSION_KEY = 'outlook_release_notice_seen_version';
+        const UPDATE_NOTICE_SEEN_VERSION_KEY = 'outlook_update_notice_seen_latest_version';
         const DEFAULT_APP_TIME_ZONE = 'Asia/Shanghai';
         const FALLBACK_APP_TIME_ZONES = [
             'Asia/Shanghai',
@@ -732,22 +732,33 @@
         }
 
         function refreshDockerUpdateButton() {
-            const updateButton = document.getElementById('appVersionDockerUpdateBtn');
-            if (!updateButton) return;
+            const updateButtons = [
+                document.getElementById('appVersionDockerUpdateBtn'),
+                document.getElementById('releaseNoticeDockerUpdateBtn'),
+            ].filter(Boolean);
+            if (!updateButtons.length) return;
 
             const enabled = dockerUpdateStatus?.enabled === true;
             const available = dockerUpdateStatus?.available === true;
             const running = dockerUpdateStatus?.state?.running === true;
             const updateAvailable = currentVersionStatusState === 'update_available';
-            const defaultLabel = updateButton.dataset.defaultLabel || 'Docker 更新';
-            const unavailableLabel = updateButton.dataset.unavailableLabel || '不可在线更新';
 
-            updateButton.hidden = !(enabled && updateAvailable);
-            updateButton.disabled = !available || running;
-            updateButton.textContent = running ? '更新中...' : (available ? defaultLabel : unavailableLabel);
-            updateButton.title = available
-                ? '启动 Docker 在线更新'
-                : (dockerUpdateStatus?.reason || 'Docker 更新不可用');
+            updateButtons.forEach(updateButton => {
+                const defaultLabel = updateButton.dataset.defaultLabel || 'Docker 更新';
+                const unavailableLabel = updateButton.dataset.unavailableLabel || '不可在线更新';
+
+                updateButton.hidden = !(enabled && updateAvailable);
+                updateButton.disabled = !available || running;
+                updateButton.textContent = running ? '更新中...' : (available ? defaultLabel : unavailableLabel);
+                updateButton.title = available
+                    ? '启动 Docker 在线更新'
+                    : (dockerUpdateStatus?.reason || 'Docker 更新不可用');
+            });
+
+            const dockerHint = document.getElementById('releaseNoticeDockerHint');
+            if (dockerHint) {
+                dockerHint.hidden = !updateAvailable || available;
+            }
         }
 
         async function loadDockerUpdateStatus(forceRefresh = false) {
@@ -818,8 +829,10 @@
             const confirmed = window.confirm('将启动 Docker 在线更新，容器可能会自动重启。确认继续？');
             if (!confirmed) return;
 
-            updateButton.disabled = true;
-            updateButton.textContent = '更新中...';
+            document.querySelectorAll('#appVersionDockerUpdateBtn, #releaseNoticeDockerUpdateBtn').forEach(button => {
+                button.disabled = true;
+                button.textContent = '更新中...';
+            });
 
             try {
                 const response = await fetchWithTimeout('/api/docker-update', {
@@ -900,6 +913,7 @@
                         throw new Error(payload.error || '版本状态获取失败');
                     }
                     applyVersionStatus(payload.version_status);
+                    showUpdateNoticeIfNeeded(payload.version_status);
                     return payload.version_status;
                 })
                 .catch(() => {
@@ -1195,7 +1209,6 @@
 
             syncResponsiveUI();
             handleExtensionLaunchHash();
-            window.setTimeout(showReleaseNoticeIfNeeded, 900);
         });
 
         function handleExtensionLaunchHash() {
@@ -1222,17 +1235,13 @@
         }
 
         function getCurrentReleaseNoticeVersion() {
-            const modalVersion = document.getElementById('releaseNoticeModal')?.dataset?.releaseVersion;
-            if (modalVersion) {
-                return String(modalVersion).trim();
-            }
-            const versionText = document.getElementById('appVersionValue')?.textContent || '';
-            return String(versionText).replace(/^v/i, '').trim();
+            const modalVersion = document.getElementById('releaseNoticeModal')?.dataset?.latestVersion;
+            return String(modalVersion || '').trim();
         }
 
         function getSeenReleaseNoticeVersion() {
             try {
-                return localStorage.getItem(RELEASE_NOTICE_SEEN_VERSION_KEY) || '';
+                return localStorage.getItem(UPDATE_NOTICE_SEEN_VERSION_KEY) || '';
             } catch (error) {
                 return '';
             }
@@ -1240,23 +1249,101 @@
 
         function markReleaseNoticeSeen(version) {
             try {
-                localStorage.setItem(RELEASE_NOTICE_SEEN_VERSION_KEY, String(version || ''));
+                localStorage.setItem(UPDATE_NOTICE_SEEN_VERSION_KEY, String(version || ''));
             } catch (error) {
                 // localStorage 不可用时不阻断主界面。
             }
         }
 
-        function showReleaseNoticeIfNeeded() {
+        function renderReleaseNotice(versionStatus = {}) {
             const modal = document.getElementById('releaseNoticeModal');
             if (!modal) {
+                return false;
+            }
+
+            const currentVersion = String(versionStatus.current_version || '').trim();
+            const latestVersion = String(versionStatus.latest_version || '').trim();
+            const updateUrl = String(versionStatus.update_url || versionStatus.changelog_url || '').trim();
+            const changelogUrl = String(versionStatus.changelog_url || updateUrl || '').trim();
+            const releaseNotes = versionStatus.release_notes || {};
+            const noteEntries = Array.isArray(releaseNotes.entries) && releaseNotes.entries.length > 0
+                ? releaseNotes.entries.slice(0, 3)
+                : [{
+                    title: releaseNotes.title || latestVersion || '更新内容',
+                    items: Array.isArray(releaseNotes.items) ? releaseNotes.items : [],
+                }];
+            const hint = String(versionStatus.hint || '发现新版本').trim();
+
+            modal.dataset.latestVersion = latestVersion;
+
+            const summaryEl = document.getElementById('releaseNoticeVersionSummary');
+            if (summaryEl) {
+                summaryEl.textContent = `当前版本：${currentVersion || '-'} / 最新版本：${latestVersion || '-'}`;
+            }
+
+            const listEl = document.getElementById('releaseNoticeNotesList');
+            if (listEl) {
+                const cards = noteEntries
+                    .map((entry, index) => {
+                        const entryTitle = String(entry?.title || (index === 0 ? latestVersion : '更新内容')).trim();
+                        const entryItems = Array.isArray(entry?.items) ? entry.items : [];
+                        const itemsMarkup = entryItems.length > 0
+                            ? entryItems.map(item => `<li>${escapeHtml(String(item || ''))}</li>`).join('')
+                            : '<li>暂时无法获取更新内容，可查看完整更新日志。</li>';
+                        const badgeMarkup = index === 0 ? '<span class="release-notice-badge">最新</span>' : '';
+                        return `
+                            <div class="release-notice-card release-notice-entry">
+                                <div class="release-notice-entry-header">
+                                    <div class="release-notice-card-title">${escapeHtml(entryTitle)}</div>
+                                    ${badgeMarkup}
+                                </div>
+                                <ul>${itemsMarkup}</ul>
+                            </div>
+                        `;
+                    })
+                    .join('');
+                listEl.innerHTML = cards || `
+                    <div class="release-notice-card release-notice-entry">
+                        <div class="release-notice-entry-header">
+                            <div class="release-notice-card-title">更新内容</div>
+                            <span class="release-notice-badge">最新</span>
+                        </div>
+                        <ul><li>暂时无法获取更新内容，可查看完整更新日志。</li></ul>
+                    </div>
+                `;
+            }
+
+            const hintEl = document.getElementById('releaseNoticeHint');
+            if (hintEl) {
+                hintEl.textContent = `${hint}。此提示每个新版本只会显示一次。`;
+            }
+
+            const changelogLink = document.getElementById('releaseNoticeChangelogLink');
+            if (changelogLink && changelogUrl) {
+                changelogLink.href = changelogUrl;
+            }
+
+            const updateLink = document.getElementById('releaseNoticeUpdateLink');
+            if (updateLink && updateUrl) {
+                updateLink.href = updateUrl;
+            }
+
+            return true;
+        }
+
+        function showUpdateNoticeIfNeeded(versionStatus = {}) {
+            const latestVersion = String(versionStatus.latest_version || '').trim();
+            if (String(versionStatus.status || '') !== 'update_available' || !latestVersion) {
                 return;
             }
 
-            const currentVersion = getCurrentReleaseNoticeVersion();
-            if (!currentVersion || getSeenReleaseNoticeVersion() === currentVersion) {
+            if (getSeenReleaseNoticeVersion() === latestVersion) {
                 return;
             }
 
+            if (!renderReleaseNotice(versionStatus)) {
+                return;
+            }
             showModal('releaseNoticeModal');
         }
 
