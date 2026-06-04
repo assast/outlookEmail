@@ -181,119 +181,164 @@
 
     <!-- 编辑账号模态框 -->
     <div class="modal" id="editAccountModal" onmousedown="if(event.target === this) hideEditAccountModal()">
-        <div class="modal-content">
+        <div class="modal-content edit-account-modal-content">
             <div class="modal-header">
                 <h3>编辑邮箱账号</h3>
                 <button class="modal-close" onclick="hideEditAccountModal()">&times;</button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body edit-account-modal-body">
                 <input type="hidden" id="editAccountId">
-                <div class="form-group">
-                    <label class="form-label">邮箱地址</label>
-                    <input type="text" class="form-input" id="editEmail" placeholder="example@outlook.com">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">邮箱类型</label>
-                    <select class="form-select" id="editProviderSelect" onchange="updateEditAccountFields()">
-                        <option value="outlook">Outlook OAuth</option>
-                        <option value="gmail">Gmail</option>
-                        <option value="qq">QQ</option>
-                        <option value="163">163</option>
-                        <option value="126">126</option>
-                        <option value="yahoo">Yahoo</option>
-                        <option value="aliyun">Aliyun</option>
-                        <option value="2925">2925邮箱</option>
-                        <option value="custom">自定义 IMAP</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">密码</label>
-                    <div class="secret-input-row">
-                        <input type="text" class="form-input" id="editPassword" placeholder="可选">
-                        <button type="button" class="secret-reveal-btn" id="revealEditPasswordBtn" onclick="showAccountSecretVerifyModal('password')" title="验证显示密码" aria-label="验证显示密码" style="display: none;">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"></path>
-                                <circle cx="12" cy="12" r="3"></circle>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Client ID</label>
-                    <input type="text" class="form-input" id="editClientId">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Refresh Token</label>
-                    <textarea class="form-textarea" id="editRefreshToken" style="height: 80px;"></textarea>
-                </div>
-                <div id="editImapFields" style="display: none;">
-                    <div class="form-group">
-                        <label class="form-label">IMAP 密码 / 授权码</label>
-                        <div class="secret-input-row">
-                            <input type="text" class="form-input" id="editImapPassword">
-                            <button type="button" class="secret-reveal-btn" id="revealEditImapPasswordBtn" onclick="showAccountSecretVerifyModal('imap_password')" title="验证显示 IMAP 密码" aria-label="验证显示 IMAP 密码" style="display: none;">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"></path>
-                                    <circle cx="12" cy="12" r="3"></circle>
-                                </svg>
-                            </button>
+                <div class="edit-account-shell">
+                    <section class="edit-account-card edit-account-card--primary">
+                        <div class="edit-account-card-head">
+                            <div>
+                                <span class="edit-account-kicker">基础信息</span>
+                            </div>
                         </div>
-                    </div>
-                    <div id="editCustomImapFields" style="display: none;">
-                        <div class="form-group">
-                            <label class="form-label">IMAP 服务器</label>
-                            <input type="text" class="form-input" id="editImapHost" placeholder="imap.example.com">
+                        <div class="edit-account-grid">
+                            <div class="form-group edit-account-span-2">
+                                <label class="form-label">邮箱地址</label>
+                                <input type="text" class="form-input" id="editEmail" placeholder="example@outlook.com">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">邮箱类型</label>
+                                <select class="form-select" id="editProviderSelect" onchange="updateEditAccountFields()">
+                                    <option value="outlook">Outlook OAuth</option>
+                                    <option value="gmail">Gmail</option>
+                                    <option value="qq">QQ</option>
+                                    <option value="163">163</option>
+                                    <option value="126">126</option>
+                                    <option value="yahoo">Yahoo</option>
+                                    <option value="aliyun">Aliyun</option>
+                                    <option value="2925">2925邮箱</option>
+                                    <option value="custom">自定义 IMAP</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">所属分组</label>
+                                <select class="form-select" id="editGroupSelect">
+                                    <!-- 分组选项将通过 JS 动态加载 -->
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">状态</label>
+                                <select class="form-select" id="editStatus">
+                                    <option value="active">正常</option>
+                                    <option value="inactive">停用</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">排序值</label>
+                                <input type="number" class="form-input" id="editSortOrder" min="0" step="1" value="0">
+                                <div class="form-hint">值越小越靠前，填 0 表示不参与自定义排序。</div>
+                            </div>
+                            <div class="form-group edit-account-span-2">
+                                <label class="settings-toggle settings-toggle--inline">
+                                    <input type="checkbox" id="editForwardEnabled">
+                                    <span class="form-label">启用邮件转发</span>
+                                </label>
+                                <div class="form-hint">开启后会按系统设置转发到邮箱或 Telegram。</div>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">IMAP 端口</label>
-                            <input type="number" class="form-input" id="editImapPort" value="993" min="1" max="65535">
+                    </section>
+
+                    <details class="edit-account-section" open>
+                        <summary>
+                            <span>认证信息</span>
+                            <small>Outlook Token 或 IMAP 授权</small>
+                        </summary>
+                        <div class="edit-account-grid edit-account-grid--compact">
+                            <div class="form-group">
+                                <label class="form-label">密码</label>
+                                <div class="secret-input-row">
+                                    <input type="text" class="form-input" id="editPassword" placeholder="可选">
+                                    <button type="button" class="secret-reveal-btn" id="revealEditPasswordBtn" onclick="showAccountSecretVerifyModal('password')" title="验证显示密码" aria-label="验证显示密码" style="display: none;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"></path>
+                                            <circle cx="12" cy="12" r="3"></circle>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Client ID</label>
+                                <input type="text" class="form-input" id="editClientId">
+                            </div>
+                            <div class="form-group edit-account-span-2">
+                                <label class="form-label">Refresh Token</label>
+                                <textarea class="form-textarea edit-account-token" id="editRefreshToken"></textarea>
+                            </div>
+                            <div id="editImapFields" class="edit-account-grid edit-account-span-2" style="display: none;">
+                                <div class="form-group">
+                                    <label class="form-label">IMAP 密码 / 授权码</label>
+                                    <div class="secret-input-row">
+                                        <input type="text" class="form-input" id="editImapPassword">
+                                        <button type="button" class="secret-reveal-btn" id="revealEditImapPasswordBtn" onclick="showAccountSecretVerifyModal('imap_password')" title="验证显示 IMAP 密码" aria-label="验证显示 IMAP 密码" style="display: none;">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"></path>
+                                                <circle cx="12" cy="12" r="3"></circle>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="editCustomImapFields" class="edit-account-grid edit-account-span-2" style="display: none;">
+                                    <div class="form-group">
+                                        <label class="form-label">IMAP 服务器</label>
+                                        <input type="text" class="form-input" id="editImapHost" placeholder="imap.example.com">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">IMAP 端口</label>
+                                        <input type="number" class="form-input" id="editImapPort" value="993" min="1" max="65535">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">所属分组</label>
-                    <select class="form-select" id="editGroupSelect">
-                        <!-- 分组选项将通过 JS 动态加载 -->
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">账号代理</label>
-                    <input type="text" class="form-input" id="editProxyUrl"
-                        placeholder="http://host:port、socks5://host:port 或 direct">
-                    <div class="form-hint">留空继承分组代理；填写 <code>direct</code> 或 <code>直连</code> 表示该账号直连。</div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">账号回退代理 1</label>
-                    <input type="text" class="form-input" id="editFallbackProxyUrl1"
-                        placeholder="http://host:port、socks5://host:port 或 direct">
-                    <div class="form-hint">账号代理启用后，主代理连接失败时按顺序尝试。</div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">账号回退代理 2</label>
-                    <input type="text" class="form-input" id="editFallbackProxyUrl2"
-                        placeholder="http://host:port、socks5://host:port 或 direct">
-                    <div class="form-hint">三项都留空时不保存账号级代理，继续使用所属分组代理。</div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">排序值</label>
-                    <input type="number" class="form-input" id="editSortOrder" min="0" step="1" value="0">
-                    <div class="form-hint">值越小越靠前，填 0 表示不参与自定义排序。</div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">备注</label>
-                    <textarea class="form-textarea" id="editRemark" placeholder="可选" rows="3"></textarea>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">别名邮箱</label>
-                    <textarea class="form-textarea" id="editAliases" placeholder="每行一个别名邮箱，例如&#10;alias1@example.com&#10;alias2@example.com" rows="4"></textarea>
-                    <div class="form-hint">支持多个别名。保存后，可直接用别名邮箱调用对外 API 获取该账号收到的邮件或验证码。</div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">状态</label>
-                    <select class="form-select" id="editStatus">
-                        <option value="active">正常</option>
-                        <option value="inactive">停用</option>
-                    </select>
+                    </details>
+
+                    <details class="edit-account-section">
+                        <summary>
+                            <span>代理设置</span>
+                            <small>为空时继承分组代理</small>
+                        </summary>
+                        <div class="edit-account-grid edit-account-grid--compact">
+                            <div class="form-group edit-account-span-2">
+                                <label class="form-label">账号代理</label>
+                                <input type="text" class="form-input" id="editProxyUrl"
+                                    placeholder="http://host:port、socks5://host:port 或 direct">
+                                <div class="form-hint">留空继承分组代理；填写 <code>direct</code> 或 <code>直连</code> 表示该账号直连。</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">账号回退代理 1</label>
+                                <input type="text" class="form-input" id="editFallbackProxyUrl1"
+                                    placeholder="http://host:port、socks5://host:port 或 direct">
+                                <div class="form-hint">账号代理启用后，主代理连接失败时按顺序尝试。</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">账号回退代理 2</label>
+                                <input type="text" class="form-input" id="editFallbackProxyUrl2"
+                                    placeholder="http://host:port、socks5://host:port 或 direct">
+                                <div class="form-hint">三项都留空时不保存账号级代理，继续使用所属分组代理。</div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="edit-account-section">
+                        <summary>
+                            <span>备注与别名</span>
+                            <small>API 可用别名查询</small>
+                        </summary>
+                        <div class="edit-account-grid edit-account-grid--compact">
+                            <div class="form-group">
+                                <label class="form-label">备注</label>
+                                <textarea class="form-textarea edit-account-note" id="editRemark" placeholder="可选" rows="3"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">别名邮箱</label>
+                                <textarea class="form-textarea edit-account-note" id="editAliases" placeholder="每行一个别名邮箱，例如&#10;alias1@example.com&#10;alias2@example.com" rows="4"></textarea>
+                                <div class="form-hint">支持多个别名。保存后，可直接用别名邮箱调用 API 获取该账号收到的邮件或验证码。</div>
+                            </div>
+                        </div>
+                    </details>
                 </div>
             </div>
             <div class="modal-footer">

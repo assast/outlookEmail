@@ -6,6 +6,13 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.62] - 2026-06-04
+
+### Changed
+- 重构编辑邮箱账号弹窗布局，将基础信息、认证信息、代理设置、备注与别名分区展示，减少长表单滚动。
+- 编辑账号弹窗在桌面端改为更宽的紧凑两列布局，并在移动端自动回退为单列。
+- 别名提示文案改为“API 可用别名查询”，避免误解为仅对外 API 支持别名。
+
 ## [2.0.61] - 2026-06-04
 
 ### Added
