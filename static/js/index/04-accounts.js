@@ -1,4 +1,4 @@
-        /* global accountsCache, applyEmailListCache, closeMobilePanels, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentGroupId, currentMethod, currentSkip, emailListCache, getEmailListCacheEntry, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, hideModal, isTempEmailGroup, loadAccountsByGroup, loadEmails, loadGroups, renderEmailList, scheduleEmailListLoadCheck, setModalVisible, showEmailList, showToast, updateImportHint, updateMobileContext */
+        /* global accountsCache, applyEmailListCache, closeMobilePanels, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentGroupId, currentMethod, currentSkip, emailListCache, getEmailListCacheEntry, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, hideModal, isTempEmailGroup, loadAccountsByGroup, loadEmails, loadGroups, renderEmailList, scheduleEmailListLoadCheck, showEmailList, showToast, updateMobileContext */
 
         // ==================== 账号相关 ====================
 
@@ -65,101 +65,9 @@
             }
         }
 
-        // 显示添加账号模态框
-        function showAddAccountModalLegacy() {
-            document.getElementById('accountInput').value = '';
-            // 设置默认分组为当前选中的分组
-            if (currentGroupId) {
-                document.getElementById('importGroupSelect').value = currentGroupId;
-            }
-            updateImportHint();
-            setModalVisible('addAccountModal', true);
-        }
-
         // 隐藏添加账号模态框
         function hideAddAccountModal() {
             hideModal('addAccountModal');
-        }
-
-        // 添加账号
-        async function addAccountLegacy() {
-            const input = document.getElementById('accountInput').value.trim();
-            const groupId = parseInt(document.getElementById('importGroupSelect').value);
-
-            if (!input) {
-                showToast('请输入账号信息', 'error');
-                return;
-            }
-
-            // 检查是否是临时邮箱分组
-            const selectedGroup = groups.find(g => g.id === groupId);
-            const isTempGroup = selectedGroup && selectedGroup.name === '临时邮箱';
-
-            try {
-                let response;
-                if (isTempGroup) {
-                    // 临时邮箱导入使用专用 API，传入选中的渠道
-                    const provider = document.getElementById('importChannelSelect').value || 'gptmail';
-                    response = await fetch('/api/temp-emails/import', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ account_string: input, provider: provider })
-                    });
-                } else {
-                    response = await fetch('/api/accounts', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ account_string: input, group_id: groupId })
-                    });
-                }
-
-                const data = await response.json();
-
-                if (data.success) {
-                    showToast(data.message, 'success');
-                    hideAddAccountModal();
-
-                    // 清除该分组的缓存
-                    delete accountsCache[groupId];
-
-                    // 刷新分组列表（更新数量）
-                    await loadGroups();
-
-                    // 刷新邮箱列表
-                    if (isTempGroup) {
-                        await loadTempEmails(true);
-                    } else {
-                        await loadAccountsByGroup(groupId, true);
-                    }
-                } else {
-                    handleApiError(data, '导入失败');
-                }
-            } catch (error) {
-                showToast('导入失败', 'error');
-            }
-        }
-
-        // 显示编辑账号模态框
-        async function showEditAccountModalLegacy(accountId) {
-            try {
-                const response = await fetch(`/api/accounts/${accountId}`);
-                const data = await response.json();
-
-                if (data.success) {
-                    const acc = data.account;
-                    document.getElementById('editAccountId').value = acc.id;
-                    document.getElementById('editEmail').value = acc.email;
-                    document.getElementById('editPassword').value = acc.password || '';
-                    document.getElementById('editClientId').value = acc.client_id;
-                    document.getElementById('editRefreshToken').value = acc.refresh_token;
-                    document.getElementById('editGroupSelect').value = acc.group_id || 1;
-                    document.getElementById('editRemark').value = acc.remark || '';
-                    document.getElementById('editStatus').value = acc.status || 'active';
-                    setModalVisible('editAccountModal', true);
-                }
-            } catch (error) {
-                showToast('加载账号信息失败', 'error');
-            }
         }
 
         // 隐藏编辑账号模态框
@@ -168,61 +76,6 @@
                 clearEditAccountSecrets();
             }
             hideModal('editAccountModal');
-        }
-
-        // 更新账号
-        async function updateAccountLegacy() {
-            const accountId = document.getElementById('editAccountId').value;
-            const oldGroupId = currentGroupId;
-            const newGroupId = parseInt(document.getElementById('editGroupSelect').value);
-
-            const data = {
-                email: document.getElementById('editEmail').value.trim(),
-                password: document.getElementById('editPassword').value,
-                client_id: document.getElementById('editClientId').value.trim(),
-                refresh_token: document.getElementById('editRefreshToken').value.trim(),
-                group_id: newGroupId,
-                remark: document.getElementById('editRemark').value.trim(),
-                status: document.getElementById('editStatus').value
-            };
-
-            if (!data.email || !data.client_id || !data.refresh_token) {
-                showToast('邮箱、Client ID 和 Refresh Token 不能为空', 'error');
-                return;
-            }
-
-            try {
-                const response = await fetch(`/api/accounts/${accountId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    showToast(result.message, 'success');
-                    hideEditAccountModal();
-
-                    // 清除相关分组的缓存
-                    delete accountsCache[oldGroupId];
-                    if (oldGroupId !== newGroupId) {
-                        delete accountsCache[newGroupId];
-                    }
-
-                    // 刷新分组列表
-                    loadGroups();
-
-                    // 刷新当前分组的邮箱列表
-                    if (currentGroupId) {
-                        loadAccountsByGroup(currentGroupId, true);
-                    }
-                } else {
-                    showToast(result.error, 'error');
-                }
-            } catch (error) {
-                showToast('更新失败', 'error');
-            }
         }
 
         // 删除当前编辑的账号
