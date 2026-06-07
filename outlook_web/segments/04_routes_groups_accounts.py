@@ -333,6 +333,40 @@ def api_reorder_groups():
         return jsonify({'success': False, 'error': '分组排序失败'})
 
 
+def append_temp_email_export_sections(lines: List[str], temp_emails: List[Dict[str, Any]]) -> int:
+    exported_count = 0
+    gptmail_list = [te for te in temp_emails if te.get('provider', 'gptmail') == 'gptmail']
+    duckmail_list = [te for te in temp_emails if te.get('provider') == 'duckmail']
+    cloudflare_list = [te for te in temp_emails if te.get('provider') == 'cloudflare']
+
+    if gptmail_list:
+        lines.append('[gptmail]')
+        for te in gptmail_list:
+            lines.append(te['email'])
+            exported_count += 1
+
+    if duckmail_list:
+        lines.append('[duckmail]')
+        for te in duckmail_list:
+            duckmail_password = decrypt_data(te.get('duckmail_password', '')) if te.get('duckmail_password') else ''
+            lines.append(f"{te['email']}----{duckmail_password}")
+            exported_count += 1
+
+    if cloudflare_list:
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for te in cloudflare_list:
+            channel_name = str(te.get('cloudflare_channel_name') or 'default').strip() or 'default'
+            grouped.setdefault(channel_name, []).append(te)
+        for channel_name in sorted(grouped.keys(), key=str.lower):
+            lines.append(f'[cloudflare:{channel_name}]')
+            for te in grouped[channel_name]:
+                cloudflare_jwt = decrypt_data(te.get('cloudflare_jwt', '')) if te.get('cloudflare_jwt') else ''
+                lines.append(f"{te['email']}----{cloudflare_jwt}")
+                exported_count += 1
+
+    return exported_count
+
+
 @app.route('/api/groups/<int:group_id>/export')
 @login_required
 def api_export_group(group_id):
@@ -365,28 +399,7 @@ def api_export_group(group_id):
             return jsonify({'success': False, 'error': '该分组下没有临时邮箱'})
 
         lines.append(group['name'])
-
-        # 按渠道分组
-        gptmail_list = [te for te in temp_emails if te.get('provider', 'gptmail') == 'gptmail']
-        duckmail_list = [te for te in temp_emails if te.get('provider') == 'duckmail']
-        cloudflare_list = [te for te in temp_emails if te.get('provider') == 'cloudflare']
-
-        if gptmail_list:
-            lines.append('[gptmail]')
-            for te in gptmail_list:
-                lines.append(te['email'])
-
-        if duckmail_list:
-            lines.append('[duckmail]')
-            for te in duckmail_list:
-                duckmail_password = decrypt_data(te.get('duckmail_password', '')) if te.get('duckmail_password') else ''
-                lines.append(f"{te['email']}----{duckmail_password}")
-
-        if cloudflare_list:
-            lines.append('[cloudflare]')
-            for te in cloudflare_list:
-                cloudflare_jwt = decrypt_data(te.get('cloudflare_jwt', '')) if te.get('cloudflare_jwt') else ''
-                lines.append(f"{te['email']}----{cloudflare_jwt}")
+        append_temp_email_export_sections(lines, temp_emails)
 
         log_audit('export', 'group', str(group_id), f"导出临时邮箱分组的 {len(temp_emails)} 个临时邮箱")
     else:
@@ -445,30 +458,7 @@ def build_group_export_content(group_ids: List[int]) -> Dict[str, Any]:
 
             exported_group_ids.append(group_id)
             all_lines.append(group['name'])
-
-            gptmail_list = [te for te in temp_emails if te.get('provider', 'gptmail') == 'gptmail']
-            duckmail_list = [te for te in temp_emails if te.get('provider') == 'duckmail']
-            cloudflare_list = [te for te in temp_emails if te.get('provider') == 'cloudflare']
-
-            if gptmail_list:
-                all_lines.append('[gptmail]')
-                for te in gptmail_list:
-                    all_lines.append(te['email'])
-                    total_count += 1
-
-            if duckmail_list:
-                all_lines.append('[duckmail]')
-                for te in duckmail_list:
-                    duckmail_password = decrypt_data(te.get('duckmail_password', '')) if te.get('duckmail_password') else ''
-                    all_lines.append(f"{te['email']}----{duckmail_password}")
-                    total_count += 1
-
-            if cloudflare_list:
-                all_lines.append('[cloudflare]')
-                for te in cloudflare_list:
-                    cloudflare_jwt = decrypt_data(te.get('cloudflare_jwt', '')) if te.get('cloudflare_jwt') else ''
-                    all_lines.append(f"{te['email']}----{cloudflare_jwt}")
-                    total_count += 1
+            total_count += append_temp_email_export_sections(all_lines, temp_emails)
             continue
 
         accounts = load_accounts(group_id)
@@ -483,6 +473,7 @@ def build_group_export_content(group_ids: List[int]) -> Dict[str, Any]:
 
     return {
         'content': '\n'.join(all_lines),
+        'lines': all_lines,
         'total_count': total_count,
         'group_ids': exported_group_ids,
     }

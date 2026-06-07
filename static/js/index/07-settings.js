@@ -4,6 +4,7 @@
         let settingsScrollSyncBound = false;
         let settingsScrollSyncFrame = 0;
         let lastLoadedWebdavBackupSettings = null;
+        let cloudflareSettingsChannels = [];
         let lastNormalMailRetentionStatus = null;
         let normalMailRetentionStatusPollTimer = null;
         let normalMailRetentionStatusPollDelayMs = 0;
@@ -1111,6 +1112,144 @@
             }
         }
 
+        function setCloudflareChannelFormMode(isEditing) {
+            const saveBtn = document.getElementById('saveCloudflareChannelBtn');
+            const resetBtn = document.getElementById('resetCloudflareChannelBtn');
+            const deleteBtn = document.getElementById('deleteCloudflareChannelBtn');
+            if (saveBtn) saveBtn.textContent = isEditing ? '保存渠道' : '创建渠道';
+            if (resetBtn) resetBtn.textContent = isEditing ? '新建渠道' : '清空表单';
+            if (deleteBtn) deleteBtn.style.display = isEditing ? '' : 'none';
+        }
+
+        function resetCloudflareChannelForm() {
+            const idInput = document.getElementById('settingsCloudflareChannelId');
+            if (!idInput) return;
+            idInput.value = '';
+            document.getElementById('settingsCloudflareChannelName').value = '';
+            document.getElementById('settingsCloudflareWorkerDomain').value = '';
+            document.getElementById('settingsCloudflareEmailDomains').value = '';
+            document.getElementById('settingsCloudflareAdminPassword').value = '';
+            document.getElementById('settingsCloudflareAdminPassword').placeholder = '对应 Cloudflare Temp Email 的 ADMIN_PASSWORD';
+            document.getElementById('settingsCloudflareEnabled').checked = true;
+            document.getElementById('settingsCloudflareDefault').checked = cloudflareSettingsChannels.length === 0;
+            setCloudflareChannelFormMode(false);
+        }
+
+        function renderCloudflareChannelsForSettings() {
+            const list = document.getElementById('settingsCloudflareChannelList');
+            if (!list) return;
+            if (!cloudflareSettingsChannels.length) {
+                list.innerHTML = '<div class="form-hint">暂无 Cloudflare 渠道</div>';
+                return;
+            }
+            list.innerHTML = cloudflareSettingsChannels.map(channel => `
+                <div class="cloudflare-channel-row">
+                    <div>
+                        <div class="cloudflare-channel-row-title">${escapeHtml(channel.name || `#${channel.id}`)}</div>
+                        <div class="cloudflare-channel-row-meta">
+                            <span class="cloudflare-channel-pill">${escapeHtml(channel.worker_domain || '未配置 Worker')}</span>
+                            <span class="cloudflare-channel-pill">${escapeHtml((channel.email_domains || []).join(', ') || '未配置域名')}</span>
+                            <span class="cloudflare-channel-pill">${channel.enabled ? '启用' : '停用'}</span>
+                            ${channel.is_default ? '<span class="cloudflare-channel-pill">默认</span>' : ''}
+                            <span class="cloudflare-channel-pill">${Number(channel.reference_count || 0)} 个邮箱</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" type="button" onclick="editCloudflareChannel(${Number(channel.id)})">编辑</button>
+                </div>
+            `).join('');
+        }
+
+        async function loadCloudflareChannelsForSettings() {
+            const list = document.getElementById('settingsCloudflareChannelList');
+            if (list) list.innerHTML = '<div class="form-hint">加载中...</div>';
+            try {
+                const response = await fetch('/api/cloudflare/channels');
+                const data = await response.json();
+                cloudflareSettingsChannels = data.success && Array.isArray(data.channels) ? data.channels : [];
+                renderCloudflareChannelsForSettings();
+                resetCloudflareChannelForm();
+            } catch (error) {
+                cloudflareSettingsChannels = [];
+                if (list) list.innerHTML = '<div class="form-hint">加载失败</div>';
+            }
+        }
+
+        function editCloudflareChannel(channelId) {
+            const channel = cloudflareSettingsChannels.find(item => Number(item.id) === Number(channelId));
+            if (!channel) return;
+            document.getElementById('settingsCloudflareChannelId').value = String(channel.id);
+            document.getElementById('settingsCloudflareChannelName').value = channel.name || '';
+            document.getElementById('settingsCloudflareWorkerDomain').value = channel.worker_domain || '';
+            document.getElementById('settingsCloudflareEmailDomains').value = (channel.email_domains || []).join(', ');
+            document.getElementById('settingsCloudflareAdminPassword').value = '';
+            document.getElementById('settingsCloudflareAdminPassword').placeholder = channel.admin_password_configured ? '已保存，留空不修改' : '对应 Cloudflare Temp Email 的 ADMIN_PASSWORD';
+            document.getElementById('settingsCloudflareEnabled').checked = !!channel.enabled;
+            document.getElementById('settingsCloudflareDefault').checked = !!channel.is_default;
+            setCloudflareChannelFormMode(true);
+        }
+
+        async function saveCloudflareChannel() {
+            const channelId = document.getElementById('settingsCloudflareChannelId')?.value || '';
+            const payload = {
+                name: document.getElementById('settingsCloudflareChannelName')?.value.trim() || '',
+                worker_domain: document.getElementById('settingsCloudflareWorkerDomain')?.value.trim() || '',
+                email_domains: document.getElementById('settingsCloudflareEmailDomains')?.value.trim() || '',
+                admin_password: document.getElementById('settingsCloudflareAdminPassword')?.value.trim() || '',
+                enabled: !!document.getElementById('settingsCloudflareEnabled')?.checked,
+                is_default: !!document.getElementById('settingsCloudflareDefault')?.checked
+            };
+            if (!payload.name || !payload.worker_domain) {
+                showToast('请填写渠道名称和 Worker 域名', 'error');
+                return;
+            }
+            if (!channelId && !payload.admin_password) {
+                showToast('新建渠道必须填写管理员密码', 'error');
+                return;
+            }
+            try {
+                const response = await fetch(channelId ? `/api/cloudflare/channels/${encodeURIComponent(channelId)}` : '/api/cloudflare/channels', {
+                    method: channelId ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    handleApiError(data, '保存 Cloudflare 渠道失败');
+                    return;
+                }
+                showToast(data.message || 'Cloudflare 渠道已保存', 'success');
+                delete accountsCache.cloudflareChannels;
+                delete accountsCache.temp;
+                await loadCloudflareChannelsForSettings();
+                if (currentGroupId) loadTempEmails(true);
+            } catch (error) {
+                showToast('保存 Cloudflare 渠道失败', 'error');
+            }
+        }
+
+        async function deleteCloudflareChannel() {
+            const channelId = document.getElementById('settingsCloudflareChannelId')?.value || '';
+            if (!channelId) return;
+            if (!(await showConfirmModal('确定要删除这个 Cloudflare 渠道吗？', { title: '删除渠道', confirmText: '确认删除' }))) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/cloudflare/channels/${encodeURIComponent(channelId)}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (!data.success) {
+                    handleApiError(data, '删除 Cloudflare 渠道失败');
+                    return;
+                }
+                showToast(data.message || 'Cloudflare 渠道已删除', 'success');
+                delete accountsCache.cloudflareChannels;
+                delete accountsCache.temp;
+                await loadCloudflareChannelsForSettings();
+                if (currentGroupId) loadTempEmails(true);
+            } catch (error) {
+                showToast('删除 Cloudflare 渠道失败', 'error');
+            }
+        }
+
         async function loadSettings() {
             ensureForwardingSettingsUI();
             try {
@@ -1125,9 +1264,6 @@
                     document.getElementById('settingsExternalApiKey').value = data.settings.external_api_key || '';
                     document.getElementById('settingsDuckmailBaseUrl').value = data.settings.duckmail_base_url || '';
                     document.getElementById('settingsDuckmailApiKey').value = data.settings.duckmail_api_key || '';
-                    document.getElementById('settingsCloudflareWorkerDomain').value = data.settings.cloudflare_worker_domain || '';
-                    document.getElementById('settingsCloudflareEmailDomains').value = data.settings.cloudflare_email_domains || '';
-                    document.getElementById('settingsCloudflareAdminPassword').value = data.settings.cloudflare_admin_password || '';
                     document.getElementById('settingsAppTimezone').value = appTimeZone;
                     document.getElementById('settingsPassword').value = '';
 
@@ -1172,6 +1308,7 @@
                     document.querySelector('input[name="refreshStrategy"][value="' + (useCron ? 'cron' : 'days') + '"]').checked = true;
                     toggleRefreshStrategy();
                     syncSmtpProviderUI(false);
+                    await loadCloudflareChannelsForSettings();
                     await loadNormalMailRetentionStatus();
                 }
             } catch (error) {
@@ -1205,9 +1342,6 @@
             settings.external_api_key = externalApiKey;
             settings.duckmail_base_url = document.getElementById('settingsDuckmailBaseUrl').value.trim();
             settings.duckmail_api_key = document.getElementById('settingsDuckmailApiKey').value.trim();
-            settings.cloudflare_worker_domain = document.getElementById('settingsCloudflareWorkerDomain').value.trim();
-            settings.cloudflare_email_domains = document.getElementById('settingsCloudflareEmailDomains').value.trim();
-            settings.cloudflare_admin_password = document.getElementById('settingsCloudflareAdminPassword').value.trim();
 
             const days = parseInt(refreshDays, 10);
             const delay = parseInt(refreshDelay, 10);

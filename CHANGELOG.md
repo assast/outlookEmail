@@ -6,6 +6,24 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.64] - 2026-06-07
+
+### Added
+- Cloudflare Temp Email 新增多渠道管理，支持为多套 Worker、管理员密码和独立邮件池分别配置渠道。
+- 设置页新增 Cloudflare 渠道列表与创建、编辑、启用/停用、删除能力，并展示渠道引用数量。
+- Cloudflare 临时邮箱创建、读信、删除和全部邮件视图支持按渠道执行；全部邮件入口按渠道独立展示。
+- Cloudflare 临时邮箱导入导出支持 `[cloudflare:<channel_name>]` 分段格式，旧格式继续落到默认渠道。
+
+### Changed
+- 旧单渠道 Cloudflare 配置会在启动时迁移为默认渠道，已有 Cloudflare 临时邮箱会自动绑定默认渠道。
+- Cloudflare 渠道邮箱域名改为可选；未配置域名时渠道仍可保存，域名查询返回空列表。
+- `/api/cloudflare/messages` 未传 `channel_id` 时改为使用默认 Cloudflare 渠道。
+- Cloudflare 渠道名按大小写不敏感规则保持唯一，旧大小写冲突数据会在迁移时自动重命名后出现的重复项。
+
+### Fixed
+- 修复 Cloudflare 渠道表单“新建渠道”按钮实际只清空表单导致误操作的问题。
+- 修复 Cloudflare 全部邮件入口重复展示渠道名的问题。
+
 ## [2.0.63] - 2026-06-04
 
 ### Added

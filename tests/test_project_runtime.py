@@ -2026,7 +2026,14 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         temp_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '03-temp-emails.js').read_text(encoding='utf-8')
 
         self.assertIn('const normalizedSearchQuery = searchQuery.toLowerCase();', temp_js)
-        self.assertIn('cloudflareGlobalLabel.toLowerCase().includes(normalizedSearchQuery)', temp_js)
+        self.assertIn('label.toLowerCase().includes(normalizedSearchQuery)', temp_js)
+
+    def test_cloudflare_global_entry_does_not_duplicate_channel_name(self):
+        temp_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '03-temp-emails.js').read_text(encoding='utf-8')
+
+        self.assertIn('const label = `Cloudflare所有邮件 · ${channelName}`;', temp_js)
+        self.assertIn('<span class="account-status-pill provider" style="--pill-accent: #f48120">Cloudflare</span>', temp_js)
+        self.assertNotIn('<span class="account-status-pill muted">${escapeHtml(channelName)}</span>', temp_js)
 
     def test_account_search_terms_are_not_limited_to_emails(self):
         groups_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '02-groups.js').read_text(encoding='utf-8')
@@ -2205,6 +2212,22 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertLess(settings_html.index('id="forwardingSettingsSection"'), settings_html.index('id="settingsAccessSection"'))
         self.assertLess(settings_html.index('id="settingsAccessSection"'), settings_html.index('id="settingsDuckMailSection"'))
         self.assertLess(settings_html.index('id="settingsDuckMailSection"'), settings_html.index('id="settingsCloudflareSection"'))
+
+    def test_cloudflare_channel_form_actions_distinguish_create_and_reset(self):
+        settings_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'dialogs-management.html').read_text(encoding='utf-8')
+        settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')
+        cloudflare_section = settings_html.split('id="settingsCloudflareSection"', 1)[1].split('</section>', 1)[0]
+
+        self.assertIn('id="saveCloudflareChannelBtn"', cloudflare_section)
+        self.assertIn('onclick="saveCloudflareChannel()">创建渠道</button>', cloudflare_section)
+        self.assertIn('id="resetCloudflareChannelBtn"', cloudflare_section)
+        self.assertIn('onclick="resetCloudflareChannelForm()">清空表单</button>', cloudflare_section)
+        self.assertIn("if (saveBtn) saveBtn.textContent = isEditing ? '保存渠道' : '创建渠道';", settings_js)
+        self.assertIn("if (resetBtn) resetBtn.textContent = isEditing ? '新建渠道' : '清空表单';", settings_js)
+        self.assertIn("showToast('请填写渠道名称和 Worker 域名', 'error');", settings_js)
+        self.assertNotIn('请填写渠道名称、Worker 域名和邮箱域名', settings_js)
+        self.assertIn('setCloudflareChannelFormMode(false);', settings_js)
+        self.assertIn('setCloudflareChannelFormMode(true);', settings_js)
 
     def test_version_popover_mentions_docker_only_online_update_setup(self):
         layout_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'layout.html').read_text(encoding='utf-8')

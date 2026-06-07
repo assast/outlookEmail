@@ -573,9 +573,20 @@
                     <div class="settings-section-head">
                         <span class="settings-section-kicker">Cloudflare</span>
                         <h4>Cloudflare 临时邮箱设置</h4>
-                        <p>配置自建 Cloudflare Temp Email 实例的连接信息与管理凭证。</p>
+                        <p>配置多套自建 Cloudflare Temp Email 实例的连接信息与管理凭证。</p>
                     </div>
-                    <div class="settings-panel settings-panel-grid">
+                    <div class="settings-panel settings-panel-grid cloudflare-channel-panel">
+                        <div class="form-group settings-form-span-full">
+                            <label class="form-label">渠道列表</label>
+                            <div class="cloudflare-channel-list" id="settingsCloudflareChannelList">
+                                <div class="form-hint">加载中...</div>
+                            </div>
+                        </div>
+                        <input type="hidden" id="settingsCloudflareChannelId">
+                        <div class="form-group">
+                            <label class="form-label">渠道名称</label>
+                            <input type="text" class="form-input" id="settingsCloudflareChannelName" placeholder="cfmail-us">
+                        </div>
                         <div class="form-group">
                             <label class="form-label">Worker 域名</label>
                             <input type="text" class="form-input" id="settingsCloudflareWorkerDomain" placeholder="your-worker.example.workers.dev">
@@ -584,12 +595,29 @@
                         <div class="form-group settings-form-span-full">
                             <label class="form-label">邮箱域名列表</label>
                             <input type="text" class="form-input" id="settingsCloudflareEmailDomains" placeholder="mail1.example.com, mail2.example.com">
-                            <div class="form-hint">多个域名使用英文逗号分隔。</div>
+                            <div class="form-hint">可选；多个域名使用英文逗号分隔。</div>
                         </div>
                         <div class="form-group">
                             <label class="form-label">管理员密码</label>
                             <input type="password" class="form-input" id="settingsCloudflareAdminPassword" placeholder="对应 Cloudflare Temp Email 的 ADMIN_PASSWORD">
-                            <div class="form-hint">用于调用 <code>/admin/new_address</code> 等管理接口。</div>
+                            <div class="form-hint">编辑已有渠道时留空表示保留原密码。</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="settingsCloudflareEnabled" checked>
+                                <span>启用渠道</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="settingsCloudflareDefault">
+                                <span>设为默认渠道</span>
+                            </label>
+                        </div>
+                        <div class="form-group settings-form-span-full cloudflare-channel-actions">
+                            <button class="btn btn-primary" type="button" id="saveCloudflareChannelBtn" onclick="saveCloudflareChannel()">创建渠道</button>
+                            <button class="btn btn-secondary" type="button" id="resetCloudflareChannelBtn" onclick="resetCloudflareChannelForm()">清空表单</button>
+                            <button class="btn btn-danger" type="button" id="deleteCloudflareChannelBtn" onclick="deleteCloudflareChannel()" style="display: none;">删除渠道</button>
                         </div>
                     </div>
                 </section>

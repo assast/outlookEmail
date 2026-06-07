@@ -739,6 +739,10 @@ class ExternalAccountsApiTests(unittest.TestCase):
             db.execute('DELETE FROM account_aliases')
             db.execute('DELETE FROM account_refresh_logs')
             db.execute('DELETE FROM accounts')
+            db.execute('DELETE FROM temp_email_tags')
+            db.execute('DELETE FROM temp_email_messages')
+            db.execute('DELETE FROM temp_emails')
+            db.execute('DELETE FROM cloudflare_channels')
             db.execute('DELETE FROM tags')
             db.execute("DELETE FROM groups WHERE name NOT IN ('默认分组', '临时邮箱')")
             db.commit()
@@ -791,6 +795,20 @@ class ExternalAccountsApiTests(unittest.TestCase):
                 (account['id'],),
             )
             db.commit()
+
+    def create_cloudflare_channel(self, name='cfmail-test'):
+        with self.app.app_context():
+            channel_id, error = web_outlook_app.create_cloudflare_channel(
+                name=name,
+                worker_domain=f'{name}.example.workers.dev',
+                email_domains=f'{name}.example.com',
+                admin_password=f'{name}-admin',
+                enabled=True,
+                is_default=True,
+            )
+            self.assertIsNone(error)
+            self.assertIsNotNone(channel_id)
+            return channel_id
 
     def test_global_refresh_logs_clamps_invalid_and_large_pagination(self):
         with self.client.session_transaction() as session:
@@ -1673,6 +1691,7 @@ class ExternalAccountsApiTests(unittest.TestCase):
 
         with self.client.session_transaction() as session:
             session['logged_in'] = True
+        channel_id = self.create_cloudflare_channel()
 
         with patch.object(web_outlook_app, 'cloudflare_get_admin_messages', return_value={
             'success': True,
@@ -1685,7 +1704,7 @@ class ExternalAccountsApiTests(unittest.TestCase):
             }],
             'count': 1,
         }) as cloudflare_mock:
-            response = self.client.get('/api/cloudflare/messages?limit=200&offset=0')
+            response = self.client.get(f'/api/cloudflare/messages?channel_id={channel_id}&limit=200&offset=0')
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
@@ -1696,7 +1715,10 @@ class ExternalAccountsApiTests(unittest.TestCase):
         self.assertEqual(payload['count'], 1)
         self.assertEqual(payload['emails'][0]['to'], 'target@example.com')
         self.assertEqual(payload['emails'][0]['subject'], 'Cloudflare code')
-        cloudflare_mock.assert_called_once_with(limit=100, offset=0, address='')
+        self.assertEqual(cloudflare_mock.call_args.kwargs['limit'], 100)
+        self.assertEqual(cloudflare_mock.call_args.kwargs['offset'], 0)
+        self.assertEqual(cloudflare_mock.call_args.kwargs['address'], '')
+        self.assertEqual(cloudflare_mock.call_args.kwargs['channel']['id'], channel_id)
 
     def test_cloudflare_global_messages_falls_back_between_gmail_suffixes(self):
         raw_message = (
@@ -1710,6 +1732,7 @@ class ExternalAccountsApiTests(unittest.TestCase):
 
         with self.client.session_transaction() as session:
             session['logged_in'] = True
+        channel_id = self.create_cloudflare_channel()
 
         with patch.object(web_outlook_app, 'cloudflare_get_admin_messages', side_effect=[
             {'success': True, 'messages': [], 'count': 0},
@@ -1725,7 +1748,9 @@ class ExternalAccountsApiTests(unittest.TestCase):
                 'count': 1,
             },
         ]) as cloudflare_mock:
-            response = self.client.get('/api/cloudflare/messages?address=user@gmail.com&limit=20&offset=0')
+            response = self.client.get(
+                f'/api/cloudflare/messages?channel_id={channel_id}&address=user@gmail.com&limit=20&offset=0'
+            )
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
@@ -1738,6 +1763,10 @@ class ExternalAccountsApiTests(unittest.TestCase):
         self.assertEqual(
             [call.kwargs['address'] for call in cloudflare_mock.call_args_list],
             ['user@gmail.com', 'user@googlemail.com']
+        )
+        self.assertEqual(
+            [call.kwargs['channel']['id'] for call in cloudflare_mock.call_args_list],
+            [channel_id, channel_id]
         )
 
     def test_cloudflare_global_messages_do_not_write_temp_tables(self):
@@ -1758,6 +1787,7 @@ class ExternalAccountsApiTests(unittest.TestCase):
 
         with self.client.session_transaction() as session:
             session['logged_in'] = True
+        channel_id = self.create_cloudflare_channel()
 
         with patch.object(web_outlook_app, 'cloudflare_get_admin_messages', return_value={
             'success': True,
@@ -1768,7 +1798,7 @@ class ExternalAccountsApiTests(unittest.TestCase):
             }],
             'count': 1,
         }):
-            response = self.client.get('/api/cloudflare/messages')
+            response = self.client.get(f'/api/cloudflare/messages?channel_id={channel_id}')
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()

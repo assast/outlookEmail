@@ -1224,6 +1224,95 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cloudflare_channels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            worker_domain TEXT NOT NULL,
+            email_domains TEXT DEFAULT '',
+            admin_password TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            is_default INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    cursor.execute("PRAGMA table_info(cloudflare_channels)")
+    cloudflare_channel_columns = cursor.fetchall()
+    cloudflare_email_domain_column = next(
+        (column for column in cloudflare_channel_columns if column[1] == 'email_domains'),
+        None,
+    )
+    if cloudflare_email_domain_column and int(cloudflare_email_domain_column[3]) == 1:
+        cursor.execute('ALTER TABLE cloudflare_channels RENAME TO cloudflare_channels_old')
+        cursor.execute('''
+            CREATE TABLE cloudflare_channels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                worker_domain TEXT NOT NULL,
+                email_domains TEXT DEFAULT '',
+                admin_password TEXT NOT NULL,
+                enabled INTEGER DEFAULT 1,
+                is_default INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('''
+            INSERT INTO cloudflare_channels
+            (id, name, worker_domain, email_domains, admin_password, enabled, is_default, created_at, updated_at)
+            SELECT id, name, worker_domain, COALESCE(email_domains, ''), admin_password, enabled, is_default, created_at, updated_at
+            FROM cloudflare_channels_old
+        ''')
+        cursor.execute('DROP TABLE cloudflare_channels_old')
+
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_cloudflare_channels_single_default
+        ON cloudflare_channels(is_default)
+        WHERE is_default = 1
+    ''')
+
+    cursor.execute('''
+        SELECT LOWER(name) AS normalized_name
+        FROM cloudflare_channels
+        GROUP BY LOWER(name)
+        HAVING COUNT(*) > 1
+    ''')
+    for conflict in cursor.fetchall():
+        normalized_name = conflict[0]
+        conflict_rows = cursor.execute(
+            '''
+            SELECT id, name
+            FROM cloudflare_channels
+            WHERE LOWER(name) = ?
+            ORDER BY id
+            ''',
+            (normalized_name,)
+        ).fetchall()
+        used_names = {
+            str(row[0] or '').strip().lower()
+            for row in cursor.execute('SELECT name FROM cloudflare_channels').fetchall()
+        }
+        for duplicate_row in conflict_rows[1:]:
+            channel_id = duplicate_row[0]
+            base_name = str(duplicate_row[1] or '').strip() or f'cloudflare-{channel_id}'
+            candidate = f'{base_name}-{channel_id}'
+            counter = 2
+            while candidate.lower() in used_names:
+                candidate = f'{base_name}-{channel_id}-{counter}'
+                counter += 1
+            cursor.execute(
+                'UPDATE cloudflare_channels SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (candidate, channel_id),
+            )
+            used_names.add(candidate.lower())
+
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_cloudflare_channels_name_lower
+        ON cloudflare_channels(LOWER(name))
+    ''')
     
     # 创建临时邮件表（存储从 GPTMail 获取的邮件）
     cursor.execute('''
@@ -1558,6 +1647,8 @@ def init_db():
         cursor.execute('ALTER TABLE temp_emails ADD COLUMN cloudflare_jwt TEXT')
     if 'cloudflare_address_id' not in temp_columns:
         cursor.execute('ALTER TABLE temp_emails ADD COLUMN cloudflare_address_id TEXT')
+    if 'cloudflare_channel_id' not in temp_columns:
+        cursor.execute('ALTER TABLE temp_emails ADD COLUMN cloudflare_channel_id INTEGER')
 
     cursor.execute("PRAGMA table_info(retained_normal_mail_messages)")
     retained_normal_mail_columns = {row[1] for row in cursor.fetchall()}
@@ -1703,6 +1794,56 @@ def init_db():
         INSERT OR IGNORE INTO settings (key, value)
         VALUES ('cloudflare_admin_password', ?)
     ''', (CLOUDFLARE_ADMIN_PASSWORD,))
+
+    cursor.execute('SELECT COUNT(*) FROM cloudflare_channels')
+    cloudflare_channel_count = cursor.fetchone()[0]
+    if cloudflare_channel_count == 0:
+        legacy_worker_row = cursor.execute(
+            "SELECT value FROM settings WHERE key = 'cloudflare_worker_domain'"
+        ).fetchone()
+        legacy_domains_row = cursor.execute(
+            "SELECT value FROM settings WHERE key = 'cloudflare_email_domains'"
+        ).fetchone()
+        legacy_password_row = cursor.execute(
+            "SELECT value FROM settings WHERE key = 'cloudflare_admin_password'"
+        ).fetchone()
+        legacy_worker_domain = str(legacy_worker_row[0] if legacy_worker_row and legacy_worker_row[0] is not None else '').strip()
+        legacy_email_domains = str(legacy_domains_row[0] if legacy_domains_row and legacy_domains_row[0] is not None else '').strip()
+        legacy_admin_password = str(legacy_password_row[0] if legacy_password_row and legacy_password_row[0] is not None else '').strip()
+        if legacy_worker_domain and legacy_admin_password:
+            cursor.execute(
+                '''
+                INSERT INTO cloudflare_channels
+                (name, worker_domain, email_domains, admin_password, enabled, is_default)
+                VALUES (?, ?, ?, ?, 1, 1)
+                ''',
+                (
+                    'default',
+                    legacy_worker_domain,
+                    legacy_email_domains,
+                    encrypt_data(legacy_admin_password),
+                )
+            )
+
+    cursor.execute(
+        '''
+        SELECT id FROM cloudflare_channels
+        WHERE is_default = 1
+        ORDER BY id
+        LIMIT 1
+        '''
+    )
+    default_cloudflare_channel = cursor.fetchone()
+    if default_cloudflare_channel:
+        cursor.execute(
+            '''
+            UPDATE temp_emails
+            SET cloudflare_channel_id = ?
+            WHERE provider = 'cloudflare'
+              AND (cloudflare_channel_id IS NULL OR cloudflare_channel_id = '')
+            ''',
+            (default_cloudflare_channel[0],)
+        )
 
 
     # 初始化刷新配置

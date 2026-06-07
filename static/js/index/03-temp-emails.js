@@ -3,7 +3,10 @@
         // ==================== 临时邮箱相关 ====================
 
         const CLOUDFLARE_GLOBAL_ACCOUNT_KEY = '__cloudflare_global_messages__';
+        const CLOUDFLARE_GLOBAL_ACCOUNT_PREFIX = `${CLOUDFLARE_GLOBAL_ACCOUNT_KEY}:`;
         const CLOUDFLARE_GLOBAL_PAGE_SIZE = 50;
+        let currentCloudflareGlobalChannelId = null;
+        let currentCloudflareGlobalChannelName = '';
 
         // 加载临时邮箱列表
         async function loadTempEmails(forceRefresh = false) {
@@ -21,6 +24,7 @@
                 const data = await response.json();
 
                 if (data.success) {
+                    await loadCloudflareChannelsForTempEmails(forceRefresh);
                     accountsCache['temp'] = data.emails;
                     renderTempEmailList(data.emails);
 
@@ -43,10 +47,29 @@
             }
         }
 
+        async function loadCloudflareChannelsForTempEmails(forceRefresh = false) {
+            if (!forceRefresh && Array.isArray(accountsCache.cloudflareChannels)) {
+                return accountsCache.cloudflareChannels;
+            }
+            try {
+                const response = await fetch('/api/cloudflare/channels');
+                const data = await response.json();
+                accountsCache.cloudflareChannels = data.success && Array.isArray(data.channels)
+                    ? data.channels
+                    : [];
+            } catch (error) {
+                accountsCache.cloudflareChannels = [];
+            }
+            return accountsCache.cloudflareChannels;
+        }
+
         // 渲染临时邮箱列表
         function renderTempEmailList(emails) {
             const container = document.getElementById('accountList');
             currentAccountListSource = Array.isArray(emails) ? [...emails] : [];
+            const cloudflareChannels = Array.isArray(accountsCache.cloudflareChannels)
+                ? accountsCache.cloudflareChannels.filter(channel => channel.enabled)
+                : [];
 
             // 渠道筛选
             const filter = localStorage.getItem('outlook_temp_email_filter') || 'all';
@@ -76,11 +99,14 @@
                 updateCurrentGroupHeader(currentGroup);
             }
 
-            const cloudflareGlobalLabel = 'Cloudflare所有邮件';
-            const showCloudflareGlobalEntry = (filter === 'all' || filter === 'cloudflare') &&
-                (!searchQuery || cloudflareGlobalLabel.toLowerCase().includes(normalizedSearchQuery));
+            const cloudflareGlobalEntries = (filter === 'all' || filter === 'cloudflare')
+                ? cloudflareChannels.filter(channel => {
+                    const label = `Cloudflare所有邮件 · ${channel.name || channel.id}`;
+                    return !searchQuery || label.toLowerCase().includes(normalizedSearchQuery);
+                })
+                : [];
 
-            if (filtered.length === 0 && !showCloudflareGlobalEntry) {
+            if (filtered.length === 0 && cloudflareGlobalEntries.length === 0) {
                 const providerName = filter === 'duckmail' ? 'DuckMail' : (filter === 'cloudflare' ? 'Cloudflare' : 'GPTMail');
                 const hasAdvancedFilters = !!searchQuery || selectedTagFilters.size > 0;
                 const hint = hasAdvancedFilters
@@ -95,13 +121,18 @@
                 return;
             }
 
-            const cloudflareGlobalEntry = showCloudflareGlobalEntry ? `
-                <div class="account-item cloudflare-global-account-item ${currentMethod === 'cloudflare-admin' ? 'active' : ''}"
-                     onclick="selectCloudflareGlobalMessages(event)">
+            const cloudflareGlobalEntry = cloudflareGlobalEntries.map(channel => {
+                const channelId = Number(channel.id);
+                const channelName = channel.name || `#${channelId}`;
+                const label = `Cloudflare所有邮件 · ${channelName}`;
+                const active = currentMethod === 'cloudflare-admin' && Number(currentCloudflareGlobalChannelId) === channelId;
+                return `
+                <div class="account-item cloudflare-global-account-item ${active ? 'active' : ''}"
+                     onclick="selectCloudflareGlobalMessages(event, ${channelId}, '${escapeJs(channelName)}')">
                     <div class="account-body">
                         <div class="account-title-row">
                             <div class="account-email-wrap">
-                                <div class="account-email cloudflare-global-account-title" title="${cloudflareGlobalLabel}">${cloudflareGlobalLabel}</div>
+                                <div class="account-email cloudflare-global-account-title" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
                             </div>
                         </div>
                         <div class="account-meta-row">
@@ -109,7 +140,8 @@
                         </div>
                     </div>
                 </div>
-            ` : '';
+            `;
+            }).join('');
 
             container.innerHTML = cloudflareGlobalEntry + filtered.map(email => `
                 <div class="account-item ${currentAccount === email.email ? 'active' : ''}"
@@ -133,6 +165,7 @@
                                 ${escapeHtml(email.provider === 'duckmail' ? 'DuckMail' : (email.provider === 'cloudflare' ? 'Cloudflare' : 'GPTMail'))}
                             </span>
                             <span class="account-status-pill muted">临时邮箱</span>
+                            ${email.provider === 'cloudflare' && email.cloudflare_channel_name ? `<span class="account-status-pill muted">${escapeHtml(email.cloudflare_channel_name)}</span>` : ''}
                         </div>
                         ${(email.tags || []).length ? `<div class="account-tags">${renderAccountTagSummary(email.tags)}</div>` : ''}
                     </div>
@@ -214,6 +247,12 @@
                             </div>
                             <div id="cloudflareFields" style="display: none;">
                                 <div class="form-group">
+                                    <label class="form-label">渠道</label>
+                                    <select class="form-input" id="cloudflareChannel" style="width: 100%;" onchange="loadCloudflareDomains()">
+                                        <option value="">加载中...</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
                                     <label class="form-label">域名</label>
                                     <select class="form-input" id="cloudflareDomain" style="width: 100%;">
                                         <option value="">加载中...</option>
@@ -276,7 +315,7 @@
                 labelDuck.style.backgroundColor = 'transparent';
                 labelCloudflare.style.borderColor = '#1a1a1a';
                 labelCloudflare.style.backgroundColor = '#f8f8f8';
-                loadCloudflareDomains();
+                loadCloudflareChannelsForGenerate();
             } else {
                 gptmailFields.style.display = 'block';
                 duckmailFields.style.display = 'none';
@@ -312,10 +351,16 @@
         }
 
         async function loadCloudflareDomains() {
+            const channelSelect = document.getElementById('cloudflareChannel');
             const select = document.getElementById('cloudflareDomain');
+            const channelId = channelSelect?.value || '';
+            if (!channelId) {
+                select.innerHTML = '<option value="">请先选择渠道</option>';
+                return;
+            }
             select.innerHTML = '<option value="">加载中...</option>';
             try {
-                const response = await fetch('/api/cloudflare/domains');
+                const response = await fetch(`/api/cloudflare/domains?channel_id=${encodeURIComponent(channelId)}`);
                 const data = await response.json();
                 if (data.success && data.domains && data.domains.length > 0) {
                     select.innerHTML = data.domains.map(d =>
@@ -329,6 +374,28 @@
             } catch (error) {
                 select.innerHTML = `<option value="">加载失败: ${escapeHtml(error.message)}</option>`;
             }
+        }
+
+        async function loadCloudflareChannelsForGenerate() {
+            const channelSelect = document.getElementById('cloudflareChannel');
+            const domainSelect = document.getElementById('cloudflareDomain');
+            if (!channelSelect || !domainSelect) return;
+
+            channelSelect.innerHTML = '<option value="">加载中...</option>';
+            domainSelect.innerHTML = '<option value="">请先选择渠道</option>';
+            const channels = await loadCloudflareChannelsForTempEmails(true);
+            const enabledChannels = channels.filter(channel => channel.enabled);
+            if (enabledChannels.length === 0) {
+                channelSelect.innerHTML = '<option value="">无可用渠道</option>';
+                return;
+            }
+
+            channelSelect.innerHTML = enabledChannels.map(channel =>
+                `<option value="${escapeHtml(String(channel.id))}">${escapeHtml(channel.name || `#${channel.id}`)}</option>`
+            ).join('');
+            const defaultChannel = enabledChannels.find(channel => channel.is_default) || enabledChannels[0];
+            channelSelect.value = String(defaultChannel.id);
+            await loadCloudflareDomains();
         }
 
         // 执行创建临时邮箱
@@ -360,9 +427,14 @@
                         return;
                     }
                 } else if (provider === 'cloudflare') {
+                    body.channel_id = document.getElementById('cloudflareChannel').value;
                     body.domain = document.getElementById('cloudflareDomain').value;
                     body.username = document.getElementById('cloudflareUsername').value.trim();
 
+                    if (!body.channel_id) {
+                        showToast('请选择渠道', 'error');
+                        return;
+                    }
                     if (!body.domain) {
                         showToast('请选择域名', 'error');
                         return;
@@ -401,6 +473,8 @@
         // 选择临时邮箱
         function selectTempEmail(email) {
             currentAccount = email;
+            currentCloudflareGlobalChannelId = null;
+            currentCloudflareGlobalChannelName = '';
             isTempEmailGroup = true;
             currentMethod = 'gptmail';
             currentEmailId = null;
@@ -447,7 +521,11 @@
         }
 
         function getCloudflareGlobalAddressFilter() {
-            return (localStorage.getItem('outlook_cloudflare_global_address_filter') || '').trim();
+            return (localStorage.getItem(getCloudflareGlobalFilterStorageKey()) || '').trim();
+        }
+
+        function getCloudflareGlobalFilterStorageKey() {
+            return `outlook_cloudflare_global_address_filter_${currentCloudflareGlobalChannelId || 'default'}`;
         }
 
         function renderCloudflareGlobalFilterBar() {
@@ -464,9 +542,11 @@
             `;
         }
 
-        function selectCloudflareGlobalMessages(event) {
+        function selectCloudflareGlobalMessages(event, channelId, channelName) {
             if (event) event.stopPropagation();
-            currentAccount = CLOUDFLARE_GLOBAL_ACCOUNT_KEY;
+            currentCloudflareGlobalChannelId = Number(channelId) || null;
+            currentCloudflareGlobalChannelName = channelName || '';
+            currentAccount = `${CLOUDFLARE_GLOBAL_ACCOUNT_PREFIX}${currentCloudflareGlobalChannelId}`;
             currentMethod = 'cloudflare-admin';
             currentEmailId = null;
             currentEmailDetail = null;
@@ -476,7 +556,7 @@
             hasMoreEmails = true;
 
             document.getElementById('currentAccount').classList.add('show');
-            document.getElementById('currentAccountEmail').textContent = 'Cloudflare所有邮件';
+            document.getElementById('currentAccountEmail').textContent = `Cloudflare所有邮件 · ${currentCloudflareGlobalChannelName || currentCloudflareGlobalChannelId}`;
             showEmailList();
             closeMobilePanels();
             updateMobileContext();
@@ -492,10 +572,10 @@
 
             document.getElementById('emailList').innerHTML = `
                 ${renderCloudflareGlobalFilterBar()}
-                <div class="empty-state">
-                    <div class="empty-state-icon">📬</div>
-                    <div class="empty-state-text">点击"获取邮件"按钮获取 Cloudflare所有邮件</div>
-                </div>
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📬</div>
+                        <div class="empty-state-text">点击"获取邮件"按钮获取当前渠道邮件</div>
+                    </div>
             `;
             document.getElementById('emailDetail').innerHTML = `
                 <div class="empty-state">
@@ -506,7 +586,7 @@
             document.getElementById('emailDetailToolbar').style.display = 'none';
             document.getElementById('emailCount').textContent = '';
             const methodTag = document.getElementById('methodTag');
-            methodTag.textContent = 'Cloudflare 全部';
+            methodTag.textContent = `Cloudflare 全部 · ${currentCloudflareGlobalChannelName || currentCloudflareGlobalChannelId}`;
             methodTag.style.display = 'inline';
             methodTag.style.backgroundColor = '#f48120';
             methodTag.style.color = 'white';
@@ -514,12 +594,12 @@
 
         function applyCloudflareGlobalFilter() {
             const input = document.getElementById('cloudflareGlobalAddressFilter');
-            localStorage.setItem('outlook_cloudflare_global_address_filter', (input?.value || '').trim());
+            localStorage.setItem(getCloudflareGlobalFilterStorageKey(), (input?.value || '').trim());
             loadCloudflareGlobalMessages();
         }
 
         function clearCloudflareGlobalFilter() {
-            localStorage.removeItem('outlook_cloudflare_global_address_filter');
+            localStorage.removeItem(getCloudflareGlobalFilterStorageKey());
             const input = document.getElementById('cloudflareGlobalAddressFilter');
             if (input) input.value = '';
             loadCloudflareGlobalMessages();
@@ -528,6 +608,7 @@
         function buildCloudflareGlobalMessagesParams(offset = 0) {
             const address = getCloudflareGlobalAddressFilter();
             const params = new URLSearchParams({
+                channel_id: String(currentCloudflareGlobalChannelId || ''),
                 limit: String(CLOUDFLARE_GLOBAL_PAGE_SIZE),
                 offset: String(Math.max(0, Number(offset) || 0))
             });
@@ -537,9 +618,10 @@
 
         function updateCloudflareGlobalMethodTag(data) {
             const methodTag = document.getElementById('methodTag');
+            const channelLabel = data?.channel_name || currentCloudflareGlobalChannelName || currentCloudflareGlobalChannelId || '';
             const fallbackLabel = data?.fallback_used && data?.queried_email
-                ? `Cloudflare 全部 · ${data.queried_email}`
-                : 'Cloudflare 全部';
+                ? `Cloudflare 全部 · ${channelLabel} · ${data.queried_email}`
+                : `Cloudflare 全部 · ${channelLabel}`;
             methodTag.textContent = fallbackLabel;
             methodTag.style.display = 'inline';
             methodTag.style.backgroundColor = '#f48120';
@@ -547,6 +629,9 @@
         }
 
         async function fetchCloudflareGlobalMessagesPage(offset = 0) {
+            if (!currentCloudflareGlobalChannelId) {
+                return { success: false, error: '请先选择 Cloudflare 渠道' };
+            }
             const params = buildCloudflareGlobalMessagesParams(offset);
             const response = await fetch(`/api/cloudflare/messages?${params.toString()}`);
             return response.json();
