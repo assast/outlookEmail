@@ -58,6 +58,7 @@
 | POST | `/api/accounts/<account_id>/secrets` | Session + CSRF | JSON | 二次验证后获取账号密码和 IMAP 密码 |
 | POST | `/api/accounts` | Session + CSRF | JSON | 批量导入账号 |
 | PUT | `/api/accounts/<account_id>` | Session + CSRF | JSON | 更新账号 |
+| POST | `/api/accounts/<account_id>/reauthorize` | Session + CSRF | JSON | 重新授权已有 Outlook 账号并自动刷新验证 |
 | DELETE | `/api/accounts/<account_id>` | Session + CSRF | JSON | 按 ID 删除账号 |
 | DELETE | `/api/accounts/email/<email_addr>` | Session + CSRF | JSON | 按邮箱删除账号 |
 | POST | `/api/accounts/batch-delete` | Session + CSRF | JSON | 批量删除账号 |
@@ -751,6 +752,71 @@ Content-Type: application/json
   ]
 }
 ```
+
+### POST `/api/accounts/<account_id>/reauthorize`
+
+为已有 Outlook OAuth 账号重新授权。该接口只支持 Outlook 账号，不支持 IMAP 账号。
+
+请求体：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `redirected_url` | string | 是 | Microsoft 授权完成后浏览器地址栏中的完整回调 URL |
+
+接口会从 `redirected_url` 解析授权码，向 Microsoft 换取新的 Refresh Token，随后只更新目标账号的 `client_id`、加密后的 `refresh_token`、`refresh_token_updated_at` 和刷新状态字段。邮箱、密码、分组、状态、转发、代理、备注、别名、标签等字段不会被该接口修改。
+
+授权信息保存成功后，接口会清理旧的刷新失败错误，并立即触发一次单账号 Token 刷新验证。响应中的 `success` 表示授权信息已保存；`validation.success` 表示自动刷新验证是否通过。
+
+请求示例：
+
+```json
+{
+  "redirected_url": "http://localhost:8080/?code=..."
+}
+```
+
+刷新验证成功响应示例：
+
+```json
+{
+  "success": true,
+  "message": "重新授权成功，Token 刷新验证通过",
+  "authorization_updated": true,
+  "validation": {
+    "success": true,
+    "status": "success",
+    "message": "Token 刷新成功"
+  }
+}
+```
+
+刷新验证失败响应示例：
+
+```json
+{
+  "success": true,
+  "message": "重新授权已保存，但自动刷新验证失败",
+  "authorization_updated": true,
+  "validation": {
+    "success": false,
+    "status": "failed",
+    "error": {
+      "code": "TOKEN_REFRESH_FAILED",
+      "message": "Token 刷新失败",
+      "type": "RefreshTokenError",
+      "status": 400
+    },
+    "error_message": "Graph 刷新失败: ..."
+  }
+}
+```
+
+常见错误：
+
+- `ACCOUNT_NOT_FOUND`: 账号不存在
+- `ACCOUNT_REAUTH_UNSUPPORTED`: IMAP 账号不支持重新授权
+- `OAUTH_EXCHANGE_FAILED`: 回调 URL 无效或 Microsoft 换取 Token 失败
+- `ACCOUNT_REAUTH_SAVE_FAILED`: 新授权信息保存失败
 
 ### POST `/api/accounts/batch-update-group`
 
@@ -1749,6 +1815,7 @@ POST /api/cloudflare/channels
 | --- | --- | --- | --- |
 | GET | `/api/oauth/auth-url` | 无 | 生成 Microsoft OAuth 授权链接 |
 | POST | `/api/oauth/exchange-token` | JSON: `redirected_url` | 从回调 URL 中解析 `code` 并换取 Refresh Token |
+| POST | `/api/accounts/<account_id>/reauthorize` | JSON: `redirected_url` | 为已有 Outlook 账号重新授权并自动刷新验证 |
 
 换取 Token 请求示例：
 
@@ -1757,6 +1824,8 @@ POST /api/cloudflare/channels
   "redirected_url": "http://localhost:8080/?code=..."
 }
 ```
+
+注意：Microsoft 授权码通常只能使用一次。为已有账号重新授权时，应直接调用 `/api/accounts/<account_id>/reauthorize`，不要先调用 `/api/oauth/exchange-token` 预览后再重复提交同一个回调 URL。
 
 ## 设置接口
 

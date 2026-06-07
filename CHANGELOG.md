@@ -6,6 +6,15 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.65] - 2026-06-07
+
+### Added
+- Outlook OAuth 账号新增重新授权入口，支持从编辑账号弹窗和刷新失败提示中更新已有账号授权并自动触发单账号刷新验证。
+- 新增 `POST /api/accounts/<account_id>/reauthorize` 接口，只更新已有账号授权字段并保留邮箱、密码、分组、代理、标签等业务信息。
+
+### Fixed
+- 重新授权保存新授权信息后先提交数据库事务，再执行自动刷新验证，避免外部刷新请求期间持有 SQLite 写锁。
+
 ## [2.0.64] - 2026-06-07
 
 ### Added

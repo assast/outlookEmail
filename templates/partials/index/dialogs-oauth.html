@@ -2,29 +2,29 @@
     <div class="modal" id="getRefreshTokenModal" onmousedown="if(event.target === this) hideGetRefreshTokenModal()">
         <div class="modal-content" style="width: min(720px, calc(100vw - 32px));">
             <div class="modal-header">
-                <h3>🔑 授权并保存 Outlook 账号</h3>
+                <h3 id="oauthModalTitle">🔑 授权并保存 Outlook 账号</h3>
                 <button class="modal-close" onclick="hideGetRefreshTokenModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="settings-panel" style="margin-bottom: 16px;">
+                <div class="settings-panel" id="oauthAccountFieldsPanel" style="margin-bottom: 16px;">
                     <div class="settings-section-head" style="margin-bottom: 14px;">
-                        <h4 style="margin-top: 0;">待入库账号</h4>
-                        <p>换取并预览只需要粘贴授权后的回调 URL。邮箱、密码和目标分组仅在保存账号时使用，可稍后补充。</p>
+                        <h4 id="oauthAccountSectionTitle" style="margin-top: 0;">待入库账号</h4>
+                        <p id="oauthAccountSectionHint">换取并预览只需要粘贴授权后的回调 URL。邮箱、密码和目标分组仅在保存账号时使用，可稍后补充。</p>
                     </div>
                     <div class="settings-grid">
-                        <div class="form-group">
-                            <label class="form-label">邮箱账号（保存时可选）</label>
+                        <div class="form-group" id="oauthEmailGroup">
+                            <label class="form-label" id="oauthEmailLabel">邮箱账号（保存时可选）</label>
                             <input type="text" class="form-input" id="oauthEmailInput" placeholder="your@outlook.com">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" id="oauthPasswordGroup">
                             <label class="form-label">密码（保存时可选）</label>
                             <input type="password" class="form-input" id="oauthPasswordInput" placeholder="输入邮箱密码">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" id="oauthTargetGroup">
                             <label class="form-label">目标分组</label>
                             <select class="form-select" id="tokenSaveGroupSelect"></select>
                         </div>
-                        <div class="form-group" style="display: flex; align-items: end;">
+                        <div class="form-group" id="oauthForwardGroup" style="display: flex; align-items: end;">
                             <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #4b5563; margin-bottom: 8px;">
                                 <input type="checkbox" id="oauthForwardEnabled">
                                 <span>保存后启用邮件转发</span>
@@ -62,7 +62,7 @@
                                 <label class="form-label">邮箱</label>
                                 <input type="text" class="form-input" id="oauthPreviewEmail" readonly>
                             </div>
-                            <div class="form-group">
+                            <div class="form-group" id="oauthPreviewPasswordGroup">
                                 <label class="form-label">密码</label>
                                 <input type="text" class="form-input" id="oauthPreviewPassword" readonly>
                             </div>
@@ -70,7 +70,7 @@
                                 <label class="form-label">Client ID</label>
                                 <input type="text" class="form-input" id="oauthPreviewClientId" readonly style="font-family: monospace; font-size: 12px;">
                             </div>
-                            <div class="form-group">
+                            <div class="form-group" id="oauthPreviewGroupGroup">
                                 <label class="form-label">目标分组</label>
                                 <input type="text" class="form-input" id="oauthPreviewGroup" readonly>
                             </div>

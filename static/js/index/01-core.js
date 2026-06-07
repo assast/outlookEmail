@@ -1773,10 +1773,19 @@
         }
 
         // 显示刷新错误信息
-        function showRefreshError(accountId, errorMessage, accountEmail) {
+        function showRefreshError(accountId, errorMessage, accountEmail, accountType = 'outlook') {
             showModal('refreshErrorModal');
             document.getElementById('refreshErrorEmail').textContent = `账号：${accountEmail || '未知'}`;
             document.getElementById('refreshErrorMessage').textContent = errorMessage;
+            const reauthorizeBtn = document.getElementById('reauthorizeAccountFromErrorBtn');
+            const canReauthorize = !!accountId && String(accountType || 'outlook').toLowerCase() !== 'imap';
+            if (reauthorizeBtn) {
+                reauthorizeBtn.style.display = canReauthorize ? '' : 'none';
+                reauthorizeBtn.onclick = function () {
+                    hideRefreshErrorModal();
+                    showReauthorizeAccountModal({ id: accountId, email: accountEmail || '' });
+                };
+            }
             document.getElementById('editAccountFromErrorBtn').onclick = function () {
                 hideRefreshErrorModal();
                 showEditAccountModal(accountId);

@@ -5,7 +5,7 @@ import sqlite3
 import threading
 import time
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     # These segmented files are executed into the shared `web_outlook_app`
@@ -15,6 +15,105 @@ if TYPE_CHECKING:
 
 
 # ==================== OAuth Token API ====================
+
+def extract_oauth_authorization_code(redirected_url: str) -> tuple[bool, str, str]:
+    """从 OAuth 回调 URL 提取授权码。"""
+    import urllib.parse
+
+    normalized_url = str(redirected_url or '').strip()
+    if not normalized_url:
+        return False, '', '请提供授权后的完整 URL'
+
+    try:
+        parsed_url = urllib.parse.urlparse(normalized_url)
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+        auth_code = str(query_params['code'][0] or '').strip()
+    except (KeyError, IndexError):
+        return False, '', '无法从 URL 中提取授权码，请检查 URL 是否正确'
+
+    if not auth_code:
+        return False, '', '无法从 URL 中提取授权码，请检查 URL 是否正确'
+    return True, auth_code, ''
+
+
+def exchange_oauth_code_for_tokens(redirected_url: str) -> Dict[str, Any]:
+    """使用授权后的回调 URL 换取 Microsoft OAuth token。"""
+    success, auth_code, error_message = extract_oauth_authorization_code(redirected_url)
+    if not success:
+        return {'success': False, 'error': error_message}
+
+    token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    token_data = {
+        "client_id": OAUTH_CLIENT_ID,
+        "code": auth_code,
+        "redirect_uri": OAUTH_REDIRECT_URI,
+        "grant_type": "authorization_code",
+        "scope": " ".join(OAUTH_SCOPES)
+    }
+
+    try:
+        response = requests.post(token_url, data=token_data, timeout=30)
+    except Exception as e:
+        return {'success': False, 'error': f'请求失败: {sanitize_error_details(str(e))}'}
+
+    if response.status_code != 200:
+        try:
+            error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+        except Exception:
+            error_data = {}
+        error_msg = error_data.get('error_description', response.text)
+        return {'success': False, 'error': f'获取令牌失败: {sanitize_error_details(error_msg)}'}
+
+    tokens = response.json()
+    refresh_token = str(tokens.get('refresh_token') or '').strip()
+    if not refresh_token:
+        return {'success': False, 'error': '未能获取 Refresh Token'}
+
+    return {
+        'success': True,
+        'refresh_token': refresh_token,
+        'client_id': OAUTH_CLIENT_ID,
+        'token_type': tokens.get('token_type'),
+        'expires_in': tokens.get('expires_in'),
+        'scope': tokens.get('scope')
+    }
+
+
+def update_account_authorization_for_reauth(account_id: int, client_id: str, refresh_token: str, db_conn=None) -> bool:
+    """只更新已有 Outlook 账号的授权字段，并清理旧刷新失败状态。"""
+    token_value = str(refresh_token or '').strip()
+    client_id_value = str(client_id or '').strip()
+    if not token_value or not client_id_value:
+        return False
+
+    db = db_conn or get_db()
+    should_commit = db_conn is None
+    try:
+        db.execute(
+            '''
+            UPDATE accounts
+            SET client_id = ?,
+                refresh_token = ?,
+                refresh_token_updated_at = CURRENT_TIMESTAMP,
+                last_refresh_status = 'never',
+                last_refresh_error = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            ''',
+            (client_id_value, encrypt_data(token_value), account_id)
+        )
+        if should_commit:
+            db.commit()
+        return True
+    except Exception as e:
+        if should_commit:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        print(f"更新账号重新授权信息失败: {sanitize_error_details(str(e))}")
+        return False
+
 
 @app.route('/api/oauth/auth-url', methods=['GET'])
 @login_required
@@ -45,56 +144,117 @@ def api_get_oauth_auth_url():
 @login_required
 def api_exchange_oauth_token():
     """使用授权码换取 Refresh Token"""
-    import urllib.parse
+    data = request.get_json(silent=True) or {}
+    token_result = exchange_oauth_code_for_tokens(data.get('redirected_url', ''))
+    return jsonify(token_result)
 
-    data = request.json
-    redirected_url = data.get('redirected_url', '').strip()
 
-    if not redirected_url:
-        return jsonify({'success': False, 'error': '请提供授权后的完整 URL'})
+@app.route('/api/accounts/<int:account_id>/reauthorize', methods=['POST'])
+@login_required
+def api_reauthorize_account(account_id):
+    """为已有 Outlook 账号重新授权，并立即执行一次刷新验证。"""
+    db = get_db()
+    account = db.execute(
+        '''
+        SELECT id, email, client_id, refresh_token, group_id, account_type, provider
+        FROM accounts
+        WHERE id = ?
+        ''',
+        (account_id,)
+    ).fetchone()
 
-    # 从 URL 中提取 code
-    try:
-        parsed_url = urllib.parse.urlparse(redirected_url)
-        query_params = urllib.parse.parse_qs(parsed_url.query)
-        auth_code = query_params['code'][0]
-    except (KeyError, IndexError):
-        return jsonify({'success': False, 'error': '无法从 URL 中提取授权码，请检查 URL 是否正确'})
+    if not account:
+        return jsonify({
+            'success': False,
+            'error': build_error_payload(
+                "ACCOUNT_NOT_FOUND",
+                "账号不存在",
+                "NotFoundError",
+                404,
+                f"account_id={account_id}"
+            )
+        }), 404
 
-    # 使用 Code 换取 Token (Public Client 不需要 client_secret)
-    token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-    token_data = {
-        "client_id": OAUTH_CLIENT_ID,
-        "code": auth_code,
-        "redirect_uri": OAUTH_REDIRECT_URI,
-        "grant_type": "authorization_code",
-        "scope": " ".join(OAUTH_SCOPES)
-    }
+    if (account['account_type'] or 'outlook').strip().lower() == 'imap':
+        return jsonify({
+            'success': False,
+            'error': build_error_payload(
+                "ACCOUNT_REAUTH_UNSUPPORTED",
+                "IMAP 账号不支持重新授权",
+                "UnsupportedAccountTypeError",
+                400,
+                f"account_id={account_id}"
+            )
+        }), 400
 
-    try:
-        response = requests.post(token_url, data=token_data, timeout=30)
-    except Exception as e:
-        return jsonify({'success': False, 'error': f'请求失败: {str(e)}'})
+    data = request.get_json(silent=True) or {}
+    token_result = exchange_oauth_code_for_tokens(data.get('redirected_url', ''))
+    if not token_result.get('success'):
+        return jsonify({
+            'success': False,
+            'error': build_error_payload(
+                "OAUTH_EXCHANGE_FAILED",
+                "重新授权失败",
+                "OAuthExchangeError",
+                400,
+                token_result.get('error') or '未知错误'
+            )
+        }), 400
 
-    if response.status_code == 200:
-        tokens = response.json()
-        refresh_token = tokens.get('refresh_token')
+    if not update_account_authorization_for_reauth(
+        account_id,
+        token_result.get('client_id', ''),
+        token_result.get('refresh_token', ''),
+        db
+    ):
+        db.rollback()
+        return jsonify({
+            'success': False,
+            'error': build_error_payload(
+                "ACCOUNT_REAUTH_SAVE_FAILED",
+                "保存重新授权信息失败",
+                "DatabaseError",
+                500,
+                f"account_id={account_id}"
+            )
+        }), 500
 
-        if not refresh_token:
-            return jsonify({'success': False, 'error': '未能获取 Refresh Token'})
+    db.commit()
 
+    refreshed_account = db.execute(
+        '''
+        SELECT id, email, client_id, refresh_token, group_id, account_type, provider
+        FROM accounts
+        WHERE id = ?
+        ''',
+        (account_id,)
+    ).fetchone()
+    validation_result = refresh_outlook_account_token(refreshed_account, 'reauthorize', db_conn=db)
+    db.commit()
+
+    if validation_result.get('success'):
         return jsonify({
             'success': True,
-            'refresh_token': refresh_token,
-            'client_id': OAUTH_CLIENT_ID,
-            'token_type': tokens.get('token_type'),
-            'expires_in': tokens.get('expires_in'),
-            'scope': tokens.get('scope')
+            'message': '重新授权成功，Token 刷新验证通过',
+            'authorization_updated': True,
+            'validation': {
+                'success': True,
+                'status': 'success',
+                'message': validation_result.get('message') or 'Token 刷新成功'
+            }
         })
-    else:
-        error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
-        error_msg = error_data.get('error_description', response.text)
-        return jsonify({'success': False, 'error': f'获取令牌失败: {error_msg}'})
+
+    return jsonify({
+        'success': True,
+        'message': '重新授权已保存，但自动刷新验证失败',
+        'authorization_updated': True,
+        'validation': {
+            'success': False,
+            'status': 'failed',
+            'error': validation_result.get('error_payload'),
+            'error_message': validation_result.get('error_message') or '未知错误'
+        }
+    })
 
 
 # ==================== 设置 API ====================

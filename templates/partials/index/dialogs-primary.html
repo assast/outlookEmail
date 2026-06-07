@@ -268,6 +268,10 @@
                                 <label class="form-label">Refresh Token</label>
                                 <textarea class="form-textarea edit-account-token" id="editRefreshToken"></textarea>
                             </div>
+                            <div class="form-group edit-account-span-2" id="editReauthorizeGroup" style="display: none;">
+                                <button type="button" class="btn btn-secondary" onclick="showReauthorizeAccountModalFromEdit()">重新授权并刷新</button>
+                                <div class="form-hint">为当前 Outlook 账号重新获取授权，保存后会自动执行一次 Token 刷新验证。</div>
+                            </div>
                             <div id="editImapFields" class="edit-account-grid edit-account-span-2" style="display: none;">
                                 <div class="form-group">
                                     <label class="form-label">IMAP 密码 / 授权码</label>

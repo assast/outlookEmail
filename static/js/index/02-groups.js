@@ -993,7 +993,7 @@
                 footerParts.push(`<span class="account-created-at" title="${escapeHtml(acc.created_at || '')}">${escapeHtml(formatAbsoluteDateTime(acc.created_at))}</span>`);
             }
             if (acc.last_refresh_status === 'failed') {
-                footerParts.push('<button class="account-error-btn" onclick="event.stopPropagation(); showRefreshError(' + acc.id + ', \'' + escapeJs(acc.last_refresh_error || '未知错误') + '\', \'' + escapeJs(acc.email) + '\')">查看错误</button>');
+                footerParts.push('<button class="account-error-btn" onclick="event.stopPropagation(); showRefreshError(' + acc.id + ', \'' + escapeJs(acc.last_refresh_error || '未知错误') + '\', \'' + escapeJs(acc.email) + '\', \'' + escapeJs(acc.account_type || 'outlook') + '\')">查看错误</button>');
             }
             if (!footerParts.length) {
                 return '';
@@ -1537,12 +1537,14 @@
             const refreshTokenGroup = document.getElementById('editRefreshToken')?.closest('.form-group');
             const imapFields = document.getElementById('editImapFields');
             const customImapFields = document.getElementById('editCustomImapFields');
+            const reauthorizeGroup = document.getElementById('editReauthorizeGroup');
 
             if (passwordGroup) passwordGroup.style.display = isOutlook ? '' : 'none';
             if (clientIdGroup) clientIdGroup.style.display = isOutlook ? '' : 'none';
             if (refreshTokenGroup) refreshTokenGroup.style.display = isOutlook ? '' : 'none';
             if (imapFields) imapFields.style.display = isOutlook ? 'none' : '';
             if (customImapFields) customImapFields.style.display = provider === 'custom' ? '' : 'none';
+            if (reauthorizeGroup) reauthorizeGroup.style.display = isOutlook ? '' : 'none';
         }
 
         function updateImportHint() {

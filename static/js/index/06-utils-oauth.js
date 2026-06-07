@@ -1,4 +1,4 @@
-        /* global accountsCache, currentGroupId, escapeHtml, groups, hideModal, invalidateRefreshTokenPreview, isTempEmailGroup, loadAccountsByGroup, loadGroups, oauthPreviewAccount, renderRefreshTokenPreview, setModalVisible, showModal, showToast, updateGroupSelects */
+        /* global accountsCache, currentGroupId, escapeHtml, groups, handleApiError, hideModal, invalidateAccountCaches, invalidateRefreshTokenPreview, isTempEmailGroup, loadAccountsByGroup, loadGroups, loadRefreshStatusList, oauthPreviewAccount, refreshVisibleAccountList, renderRefreshTokenPreview, setModalVisible, showModal, showToast, updateGroupSelects */
 
         // ==================== 工具函数 ====================
 
@@ -50,6 +50,59 @@
 
         // ==================== OAuth Refresh Token 相关 ====================
 
+        let oauthReauthorizeAccount = null;
+
+        function isOAuthReauthorizeMode() {
+            return !!(oauthReauthorizeAccount && oauthReauthorizeAccount.id);
+        }
+
+        function setOAuthElementDisplay(id, visible, displayValue = '') {
+            const el = document.getElementById(id);
+            if (el) {
+                el.style.display = visible ? displayValue : 'none';
+            }
+        }
+
+        function applyOAuthModalModeUI() {
+            const reauthMode = isOAuthReauthorizeMode();
+            const titleEl = document.getElementById('oauthModalTitle');
+            const sectionTitleEl = document.getElementById('oauthAccountSectionTitle');
+            const sectionHintEl = document.getElementById('oauthAccountSectionHint');
+            const emailLabelEl = document.getElementById('oauthEmailLabel');
+            const emailInput = document.getElementById('oauthEmailInput');
+            const exchangeBtn = document.getElementById('exchangeTokenBtn');
+            const saveBtn = document.getElementById('saveTokenAccountBtn');
+
+            if (titleEl) titleEl.textContent = reauthMode ? '🔑 重新授权 Outlook 账号' : '🔑 授权并保存 Outlook 账号';
+            if (sectionTitleEl) sectionTitleEl.textContent = reauthMode ? '当前账号' : '待入库账号';
+            if (sectionHintEl) {
+                sectionHintEl.textContent = reauthMode
+                    ? '请确认当前账号邮箱，并粘贴授权后的回调 URL。系统会保存新授权并自动执行一次 Token 刷新验证。'
+                    : '换取并预览只需要粘贴授权后的回调 URL。邮箱、密码和目标分组仅在保存账号时使用，可稍后补充。';
+            }
+            if (emailLabelEl) emailLabelEl.textContent = reauthMode ? '当前邮箱账号' : '邮箱账号（保存时可选）';
+            if (emailInput) {
+                emailInput.readOnly = reauthMode;
+                emailInput.value = reauthMode ? (oauthReauthorizeAccount.email || '') : '';
+            }
+
+            setOAuthElementDisplay('oauthPasswordGroup', !reauthMode);
+            setOAuthElementDisplay('oauthTargetGroup', !reauthMode);
+            setOAuthElementDisplay('oauthForwardGroup', !reauthMode, 'flex');
+            setOAuthElementDisplay('oauthPreviewPasswordGroup', !reauthMode);
+            setOAuthElementDisplay('oauthPreviewGroupGroup', !reauthMode);
+
+            if (exchangeBtn) {
+                exchangeBtn.disabled = false;
+                exchangeBtn.textContent = '换取并预览';
+                exchangeBtn.style.display = reauthMode ? 'none' : '';
+            }
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = reauthMode ? '更新授权并刷新' : '直接保存（自动换取）';
+            }
+        }
+
         function invalidateRefreshTokenPreview() {
             oauthPreviewAccount = null;
             const resultEl = document.getElementById('refreshTokenResult');
@@ -65,6 +118,15 @@
             }
             const resultEl = document.getElementById('refreshTokenResult');
             const saveBtn = document.getElementById('saveTokenAccountBtn');
+            if (isOAuthReauthorizeMode()) {
+                if (resultEl) {
+                    resultEl.style.display = 'none';
+                }
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                }
+                return;
+            }
             const group = groups.find(item => item.id === oauthPreviewAccount.group_id);
             const fallbackGroupId = Number.parseInt(String(oauthPreviewAccount.group_id ?? ''), 10);
             document.getElementById('oauthPreviewEmail').value = oauthPreviewAccount.email || '';
@@ -78,29 +140,32 @@
         }
 
         // 显示获取 Refresh Token 模态框
-        async function showGetRefreshTokenModal() {
+        async function showGetRefreshTokenModal(options = {}) {
+            const reauthorizeAccount = options.reauthorizeAccount || null;
+            oauthReauthorizeAccount = reauthorizeAccount && reauthorizeAccount.id
+                ? {
+                    id: Number(reauthorizeAccount.id),
+                    email: String(reauthorizeAccount.email || '')
+                }
+                : null;
+
             showModal('getRefreshTokenModal');
 
             // 重置表单
-            document.getElementById('oauthEmailInput').value = '';
+            document.getElementById('oauthEmailInput').value = oauthReauthorizeAccount?.email || '';
             document.getElementById('oauthPasswordInput').value = '';
             document.getElementById('redirectUrlInput').value = '';
             document.getElementById('oauthForwardEnabled').checked = false;
             invalidateRefreshTokenPreview();
+            applyOAuthModalModeUI();
 
             // 重置按钮状态
             const btn = document.getElementById('exchangeTokenBtn');
             btn.disabled = false;
-            btn.textContent = '换取并预览';
-            btn.style.display = '';
             const saveBtn = document.getElementById('saveTokenAccountBtn');
-            if (saveBtn) {
-                saveBtn.disabled = false;
-                saveBtn.textContent = '直接保存（自动换取）';
-            }
 
             const groupSelect = document.getElementById('tokenSaveGroupSelect');
-            if (groupSelect) {
+            if (groupSelect && !isOAuthReauthorizeMode()) {
                 const nonTempGroups = groups.filter(group => group.name !== '临时邮箱');
                 const fallbackGroupId = (!isTempEmailGroup && currentGroupId && nonTempGroups.find(group => group.id === currentGroupId))
                     ? currentGroupId
@@ -127,7 +192,32 @@
 
         // 隐藏获取 Refresh Token 模态框
         function hideGetRefreshTokenModal() {
+            oauthReauthorizeAccount = null;
             hideModal('getRefreshTokenModal');
+            applyOAuthModalModeUI();
+        }
+
+        async function showReauthorizeAccountModal(account) {
+            const normalizedAccount = typeof account === 'object'
+                ? account
+                : { id: account, email: arguments.length > 1 ? arguments[1] : '' };
+            const accountId = Number(normalizedAccount.id || 0);
+            if (!Number.isFinite(accountId) || accountId <= 0) {
+                showToast('账号信息无效，无法重新授权', 'error');
+                return;
+            }
+            await showGetRefreshTokenModal({
+                reauthorizeAccount: {
+                    id: accountId,
+                    email: normalizedAccount.email || ''
+                }
+            });
+        }
+
+        function showReauthorizeAccountModalFromEdit() {
+            const accountId = document.getElementById('editAccountId')?.value || '';
+            const accountEmail = document.getElementById('editEmail')?.value || '';
+            showReauthorizeAccountModal({ id: accountId, email: accountEmail });
         }
 
         // 复制授权 URL
@@ -149,6 +239,10 @@
 
         // 换取 Token
         async function exchangeToken(options = {}) {
+            if (isOAuthReauthorizeMode()) {
+                return reauthorizeExistingAccount();
+            }
+
             const { silentSuccess = false, keepSavingState = false } = options;
             const email = document.getElementById('oauthEmailInput').value.trim();
             const password = document.getElementById('oauthPasswordInput').value;
@@ -224,7 +318,88 @@
             }
         }
 
+        async function reloadAuthorizationAffectedViews() {
+            if (typeof invalidateAccountCaches === 'function') {
+                invalidateAccountCaches();
+            } else if (currentGroupId) {
+                delete accountsCache[currentGroupId];
+            }
+            if (typeof loadGroups === 'function') {
+                await loadGroups();
+            }
+            if (typeof refreshVisibleAccountList === 'function') {
+                await refreshVisibleAccountList(true);
+            } else if (currentGroupId && typeof loadAccountsByGroup === 'function') {
+                await loadAccountsByGroup(currentGroupId, true);
+            }
+            if (typeof loadRefreshStatusList === 'function') {
+                await loadRefreshStatusList();
+            }
+        }
+
+        async function reauthorizeExistingAccount() {
+            const accountId = Number(oauthReauthorizeAccount?.id || 0);
+            const redirectUrl = document.getElementById('redirectUrlInput').value.trim();
+            if (!Number.isFinite(accountId) || accountId <= 0) {
+                showToast('账号信息无效，无法重新授权', 'error');
+                return false;
+            }
+            if (!redirectUrl) {
+                showToast('请先粘贴授权后的完整 URL', 'error');
+                return false;
+            }
+
+            const saveBtn = document.getElementById('saveTokenAccountBtn');
+            const exchangeBtn = document.getElementById('exchangeTokenBtn');
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.textContent = '更新并刷新中...';
+            }
+            if (exchangeBtn) {
+                exchangeBtn.disabled = true;
+            }
+
+            try {
+                const response = await fetch(`/api/accounts/${accountId}/reauthorize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ redirected_url: redirectUrl })
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    handleApiError(data, '重新授权失败');
+                    return false;
+                }
+
+                await reloadAuthorizationAffectedViews();
+                hideGetRefreshTokenModal();
+
+                const validation = data.validation || {};
+                if (validation.success) {
+                    showToast(data.message || '重新授权成功，Token 刷新验证通过', 'success');
+                } else {
+                    showToast(data.message || '重新授权已保存，但自动刷新验证失败', 'error', validation.error);
+                }
+                return true;
+            } catch (error) {
+                showToast('重新授权失败: ' + error.message, 'error');
+                return false;
+            } finally {
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = isOAuthReauthorizeMode() ? '更新授权并刷新' : '直接保存（自动换取）';
+                }
+                if (exchangeBtn) {
+                    exchangeBtn.disabled = false;
+                }
+            }
+        }
+
         async function saveTokenAccount() {
+            if (isOAuthReauthorizeMode()) {
+                return reauthorizeExistingAccount();
+            }
+
             if (!oauthPreviewAccount) {
                 const exchanged = await exchangeToken({ silentSuccess: true, keepSavingState: true });
                 if (!exchanged || !oauthPreviewAccount) {
