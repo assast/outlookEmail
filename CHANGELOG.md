@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.66] - 2026-06-08
+
+### Added
+- Token 刷新管理邮箱列表完整移植普通邮箱列表批量操作，支持选择模式、行点击、`Shift` 连选、拖拽选择，以及刷新 Token、复制邮箱+别名、导出、转发开关、代理、标签、移动分组和删除。
+
+### Changed
+- Token 刷新管理中的批量账号变更会同步刷新 Token 列表、主邮箱账号列表、分组计数和相关前端缓存，避免两个列表状态不一致。
+
 ## [2.0.65] - 2026-06-07
 
 ### Added

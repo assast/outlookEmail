@@ -374,6 +374,202 @@
             }
         }
 
+        let activeAccountBatchSelectionContext = null;
+        let pendingAccountBatchModalContext = null;
+        let batchActionType = ''; // 'add' or 'remove'
+
+        function normalizeAccountBatchId(value) {
+            const normalized = parseInt(value, 10);
+            return Number.isFinite(normalized) ? normalized : null;
+        }
+
+        function getMainAccountBatchSelectionCheckboxes() {
+            return Array.from(document.querySelectorAll('#accountList .account-select-checkbox:checked'));
+        }
+
+        function buildAccountBatchSelectionFromCheckboxes(checkboxes, sourceAccounts = currentAccountListSource) {
+            const accountById = new Map();
+            (Array.isArray(sourceAccounts) ? sourceAccounts : []).forEach(account => {
+                const accountId = normalizeAccountBatchId(account?.id);
+                if (accountId !== null) {
+                    accountById.set(accountId, account);
+                }
+            });
+
+            return checkboxes
+                .map(checkbox => {
+                    const accountId = normalizeAccountBatchId(checkbox.value);
+                    if (accountId === null) {
+                        return null;
+                    }
+                    const sourceAccount = accountById.get(accountId) || {};
+                    return {
+                        ...sourceAccount,
+                        id: accountId,
+                        email: sourceAccount.email || checkbox.dataset.accountEmail || '',
+                        aliases: Array.isArray(sourceAccount.aliases) ? sourceAccount.aliases : [],
+                        account_type: sourceAccount.account_type || checkbox.dataset.accountType || 'outlook',
+                        provider: sourceAccount.provider || 'outlook',
+                        forward_enabled: typeof sourceAccount.forward_enabled === 'boolean'
+                            ? sourceAccount.forward_enabled
+                            : checkbox.dataset.forwardEnabled === 'true',
+                    };
+                })
+                .filter(Boolean);
+        }
+
+        function getMainAccountBatchSelectionContext() {
+            const selectedCheckboxes = getMainAccountBatchSelectionCheckboxes();
+            const selectedAccounts = buildAccountBatchSelectionFromCheckboxes(selectedCheckboxes);
+            const selectedIds = selectedAccounts.map(account => normalizeAccountBatchId(account.id)).filter(Number.isFinite);
+            const context = {
+                source: 'main-account-list',
+                isTempContext: !!isTempEmailGroup,
+                selectedCheckboxes,
+                selectedAccounts,
+                selectedIds,
+                selectedEmails: selectedAccounts.map(account => account.email).filter(Boolean),
+                buttons: {
+                    copy: document.getElementById('batchCopyEmailsBtn'),
+                    export: document.getElementById('batchExportAccountsBtn'),
+                    refresh: document.getElementById('batchRefreshTokensBtn'),
+                    enableForwarding: document.getElementById('batchEnableForwardingBtn'),
+                    disableForwarding: document.getElementById('batchDisableForwardingBtn'),
+                    proxy: document.getElementById('batchProxyBtn'),
+                    delete: document.getElementById('batchDeleteAccountsBtn'),
+                },
+                clearSelection: clearAccountSelection,
+                updateControls: updateBatchActionBar,
+            };
+            context.afterMutation = async function afterMainAccountMutation(options = {}) {
+                if (context.isTempContext) {
+                    delete accountsCache.temp;
+                } else if (typeof invalidateAccountCaches === 'function') {
+                    invalidateAccountCaches();
+                }
+                if (Array.isArray(options.deletedEmails) && options.deletedEmails.length && typeof resetSelectedAccountViewIfDeleted === 'function') {
+                    resetSelectedAccountViewIfDeleted(options.deletedEmails);
+                }
+                if (typeof loadGroups === 'function') {
+                    await loadGroups();
+                }
+                if (options.clearSelection !== false && typeof context.clearSelection === 'function') {
+                    context.clearSelection();
+                }
+                if (typeof refreshVisibleAccountList === 'function') {
+                    await refreshVisibleAccountList(true);
+                }
+            };
+            return context;
+        }
+
+        function snapshotAccountBatchSelectionContext(context) {
+            const safeContext = context || getMainAccountBatchSelectionContext();
+            return {
+                ...safeContext,
+                selectedCheckboxes: Array.isArray(safeContext.selectedCheckboxes) ? [...safeContext.selectedCheckboxes] : [],
+                selectedIds: Array.isArray(safeContext.selectedIds)
+                    ? safeContext.selectedIds.map(normalizeAccountBatchId).filter(Number.isFinite)
+                    : [],
+                selectedEmails: Array.isArray(safeContext.selectedEmails) ? [...safeContext.selectedEmails] : [],
+                selectedAccounts: Array.isArray(safeContext.selectedAccounts)
+                    ? safeContext.selectedAccounts.map(account => ({
+                        ...account,
+                        aliases: Array.isArray(account.aliases) ? [...account.aliases] : [],
+                        tags: Array.isArray(account.tags) ? [...account.tags] : [],
+                    }))
+                    : [],
+                buttons: safeContext.buttons || {},
+            };
+        }
+
+        function withAccountBatchSelectionContext(context, callback) {
+            const previousContext = activeAccountBatchSelectionContext;
+            activeAccountBatchSelectionContext = snapshotAccountBatchSelectionContext(context);
+            try {
+                const result = callback();
+                if (result && typeof result.then === 'function') {
+                    return result.finally(() => {
+                        activeAccountBatchSelectionContext = previousContext;
+                    });
+                }
+                activeAccountBatchSelectionContext = previousContext;
+                return result;
+            } catch (error) {
+                activeAccountBatchSelectionContext = previousContext;
+                throw error;
+            }
+        }
+
+        function getCurrentAccountBatchSelectionContext() {
+            return activeAccountBatchSelectionContext || getMainAccountBatchSelectionContext();
+        }
+
+        function getAccountBatchSelectedIds(context = getCurrentAccountBatchSelectionContext()) {
+            return Array.from(new Set((context.selectedIds || [])
+                .map(normalizeAccountBatchId)
+                .filter(Number.isFinite)));
+        }
+
+        function getAccountBatchSelectedAccounts(context = getCurrentAccountBatchSelectionContext()) {
+            return Array.isArray(context.selectedAccounts) ? context.selectedAccounts : [];
+        }
+
+        function getAccountBatchSelectedEmails(context = getCurrentAccountBatchSelectionContext()) {
+            const emailSet = new Set();
+            getAccountBatchSelectedAccounts(context)
+                .map(account => String(account.email || '').trim())
+                .filter(Boolean)
+                .forEach(email => emailSet.add(email));
+            (context.selectedEmails || [])
+                .map(email => String(email || '').trim())
+                .filter(Boolean)
+                .forEach(email => emailSet.add(email));
+            return Array.from(emailSet);
+        }
+
+        function getAccountBatchButton(context, name) {
+            return context?.buttons?.[name] || null;
+        }
+
+        function updateAccountBatchControls(context = getCurrentAccountBatchSelectionContext()) {
+            if (typeof context.updateControls === 'function') {
+                context.updateControls();
+            }
+        }
+
+        async function afterSuccessfulAccountBatchMutation(context, options = {}) {
+            if (typeof context.afterMutation === 'function') {
+                await context.afterMutation(options);
+                return;
+            }
+            if (typeof invalidateAccountCaches === 'function') {
+                invalidateAccountCaches();
+            }
+            if (typeof loadGroups === 'function') {
+                await loadGroups();
+            }
+            if (options.clearSelection !== false && typeof context.clearSelection === 'function') {
+                context.clearSelection();
+            }
+            if (typeof refreshVisibleAccountList === 'function') {
+                await refreshVisibleAccountList(true);
+            }
+        }
+
+        function setPendingAccountBatchModalContext(context = getCurrentAccountBatchSelectionContext()) {
+            pendingAccountBatchModalContext = snapshotAccountBatchSelectionContext(context);
+            return pendingAccountBatchModalContext;
+        }
+
+        function getPendingAccountBatchModalContext() {
+            return pendingAccountBatchModalContext || getCurrentAccountBatchSelectionContext();
+        }
+
+        function clearPendingAccountBatchModalContext() {
+            pendingAccountBatchModalContext = null;
+        }
+
         function toggleSelectAllAccounts() {
             const checkboxes = Array.from(document.querySelectorAll('#accountList .account-select-checkbox'));
             if (!checkboxes.length) return;
@@ -394,26 +590,19 @@
         }
 
         function getSelectedAccountIds() {
-            return Array.from(document.querySelectorAll('#accountList .account-select-checkbox:checked'))
-                .map(cb => parseInt(cb.value, 10))
-                .filter(Number.isFinite);
+            return getAccountBatchSelectedIds();
         }
 
         function getSelectedAccounts() {
-            const selectedIds = new Set(getSelectedAccountIds());
-            if (!selectedIds.size) {
-                return [];
-            }
-
-            return (Array.isArray(currentAccountListSource) ? currentAccountListSource : [])
-                .filter(account => selectedIds.has(parseInt(account.id, 10)));
+            return getAccountBatchSelectedAccounts();
         }
 
         async function copySelectedAccountsWithAliases() {
-            const btn = document.getElementById('batchCopyEmailsBtn');
+            const context = getCurrentAccountBatchSelectionContext();
+            const btn = getAccountBatchButton(context, 'copy');
             if (!btn || btn.disabled) return;
 
-            const selectedAccounts = getSelectedAccounts();
+            const selectedAccounts = getAccountBatchSelectedAccounts(context);
             if (!selectedAccounts.length) {
                 showToast('请先选择要复制的邮箱', 'error');
                 return;
@@ -442,17 +631,18 @@
                 await copyTextToClipboard(emailList.join('\n'), `已复制 ${emailList.length} 个邮箱地址`);
             } finally {
                 btn.dataset.loading = 'false';
-                updateBatchActionBar();
+                updateAccountBatchControls(context);
             }
         }
 
         function exportSelectedAccounts() {
-            if (isTempEmailGroup) {
+            const context = getCurrentAccountBatchSelectionContext();
+            if (context.isTempContext) {
                 showToast('临时邮箱暂不支持选中导出', 'error');
                 return;
             }
 
-            const accountIds = getSelectedAccountIds();
+            const accountIds = getAccountBatchSelectedIds(context);
             if (!accountIds.length) {
                 showToast('请先选择要导出的邮箱', 'error');
                 return;
@@ -462,12 +652,14 @@
         }
 
         async function refreshSelectedAccounts() {
-            const btn = document.getElementById('batchRefreshTokensBtn');
+            const context = getCurrentAccountBatchSelectionContext();
+            const btn = getAccountBatchButton(context, 'refresh');
             if (!btn || btn.disabled) return;
 
-            const checked = Array.from(document.querySelectorAll('#accountList .account-select-checkbox:checked'));
-            const accountIds = getSelectedAccountIds();
-            const refreshableCount = checked.filter(cb => cb.dataset.refreshable === 'true').length;
+            const accountIds = getAccountBatchSelectedIds(context);
+            const refreshableCount = getAccountBatchSelectedAccounts(context)
+                .filter(account => String(account.account_type || 'outlook').toLowerCase() !== 'imap')
+                .length;
 
             if (!accountIds.length) {
                 showToast('请先选择要刷新的邮箱', 'error');
@@ -510,25 +702,28 @@
                     loadRefreshStats();
                 }
 
-                clearAccountSelection();
-                await refreshVisibleAccountList(true);
+                if (typeof context.clearSelection === 'function') {
+                    context.clearSelection();
+                }
+                if (typeof refreshVisibleAccountList === 'function') {
+                    await refreshVisibleAccountList(true);
+                }
             } catch (error) {
                 showToast('批量刷新请求失败', 'error');
             } finally {
                 btn.dataset.loading = 'false';
-                updateBatchActionBar();
+                updateAccountBatchControls(context);
             }
         }
 
         async function updateForwardingForSelectedAccounts(targetEnabled) {
-            const btn = document.getElementById(targetEnabled ? 'batchEnableForwardingBtn' : 'batchDisableForwardingBtn');
+            const context = getCurrentAccountBatchSelectionContext();
+            const btn = getAccountBatchButton(context, targetEnabled ? 'enableForwarding' : 'disableForwarding');
             if (!btn || btn.disabled) return;
 
-            const checked = Array.from(document.querySelectorAll('#accountList .account-select-checkbox:checked'));
-            const accountIds = checked
-                .map(cb => parseInt(cb.value, 10))
-                .filter(Number.isFinite);
-            const eligibleCount = checked.filter(cb => (cb.dataset.forwardEnabled === 'true') !== targetEnabled).length;
+            const selectedAccounts = getAccountBatchSelectedAccounts(context);
+            const accountIds = getAccountBatchSelectedIds(context);
+            const eligibleCount = selectedAccounts.filter(account => !!account.forward_enabled !== targetEnabled).length;
             const actionLabel = targetEnabled ? '开启转发' : '取消转发';
             const loadingLabel = targetEnabled ? '开启中...' : '取消中...';
             const finishedLabel = targetEnabled ? '已全部开启转发' : '已全部取消转发';
@@ -572,14 +767,12 @@
                 }
 
                 showToast(data.message || `已为 ${eligibleCount} 个账号${actionLabel}`, 'success');
-                invalidateAccountCaches();
-                clearAccountSelection();
-                await refreshVisibleAccountList(true);
+                await afterSuccessfulAccountBatchMutation(context);
             } catch (error) {
                 showToast(`批量${actionLabel}失败`, 'error');
             } finally {
                 btn.dataset.loading = 'false';
-                updateBatchActionBar();
+                updateAccountBatchControls(context);
             }
         }
 
@@ -592,17 +785,13 @@
         }
 
         async function deleteSelectedAccounts() {
-            const btn = document.getElementById('batchDeleteAccountsBtn');
+            const context = getCurrentAccountBatchSelectionContext();
+            const btn = getAccountBatchButton(context, 'delete');
             if (!btn || btn.disabled) return;
 
-            const checked = Array.from(document.querySelectorAll('#accountList .account-select-checkbox:checked'));
-            const accountIds = checked
-                .map(cb => parseInt(cb.value, 10))
-                .filter(Number.isFinite);
-            const accountEmails = checked
-                .map(cb => cb.dataset.accountEmail || '')
-                .filter(Boolean);
-            const isTempContext = !!isTempEmailGroup;
+            const accountIds = getAccountBatchSelectedIds(context);
+            const accountEmails = getAccountBatchSelectedEmails(context);
+            const isTempContext = !!context.isTempContext;
 
             if (!accountIds.length) {
                 showToast(isTempContext ? '请先选择要删除的临时邮箱' : '请先选择要删除的邮箱', 'error');
@@ -638,29 +827,26 @@
                     : accountEmails;
 
                 showToast(data.message || `已删除 ${deletedEmails.length} 个${resourceLabel}`, 'success');
-                if (isTempContext) {
-                    delete accountsCache.temp;
-                } else {
-                    invalidateAccountCaches();
-                }
-                resetSelectedAccountViewIfDeleted(deletedEmails);
-                clearAccountSelection();
-                loadGroups();
-                await refreshVisibleAccountList(true);
+                await afterSuccessfulAccountBatchMutation(context, { deletedEmails });
             } catch (error) {
                 showToast('批量删除失败', 'error');
             } finally {
                 btn.dataset.loading = 'false';
-                updateBatchActionBar();
+                updateAccountBatchControls(context);
             }
         }
 
-        let batchActionType = ''; // 'add' or 'remove'
-
         // 显示批量打标模态框
         async function showBatchTagModal(type) {
+            const context = setPendingAccountBatchModalContext();
+            const accountIds = getAccountBatchSelectedIds(context);
+            if (!accountIds.length) {
+                showToast('请先选择要操作的账号', 'error');
+                clearPendingAccountBatchModalContext();
+                return;
+            }
             batchActionType = type;
-            const resourceLabel = isTempEmailGroup ? '临时邮箱' : '账号';
+            const resourceLabel = context.isTempContext ? '临时邮箱' : '账号';
             document.getElementById('batchTagTitle').textContent = type === 'add'
                 ? `批量给${resourceLabel}添加标签`
                 : `批量移除${resourceLabel}标签`;
@@ -671,6 +857,7 @@
         }
 
         function hideBatchTagModal() {
+            clearPendingAccountBatchModalContext();
             hideModal('batchTagModal');
         }
 
@@ -696,19 +883,18 @@
 
         // 确认批量打标
         async function confirmBatchTag() {
+            const context = getPendingAccountBatchModalContext();
             const tagId = document.getElementById('batchTagSelect').value;
             if (!tagId) {
                 showToast('请选择标签', 'error');
                 return;
             }
 
-            const checked = document.querySelectorAll('.account-select-checkbox:checked');
-            const accountIds = Array.from(checked).map(cb => parseInt(cb.value));
-
+            const accountIds = getAccountBatchSelectedIds(context);
             if (accountIds.length === 0) return;
 
             try {
-                const isTempContext = !!isTempEmailGroup;
+                const isTempContext = !!context.isTempContext;
                 const response = await fetch(isTempContext ? '/api/temp-emails/tags' : '/api/accounts/tags', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -729,28 +915,30 @@
                 if (data.success) {
                     showToast(data.message, 'success');
                     hideBatchTagModal();
-                    await refreshVisibleAccountList(true);
-                    // 隐藏操作栏
-                    document.querySelectorAll('.account-select-checkbox').forEach(cb => cb.checked = false);
-                    updateBatchActionBar();
+                    await afterSuccessfulAccountBatchMutation(context);
                 } else {
                     showToast(data.error || '操作失败', 'error');
                 }
             } catch (error) {
                 showToast('请求失败', 'error');
+            } finally {
+                updateAccountBatchControls(context);
             }
         }
 
         // ==================== 批量代理设置 ====================
 
         function showBatchProxyModal() {
-            if (isTempEmailGroup) {
+            const context = setPendingAccountBatchModalContext();
+            if (context.isTempContext) {
                 showToast('临时邮箱不支持账号代理设置', 'error');
+                clearPendingAccountBatchModalContext();
                 return;
             }
-            const accountIds = getSelectedAccountIds();
+            const accountIds = getAccountBatchSelectedIds(context);
             if (!accountIds.length) {
                 showToast('请先选择要设置代理的邮箱', 'error');
+                clearPendingAccountBatchModalContext();
                 return;
             }
             document.getElementById('batchProxyUrl').value = '';
@@ -760,12 +948,14 @@
         }
 
         function hideBatchProxyModal() {
+            clearPendingAccountBatchModalContext();
             hideModal('batchProxyModal');
         }
 
         async function confirmBatchProxy() {
-            const btn = document.getElementById('batchProxyBtn');
-            const accountIds = getSelectedAccountIds();
+            const context = getPendingAccountBatchModalContext();
+            const btn = getAccountBatchButton(context, 'proxy');
+            const accountIds = getAccountBatchSelectedIds(context);
             if (!accountIds.length) {
                 showToast('请先选择要设置代理的邮箱', 'error');
                 return;
@@ -808,16 +998,14 @@
 
                 showToast(data.message || '账号代理已更新', 'success');
                 hideBatchProxyModal();
-                invalidateAccountCaches();
-                clearAccountSelection();
-                await refreshVisibleAccountList(true);
+                await afterSuccessfulAccountBatchMutation(context);
             } catch (error) {
                 showToast('批量设置代理失败', 'error');
             } finally {
                 if (btn) {
                     btn.dataset.loading = 'false';
                 }
-                updateBatchActionBar();
+                updateAccountBatchControls(context);
             }
         }
 
@@ -825,11 +1013,24 @@
 
         // 显示批量移动分组模态框
         async function showBatchMoveGroupModal() {
+            const context = setPendingAccountBatchModalContext();
+            if (context.isTempContext) {
+                showToast('临时邮箱不支持移动分组', 'error');
+                clearPendingAccountBatchModalContext();
+                return;
+            }
+            const accountIds = getAccountBatchSelectedIds(context);
+            if (!accountIds.length) {
+                showToast('请先选择要移动的邮箱', 'error');
+                clearPendingAccountBatchModalContext();
+                return;
+            }
             showModal('batchMoveGroupModal');
             await loadGroupsForBatchMove();
         }
 
         function hideBatchMoveGroupModal() {
+            clearPendingAccountBatchModalContext();
             hideModal('batchMoveGroupModal');
         }
 
@@ -855,15 +1056,14 @@
 
         // 确认批量移动分组
         async function confirmBatchMoveGroup() {
+            const context = getPendingAccountBatchModalContext();
             const groupId = document.getElementById('batchMoveGroupSelect').value;
             if (!groupId) {
                 showToast('请选择目标分组', 'error');
                 return;
             }
 
-            const checked = document.querySelectorAll('.account-select-checkbox:checked');
-            const accountIds = Array.from(checked).map(cb => parseInt(cb.value));
-
+            const accountIds = getAccountBatchSelectedIds(context);
             if (accountIds.length === 0) return;
 
             try {
@@ -872,7 +1072,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         account_ids: accountIds,
-                        group_id: parseInt(groupId)
+                        group_id: parseInt(groupId, 10)
                     })
                 });
 
@@ -880,19 +1080,13 @@
                 if (data.success) {
                     showToast(data.message, 'success');
                     hideBatchMoveGroupModal();
-                    // 刷新分组列表
-                    loadGroups();
-                    if (currentGroupId) {
-                        delete accountsCache[currentGroupId];
-                    }
-                    await refreshVisibleAccountList(true);
-                    // 清除选择
-                    document.querySelectorAll('.account-select-checkbox').forEach(cb => cb.checked = false);
-                    updateBatchActionBar();
+                    await afterSuccessfulAccountBatchMutation(context);
                 } else {
                     showToast(data.error || '操作失败', 'error');
                 }
             } catch (error) {
                 showToast('请求失败', 'error');
+            } finally {
+                updateAccountBatchControls(context);
             }
         }
