@@ -1434,8 +1434,8 @@ Content-Type: application/json
 
 - `q`
 - `status=all|success|failed|never`
-- `page`
-- `page_size`
+- `page`：最小为 `1`
+- `page_size`：最小为 `1`，最大为 `10000`
 
 ### 转发日志与触发
 

@@ -184,7 +184,7 @@ def query_refreshable_accounts(db_conn=None, account_ids: Optional[List[int]] = 
     db = db_conn or get_db()
     refresh_status = normalize_refresh_status_filter(refresh_status)
     page = max(1, int(page or 1))
-    page_size = max(1, min(500, int(page_size or 100)))
+    page_size = max(1, min(10000, int(page_size or 100)))
     offset = (page - 1) * page_size
 
     where_clauses = [

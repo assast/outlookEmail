@@ -22,6 +22,9 @@
             selectionDragState: null,
             selectionSuppressClickUntil: 0,
         };
+        const REFRESH_PAGE_SIZE_STORAGE_KEY = 'outlook_refresh_page_size';
+        const REFRESH_PAGE_SIZE_DEFAULT = 200;
+        const REFRESH_PAGE_SIZE_MAX = 10000;
 
         function getRefreshStatusMeta(status) {
             switch (String(status || '').toLowerCase()) {
@@ -98,6 +101,7 @@
             }
 
             syncRefreshBatchControls();
+            syncRefreshPaginationControls();
         }
 
         function updateRefreshLogSummary(text = '暂无任务日志') {
@@ -166,6 +170,133 @@
             document.querySelectorAll('#refreshModal .refresh-filter-chip').forEach(btn => {
                 btn.classList.toggle('is-active', btn.dataset.status === refreshModalState.status);
             });
+        }
+
+        function normalizeRefreshPageSize(value) {
+            const parsed = parseInt(value, 10);
+            if (!Number.isFinite(parsed)) {
+                return REFRESH_PAGE_SIZE_DEFAULT;
+            }
+            return Math.max(1, Math.min(parsed, REFRESH_PAGE_SIZE_MAX));
+        }
+
+        function getRefreshTotalPages() {
+            const pageSize = normalizeRefreshPageSize(refreshModalState.pageSize);
+            const total = Math.max(0, Number(refreshModalState.total || 0));
+            return Math.max(1, Math.ceil(total / pageSize));
+        }
+
+        function getRefreshPaginationMarkup() {
+            return `
+                <div class="refresh-pagination" aria-label="Token 刷新管理分页">
+                    <select id="refreshPageSizeSelect" class="refresh-pagination__select"
+                        onchange="handleRefreshPageSizeChange(this.value)">
+                        <option value="100">每页 100</option>
+                        <option value="200" selected>每页 200</option>
+                        <option value="500">每页 500</option>
+                        <option value="1000">每页 1000</option>
+                        <option value="2000">每页 2000</option>
+                        <option value="5000">每页 5000</option>
+                        <option value="10000">每页 10000</option>
+                    </select>
+                    <div class="refresh-pagination__controls">
+                        <button class="refresh-pagination__btn" type="button" id="refreshPrevPageBtn"
+                            onclick="changeRefreshPage(-1)">上一页</button>
+                        <label class="refresh-pagination__page" for="refreshPageInput">
+                            <span>第</span>
+                            <input type="number" id="refreshPageInput" min="1" value="1"
+                                onchange="goToRefreshPage(this.value)"
+                                onkeydown="handleRefreshPageInputKeydown(event)">
+                            <span id="refreshTotalPagesText">/ 1 页</span>
+                        </label>
+                        <button class="refresh-pagination__btn" type="button" id="refreshNextPageBtn"
+                            onclick="changeRefreshPage(1)">下一页</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function ensureRefreshPaginationControls() {
+            if (document.getElementById('refreshPageSizeSelect')) {
+                return;
+            }
+
+            const listActions = document.querySelector('#refreshModal .refresh-list-panel__actions');
+            const mount = document.getElementById('refreshPaginationMount');
+            if (mount && listActions?.contains(mount)) {
+                mount.innerHTML = getRefreshPaginationMarkup();
+                return;
+            }
+            if (listActions) {
+                listActions.insertAdjacentHTML('afterbegin', getRefreshPaginationMarkup());
+                return;
+            }
+
+            if (mount) {
+                mount.innerHTML = getRefreshPaginationMarkup();
+                return;
+            }
+
+            const toolbarActions = document.querySelector('#refreshModal .refresh-toolbar__actions');
+            if (toolbarActions) {
+                toolbarActions.insertAdjacentHTML('beforebegin', getRefreshPaginationMarkup());
+            }
+        }
+
+        function syncRefreshPageSizeSelect() {
+            const select = document.getElementById('refreshPageSizeSelect');
+            if (!select) {
+                return;
+            }
+            const pageSize = normalizeRefreshPageSize(refreshModalState.pageSize);
+            const hasMatchingOption = Array.from(select.options)
+                .some(option => option.value === String(pageSize));
+            if (!hasMatchingOption) {
+                refreshModalState.pageSize = REFRESH_PAGE_SIZE_DEFAULT;
+            }
+            select.value = String(normalizeRefreshPageSize(refreshModalState.pageSize));
+        }
+
+        function syncRefreshPaginationControls() {
+            refreshModalState.page = Math.max(1, parseInt(refreshModalState.page, 10) || 1);
+            refreshModalState.pageSize = normalizeRefreshPageSize(refreshModalState.pageSize);
+            syncRefreshPageSizeSelect();
+
+            const totalPages = getRefreshTotalPages();
+            const visiblePage = Math.min(refreshModalState.page, totalPages);
+            const pageInput = document.getElementById('refreshPageInput');
+            if (pageInput) {
+                pageInput.value = String(visiblePage);
+                pageInput.max = String(totalPages);
+                pageInput.disabled = refreshModalState.isRunning;
+            }
+
+            const totalPagesText = document.getElementById('refreshTotalPagesText');
+            if (totalPagesText) {
+                totalPagesText.textContent = `/ ${totalPages} 页`;
+            }
+
+            const prevBtn = document.getElementById('refreshPrevPageBtn');
+            const nextBtn = document.getElementById('refreshNextPageBtn');
+            if (prevBtn) {
+                prevBtn.disabled = refreshModalState.isRunning || refreshModalState.page <= 1;
+            }
+            if (nextBtn) {
+                nextBtn.disabled = refreshModalState.isRunning || refreshModalState.page >= totalPages || refreshModalState.total <= 0;
+            }
+
+            const pageSizeSelect = document.getElementById('refreshPageSizeSelect');
+            if (pageSizeSelect) {
+                pageSizeSelect.disabled = refreshModalState.isRunning;
+            }
+        }
+
+        function initRefreshPaginationSettings() {
+            ensureRefreshPaginationControls();
+            refreshModalState.pageSize = normalizeRefreshPageSize(
+                localStorage.getItem(REFRESH_PAGE_SIZE_STORAGE_KEY) || refreshModalState.pageSize
+            );
+            syncRefreshPaginationControls();
         }
 
         function renderRefreshStats(stats) {
@@ -622,7 +753,18 @@
 
             refreshModalState.items = Array.isArray(items) ? items : [];
             refreshModalState.total = Number(total || 0);
-            summaryEl.textContent = `当前 ${refreshModalState.items.length} / 共 ${refreshModalState.total} 项`;
+            const pageSize = normalizeRefreshPageSize(refreshModalState.pageSize);
+            const page = Math.max(1, parseInt(refreshModalState.page, 10) || 1);
+            const startItem = refreshModalState.items.length
+                ? ((page - 1) * pageSize) + 1
+                : 0;
+            const endItem = refreshModalState.items.length
+                ? Math.min(refreshModalState.total, startItem + refreshModalState.items.length - 1)
+                : 0;
+            summaryEl.textContent = refreshModalState.total > 0
+                ? `第 ${startItem}-${endItem} 项 / 共 ${refreshModalState.total} 项`
+                : '共 0 项';
+            syncRefreshPaginationControls();
 
             if (!refreshModalState.items.length) {
                 container.innerHTML = '<div class="refresh-account-empty">当前筛选条件下暂无邮箱</div>';
@@ -720,12 +862,72 @@
                     handleApiError(data, '加载 Token 刷新状态失败');
                     return;
                 }
+                refreshModalState.page = Math.max(1, parseInt(data.page, 10) || refreshModalState.page);
+                refreshModalState.pageSize = normalizeRefreshPageSize(data.page_size || refreshModalState.pageSize);
+                refreshModalState.total = Math.max(0, Number(data.total || 0));
+                const totalPages = getRefreshTotalPages();
+                if (refreshModalState.total > 0 && refreshModalState.page > totalPages) {
+                    refreshModalState.page = totalPages;
+                    await loadRefreshStatusList();
+                    return;
+                }
                 renderRefreshStats(data.stats || {});
                 renderRefreshAccountList(data.items || [], data.total || 0);
                 updateRefreshStatusFilterButtons();
             } catch (error) {
                 showToast('加载 Token 刷新状态失败', 'error');
             }
+        }
+
+        function handleRefreshPageSizeChange(value) {
+            if (refreshModalState.isRunning) {
+                syncRefreshPaginationControls();
+                return;
+            }
+            const nextPageSize = normalizeRefreshPageSize(value);
+            if (nextPageSize === refreshModalState.pageSize) {
+                syncRefreshPaginationControls();
+                return;
+            }
+            clearRefreshSelectionForScopeChange();
+            refreshModalState.pageSize = nextPageSize;
+            refreshModalState.page = 1;
+            localStorage.setItem(REFRESH_PAGE_SIZE_STORAGE_KEY, String(nextPageSize));
+            syncRefreshPaginationControls();
+            loadRefreshStatusList();
+        }
+
+        function goToRefreshPage(value) {
+            if (refreshModalState.isRunning) {
+                syncRefreshPaginationControls();
+                return;
+            }
+            const totalPages = getRefreshTotalPages();
+            const nextPage = Math.min(
+                totalPages,
+                Math.max(1, parseInt(value, 10) || 1)
+            );
+            if (nextPage === refreshModalState.page) {
+                syncRefreshPaginationControls();
+                return;
+            }
+            clearRefreshSelectionForScopeChange();
+            refreshModalState.page = nextPage;
+            syncRefreshPaginationControls();
+            loadRefreshStatusList();
+        }
+
+        function changeRefreshPage(delta) {
+            goToRefreshPage(refreshModalState.page + (parseInt(delta, 10) || 0));
+        }
+
+        function handleRefreshPageInputKeydown(event) {
+            if (event.key !== 'Enter') {
+                return;
+            }
+            event.preventDefault();
+            goToRefreshPage(event.currentTarget.value);
+            event.currentTarget.blur();
         }
 
         async function showRefreshModal(resetFilters = false) {
@@ -740,6 +942,7 @@
 
             showModal('refreshModal');
             initRefreshSelectionGestures();
+            initRefreshPaginationSettings();
             updateRefreshStatusFilterButtons();
             syncRefreshActionButtons();
             renderRefreshRuntimeLogs();

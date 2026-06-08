@@ -1247,6 +1247,87 @@
             flex: 0 0 auto;
         }
 
+        .refresh-pagination {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+            min-width: 0;
+        }
+
+        .refresh-pagination__page,
+        .refresh-pagination__controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            white-space: nowrap;
+        }
+
+        .refresh-pagination__controls {
+            gap: 8px;
+        }
+
+        .refresh-pagination select,
+        .refresh-pagination input {
+            height: 32px;
+            border: 1px solid #d9dce3;
+            border-radius: 10px;
+            background: #ffffff;
+            color: #374151;
+            font-size: 12px;
+            font-weight: 700;
+            outline: none;
+        }
+
+        .refresh-pagination select {
+            width: 104px;
+            padding: 0 6px;
+        }
+
+        .refresh-pagination input {
+            width: 54px;
+            padding: 0 8px;
+            text-align: center;
+        }
+
+        .refresh-pagination select:focus,
+        .refresh-pagination input:focus {
+            border-color: #111827;
+            box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08);
+        }
+
+        .refresh-pagination__btn {
+            min-height: 32px;
+            padding: 0 10px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            background: #ffffff;
+            color: #374151;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 700;
+            transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+        }
+
+        .refresh-pagination__btn:hover:not(:disabled) {
+            background-color: #f8fafc;
+            border-color: #cbd5e1;
+            color: #111827;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+        }
+
+        .refresh-pagination__btn:disabled,
+        .refresh-pagination select:disabled,
+        .refresh-pagination input:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+        }
+
         .refresh-batch-actions {
             display: none;
             position: absolute;
@@ -1866,6 +1947,16 @@
             .refresh-toolbar {
                 display: grid;
                 grid-template-columns: 1fr;
+            }
+
+            .refresh-list-panel__actions {
+                justify-content: flex-start;
+                flex-wrap: wrap;
+            }
+
+            .refresh-pagination {
+                width: 100%;
+                justify-content: flex-start;
             }
 
             .refresh-batch-actions {

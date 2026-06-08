@@ -2915,6 +2915,54 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
         self.assertEqual(payload['stats']['last_refresh_status'], 'partial_failed')
         self.assertEqual(payload['stats']['last_refresh_time'], '2026-04-27 11:30:00')
 
+    def test_refresh_status_list_uses_page_and_page_size_parameters(self):
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.add_account(
+                'refresh-page-a@example.com',
+                'password123',
+                'client-id-page-a',
+                'refresh-token-page-a',
+                group_id=self.group_id,
+                forward_enabled=False,
+            ))
+            self.assertTrue(web_outlook_app.add_account(
+                'refresh-page-b@example.com',
+                'password123',
+                'client-id-page-b',
+                'refresh-token-page-b',
+                group_id=self.group_id,
+                forward_enabled=False,
+            ))
+            web_outlook_app.get_db().commit()
+
+        first_response = self.client.get('/api/accounts/refresh-status-list?page=1&page_size=1')
+        second_response = self.client.get('/api/accounts/refresh-status-list?page=2&page_size=1')
+        clamped_response = self.client.get('/api/accounts/refresh-status-list?page=0&page_size=20000')
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(clamped_response.status_code, 200)
+
+        first_payload = first_response.get_json()
+        second_payload = second_response.get_json()
+        clamped_payload = clamped_response.get_json()
+
+        self.assertTrue(first_payload['success'])
+        self.assertEqual(first_payload['page'], 1)
+        self.assertEqual(first_payload['page_size'], 1)
+        self.assertEqual(len(first_payload['items']), 1)
+        self.assertGreaterEqual(first_payload['total'], 3)
+
+        self.assertTrue(second_payload['success'])
+        self.assertEqual(second_payload['page'], 2)
+        self.assertEqual(second_payload['page_size'], 1)
+        self.assertEqual(len(second_payload['items']), 1)
+        self.assertNotEqual(first_payload['items'][0]['id'], second_payload['items'][0]['id'])
+
+        self.assertTrue(clamped_payload['success'])
+        self.assertEqual(clamped_payload['page'], 1)
+        self.assertEqual(clamped_payload['page_size'], 10000)
+
     def test_refresh_status_search_escapes_like_literals(self):
         with self.app.app_context():
             self.assertTrue(web_outlook_app.add_account(

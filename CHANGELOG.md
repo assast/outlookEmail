@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.67] - 2026-06-08
+
+### Added
+- Token 刷新管理邮箱列表新增分页控件，支持切换每页 100 到 10000 项、上一页/下一页和页码跳转，并记住用户选择的每页数量。
+
+### Changed
+- `/api/accounts/refresh-status-list` 的 `page_size` 上限从 500 提升到 10000，前端列表摘要改为显示当前页项目范围。
+
 ## [2.0.66] - 2026-06-08
 
 ### Added
