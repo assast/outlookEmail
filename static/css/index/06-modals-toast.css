@@ -1204,10 +1204,11 @@
         }
 
         .refresh-list-panel {
+            position: relative;
             border: 1px solid #e5e7eb;
             border-radius: 16px;
             background: #ffffff;
-            overflow: hidden;
+            overflow: visible;
             box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
         }
 
@@ -1238,19 +1239,81 @@
             color: #6b7280;
         }
 
-        .refresh-batch-actions {
+        .refresh-list-panel__actions {
             display: flex;
             align-items: center;
             justify-content: flex-end;
             gap: 8px;
+            flex: 0 0 auto;
+        }
+
+        .refresh-batch-actions {
+            display: none;
+            position: absolute;
+            top: 62px;
+            left: 16px;
+            right: 16px;
+            z-index: 6;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
             flex-wrap: wrap;
+            padding: 10px;
+            border: 1px solid rgba(209, 213, 219, 0.92);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: 0 18px 34px rgba(15, 23, 42, 0.14);
+            backdrop-filter: blur(14px);
+            min-width: 0;
+            max-width: calc(100% - 32px);
+        }
+
+        .refresh-batch-actions.is-active {
+            display: flex;
+        }
+
+        .refresh-batch-actions::before {
+            content: '';
+            position: absolute;
+            top: -7px;
+            right: 18px;
+            width: 12px;
+            height: 12px;
+            border-left: 1px solid rgba(209, 213, 219, 0.92);
+            border-top: 1px solid rgba(209, 213, 219, 0.92);
+            background: rgba(255, 255, 255, 0.98);
+            transform: rotate(45deg);
         }
 
         .refresh-batch-actions__summary {
+            display: inline-flex;
+            align-items: center;
+            min-height: 30px;
+            padding: 0 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(209, 213, 219, 0.9);
+            background: #ffffff;
             font-size: 12px;
             font-weight: 700;
             color: #111827;
             white-space: nowrap;
+        }
+
+        .refresh-selection-mode-btn {
+            width: 32px;
+            height: 32px;
+            flex: 0 0 auto;
+        }
+
+        .refresh-selection-mode-btn.active {
+            background-color: #111827;
+            border-color: #111827;
+            color: #ffffff;
+        }
+
+        .refresh-selection-mode .refresh-account-table-wrap {
+            user-select: none;
+            cursor: crosshair;
         }
 
         .refresh-account-table-wrap {
@@ -1289,12 +1352,17 @@
 
         .refresh-account-row {
             background: #ffffff;
+            transition: background-color 0.15s, box-shadow 0.15s;
         }
 
         .refresh-account-row td {
             padding: 14px 16px;
             border-bottom: 1px solid #eef2f7;
             vertical-align: top;
+        }
+
+        .refresh-selection-mode .refresh-account-row {
+            cursor: crosshair;
         }
 
         .refresh-account-select-head,
@@ -1316,8 +1384,21 @@
             cursor: not-allowed;
         }
 
+        .refresh-account-row.is-selected {
+            background: #eff6ff;
+            box-shadow: inset 3px 0 0 #2563eb;
+        }
+
+        .refresh-account-row.is-disabled {
+            opacity: 0.72;
+        }
+
         .refresh-account-row.is-refreshing {
             background: linear-gradient(180deg, #f8fbff 0%, #f2f8ff 100%);
+        }
+
+        .refresh-account-row.is-refreshing.is-selected {
+            background: linear-gradient(180deg, #eef6ff 0%, #e0f0ff 100%);
         }
 
         .refresh-account-main {
@@ -1788,7 +1869,24 @@
             }
 
             .refresh-batch-actions {
+                position: static;
+                max-width: none;
+                margin: 0 12px 12px;
                 justify-content: flex-start;
+            }
+
+            .refresh-batch-actions::before {
+                display: none;
+            }
+
+            .refresh-batch-actions .batch-action-group {
+                width: 100%;
+                justify-content: flex-start;
+                border-radius: 14px;
+            }
+
+            .refresh-batch-actions .batch-btn {
+                flex: 1 1 auto;
             }
 
             .settings-action-row--toolbar {

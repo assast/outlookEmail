@@ -2971,6 +2971,14 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
             tagged_account = web_outlook_app.get_account_by_email('tagged-refresh@example.com')
             self.assertIsNotNone(tagged_account)
             self.assertTrue(web_outlook_app.add_account_tag(tagged_account['id'], tag_id))
+            alias_ok, cleaned_aliases, alias_errors = web_outlook_app.replace_account_aliases(
+                tagged_account['id'],
+                tagged_account['email'],
+                ['tagged-refresh-alias@example.com'],
+            )
+            self.assertTrue(alias_ok, alias_errors)
+            self.assertEqual(cleaned_aliases, ['tagged-refresh-alias@example.com'])
+            web_outlook_app.get_db().commit()
 
         with self.app.app_context():
             with patch.object(web_outlook_app, 'get_account_tags', side_effect=AssertionError('unexpected per-account tag load')):
@@ -2978,7 +2986,16 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
 
         tagged_items = [item for item in payload['items'] if item['email'] == 'tagged-refresh@example.com']
         self.assertEqual(len(tagged_items), 1)
-        self.assertEqual([tag['name'] for tag in tagged_items[0]['tags']], ['刷新标签'])
+        tagged_item = tagged_items[0]
+        self.assertEqual([tag['name'] for tag in tagged_item['tags']], ['刷新标签'])
+        self.assertEqual(tagged_item['aliases'], ['tagged-refresh-alias@example.com'])
+        self.assertEqual(tagged_item['alias_count'], 1)
+        self.assertEqual(tagged_item['account_type'], 'outlook')
+        self.assertEqual(tagged_item['provider'], 'outlook')
+        self.assertFalse(tagged_item['forward_enabled'])
+        self.assertEqual(tagged_item['group_id'], self.group_id)
+        self.assertEqual(tagged_item['group_name'], '代理刷新组')
+        self.assertEqual(tagged_item['group_color'], '#225588')
 
     def test_group_api_persists_proxy_failover_fields(self):
         response = self.client.put(

@@ -17,6 +17,10 @@
             stopRequested: false,
             runtimeLogs: [],
             selectedAccountIds: new Set(),
+            selectionMode: false,
+            selectionAnchorId: null,
+            selectionDragState: null,
+            selectionSuppressClickUntil: 0,
         };
 
         function getRefreshStatusMeta(status) {
@@ -185,6 +189,242 @@
                 .filter(Number.isFinite);
         }
 
+        function getSelectedRefreshAccounts() {
+            const selectedIds = new Set(getSelectedRefreshAccountIds());
+            if (!selectedIds.size) {
+                return [];
+            }
+            return refreshModalState.items.filter(item => selectedIds.has(Number(item.id)));
+        }
+
+        function getRefreshAccountBatchContext() {
+            const selectedAccounts = getSelectedRefreshAccounts();
+            return {
+                source: 'refresh-management',
+                isTempContext: false,
+                selectedAccounts,
+                selectedIds: getSelectedRefreshAccountIds(),
+                selectedEmails: selectedAccounts.map(account => account.email).filter(Boolean),
+                selectedCheckboxes: Array.from(document.querySelectorAll('#refreshAccountList .refresh-account-select-checkbox:checked')),
+                buttons: {
+                    copy: document.getElementById('refreshCopySelectedBtn'),
+                    export: document.getElementById('refreshExportSelectedBtn'),
+                    refresh: document.getElementById('refreshSelectedBtn'),
+                    enableForwarding: document.getElementById('refreshEnableForwardingBtn'),
+                    disableForwarding: document.getElementById('refreshDisableForwardingBtn'),
+                    proxy: document.getElementById('refreshProxyBtn'),
+                    delete: document.getElementById('refreshDeleteSelectedBtn'),
+                },
+                clearSelection: clearRefreshSelection,
+                updateControls: syncRefreshBatchControls,
+                afterMutation: async function afterRefreshBatchMutation(options = {}) {
+                    if (typeof invalidateAccountCaches === 'function') {
+                        invalidateAccountCaches();
+                    }
+                    if (Array.isArray(options.deletedEmails) && options.deletedEmails.length && typeof resetSelectedAccountViewIfDeleted === 'function') {
+                        resetSelectedAccountViewIfDeleted(options.deletedEmails);
+                    }
+                    if (typeof loadGroups === 'function') {
+                        await loadGroups();
+                    }
+                    clearRefreshSelection();
+                    await reloadRefreshWorkbenchData();
+                }
+            };
+        }
+
+        function withRefreshAccountBatchContext(callback) {
+            if (typeof withAccountBatchSelectionContext !== 'function') {
+                showToast('批量操作模块尚未加载，请刷新页面后重试', 'error');
+                return undefined;
+            }
+            return withAccountBatchSelectionContext(getRefreshAccountBatchContext(), callback);
+        }
+
+        function setRefreshSelectionMode(enabled) {
+            refreshModalState.selectionMode = !!enabled;
+            document.getElementById('refreshModal')?.classList.toggle('refresh-selection-mode', refreshModalState.selectionMode);
+            document.querySelectorAll('.refresh-selection-mode-btn').forEach(button => {
+                button.classList.toggle('active', refreshModalState.selectionMode);
+                button.setAttribute('aria-pressed', refreshModalState.selectionMode ? 'true' : 'false');
+                button.title = refreshModalState.selectionMode ? '退出批量选择' : '批量选择';
+            });
+            if (!refreshModalState.selectionMode) {
+                refreshModalState.selectionDragState = null;
+            }
+        }
+
+        function toggleRefreshSelectionMode() {
+            setRefreshSelectionMode(!refreshModalState.selectionMode);
+        }
+
+        function getRefreshSelectionCheckboxes() {
+            return Array.from(document.querySelectorAll('#refreshAccountList .refresh-account-select-checkbox'));
+        }
+
+        function getRefreshSelectionCheckboxById(accountId) {
+            return getRefreshSelectionCheckboxes()
+                .find(checkbox => String(checkbox.value) === String(accountId));
+        }
+
+        function setRefreshSelectionAnchor(accountId) {
+            const normalizedId = Number(accountId);
+            refreshModalState.selectionAnchorId = Number.isFinite(normalizedId) ? normalizedId : null;
+        }
+
+        function setRefreshSelectionRange(fromId, toId, selected) {
+            const checkboxes = getRefreshSelectionCheckboxes();
+            const fromIndex = checkboxes.findIndex(checkbox => String(checkbox.value) === String(fromId));
+            const toIndex = checkboxes.findIndex(checkbox => String(checkbox.value) === String(toId));
+            if (fromIndex === -1 || toIndex === -1) {
+                return false;
+            }
+            const start = Math.min(fromIndex, toIndex);
+            const end = Math.max(fromIndex, toIndex);
+            for (let index = start; index <= end; index += 1) {
+                setRefreshAccountSelected(checkboxes[index].value, selected, { sync: false });
+            }
+            return true;
+        }
+
+        function applyRefreshSelectionFromCheckbox(checkbox, event = null) {
+            if (!checkbox || refreshModalState.isRunning) {
+                syncRefreshBatchControls();
+                return;
+            }
+            const accountId = Number(checkbox.value);
+            if (!Number.isFinite(accountId)) {
+                syncRefreshBatchControls();
+                return;
+            }
+            const selected = !!checkbox.checked;
+            if (event?.shiftKey && refreshModalState.selectionAnchorId !== null) {
+                if (setRefreshSelectionRange(refreshModalState.selectionAnchorId, accountId, selected)) {
+                    event.preventDefault?.();
+                } else {
+                    setRefreshAccountSelected(accountId, selected, { sync: false });
+                }
+            } else {
+                setRefreshAccountSelected(accountId, selected, { sync: false });
+            }
+            setRefreshSelectionAnchor(accountId);
+            syncRefreshBatchControls();
+        }
+
+        function handleRefreshSelectionCheckboxClick(event) {
+            event.stopPropagation();
+            if (refreshModalState.selectionMode && Date.now() < refreshModalState.selectionSuppressClickUntil) {
+                event.preventDefault();
+                return;
+            }
+            applyRefreshSelectionFromCheckbox(event.currentTarget, event);
+        }
+
+        function isRefreshRowInteractiveTarget(target) {
+            return !!target?.closest?.('button, input, a, .refresh-account-action');
+        }
+
+        function handleRefreshAccountRowClick(event) {
+            if (Date.now() < refreshModalState.selectionSuppressClickUntil) {
+                event?.preventDefault?.();
+                return;
+            }
+            if (refreshModalState.isRunning || isRefreshRowInteractiveTarget(event?.target)) {
+                return;
+            }
+            if (!refreshModalState.selectionMode && !event?.shiftKey) {
+                return;
+            }
+
+            const checkbox = event.currentTarget?.querySelector?.('.refresh-account-select-checkbox');
+            if (!checkbox) {
+                return;
+            }
+
+            event?.preventDefault?.();
+            if (event?.shiftKey && refreshModalState.selectionAnchorId !== null) {
+                checkbox.checked = true;
+                applyRefreshSelectionFromCheckbox(checkbox, event);
+            } else {
+                checkbox.checked = !checkbox.checked;
+                applyRefreshSelectionFromCheckbox(checkbox, event);
+            }
+        }
+
+        function setRefreshDragSelection(checkbox) {
+            if (!refreshModalState.selectionDragState || !checkbox) {
+                return;
+            }
+            const accountId = String(checkbox.value);
+            if (refreshModalState.selectionDragState.visitedIds.has(accountId)) {
+                return;
+            }
+            refreshModalState.selectionDragState.visitedIds.add(accountId);
+            checkbox.checked = refreshModalState.selectionDragState.targetChecked;
+            setRefreshAccountSelected(checkbox.value, refreshModalState.selectionDragState.targetChecked, { sync: false });
+            setRefreshSelectionAnchor(checkbox.value);
+            syncRefreshBatchControls();
+        }
+
+        function handleRefreshSelectionPointerDown(event) {
+            if (!refreshModalState.selectionMode || refreshModalState.isRunning || event.button !== 0) {
+                return;
+            }
+            const startedOnCheckbox = !!event.target.closest('.refresh-account-select-checkbox');
+            if (!startedOnCheckbox && isRefreshRowInteractiveTarget(event.target)) {
+                return;
+            }
+
+            const row = event.target.closest('.refresh-account-row');
+            const checkbox = row?.querySelector?.('.refresh-account-select-checkbox');
+            if (!checkbox) {
+                return;
+            }
+
+            event.preventDefault();
+            refreshModalState.selectionSuppressClickUntil = Date.now() + 350;
+            refreshModalState.selectionDragState = {
+                pointerId: event.pointerId,
+                targetChecked: !checkbox.checked,
+                visitedIds: new Set()
+            };
+            document.getElementById('refreshAccountList')?.setPointerCapture?.(event.pointerId);
+            setRefreshDragSelection(checkbox);
+        }
+
+        function handleRefreshSelectionPointerMove(event) {
+            const dragState = refreshModalState.selectionDragState;
+            if (!dragState || event.pointerId !== dragState.pointerId) {
+                return;
+            }
+            event.preventDefault();
+            const element = document.elementFromPoint(event.clientX, event.clientY);
+            const row = element?.closest?.('#refreshAccountList .refresh-account-row');
+            const checkbox = row?.querySelector?.('.refresh-account-select-checkbox');
+            setRefreshDragSelection(checkbox);
+        }
+
+        function handleRefreshSelectionPointerEnd(event) {
+            const dragState = refreshModalState.selectionDragState;
+            if (!dragState || event.pointerId !== dragState.pointerId) {
+                return;
+            }
+            document.getElementById('refreshAccountList')?.releasePointerCapture?.(event.pointerId);
+            refreshModalState.selectionDragState = null;
+        }
+
+        function initRefreshSelectionGestures() {
+            const refreshAccountList = document.getElementById('refreshAccountList');
+            if (!refreshAccountList || refreshAccountList.dataset.boundSelectionGestures) {
+                return;
+            }
+            refreshAccountList.dataset.boundSelectionGestures = 'true';
+            refreshAccountList.addEventListener('pointerdown', handleRefreshSelectionPointerDown);
+            refreshAccountList.addEventListener('pointermove', handleRefreshSelectionPointerMove);
+            refreshAccountList.addEventListener('pointerup', handleRefreshSelectionPointerEnd);
+            refreshAccountList.addEventListener('pointercancel', handleRefreshSelectionPointerEnd);
+        }
+
         function syncRefreshBatchControls() {
             const selectedIds = getSelectedRefreshAccountIds();
             const visibleIds = getVisibleRefreshAccountIds();
@@ -193,6 +433,23 @@
             const hasVisibleItems = visibleIds.length > 0;
             const hasSelection = selectedIds.length > 0;
             const allVisibleSelected = hasVisibleItems && visibleSelectedCount === visibleIds.length;
+            const selectedAccounts = getSelectedRefreshAccounts();
+            const enableForwardingCount = selectedAccounts.filter(account => !account.forward_enabled).length;
+            const disableForwardingCount = selectedAccounts.filter(account => !!account.forward_enabled).length;
+
+            const modalEl = document.getElementById('refreshModal');
+            modalEl?.classList.toggle('refresh-selection-mode', refreshModalState.selectionMode);
+
+            const batchActions = document.getElementById('refreshBatchActions');
+            if (batchActions) {
+                batchActions.classList.toggle('is-active', hasSelection);
+            }
+
+            document.querySelectorAll('.refresh-selection-mode-btn').forEach(button => {
+                button.classList.toggle('active', refreshModalState.selectionMode);
+                button.setAttribute('aria-pressed', refreshModalState.selectionMode ? 'true' : 'false');
+                button.title = refreshModalState.selectionMode ? '退出批量选择' : '批量选择';
+            });
 
             const summaryEl = document.getElementById('refreshSelectedSummary');
             if (summaryEl) {
@@ -218,6 +475,68 @@
                 refreshSelectedBtn.textContent = hasSelection ? `刷新已选 (${selectedIds.length})` : '刷新已选';
             }
 
+            const copySelectedBtn = document.getElementById('refreshCopySelectedBtn');
+            if (copySelectedBtn) {
+                const isCopying = copySelectedBtn.dataset.loading === 'true';
+                copySelectedBtn.disabled = !hasSelection || refreshModalState.isRunning || isCopying;
+                if (!isCopying) {
+                    copySelectedBtn.textContent = hasSelection ? `复制邮箱+别名 (${selectedIds.length})` : '复制邮箱+别名';
+                }
+            }
+
+            const exportSelectedBtn = document.getElementById('refreshExportSelectedBtn');
+            if (exportSelectedBtn) {
+                exportSelectedBtn.disabled = !hasSelection || refreshModalState.isRunning;
+                exportSelectedBtn.textContent = hasSelection ? `导出 (${selectedIds.length})` : '导出';
+            }
+
+            const enableForwardingBtn = document.getElementById('refreshEnableForwardingBtn');
+            const disableForwardingBtn = document.getElementById('refreshDisableForwardingBtn');
+            const isForwardingUpdating = enableForwardingBtn?.dataset.loading === 'true'
+                || disableForwardingBtn?.dataset.loading === 'true';
+            if (enableForwardingBtn) {
+                enableForwardingBtn.disabled = !hasSelection || enableForwardingCount === 0 || refreshModalState.isRunning || isForwardingUpdating;
+                enableForwardingBtn.title = hasSelection && enableForwardingCount === 0 ? '所选账号已全部开启转发' : '';
+                if (enableForwardingBtn.dataset.loading !== 'true') {
+                    enableForwardingBtn.textContent = enableForwardingCount > 0 && enableForwardingCount !== selectedIds.length
+                        ? `开启转发 (${enableForwardingCount})`
+                        : '开启转发';
+                }
+            }
+            if (disableForwardingBtn) {
+                disableForwardingBtn.disabled = !hasSelection || disableForwardingCount === 0 || refreshModalState.isRunning || isForwardingUpdating;
+                disableForwardingBtn.title = hasSelection && disableForwardingCount === 0 ? '所选账号已全部取消转发' : '';
+                if (disableForwardingBtn.dataset.loading !== 'true') {
+                    disableForwardingBtn.textContent = disableForwardingCount > 0 && disableForwardingCount !== selectedIds.length
+                        ? `取消转发 (${disableForwardingCount})`
+                        : '取消转发';
+                }
+            }
+
+            const proxyBtn = document.getElementById('refreshProxyBtn');
+            if (proxyBtn) {
+                const isUpdatingProxy = proxyBtn.dataset.loading === 'true';
+                proxyBtn.disabled = !hasSelection || refreshModalState.isRunning || isUpdatingProxy;
+                if (!isUpdatingProxy) {
+                    proxyBtn.textContent = hasSelection ? `代理 (${selectedIds.length})` : '代理';
+                }
+            }
+
+            const addTagBtn = document.getElementById('refreshAddTagBtn');
+            if (addTagBtn) {
+                addTagBtn.disabled = !hasSelection || refreshModalState.isRunning;
+            }
+
+            const removeTagBtn = document.getElementById('refreshRemoveTagBtn');
+            if (removeTagBtn) {
+                removeTagBtn.disabled = !hasSelection || refreshModalState.isRunning;
+            }
+
+            const moveGroupBtn = document.getElementById('refreshMoveGroupBtn');
+            if (moveGroupBtn) {
+                moveGroupBtn.disabled = !hasSelection || refreshModalState.isRunning;
+            }
+
             const deleteSelectedBtn = document.getElementById('refreshDeleteSelectedBtn');
             if (deleteSelectedBtn) {
                 const isDeleting = deleteSelectedBtn.dataset.loading === 'true';
@@ -241,7 +560,7 @@
             });
         }
 
-        function setRefreshAccountSelected(accountId, selected) {
+        function setRefreshAccountSelected(accountId, selected, options = {}) {
             const normalizedId = Number(accountId);
             if (!Number.isFinite(normalizedId) || refreshModalState.isRunning) {
                 syncRefreshBatchControls();
@@ -252,7 +571,9 @@
             } else {
                 refreshModalState.selectedAccountIds.delete(normalizedId);
             }
-            syncRefreshBatchControls();
+            if (options.sync !== false) {
+                syncRefreshBatchControls();
+            }
         }
 
         function toggleRefreshVisibleSelection() {
@@ -279,10 +600,12 @@
                 return;
             }
             refreshModalState.selectedAccountIds.clear();
+            refreshModalState.selectionAnchorId = null;
             syncRefreshBatchControls();
         }
 
         function clearRefreshSelectionForScopeChange() {
+            refreshModalState.selectionAnchorId = null;
             if (!refreshModalState.selectedAccountIds.size) {
                 return;
             }
@@ -308,7 +631,9 @@
             }
 
             const rowsHtml = refreshModalState.items.map(item => {
+                const accountId = Number(item.id);
                 const isRunning = refreshModalState.currentRefreshingAccountId === item.id;
+                const isSelected = refreshModalState.selectedAccountIds.has(accountId);
                 const canRetry = item.last_refresh_status === 'failed' && !isRunning;
                 const groupText = item.group_name || '默认分组';
                 const refreshTime = item.last_refresh_at ? formatDateTime(item.last_refresh_at) : '-';
@@ -318,13 +643,18 @@
                 const errorHtml = item.last_refresh_status === 'failed' && item.last_refresh_error
                     ? `<div class="refresh-account-error">${escapeHtml(item.last_refresh_error)}</div>`
                     : '';
+                const rowClassNames = [
+                    isRunning ? 'is-refreshing' : '',
+                    isSelected ? 'is-selected' : '',
+                    refreshModalState.isRunning ? 'is-disabled' : '',
+                ].filter(Boolean);
 
                 return `
-                    <tr class="refresh-account-row ${isRunning ? 'is-refreshing' : ''}">
+                    <tr class="refresh-account-row ${rowClassNames.join(' ')}" data-refresh-account-id="${accountId}" onclick="handleRefreshAccountRowClick(event)">
                         <td class="refresh-account-select-cell">
                             <input type="checkbox" class="refresh-account-select-checkbox" value="${item.id}"
-                                ${refreshModalState.selectedAccountIds.has(Number(item.id)) ? 'checked' : ''}
-                                onchange="setRefreshAccountSelected(${item.id}, this.checked)">
+                                ${isSelected ? 'checked' : ''}
+                                onclick="handleRefreshSelectionCheckboxClick(event)">
                         </td>
                         <td class="refresh-account-main">
                             <div class="refresh-account-email" title="${escapeHtml(item.email)}">${escapeHtml(item.email)}</div>
@@ -348,7 +678,7 @@
                     <thead>
                         <tr>
                             <th class="refresh-account-select-head">
-                                <input type="checkbox" id="refreshSelectVisibleCheckbox" onchange="toggleRefreshVisibleSelection()">
+                                <input type="checkbox" id="refreshSelectVisibleCheckbox" onclick="toggleRefreshVisibleSelection()">
                             </th>
                             <th>邮箱</th>
                             <th>分组</th>
@@ -404,9 +734,12 @@
                 refreshModalState.status = 'all';
                 refreshModalState.page = 1;
                 refreshModalState.selectedAccountIds.clear();
+                refreshModalState.selectionAnchorId = null;
+                setRefreshSelectionMode(false);
             }
 
             showModal('refreshModal');
+            initRefreshSelectionGestures();
             updateRefreshStatusFilterButtons();
             syncRefreshActionButtons();
             renderRefreshRuntimeLogs();
@@ -427,12 +760,15 @@
             refreshModalState.status = String(status || 'all').toLowerCase();
             refreshModalState.page = 1;
             refreshModalState.selectedAccountIds.clear();
+            refreshModalState.selectionAnchorId = null;
+            setRefreshSelectionMode(false);
             await showRefreshModal();
         }
 
         function hideRefreshModal() {
             hideModal('refreshModal');
             if (!refreshModalState.isRunning) {
+                setRefreshSelectionMode(false);
                 resetRefreshModalRuntime();
             }
         }
@@ -628,6 +964,7 @@
                             finishRefreshTaskRuntime(eventSource);
                             if (clearSelectionOnComplete) {
                                 refreshModalState.selectedAccountIds.clear();
+                                refreshModalState.selectionAnchorId = null;
                                 syncRefreshBatchControls();
                             }
 
@@ -781,6 +1118,34 @@
             });
         }
 
+        async function copySelectedRefreshAccountsWithAliases() {
+            return withRefreshAccountBatchContext(() => copySelectedAccountsWithAliases());
+        }
+
+        function exportSelectedRefreshAccounts() {
+            return withRefreshAccountBatchContext(() => exportSelectedAccounts());
+        }
+
+        async function enableForwardingForSelectedRefreshAccounts() {
+            return withRefreshAccountBatchContext(() => updateForwardingForSelectedAccounts(true));
+        }
+
+        async function disableForwardingForSelectedRefreshAccounts() {
+            return withRefreshAccountBatchContext(() => updateForwardingForSelectedAccounts(false));
+        }
+
+        function showRefreshBatchProxyModal() {
+            return withRefreshAccountBatchContext(() => showBatchProxyModal());
+        }
+
+        function showRefreshBatchTagModal(type) {
+            return withRefreshAccountBatchContext(() => showBatchTagModal(type));
+        }
+
+        function showRefreshBatchMoveGroupModal() {
+            return withRefreshAccountBatchContext(() => showBatchMoveGroupModal());
+        }
+
         async function refreshSelectedRefreshAccounts() {
             const btn = document.getElementById('refreshSelectedBtn');
             if (btn?.disabled || refreshModalState.isRunning) {
@@ -868,6 +1233,9 @@
                 const deletedAccounts = Array.isArray(data.deleted_accounts) ? data.deleted_accounts : [];
                 const deletedEmails = deletedAccounts.map(account => account.email).filter(Boolean);
                 accountIds.forEach(accountId => refreshModalState.selectedAccountIds.delete(accountId));
+                if (!refreshModalState.selectedAccountIds.size) {
+                    refreshModalState.selectionAnchorId = null;
+                }
                 updateRefreshLogSummary(data.message || `已删除 ${deletedAccounts.length} 个账号`);
                 appendRefreshRuntimeLog('warn', '批量删除账号', data.message || `已删除 ${deletedAccounts.length} 个账号`);
                 showToast(data.message || `已删除 ${deletedAccounts.length} 个账号`, 'success');
@@ -1138,6 +1506,7 @@
                 clearEditAccountSecrets();
             }
 
+            setRefreshSelectionMode(false);
             resetRefreshModalRuntime();
             hideForwardingLogs();
             hideFailedForwardingLogs();
