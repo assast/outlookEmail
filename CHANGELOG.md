@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.68] - 2026-06-14
+
+### Fixed
+- 修复普通邮箱本地保留详情在缓存标记有附件但附件元数据为空时直接返回本地缓存，导致邮件详情不展示附件的问题；现在会回退远程详情补齐附件元数据并回填本地缓存。
+
 ## [2.0.67] - 2026-06-08
 
 ### Added
