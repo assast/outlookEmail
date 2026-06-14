@@ -1253,6 +1253,27 @@ class NormalMailRetentionTests(unittest.TestCase):
             db.commit()
         return attachments
 
+    def _seed_cached_detail_row_with_attachment_metadata(self, message_id, has_attachments, attachments):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''
+                INSERT INTO retained_normal_mail_messages (
+                    account_id, folder, provider_message_id, id_mode,
+                    subject, sender, recipients, cc, received_at,
+                    has_attachments, body, body_type, attachments_json,
+                    body_cached, body_cached_at
+                )
+                VALUES (?, 'inbox', ?, 'graph',
+                        'Cached subject', 'cached-sender@example.com',
+                        'reader@example.com', 'copy@example.com',
+                        '2026-05-27T08:00:00Z', ?,
+                        '<p>Cached body</p>', 'html', ?, 1, CURRENT_TIMESTAMP)
+                ''',
+                (self.account['id'], message_id, 1 if has_attachments else 0, json.dumps(attachments))
+            )
+            db.commit()
+
     def _graph_detail_payload(self):
         return {
             'id': 'graph-detail-1',
@@ -1458,6 +1479,65 @@ class NormalMailRetentionTests(unittest.TestCase):
         self.assertEqual(payload['email']['body_type'], 'html')
         self.assertEqual(payload['email']['attachments'], attachments)
         self.assertTrue(payload['email']['has_attachments'])
+        graph_mock.assert_not_called()
+        oauth_imap_mock.assert_not_called()
+        generic_imap_mock.assert_not_called()
+
+    def test_prefer_local_detail_falls_back_when_attachment_metadata_is_missing(self):
+        self._seed_cached_detail_row_with_attachment_metadata('graph-detail-1', True, [])
+        graph_detail = self._graph_detail_payload()
+        attachments = self._graph_attachment_payload()
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
+
+        with patch.object(web_outlook_app, 'get_email_detail_graph', return_value=graph_detail) as detail_mock, \
+             patch.object(web_outlook_app, 'get_email_attachments_graph', return_value=attachments) as attachments_mock:
+            response = self.client.get(
+                '/api/email/retained@example.com/graph-detail-1'
+                '?prefer_local=1&method=graph&folder=inbox&id_mode=graph'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertNotEqual(payload.get('source'), 'local_retention')
+        self.assertFalse(payload.get('local_retention', False))
+        self.assertEqual(payload['email']['attachments'], attachments)
+        detail_mock.assert_called_once()
+        attachments_mock.assert_called_once()
+
+        rows = self._retained_detail_rows()
+        self.assertEqual(len(rows), 1)
+        self._assert_graph_detail_retained(rows[0], attachments)
+
+    def test_prefer_local_detail_without_attachments_still_uses_cached_body(self):
+        self._seed_cached_detail_row_with_attachment_metadata('cached-no-attachments-1', False, [])
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting(
+                'normal_mail_local_retention_enabled',
+                'true',
+            ))
+
+        with patch.object(web_outlook_app, 'get_email_detail_graph') as graph_mock, \
+             patch.object(web_outlook_app, 'get_email_detail_imap') as oauth_imap_mock, \
+             patch.object(web_outlook_app, 'get_email_detail_imap_generic_result') as generic_imap_mock:
+            graph_mock.side_effect = AssertionError('Graph detail helper should not be called')
+            oauth_imap_mock.side_effect = AssertionError('OAuth IMAP detail helper should not be called')
+            generic_imap_mock.side_effect = AssertionError('Generic IMAP detail helper should not be called')
+            response = self.client.get(
+                '/api/email/retained@example.com/cached-no-attachments-1'
+                '?prefer_local=1&folder=inbox&id_mode=graph'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['source'], 'local_retention')
+        self.assertEqual(payload['email']['attachments'], [])
+        self.assertFalse(payload['email']['has_attachments'])
         graph_mock.assert_not_called()
         oauth_imap_mock.assert_not_called()
         generic_imap_mock.assert_not_called()
