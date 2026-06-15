@@ -603,7 +603,7 @@ def get_email_attachments_graph(client_id: str, refresh_token: str, message_id: 
             "Authorization": f"Bearer {access_token}",
         }
         params = {
-            "$select": "id,name,contentType,size,isInline,contentId"
+            "$select": "id,name,contentType,size,isInline"
         }
 
         res = get_with_proxy_fallback(

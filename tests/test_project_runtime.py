@@ -1661,6 +1661,58 @@ class ProjectRuntimeTests(unittest.TestCase):
             'uid',
         )
 
+    def test_graph_attachment_metadata_select_uses_base_attachment_fields(self):
+        class GraphAttachmentsResponse:
+            status_code = 200
+
+            def json(self):
+                return {
+                    'value': [{
+                        'id': 'graph-attachment-1',
+                        'name': 'Invoice-103975.pdf',
+                        'contentType': 'application/pdf',
+                        'size': 15178,
+                        'isInline': False,
+                    }]
+                }
+
+        with patch.object(web_outlook_app, 'get_access_token_graph', return_value='graph-token'), \
+                patch.object(web_outlook_app, 'get_with_proxy_fallback', return_value=GraphAttachmentsResponse()) as request_mock:
+            attachments = web_outlook_app.get_email_attachments_graph(
+                'client-id',
+                'refresh-token',
+                'message-id',
+            )
+
+        params = request_mock.call_args.kwargs['params']
+        self.assertEqual(params['$select'], 'id,name,contentType,size,isInline')
+        self.assertNotIn('contentId', params['$select'])
+        self.assertEqual(attachments, [{
+            'id': 'graph-attachment-1',
+            'name': 'Invoice-103975.pdf',
+            'content_type': 'application/pdf',
+            'size': 15178,
+            'is_inline': False,
+            'content_id': '',
+        }])
+
+    def test_graph_detail_preserves_has_attachments_when_metadata_is_empty(self):
+        detail = {
+            'id': 'graph-message-1',
+            'subject': 'Graph detail',
+            'from': {'emailAddress': {'address': 'sender@example.com'}},
+            'toRecipients': [{'emailAddress': {'address': 'reader@example.com'}}],
+            'ccRecipients': [],
+            'receivedDateTime': '2026-06-15T06:22:14Z',
+            'hasAttachments': True,
+            'body': {'contentType': 'html', 'content': '<p>Body</p>'},
+        }
+
+        email_detail = web_outlook_app.format_graph_email_detail(detail, [])
+
+        self.assertTrue(email_detail['has_attachments'])
+        self.assertEqual(email_detail['attachments'], [])
+
     def test_single_oauth_imap_attachment_download_uses_sequence_id_mode(self):
         account_id = self._insert_account('user@example.com')
         with self.app.app_context():
@@ -2147,6 +2199,7 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn("if (idMode === 'graph')", emails_js)
         self.assertIn("if (idMode === 'uid' || idMode === 'sequence')", emails_js)
         self.assertIn('method: getCurrentEmailRemoteActionMethod(selectedEmail)', emails_js)
+        self.assertIn('appendEmailIdModeParam(query, selectedEmail);', emails_js)
         self.assertIn("query.set('method', getCurrentEmailRemoteActionMethod(email));", emails_js)
         self.assertIn('const method = encodeURIComponent(getCurrentEmailRemoteActionMethod(currentEmailDetail));', emails_js)
         self.assertIn("id_mode: data.email?.id_mode || selectedEmail?.id_mode || ''", emails_js)

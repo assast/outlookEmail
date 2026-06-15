@@ -1532,6 +1532,7 @@ Content-Type: application/json
 | `date` | string | 收件时间 |
 | `body` | string | 邮件正文 |
 | `body_type` | string | `html` 或 `text` |
+| `has_attachments` | bool | 是否有附件 |
 | `attachments` | array<object> | 附件列表 |
 
 `attachments` 中每个对象包含：
