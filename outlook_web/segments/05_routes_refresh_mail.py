@@ -2789,6 +2789,7 @@ def format_graph_email_detail(detail: Dict[str, Any], attachments: List[Dict[str
         'body': detail.get('body', {}).get('content', ''),
         'body_type': detail.get('body', {}).get('contentType', 'text'),
         'attachments': attachments,
+        'has_attachments': bool(attachments or detail.get('hasAttachments')),
     }
 
 def build_retained_detail_success_response(account: Dict[str, Any], folder: str,
