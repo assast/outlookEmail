@@ -146,6 +146,13 @@
 
             .group-actions {
                 opacity: 1;
+                pointer-events: auto;
+                position: static;
+                transform: none;
+            }
+
+            .group-item:has(.group-action-btn):hover .group-count {
+                opacity: 1;
             }
 
             .group-row-2 {

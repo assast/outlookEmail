@@ -1044,8 +1044,15 @@
                 const data = await response.json();
                 if (data.success) {
                     let html = '<option value="">请选择分组...</option>';
-                    data.groups.filter(g => !g.is_system).forEach(group => {
-                        html += `<option value="${group.id}">${escapeHtml(normalizeGroupName(group.name))}</option>`;
+                    const batchMoveTree = typeof buildGroupTree === 'function' ? buildGroupTree(data.groups) : [];
+                    const optionGroups = typeof flattenGroupTree === 'function'
+                        ? flattenGroupTree(batchMoveTree)
+                        : data.groups;
+                    optionGroups.filter(g => !g.is_system).forEach(group => {
+                        const label = typeof getGroupOptionLabel === 'function'
+                            ? getGroupOptionLabel(group)
+                            : normalizeGroupName(group.name);
+                        html += `<option value="${group.id}">${escapeHtml(label)}</option>`;
                     });
                     select.innerHTML = html;
                 }

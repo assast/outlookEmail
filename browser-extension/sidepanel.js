@@ -64,6 +64,69 @@
       .replaceAll("'", '&#39;');
   }
 
+  function normalizeGroupLevel(group) {
+    const level = Number(group?.level || 1);
+    return Math.max(1, Math.min(3, Number.isFinite(level) ? level : 1));
+  }
+
+  function normalizeGroupParentId(value) {
+    const parentId = Number(value);
+    return Number.isFinite(parentId) && parentId > 0 ? parentId : null;
+  }
+
+  function isSystemGroup(group) {
+    return !!(group && (group.is_system === 1 || group.name === '临时邮箱'));
+  }
+
+  function sortGroupsForTree(left, right) {
+    if (left.name === '临时邮箱' && right.name !== '临时邮箱') return -1;
+    if (right.name === '临时邮箱' && left.name !== '临时邮箱') return 1;
+    const leftOrder = Number(left.sort_order || 0);
+    const rightOrder = Number(right.sort_order || 0);
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    return Number(left.id) - Number(right.id);
+  }
+
+  function buildGroupTree(flatGroups) {
+    const nodeMap = new Map();
+    (flatGroups || []).forEach(group => {
+      nodeMap.set(Number(group.id), { ...group, children: [] });
+    });
+
+    const roots = [];
+    nodeMap.forEach(node => {
+      const parentId = normalizeGroupParentId(node.parent_id);
+      const parent = parentId ? nodeMap.get(parentId) : null;
+      if (parent) {
+        parent.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+
+    function sortNodeChildren(nodes) {
+      nodes.sort(sortGroupsForTree);
+      nodes.forEach(node => sortNodeChildren(node.children));
+    }
+
+    sortNodeChildren(roots);
+    return roots;
+  }
+
+  function flattenGroupTree(nodes) {
+    const result = [];
+    function visit(nodeList) {
+      nodeList.forEach(node => {
+        result.push(node);
+        if (node.children?.length) {
+          visit(node.children);
+        }
+      });
+    }
+    visit(nodes || []);
+    return result;
+  }
+
   function valueOf(id) {
     return (getEl(id)?.value ?? '').trim();
   }
@@ -254,12 +317,57 @@
   }
 
   function groupOptions(groups, selectedId, includeTemp = true) {
-    return (groups || [])
+    const isSystem = (g) => !!(g && (g.is_system === 1 || g.name === '临时邮箱'));
+    const isLastChild = (g) => {
+      const pid = g.parent_id ? Number(g.parent_id) : null;
+      const siblings = (groups || [])
+        .filter((item) => !isSystem(item) && Number(item.id) !== 1 && (item.parent_id ? Number(item.parent_id) : null) === pid)
+        .sort((left, right) => {
+          const lo = Number(left.sort_order || 0);
+          const ro = Number(right.sort_order || 0);
+          return lo !== ro ? lo - ro : Number(left.id) - Number(right.id);
+        });
+      if (!siblings.length) return true;
+      return Number(siblings[siblings.length - 1].id) === Number(g.id);
+    };
+    const getGroupById = (id) => (groups || []).find((g) => Number(g.id) === Number(id)) || null;
+
+    const sortedGroups = flattenGroupTree(buildGroupTree(groups || []));
+
+    return sortedGroups
       .filter((group) => includeTemp || !isTempEmailGroup(group))
       .map((group) => {
         const selected = String(group.id) === String(selectedId) ? ' selected' : '';
-        const count = group.account_count ?? 0;
-        return `<option value="${escapeHtml(group.id)}"${selected}>${escapeHtml(group.name)} (${escapeHtml(count)})</option>`;
+        const count = group.descendant_account_count ?? group.account_count ?? 0;
+        
+        let label = '';
+        if (isSystem(group) || Number(group.id) === 1) {
+          label = `${group.name} (${count})`;
+        } else {
+          const level = Number(group.level || 1);
+          if (level === 1) {
+            label = `${group.name} (${count})`;
+          } else {
+            let prefix = '';
+            if (level === 3) {
+              const parent = getGroupById(group.parent_id);
+              if (parent) {
+                if (isLastChild(parent)) {
+                  prefix += '\u00A0\u00A0\u00A0';
+                } else {
+                  prefix += '│\u00A0\u00A0';
+                }
+              }
+            }
+            if (isLastChild(group)) {
+              prefix += '└─\u00A0';
+            } else {
+              prefix += '├─\u00A0';
+            }
+            label = `${prefix}${group.name} (${count})`;
+          }
+        }
+        return `<option value="${escapeHtml(group.id)}"${selected}>${escapeHtml(label)}</option>`;
       }).join('');
   }
 
@@ -1528,6 +1636,8 @@
     setContent('<div class="card muted">正在加载导出...</div>');
     await withSession(async (config) => {
       const groups = await loadGroups(config);
+      const sortedGroups = flattenGroupTree(buildGroupTree(groups));
+
       setContent(`
         <div class="card">
           <label><span>二次验证密码</span><input id="exportPassword" type="password" placeholder="输入 Web 登录密码"></label>
@@ -1536,12 +1646,17 @@
             <button id="btnClearExportGroups" class="secondary-btn" type="button">清空</button>
           </div>
           <div class="list">
-            ${groups.map((group) => `
-              <label class="check-row">
-                <input type="checkbox" name="exportGroup" value="${escapeHtml(group.id)}">
-                <span>${escapeHtml(group.name)} (${escapeHtml(group.account_count ?? 0)})</span>
-              </label>
-            `).join('')}
+            ${sortedGroups.map((group) => {
+              const level = normalizeGroupLevel(group);
+              const paddingLeft = 12 + (level - 1) * 16;
+              const count = group.descendant_account_count ?? group.account_count ?? 0;
+              return `
+                <label class="check-row export-group-label" style="padding-left: ${paddingLeft}px; transition: opacity 0.15s;">
+                  <input type="checkbox" name="exportGroup" class="export-group-checkbox" value="${escapeHtml(group.id)}">
+                  <span>${escapeHtml(group.name)} (${escapeHtml(count)})</span>
+                </label>
+              `;
+            }).join('')}
           </div>
           <div class="toolbar wrap">
             <button id="btnExportAll" class="primary-btn" type="button">导出全部</button>
@@ -1551,6 +1666,75 @@
         </div>
         <textarea id="exportResult" class="result-box" readonly placeholder="导出内容会显示在这里"></textarea>
       `);
+
+      function getDescendantGroupIds(groupId) {
+        const descendants = [];
+        const queue = [Number(groupId)];
+        while (queue.length > 0) {
+          const currentId = queue.shift();
+          groups.forEach((g) => {
+            if (g.parent_id && Number(g.parent_id) === currentId) {
+              descendants.push(g.id);
+              queue.push(g.id);
+            }
+          });
+        }
+        return descendants;
+      }
+
+      function hasSelectedAncestorGroup(groupId, selectedGroupIds) {
+        let current = groups.find((g) => Number(g.id) === Number(groupId));
+        while (current && current.parent_id) {
+          const parentId = Number(current.parent_id);
+          if (selectedGroupIds.has(parentId)) {
+            return true;
+          }
+          current = groups.find((g) => Number(g.id) === parentId);
+        }
+        return false;
+      }
+
+      function syncExportGroupCheckboxStates() {
+        const checkboxes = Array.from(document.querySelectorAll('.export-group-checkbox'));
+        const selectedGroupIds = new Set(checkboxes
+          .filter((cb) => cb.checked)
+          .map((cb) => Number(cb.value)));
+
+        checkboxes.forEach((cb) => {
+          const coveredByParent = hasSelectedAncestorGroup(Number(cb.value), selectedGroupIds);
+          cb.disabled = coveredByParent;
+          if (coveredByParent) {
+            cb.checked = true;
+          }
+          const row = cb.closest('label');
+          if (row) {
+            row.style.opacity = coveredByParent ? '0.45' : '';
+            row.style.cursor = coveredByParent ? 'default' : '';
+          }
+        });
+      }
+
+      function handleExportCheckboxChange(event) {
+        const cb = event.target;
+        if (!cb) return;
+        const groupId = Number(cb.value);
+        const isChecked = cb.checked;
+
+        const descendants = getDescendantGroupIds(groupId);
+        descendants.forEach((descId) => {
+          const descCb = document.querySelector(`.export-group-checkbox[value="${descId}"]`);
+          if (descCb) {
+            descCb.checked = isChecked;
+          }
+        });
+        syncExportGroupCheckboxStates();
+      }
+
+      document.querySelectorAll('.export-group-checkbox').forEach((cb) => {
+        cb.addEventListener('change', handleExportCheckboxChange);
+      });
+      syncExportGroupCheckboxStates();
+
       async function getVerifyToken() {
         const verify = await Api.apiRequest(config, '/api/export/verify', {
           method: 'POST',
@@ -1558,27 +1742,47 @@
         });
         return verify.verify_token;
       }
+
       getEl('btnCheckAllExportGroups').addEventListener('click', () => {
-        document.querySelectorAll('[name="exportGroup"]').forEach((item) => { item.checked = true; });
+        document.querySelectorAll('.export-group-checkbox').forEach((item) => { item.checked = true; });
+        syncExportGroupCheckboxStates();
       });
+
       getEl('btnClearExportGroups').addEventListener('click', () => {
-        document.querySelectorAll('[name="exportGroup"]').forEach((item) => { item.checked = false; });
+        document.querySelectorAll('.export-group-checkbox').forEach((item) => { item.checked = false; });
+        syncExportGroupCheckboxStates();
       });
+
       getEl('btnExportAll').addEventListener('click', () => runAction(config, async () => {
         const token = await getVerifyToken();
         getEl('exportResult').value = await Api.apiTextRequest(config, `/api/accounts/export?verify_token=${encodeURIComponent(token)}`, {
           timeoutMs: 70000,
         });
       }, '正在导出全部...'));
+
       getEl('btnExportSelected').addEventListener('click', () => runAction(config, async () => {
         const token = await getVerifyToken();
-        const groupIds = Array.from(document.querySelectorAll('[name="exportGroup"]:checked')).map((item) => Number(item.value));
+        const selectedGroupIds = Array.from(document.querySelectorAll('.export-group-checkbox:checked')).map((item) => Number(item.value));
+        
+        // 过滤掉其父分组也同时被选中的子分组，避免重复导出
+        const groupIds = selectedGroupIds.filter((groupId) => {
+          let current = groups.find((g) => Number(g.id) === Number(groupId));
+          while (current && current.parent_id) {
+            if (selectedGroupIds.includes(Number(current.parent_id))) {
+              return false;
+            }
+            current = groups.find((g) => Number(g.id) === Number(current.parent_id));
+          }
+          return true;
+        });
+
         getEl('exportResult').value = await Api.apiTextRequest(config, '/api/accounts/export-selected', {
           method: 'POST',
           body: { group_ids: groupIds, verify_token: token },
           timeoutMs: 70000,
         });
       }, '正在导出选中分组...'));
+
       getEl('btnCopyExportResult').addEventListener('click', () => copyText(getEl('exportResult').value));
     }, '正在加载导出...');
   }

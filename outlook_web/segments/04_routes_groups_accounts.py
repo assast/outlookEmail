@@ -223,17 +223,17 @@ def get_csrf_token():
 def api_get_groups():
     """获取所有分组"""
     groups = load_groups()
-    movable_position = 1
     # 添加每个分组的邮箱数量
     for group in groups:
         if group['name'] == '临时邮箱':
             # 临时邮箱分组从 temp_emails 表获取数量
             group['account_count'] = get_temp_email_count()
+            group['descendant_account_count'] = group['account_count']
             group['sort_position'] = None
         else:
             group['account_count'] = get_group_account_count(group['id'])
-            group['sort_position'] = movable_position
-            movable_position += 1
+            group['descendant_account_count'] = get_group_account_count(group['id'], recursive=True)
+            group['sort_position'] = get_group_sort_position(group['id'])
     return jsonify({'success': True, 'groups': groups})
 
 
@@ -245,6 +245,7 @@ def api_get_group(group_id):
     if not group:
         return jsonify({'success': False, 'error': '分组不存在'})
     group['account_count'] = get_group_account_count(group_id)
+    group['descendant_account_count'] = get_group_account_count(group_id, recursive=True)
     group['sort_position'] = get_group_sort_position(group_id)
     return jsonify({'success': True, 'group': group})
 
@@ -261,16 +262,22 @@ def api_add_group():
     fallback_proxy_url_1 = data.get('fallback_proxy_url_1', '').strip()
     fallback_proxy_url_2 = data.get('fallback_proxy_url_2', '').strip()
     sort_position_raw = data.get('sort_position')
+    parent_id_raw = data.get('parent_id')
 
     if not name:
         return jsonify({'success': False, 'error': '分组名称不能为空'})
 
     try:
         sort_position = int(sort_position_raw) if sort_position_raw not in (None, '') else None
+        parent_id = normalize_group_parent_id(parent_id_raw)
     except (TypeError, ValueError):
-        return jsonify({'success': False, 'error': '排序位置无效'})
+        return jsonify({'success': False, 'error': '分组参数无效'})
 
-    group_id = add_group(name, description, color, proxy_url, fallback_proxy_url_1, fallback_proxy_url_2, sort_position)
+    valid_parent, parent_error, _ = validate_group_parent_for_create(parent_id)
+    if not valid_parent:
+        return jsonify({'success': False, 'error': parent_error})
+
+    group_id = add_group(name, description, color, proxy_url, fallback_proxy_url_1, fallback_proxy_url_2, sort_position, parent_id)
     if group_id:
         return jsonify({'success': True, 'message': '分组创建成功', 'group_id': group_id})
     else:
@@ -289,16 +296,31 @@ def api_update_group(group_id):
     fallback_proxy_url_1 = data.get('fallback_proxy_url_1', '').strip()
     fallback_proxy_url_2 = data.get('fallback_proxy_url_2', '').strip()
     sort_position_raw = data.get('sort_position')
+    parent_id_provided = 'parent_id' in data
+    parent_id_raw = data.get('parent_id') if parent_id_provided else None
 
     if not name:
         return jsonify({'success': False, 'error': '分组名称不能为空'})
 
     try:
         sort_position = int(sort_position_raw) if sort_position_raw not in (None, '') else None
+        parent_id = normalize_group_parent_id(parent_id_raw) if parent_id_provided else None
     except (TypeError, ValueError):
-        return jsonify({'success': False, 'error': '排序位置无效'})
+        return jsonify({'success': False, 'error': '分组参数无效'})
 
-    if update_group(group_id, name, description, color, proxy_url, fallback_proxy_url_1, fallback_proxy_url_2, sort_position):
+    if parent_id_provided:
+        valid_move, move_error = validate_group_move(group_id, parent_id)
+        if not valid_move:
+            return jsonify({'success': False, 'error': move_error})
+        update_success = update_group(
+            group_id, name, description, color, proxy_url,
+            fallback_proxy_url_1, fallback_proxy_url_2, sort_position,
+            parent_id=parent_id
+        )
+    else:
+        update_success = update_group(group_id, name, description, color, proxy_url, fallback_proxy_url_1, fallback_proxy_url_2, sort_position)
+
+    if update_success:
         return jsonify({'success': True, 'message': '分组更新成功'})
     else:
         return jsonify({'success': False, 'error': '更新失败'})
@@ -310,11 +332,17 @@ def api_delete_group(group_id):
     """删除分组"""
     if group_id == 1:
         return jsonify({'success': False, 'error': '默认分组不能删除'})
-    
-    if delete_group(group_id):
-        return jsonify({'success': True, 'message': '分组已删除，邮箱已移至默认分组'})
+
+    result = delete_group_tree(group_id)
+    if result.get('success'):
+        child_count = int(result.get('deleted_child_count') or 0)
+        return jsonify({
+            'success': True,
+            'message': '分组已删除，邮箱已移至默认分组',
+            'deleted_child_count': child_count,
+        })
     else:
-        return jsonify({'success': False, 'error': '删除失败'})
+        return jsonify({'success': False, 'error': result.get('error') or '删除失败'})
 
 
 @app.route('/api/groups/reorder', methods=['PUT'])
@@ -323,11 +351,17 @@ def api_reorder_groups():
     """重新排序分组"""
     data = request.json or {}
     group_ids = data.get('group_ids', [])
+    parent_id_raw = data.get('parent_id')
 
     if not isinstance(group_ids, list) or not all(isinstance(group_id, int) for group_id in group_ids):
         return jsonify({'success': False, 'error': '分组排序参数无效'})
 
-    if reorder_groups(group_ids):
+    try:
+        parent_id = normalize_group_parent_id(parent_id_raw)
+    except ValueError:
+        return jsonify({'success': False, 'error': '父分组无效'})
+
+    if reorder_groups(group_ids, parent_id):
         return jsonify({'success': True, 'message': '分组排序已更新'})
     else:
         return jsonify({'success': False, 'error': '分组排序失败'})
@@ -444,6 +478,7 @@ def build_group_export_content(group_ids: List[int]) -> Dict[str, Any]:
     """生成与“导出选中分组”一致的导出内容。"""
     all_lines = []
     exported_group_ids = []
+    exported_account_ids = set()
     total_count = 0
 
     for group_id in group_ids:
@@ -461,13 +496,17 @@ def build_group_export_content(group_ids: List[int]) -> Dict[str, Any]:
             total_count += append_temp_email_export_sections(all_lines, temp_emails)
             continue
 
-        accounts = load_accounts(group_id)
+        accounts = [
+            account for account in load_accounts(group_id)
+            if int(account.get('id') or 0) not in exported_account_ids
+        ]
         if not accounts:
             continue
 
         exported_group_ids.append(group_id)
         all_lines.append(group['name'])
         for acc in accounts:
+            exported_account_ids.add(int(acc.get('id') or 0))
             all_lines.append(format_account_export_line(acc))
             total_count += 1
 
@@ -765,7 +804,7 @@ def api_get_accounts():
 def api_external_get_accounts():
     """对外 API：通过 API Key 获取邮箱账号列表"""
     group_id = request.args.get('group_id', type=int)
-    accounts = load_accounts(group_id)
+    accounts = load_accounts(group_id, include_descendants=False)
 
     safe_accounts = []
     for acc in accounts:

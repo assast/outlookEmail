@@ -3,6 +3,222 @@
         // ==================== 分组相关 ====================
 
         const ACCOUNT_SEARCH_MAX_TERMS = 200;
+        const GROUP_COLLAPSED_STORAGE_PREFIX = 'outlook_group_collapsed_';
+        let groupTree = [];
+
+        function normalizeGroupLevel(group) {
+            const level = Number(group?.level || 1);
+            return Math.max(1, Math.min(3, Number.isFinite(level) ? level : 1));
+        }
+
+        function normalizeGroupParentId(value) {
+            const parentId = Number(value);
+            return Number.isFinite(parentId) && parentId > 0 ? parentId : null;
+        }
+
+        function isSystemGroup(group) {
+            return !!(group && (group.is_system === 1 || group.name === '临时邮箱'));
+        }
+
+        function getGroupById(groupId) {
+            return groups.find(group => Number(group.id) === Number(groupId)) || null;
+        }
+
+        function sortGroupsForTree(left, right) {
+            if (left.name === '临时邮箱' && right.name !== '临时邮箱') return -1;
+            if (right.name === '临时邮箱' && left.name !== '临时邮箱') return 1;
+            const leftOrder = Number(left.sort_order || 0);
+            const rightOrder = Number(right.sort_order || 0);
+            if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+            return Number(left.id) - Number(right.id);
+        }
+
+        function buildGroupTree(flatGroups) {
+            const nodeMap = new Map();
+            (flatGroups || []).forEach(group => {
+                nodeMap.set(Number(group.id), { ...group, children: [] });
+            });
+
+            const roots = [];
+            nodeMap.forEach(node => {
+                const parentId = normalizeGroupParentId(node.parent_id);
+                const parent = parentId ? nodeMap.get(parentId) : null;
+                if (parent) {
+                    parent.children.push(node);
+                } else {
+                    roots.push(node);
+                }
+            });
+
+            function sortNodeChildren(nodes) {
+                nodes.sort(sortGroupsForTree);
+                nodes.forEach(node => sortNodeChildren(node.children));
+            }
+
+            sortNodeChildren(roots);
+            return roots;
+        }
+
+        function flattenGroupTree(nodes = groupTree) {
+            const result = [];
+            function visit(nodeList) {
+                nodeList.forEach(node => {
+                    result.push(node);
+                    if (node.children?.length) {
+                        visit(node.children);
+                    }
+                });
+            }
+            visit(nodes || []);
+            return result;
+        }
+
+        function getGroupChildren(groupId) {
+            return groups
+                .filter(group => normalizeGroupParentId(group.parent_id) === Number(groupId))
+                .sort(sortGroupsForTree);
+        }
+
+        function getGroupDescendantIds(groupId) {
+            const result = [];
+            function visit(currentId) {
+                getGroupChildren(currentId).forEach(child => {
+                    result.push(Number(child.id));
+                    visit(Number(child.id));
+                });
+            }
+            visit(Number(groupId));
+            return result;
+        }
+
+        function getGroupSubtreeDepth(groupId) {
+            const children = getGroupChildren(groupId);
+            if (!children.length) {
+                return 1;
+            }
+            return 1 + Math.max(...children.map(child => getGroupSubtreeDepth(Number(child.id))));
+        }
+
+        function isGroupCollapsed(groupId) {
+            return localStorage.getItem(`${GROUP_COLLAPSED_STORAGE_PREFIX}${groupId}`) === '1';
+        }
+
+        function setGroupCollapsed(groupId, collapsed) {
+            const key = `${GROUP_COLLAPSED_STORAGE_PREFIX}${groupId}`;
+            if (collapsed) {
+                localStorage.setItem(key, '1');
+            } else {
+                localStorage.removeItem(key);
+            }
+        }
+
+        function expandAncestors(groupId) {
+            let changed = false;
+            let current = getGroupById(groupId);
+            const visited = new Set();
+            while (current && normalizeGroupParentId(current.parent_id) && !visited.has(Number(current.id))) {
+                visited.add(Number(current.id));
+                const parentId = normalizeGroupParentId(current.parent_id);
+                if (isGroupCollapsed(parentId)) {
+                    setGroupCollapsed(parentId, false);
+                    changed = true;
+                }
+                current = getGroupById(parentId);
+            }
+            return changed;
+        }
+
+        function toggleGroupCollapsed(event, groupId) {
+            event.stopPropagation();
+            setGroupCollapsed(groupId, !isGroupCollapsed(groupId));
+            renderGroupList(groups);
+        }
+
+        function canMoveGroupToParent(groupId, targetParentId) {
+            const source = getGroupById(groupId);
+            if (!source || isSystemGroup(source) || Number(source.id) === 1) {
+                return false;
+            }
+            const normalizedTargetParentId = normalizeGroupParentId(targetParentId);
+            if (!normalizedTargetParentId) {
+                return true;
+            }
+            if (Number(groupId) === normalizedTargetParentId) {
+                return false;
+            }
+            const targetParent = getGroupById(normalizedTargetParentId);
+            if (!targetParent || isSystemGroup(targetParent) || normalizeGroupLevel(targetParent) >= 3) {
+                return false;
+            }
+            if (getGroupDescendantIds(groupId).includes(normalizedTargetParentId)) {
+                return false;
+            }
+            return normalizeGroupLevel(targetParent) + getGroupSubtreeDepth(groupId) <= 3;
+        }
+
+        function getSiblingGroupIds(parentId, excludeGroupId = null) {
+            const normalizedParentId = normalizeGroupParentId(parentId);
+            return groups
+                .filter(group => {
+                    if (isSystemGroup(group)) return false;
+                    if (Number(group.id) === 1) return false;
+                    if (excludeGroupId !== null && Number(group.id) === Number(excludeGroupId)) return false;
+                    return normalizeGroupParentId(group.parent_id) === normalizedParentId;
+                })
+                .sort(sortGroupsForTree)
+                .map(group => Number(group.id));
+        }
+
+        function isLastChild(group) {
+            const parentId = normalizeGroupParentId(group.parent_id);
+            const siblings = groups
+                .filter(g => !isSystemGroup(g) && Number(g.id) !== 1 && normalizeGroupParentId(g.parent_id) === parentId)
+                .sort(sortGroupsForTree);
+            if (siblings.length === 0) return true;
+            return Number(siblings[siblings.length - 1].id) === Number(group.id);
+        }
+
+        function getGroupOptionLabel(group) {
+            if (isSystemGroup(group) || Number(group.id) === 1) {
+                return normalizeGroupName(group.name);
+            }
+
+            const level = normalizeGroupLevel(group);
+            if (level === 1) {
+                return normalizeGroupName(group.name);
+            }
+
+            let prefix = '';
+            if (level === 3) {
+                const parent = getGroupById(group.parent_id);
+                if (parent) {
+                    if (isLastChild(parent)) {
+                        prefix += '\u00A0\u00A0\u00A0';
+                    } else {
+                        prefix += '│\u00A0\u00A0';
+                    }
+                }
+            }
+
+            if (isLastChild(group)) {
+                prefix += '└─\u00A0';
+            } else {
+                prefix += '├─\u00A0';
+            }
+
+            return `${prefix}${normalizeGroupName(group.name)}`;
+        }
+
+        function renderGroupOptions({ includeTemp = true, placeholder = '' } = {}) {
+            const optionGroups = flattenGroupTree(groupTree).filter(group => includeTemp || !isSystemGroup(group));
+            const options = optionGroups.map(group =>
+                `<option value="${group.id}">${escapeHtml(getGroupOptionLabel(group))}</option>`
+            );
+            if (placeholder) {
+                options.unshift(`<option value="">${escapeHtml(placeholder)}</option>`);
+            }
+            return options.join('');
+        }
 
         // 加载分组列表
         async function loadGroups() {
@@ -15,18 +231,12 @@
 
                 if (data.success) {
                     groups = data.groups;
+                    groupTree = buildGroupTree(groups);
 
                     // 找到临时邮箱分组
                     const tempGroup = groups.find(g => g.name === '临时邮箱');
                     if (tempGroup) {
                         tempEmailGroupId = tempGroup.id;
-                    }
-
-                    renderGroupList(data.groups);
-                    updateGroupSelects();
-                    if (document.getElementById('addGroupModal').classList.contains('show')) {
-                        const currentSortValue = parseInt(document.getElementById('groupSortPosition')?.value || '');
-                        updateGroupSortPositionOptions(editingGroupId, Number.isNaN(currentSortValue) ? null : currentSortValue);
                     }
 
                     // 获取本地缓存的分组 ID（如果有的话）
@@ -39,6 +249,19 @@
                             const tempMatch = groups.find(g => g.name === '临时邮箱');
                             currentGroupId = tempMatch ? tempMatch.id : groups[0].id;
                         }
+                    }
+
+                    if (currentGroupId) {
+                        expandAncestors(currentGroupId);
+                    }
+
+                    renderGroupList(data.groups);
+                    updateGroupSelects();
+                    if (document.getElementById('addGroupModal').classList.contains('show')) {
+                        const currentSortValue = parseInt(document.getElementById('groupSortPosition')?.value || '');
+                        const parentId = normalizeGroupParentId(document.getElementById('groupParentSelect')?.value);
+                        updateParentGroupSelect(parentId, editingGroupId);
+                        updateGroupSortPositionOptions(editingGroupId, Number.isNaN(currentSortValue) ? null : currentSortValue, parentId);
                     }
 
                     // 如果有了选中的分组，高亮分组并刷新邮箱面板
@@ -72,10 +295,12 @@
         }
 
         // 渲染分组列表
-        function renderGroupList(groups) {
+        function renderGroupList(flatGroups) {
             const container = document.getElementById('groupList');
+            const sourceGroups = Array.isArray(flatGroups) ? flatGroups : groups;
 
-            if (groups.length === 0) {
+            groupTree = buildGroupTree(sourceGroups);
+            if (!sourceGroups.length) {
                 container.innerHTML = renderEmptyStateMarkup('📁', '暂无分组', {
                     onAction: 'loadGroups()',
                     actionTitle: '刷新分组列表'
@@ -83,60 +308,86 @@
                 return;
             }
 
-            container.innerHTML = groups.map(group => {
-                const isSystem = group.is_system === 1 || group.name === '临时邮箱';
+            container.innerHTML = renderGroupTree(groupTree);
+        }
+
+        function renderGroupTree(nodes) {
+            return nodes.map(group => {
+                const isSystem = isSystemGroup(group);
                 const isTempGroup = group.name === '临时邮箱';
                 const isDefault = group.id === 1;
+                const isMovable = !isSystem && !isDefault;
                 const isDragging = groupDragState.isDragging && groupDragState.groupId === group.id;
+                const level = normalizeGroupLevel(group);
+                const hasChildren = Array.isArray(group.children) && group.children.length > 0;
+                const collapsed = hasChildren && isGroupCollapsed(group.id);
                 const groupName = normalizeGroupName(group.name);
                 const groupIdBadgeText = formatGroupIdBadgeText(group.id);
+                const count = group.descendant_account_count ?? group.account_count ?? 0;
 
                 return `
-                    <div class="group-item ${currentGroupId === group.id ? 'active' : ''} ${isTempGroup ? 'temp-email-group' : ''} ${!isTempGroup ? 'draggable' : ''} ${isDragging ? 'dragging' : ''}"
-                         data-group-id="${group.id}"
-                         ${!isTempGroup ? `onpointerdown="handleGroupPointerDown(event, ${group.id})"` : ''}
-                         onclick="handleGroupClick(event, ${group.id})">
+                    <div class="group-item level-${level} ${currentGroupId === group.id ? 'active' : ''} ${isTempGroup ? 'temp-email-group' : ''} ${isMovable ? 'draggable' : ''} ${isDragging ? 'dragging' : ''}"
+                          data-group-id="${group.id}"
+                          data-parent-id="${normalizeGroupParentId(group.parent_id) || ''}"
+                          data-level="${level}"
+                          ${isMovable ? `onpointerdown="handleGroupPointerDown(event, ${group.id})"` : ''}
+                          onclick="handleGroupClick(event, ${group.id})">
                         <div class="group-row-1">
+                            ${hasChildren && !isTempGroup ? `<button type="button" class="group-toggle ${collapsed ? 'collapsed' : ''}" onclick="toggleGroupCollapsed(event, ${group.id})" title="${collapsed ? '展开' : '折叠'}">▾</button>` : '<span class="group-toggle-spacer"></span>'}
                             <div class="group-color" style="background-color: ${group.color || '#666'}"></div>
                             <span class="group-name">${escapeHtml(groupName)}${isTempGroup ? ' ⚡' : ''}</span>
-                        </div>
-                        <div class="group-row-2">
-                            <div class="group-meta">
-                                ${groupIdBadgeText ? `<span class="group-id-badge">${escapeHtml(groupIdBadgeText)}</span>` : ''}
-                                <span class="group-count">${group.account_count || 0} 个邮箱</span>
-                            </div>
+                            <span class="group-count">${count || 0}</span>
                             <div class="group-actions">
                                 ${!isSystem ? `<button class="group-action-btn" onclick="event.stopPropagation(); editGroup(${group.id})" title="编辑">✏️</button>` : ''}
                                 ${!isDefault && !isSystem ? `<button class="group-action-btn" onclick="event.stopPropagation(); deleteGroup(${group.id})" title="删除">🗑️</button>` : ''}
                             </div>
                         </div>
+                        ${groupIdBadgeText ? `
+                        <div class="group-row-2">
+                            <div class="group-meta">
+                                <span class="group-id-badge">${escapeHtml(groupIdBadgeText)}</span>
+                            </div>
+                        </div>
+                        ` : ''}
                     </div>
+                    ${hasChildren && !collapsed ? renderGroupTree(group.children) : ''}
                 `;
             }).join('');
         }
 
         function getMovableGroups() {
-            return groups.filter(group => group.name !== '临时邮箱');
+            return groups.filter(group => !isSystemGroup(group) && Number(group.id) !== 1);
         }
 
-        function reorderGroupData(orderIds) {
-            const tempGroups = groups.filter(group => group.name === '临时邮箱');
-            const movableMap = new Map(getMovableGroups().map(group => [group.id, group]));
-            groups = [...tempGroups, ...orderIds.map(id => movableMap.get(id)).filter(Boolean)];
+        function reorderGroupData(orderIds, parentId = null) {
+            const orderMap = new Map(orderIds.map((id, index) => [Number(id), index + 1]));
+            groups = groups.map(group => {
+                if (normalizeGroupParentId(group.parent_id) !== normalizeGroupParentId(parentId) || !orderMap.has(Number(group.id))) {
+                    return group;
+                }
+                return { ...group, sort_order: orderMap.get(Number(group.id)) };
+            });
+            groupTree = buildGroupTree(groups);
         }
 
-        function getGroupSortPositionCount(editingId = null) {
-            const movableGroups = groups.filter(group => group.name !== '临时邮箱' && group.id !== editingId);
+        function getGroupSortPositionCount(editingId = null, parentId = null) {
+            const normalizedParentId = normalizeGroupParentId(parentId);
+            const movableGroups = groups.filter(group =>
+                !isSystemGroup(group)
+                && Number(group.id) !== 1
+                && Number(group.id) !== Number(editingId)
+                && normalizeGroupParentId(group.parent_id) === normalizedParentId
+            );
             return movableGroups.length + 1;
         }
 
-        function updateGroupSortPositionOptions(editingId = null, selectedPosition = null) {
+        function updateGroupSortPositionOptions(editingId = null, selectedPosition = null, parentId = null) {
             const select = document.getElementById('groupSortPosition');
             if (!select) {
                 return;
             }
 
-            const optionCount = getGroupSortPositionCount(editingId);
+            const optionCount = getGroupSortPositionCount(editingId, parentId);
             let html = '';
             for (let position = 1; position <= optionCount; position += 1) {
                 let label = `第 ${position} 位`;
@@ -178,8 +429,36 @@
                 groupDragState.sourceEl.style.pointerEvents = '';
             }
 
+            document.querySelectorAll('.group-item.drop-target, .group-item.drop-rejected').forEach(item => {
+                item.classList.remove('drop-target', 'drop-rejected');
+            });
+
             document.body.style.userSelect = '';
             groupDragState = createGroupDragState();
+        }
+
+        function getDragTargetItem(clientY) {
+            const container = document.getElementById('groupList');
+            const sourceEl = groupDragState.sourceEl;
+            if (!container || !sourceEl) {
+                return null;
+            }
+            return Array.from(container.querySelectorAll('.group-item.draggable'))
+                .filter(item => item !== sourceEl);
+        }
+
+        function findClosestGroupItem(clientY) {
+            const items = getDragTargetItem(clientY);
+            if (!items?.length) {
+                return null;
+            }
+            return items.find(item => {
+                const rect = item.getBoundingClientRect();
+                return clientY >= rect.top && clientY <= rect.bottom;
+            }) || items.find(item => {
+                const rect = item.getBoundingClientRect();
+                return clientY < rect.top + (rect.height / 2);
+            }) || items[items.length - 1];
         }
 
         function moveGroupPlaceholder(clientY) {
@@ -190,19 +469,57 @@
                 return;
             }
 
-            const movableItems = Array.from(container.querySelectorAll('.group-item.draggable'))
-                .filter(item => item !== sourceEl);
-
-            const nextItem = movableItems.find(item => {
-                const rect = item.getBoundingClientRect();
-                return clientY < rect.top + (rect.height / 2);
+            document.querySelectorAll('.group-item.drop-target, .group-item.drop-rejected').forEach(item => {
+                item.classList.remove('drop-target', 'drop-rejected');
             });
 
-            if (nextItem) {
-                container.insertBefore(placeholderEl, nextItem);
-            } else {
-                container.appendChild(placeholderEl);
+            const targetItem = findClosestGroupItem(clientY);
+            if (!targetItem) {
+                return;
             }
+
+            const targetGroupId = Number(targetItem.dataset.groupId);
+            const targetGroup = getGroupById(targetGroupId);
+            const rect = targetItem.getBoundingClientRect();
+            const moveZoneHeight = Math.min(28, rect.height * 0.45);
+            const inMoveZone = clientY <= rect.top + moveZoneHeight;
+
+            if (inMoveZone) {
+                const accepted = canMoveGroupToParent(groupDragState.groupId, targetGroupId);
+                targetItem.classList.add(accepted ? 'drop-target' : 'drop-rejected');
+                placeholderEl.style.display = 'none';
+                groupDragState.targetMode = 'move';
+                groupDragState.targetGroupId = targetGroupId;
+                groupDragState.targetParentId = targetGroupId;
+                groupDragState.dropAllowed = accepted;
+                return;
+            }
+
+            const targetParentId = normalizeGroupParentId(targetGroup?.parent_id);
+            const sourceParentId = normalizeGroupParentId(getGroupById(groupDragState.groupId)?.parent_id);
+            if (sourceParentId !== targetParentId) {
+                targetItem.classList.add('drop-rejected');
+                placeholderEl.style.display = 'none';
+                groupDragState.targetMode = 'sort';
+                groupDragState.targetGroupId = targetGroupId;
+                groupDragState.targetParentId = targetParentId;
+                groupDragState.dropAllowed = false;
+                return;
+            }
+
+            const insertAfter = clientY > rect.top + (rect.height / 2);
+            placeholderEl.style.display = '';
+            if (insertAfter) {
+                targetItem.parentNode.insertBefore(placeholderEl, targetItem.nextSibling);
+            } else {
+                targetItem.parentNode.insertBefore(placeholderEl, targetItem);
+            }
+
+            groupDragState.targetMode = 'sort';
+            groupDragState.targetGroupId = targetGroupId;
+            groupDragState.targetParentId = targetParentId;
+            groupDragState.insertAfter = insertAfter;
+            groupDragState.dropAllowed = true;
         }
 
         function autoScrollGroupList(clientY) {
@@ -254,7 +571,7 @@
             if (event.button !== undefined && event.button !== 0) {
                 return;
             }
-            if (event.target.closest('.group-action-btn')) {
+            if (event.target.closest('.group-action-btn, .group-toggle')) {
                 return;
             }
 
@@ -305,29 +622,48 @@
         }
 
         async function finishGroupDrag() {
-            const container = document.getElementById('groupList');
-            const sourceEl = groupDragState.sourceEl;
-            const placeholderEl = groupDragState.placeholderEl;
-
-            if (!container || !sourceEl || !placeholderEl) {
+            if (!groupDragState.sourceEl) {
                 resetGroupDragState();
                 return;
             }
 
-            container.insertBefore(sourceEl, placeholderEl);
-
-            const newOrder = Array.from(container.querySelectorAll('.group-item.draggable'))
-                .map(item => parseInt(item.dataset.groupId));
-            const previousOrder = getMovableGroups().map(group => group.id);
+            const sourceGroupId = Number(groupDragState.groupId);
+            const targetMode = groupDragState.targetMode;
+            const targetGroupId = Number(groupDragState.targetGroupId);
+            const targetParentId = normalizeGroupParentId(groupDragState.targetParentId);
+            const insertAfter = !!groupDragState.insertAfter;
+            const dropAllowed = groupDragState.dropAllowed !== false;
 
             resetGroupDragState();
 
+            if (!dropAllowed) {
+                showToast(targetMode === 'move' ? '移动后层级深度将超过 3 级' : '只能在同父级内排序', 'error');
+                return;
+            }
+
+            if (targetMode === 'move') {
+                await persistGroupMove(sourceGroupId, targetGroupId);
+                return;
+            }
+
+            if (targetMode !== 'sort' || !targetGroupId) {
+                return;
+            }
+
+            const newOrder = getSiblingGroupIds(targetParentId, sourceGroupId);
+            const targetIndex = newOrder.indexOf(targetGroupId);
+            if (targetIndex === -1) {
+                return;
+            }
+            newOrder.splice(targetIndex + (insertAfter ? 1 : 0), 0, sourceGroupId);
+
+            const previousOrder = getSiblingGroupIds(targetParentId);
             if (JSON.stringify(newOrder) === JSON.stringify(previousOrder)) {
                 return;
             }
 
-            reorderGroupData(newOrder);
-            await persistGroupOrder(newOrder);
+            reorderGroupData(newOrder, targetParentId);
+            await persistGroupOrder(newOrder, targetParentId);
         }
 
         async function handleGlobalGroupPointerUp(event) {
@@ -344,13 +680,14 @@
             await finishGroupDrag();
         }
 
-        async function persistGroupOrder(groupIds) {
+        async function persistGroupOrder(groupIds, parentId = null) {
             try {
                 const response = await fetch('/api/groups/reorder', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        group_ids: groupIds
+                        group_ids: groupIds,
+                        parent_id: parentId
                     })
                 });
                 const data = await response.json();
@@ -364,6 +701,40 @@
                 }
             } catch (error) {
                 showToast('更新分组排序失败', 'error');
+                await loadGroups();
+            }
+        }
+
+        async function persistGroupMove(groupId, parentId) {
+            const group = getGroupById(groupId);
+            if (!group) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/groups/${groupId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: group.name,
+                        description: group.description || '',
+                        color: group.color || '#1a1a1a',
+                        proxy_url: group.proxy_url || '',
+                        fallback_proxy_url_1: group.fallback_proxy_url_1 || '',
+                        fallback_proxy_url_2: group.fallback_proxy_url_2 || '',
+                        parent_id: parentId,
+                        sort_position: null
+                    })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast(data.message || '分组已移动', 'success');
+                } else {
+                    handleApiError(data, '移动分组失败');
+                }
+                await loadGroups();
+            } catch (error) {
+                showToast('移动分组失败', 'error');
                 await loadGroups();
             }
         }
@@ -387,10 +758,16 @@
             const group = groups.find(g => g.id === groupId);
             isTempEmailGroup = group && group.name === '临时邮箱';
 
+            const expandedAncestors = expandAncestors(groupId);
+
             // 更新分组列表 UI
-            document.querySelectorAll('.group-item').forEach(item => {
-                item.classList.toggle('active', parseInt(item.dataset.groupId) === groupId);
-            });
+            if (expandedAncestors) {
+                renderGroupList(groups);
+            } else {
+                document.querySelectorAll('.group-item').forEach(item => {
+                    item.classList.toggle('active', parseInt(item.dataset.groupId) === groupId);
+                });
+            }
 
             // 更新邮箱面板标题
             if (group) {
@@ -973,6 +1350,11 @@
                 pointerType: 'mouse',
                 sourceEl: null,
                 placeholderEl: null,
+                targetMode: null,
+                targetGroupId: null,
+                targetParentId: null,
+                insertAfter: false,
+                dropAllowed: true,
                 pressTimer: null,
                 isDragging: false,
                 startX: 0,
@@ -1363,14 +1745,10 @@
                 const select = document.getElementById(selectId);
                 if (select) {
                     const currentValue = select.value;
-                    // editGroupSelect 和 tokenSaveGroupSelect 过滤掉临时邮箱分组
-                    const filteredGroups = (selectId === 'editGroupSelect' || selectId === 'tokenSaveGroupSelect')
-                        ? groups.filter(g => g.name !== '临时邮箱')
-                        : groups;
+                    const includeTemp = !(selectId === 'editGroupSelect' || selectId === 'tokenSaveGroupSelect');
+                    const filteredGroups = includeTemp ? groups : groups.filter(g => !isSystemGroup(g));
 
-                    select.innerHTML = filteredGroups.map(g =>
-                        `<option value="${g.id}">${escapeHtml(normalizeGroupName(g.name))}</option>`
-                    ).join('');
+                    select.innerHTML = renderGroupOptions({ includeTemp });
                     // 恢复之前的选择
                     if (currentValue && filteredGroups.find(g => g.id === parseInt(currentValue))) {
                         select.value = currentValue;
@@ -1394,6 +1772,40 @@
                     updateImportHint();
                 };
             }
+        }
+
+        function getAvailableParentGroups(editingId = null) {
+            const editingGroupIdValue = editingId === null ? null : Number(editingId);
+            const excludedIds = editingGroupIdValue
+                ? new Set([editingGroupIdValue, ...getGroupDescendantIds(editingGroupIdValue)])
+                : new Set();
+            return flattenGroupTree(groupTree).filter(group =>
+                !isSystemGroup(group)
+                && normalizeGroupLevel(group) < 3
+                && !excludedIds.has(Number(group.id))
+            );
+        }
+
+        function updateParentGroupSelect(selectedParentId = null, editingId = null) {
+            const select = document.getElementById('groupParentSelect');
+            if (!select) {
+                return;
+            }
+
+            const normalizedSelectedParentId = normalizeGroupParentId(selectedParentId);
+            const options = ['<option value="">无（一级分组）</option>'];
+            getAvailableParentGroups(editingId).forEach(group => {
+                options.push(`<option value="${group.id}">${escapeHtml(getGroupOptionLabel(group))}</option>`);
+            });
+            select.innerHTML = options.join('');
+            select.value = normalizedSelectedParentId && getAvailableParentGroups(editingId).some(group => Number(group.id) === normalizedSelectedParentId)
+                ? String(normalizedSelectedParentId)
+                : '';
+        }
+
+        function handleGroupParentChange() {
+            const parentId = normalizeGroupParentId(document.getElementById('groupParentSelect')?.value);
+            updateGroupSortPositionOptions(editingGroupId, null, parentId);
         }
 
         // 显示添加分组模态框
@@ -1636,7 +2048,12 @@
             document.getElementById('groupModalTitle').textContent = '添加分组';
             document.getElementById('groupName').value = '';
             document.getElementById('groupDescription').value = '';
-            updateGroupSortPositionOptions();
+            const currentGroup = getGroupById(currentGroupId);
+            const defaultParentId = currentGroup && !isSystemGroup(currentGroup) && normalizeGroupLevel(currentGroup) < 3
+                ? currentGroup.id
+                : null;
+            updateParentGroupSelect(defaultParentId, null);
+            updateGroupSortPositionOptions(null, null, defaultParentId);
             selectedColor = '#1a1a1a';
             document.querySelectorAll('.color-option').forEach(o => {
                 o.classList.toggle('selected', o.dataset.color === selectedColor);
@@ -1665,7 +2082,8 @@
                     document.getElementById('groupModalTitle').textContent = '编辑分组';
                     document.getElementById('groupName').value = data.group.name;
                     document.getElementById('groupDescription').value = data.group.description || '';
-                    updateGroupSortPositionOptions(groupId, data.group.sort_position);
+                    updateParentGroupSelect(data.group.parent_id, groupId);
+                    updateGroupSortPositionOptions(groupId, data.group.sort_position, data.group.parent_id);
                     selectedColor = data.group.color || '#1a1a1a';
 
                     // 检查是否是预设颜色
@@ -1699,7 +2117,9 @@
         async function saveGroup() {
             const name = document.getElementById('groupName').value.trim();
             const description = document.getElementById('groupDescription').value.trim();
-            const sortPosition = parseInt(document.getElementById('groupSortPosition').value);
+            const sortPositionRaw = document.getElementById('groupSortPosition').value;
+            const sortPosition = sortPositionRaw ? parseInt(sortPositionRaw, 10) : null;
+            const parentId = normalizeGroupParentId(document.getElementById('groupParentSelect')?.value);
 
             if (!name) {
                 showToast('请输入分组名称', 'error');
@@ -1720,7 +2140,8 @@
                         proxy_url: document.getElementById('groupProxyUrl').value.trim(),
                         fallback_proxy_url_1: document.getElementById('groupFallbackProxyUrl1').value.trim(),
                         fallback_proxy_url_2: document.getElementById('groupFallbackProxyUrl2').value.trim(),
-                        sort_position: sortPosition
+                        sort_position: sortPosition,
+                        parent_id: parentId
                     })
                 });
 
@@ -1740,7 +2161,11 @@
 
         // 删除分组
         async function deleteGroup(groupId) {
-            if (!(await showConfirmModal('确定要删除该分组吗？分组下的邮箱将移至默认分组。', { title: '删除分组', confirmText: '确认删除' }))) {
+            const childCount = getGroupDescendantIds(groupId).length;
+            const message = childCount > 0
+                ? `该分组下有 ${childCount} 个子分组，删除后子分组将一并删除，所有邮箱将移至默认分组`
+                : '确定要删除该分组吗？分组下的邮箱将移至默认分组。';
+            if (!(await showConfirmModal(message, { title: '删除分组', confirmText: '确认删除' }))) {
                 return;
             }
 

@@ -150,10 +150,22 @@
         }
 
         .group-item {
-            padding: 10px 16px;
+            padding: 10px 16px 10px 10px;
             cursor: pointer;
             transition: background-color 0.15s;
             border-left: 3px solid transparent;
+        }
+
+        .group-item.level-1 {
+            padding-left: 10px;
+        }
+
+        .group-item.level-2 {
+            padding-left: 22px;
+        }
+
+        .group-item.level-3 {
+            padding-left: 34px;
         }
 
         .group-item.draggable {
@@ -174,6 +186,16 @@
             background-color: rgba(26, 26, 26, 0.05);
         }
 
+        .group-item.drop-target {
+            border-color: #2563eb;
+            background-color: #eff6ff;
+        }
+
+        .group-item.drop-rejected {
+            border-color: #dc2626;
+            background-color: #fef2f2;
+        }
+
         .group-item:hover {
             background-color: #f0f0f0;
         }
@@ -187,7 +209,40 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            position: relative;
+        }
+
+        .group-row-1:not(:last-child) {
             margin-bottom: 6px;
+        }
+
+        .group-toggle,
+        .group-toggle-spacer {
+            width: 16px;
+            height: 16px;
+            flex: 0 0 16px;
+        }
+
+        .group-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: #64748b;
+            cursor: pointer;
+            font-size: 13px;
+            line-height: 1;
+            transition: transform 0.15s, color 0.15s;
+        }
+
+        .group-toggle:hover {
+            color: #111827;
+        }
+
+        .group-toggle.collapsed {
+            transform: rotate(-90deg);
         }
 
         .group-color {
@@ -229,10 +284,15 @@
             background-color: #f0f0f0;
             padding: 2px 8px;
             border-radius: 10px;
+            transition: opacity 0.15s;
         }
 
         .group-item.active .group-count {
             background-color: #d8d8d8;
+        }
+
+        .group-item:has(.group-action-btn):hover .group-count {
+            opacity: 0;
         }
 
         .group-id-badge {
@@ -258,14 +318,22 @@
         }
 
         .group-actions {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
             display: flex;
             gap: 4px;
             opacity: 0;
+            pointer-events: none;
             transition: opacity 0.15s;
+            background-color: inherit;
+            padding-left: 8px;
         }
 
         .group-item:hover .group-actions {
             opacity: 1;
+            pointer-events: auto;
         }
 
         .group-action-btn {

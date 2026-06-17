@@ -8,7 +8,6 @@ import sys
 import tempfile
 import unittest
 
-import pytest
 from unittest.mock import patch
 
 
