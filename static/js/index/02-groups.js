@@ -481,17 +481,31 @@
             const targetGroupId = Number(targetItem.dataset.groupId);
             const targetGroup = getGroupById(targetGroupId);
             const rect = targetItem.getBoundingClientRect();
-            const moveZoneHeight = Math.min(28, rect.height * 0.45);
-            const inMoveZone = clientY <= rect.top + moveZoneHeight;
 
-            if (inMoveZone) {
-                const accepted = canMoveGroupToParent(groupDragState.groupId, targetGroupId);
-                targetItem.classList.add(accepted ? 'drop-target' : 'drop-rejected');
+            const relativeY = clientY - rect.top;
+            const height = rect.height;
+            const canNest = canMoveGroupToParent(groupDragState.groupId, targetGroupId);
+
+            let isNestZone = false;
+            let insertAfter = false;
+
+            if (canNest) {
+                if (relativeY >= height * 0.2 && relativeY <= height * 0.8) {
+                    isNestZone = true;
+                } else {
+                    insertAfter = relativeY > height * 0.5;
+                }
+            } else {
+                insertAfter = relativeY > height * 0.5;
+            }
+
+            if (isNestZone) {
+                targetItem.classList.add('drop-target');
                 placeholderEl.style.display = 'none';
                 groupDragState.targetMode = 'move';
                 groupDragState.targetGroupId = targetGroupId;
                 groupDragState.targetParentId = targetGroupId;
-                groupDragState.dropAllowed = accepted;
+                groupDragState.dropAllowed = true;
                 return;
             }
 
@@ -507,7 +521,6 @@
                 return;
             }
 
-            const insertAfter = clientY > rect.top + (rect.height / 2);
             placeholderEl.style.display = '';
             if (insertAfter) {
                 targetItem.parentNode.insertBefore(placeholderEl, targetItem.nextSibling);
