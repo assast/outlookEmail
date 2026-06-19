@@ -593,6 +593,17 @@ def api_get_settings():
     settings['cloudflare_worker_domain'] = get_cloudflare_worker_domain()
     settings['cloudflare_email_domains'] = ', '.join(get_cloudflare_email_domains())
     settings['cloudflare_admin_password'] = get_cloudflare_admin_password()
+    settings.pop('cloudflare_ai_username_api_key', None)
+    cloudflare_ai_api_key = get_setting_decrypted('cloudflare_ai_username_api_key', '')
+    settings['cloudflare_ai_username_enabled'] = get_setting('cloudflare_ai_username_enabled', 'false')
+    settings['cloudflare_ai_username_api_url'] = get_setting('cloudflare_ai_username_api_url', '')
+    settings['cloudflare_ai_username_model'] = get_setting('cloudflare_ai_username_model', '')
+    settings['cloudflare_ai_username_prompt'] = get_setting(
+        'cloudflare_ai_username_prompt',
+        CLOUDFLARE_AI_USERNAME_DEFAULT_PROMPT,
+    )
+    settings['cloudflare_ai_username_api_key_configured'] = bool(cloudflare_ai_api_key)
+    settings['cloudflare_ai_username_api_key_masked'] = '********' if cloudflare_ai_api_key else ''
     settings['app_timezone'] = get_app_timezone()
     settings['show_account_created_at'] = get_setting('show_account_created_at', 'true')
     settings['show_account_sort_order'] = get_setting('show_account_sort_order', 'false')
@@ -869,6 +880,45 @@ def api_update_settings():
             updated.append('Cloudflare 管理密码')
         else:
             errors.append('更新 Cloudflare 管理密码失败')
+
+    if 'cloudflare_ai_username_enabled' in data:
+        enabled = normalize_bool_setting_value(data['cloudflare_ai_username_enabled'])
+        if set_setting('cloudflare_ai_username_enabled', enabled):
+            updated.append('Cloudflare AI 用户名开关')
+        else:
+            errors.append('保存 Cloudflare AI 用户名开关失败')
+
+    if 'cloudflare_ai_username_api_url' in data:
+        if set_setting('cloudflare_ai_username_api_url', str(data['cloudflare_ai_username_api_url']).strip()):
+            updated.append('Cloudflare AI API 地址')
+        else:
+            errors.append('保存 Cloudflare AI API 地址失败')
+
+    if 'cloudflare_ai_username_model' in data:
+        if set_setting('cloudflare_ai_username_model', str(data['cloudflare_ai_username_model']).strip()):
+            updated.append('Cloudflare AI 模型')
+        else:
+            errors.append('保存 Cloudflare AI 模型失败')
+
+    if 'cloudflare_ai_username_prompt' in data:
+        prompt = str(data['cloudflare_ai_username_prompt'] or '').strip() or CLOUDFLARE_AI_USERNAME_DEFAULT_PROMPT
+        if set_setting('cloudflare_ai_username_prompt', prompt):
+            updated.append('Cloudflare AI 提示词')
+        else:
+            errors.append('保存 Cloudflare AI 提示词失败')
+
+    if data.get('cloudflare_ai_username_clear_api_key'):
+        if set_setting_encrypted('cloudflare_ai_username_api_key', ''):
+            updated.append('Cloudflare AI API Key（已清空）')
+        else:
+            errors.append('清空 Cloudflare AI API Key 失败')
+    elif 'cloudflare_ai_username_api_key' in data:
+        ai_api_key = str(data['cloudflare_ai_username_api_key'] or '').strip()
+        if ai_api_key:
+            if set_setting_encrypted('cloudflare_ai_username_api_key', ai_api_key):
+                updated.append('Cloudflare AI API Key')
+            else:
+                errors.append('保存 Cloudflare AI API Key 失败')
 
     if 'forward_check_interval_minutes' in data:
         try:

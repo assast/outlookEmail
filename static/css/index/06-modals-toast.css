@@ -130,6 +130,29 @@
             padding: 24px;
         }
 
+        .temp-email-provider-modal-content {
+            width: min(520px, calc(100vw - 32px));
+            max-width: calc(100vw - 32px);
+            max-height: min(92vh, 680px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .temp-email-provider-modal-content .modal-header,
+        .temp-email-provider-modal-content .modal-footer {
+            flex: 0 0 auto;
+            z-index: 2;
+        }
+
+        .temp-email-provider-modal-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 20px 24px;
+            overscroll-behavior: contain;
+        }
+
         .form-group {
             margin-bottom: 20px;
         }
@@ -749,6 +772,10 @@
             border: 1px solid #e5e7eb;
             border-radius: 14px;
             background: #fbfbfc;
+        }
+
+        .settings-section > .settings-panel + .settings-panel {
+            margin-top: 16px;
         }
 
         .settings-panel-grid {
@@ -1889,13 +1916,23 @@
             .settings-section {
                 display: grid;
                 grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
-                gap: 22px;
+                gap: 16px 22px;
                 align-items: start;
             }
 
             .settings-section-head {
+                grid-column: 1;
+                grid-row: 1;
                 margin-bottom: 0;
                 padding-top: 4px;
+            }
+
+            .settings-section > .settings-panel {
+                grid-column: 2;
+            }
+
+            .settings-section > .settings-panel + .settings-panel {
+                margin-top: 0;
             }
 
             .forward-channel-panels {

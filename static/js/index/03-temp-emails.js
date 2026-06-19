@@ -1,4 +1,4 @@
-        /* global accountsCache, closeMobilePanels, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentMethod, currentSkip, escapeHtml, escapeJs, formatDate, groups, handleAccountSelectionCheckboxClick, handleApiError, hasMoreEmails, isLoadingMore, loadGroups, loadTempEmails, matchesSelectedTagFilters, refreshEmails, renderAccountTagSummary, renderEmailDetail, renderEmailList, renderEmptyStateMarkup, scheduleEmailListLoadCheck, selectedTagFilters, showEmailList, showMobileEmailDetail, showToast, updateBatchActionBar, updateMobileContext, updateCurrentGroupHeader */
+        /* global accountsCache, allTags, closeMobilePanels, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentMethod, currentSkip, escapeHtml, escapeJs, formatDate, groups, handleAccountSelectionCheckboxClick, handleApiError, hasMoreEmails, isLoadingMore, loadGroups, loadTags, loadTempEmails, matchesSelectedTagFilters, refreshEmails, renderAccountTagSummary, renderEmailDetail, renderEmailList, renderEmptyStateMarkup, scheduleEmailListLoadCheck, selectedTagFilters, showEmailList, showMobileEmailDetail, showToast, updateBatchActionBar, updateMobileContext, updateCurrentGroupHeader */
 
         // ==================== 临时邮箱相关 ====================
 
@@ -202,12 +202,12 @@
                 modal.className = 'modal';
                 modal.onmousedown = function (e) { if (e.target === modal) hideTempEmailProviderModal(); };
                 modal.innerHTML = `
-                    <div class="modal-content" style="width: 460px;">
+                    <div class="modal-content temp-email-provider-modal-content">
                         <div class="modal-header">
                             <h3>⚡ 生成临时邮箱</h3>
                             <button class="modal-close" onclick="hideTempEmailProviderModal()">&times;</button>
                         </div>
-                        <div class="modal-body">
+                        <div class="modal-body temp-email-provider-modal-body">
                             <div class="form-group">
                                 <label class="form-label">选择提供商</label>
                                 <div style="display: flex; gap: 12px; margin-bottom: 16px;">
@@ -247,6 +247,10 @@
                             </div>
                             <div id="cloudflareFields" style="display: none;">
                                 <div class="form-group">
+                                    <label class="form-label">数量</label>
+                                    <input type="number" class="form-input" id="cloudflareGenerateCount" min="1" max="50" value="1" style="width: 100%;">
+                                </div>
+                                <div class="form-group">
                                     <label class="form-label">渠道</label>
                                     <select class="form-input" id="cloudflareChannel" style="width: 100%;" onchange="loadCloudflareDomains()">
                                         <option value="">加载中...</option>
@@ -259,9 +263,18 @@
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">用户名（可选）</label>
-                                    <input type="text" class="form-input" id="cloudflareUsername" placeholder="留空则随机生成">
-                                    <div class="form-hint">如填写，至少 3 个字符；不填则后端自动生成随机前缀</div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px;">
+                                        <label class="form-label" style="margin-bottom: 0;">用户名（可选）</label>
+                                        <button class="btn btn-secondary" type="button" id="cloudflareAiGenerateBtn" onclick="generateCloudflareAiUsernames()">AI生成</button>
+                                    </div>
+                                    <textarea class="form-input" id="cloudflareUsername" rows="4" placeholder="留空则随机生成；一行一个用户名" style="width: 100%; min-height: 84px; resize: vertical;"></textarea>
+                                    <div class="form-hint">一行一个用户名；留空则按数量随机生成</div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">标签</label>
+                                    <div class="import-tag-options" id="cloudflareGenerateTagOptions" style="max-height: 120px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px;">
+                                        <div class="import-tag-empty">暂无标签</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -316,6 +329,7 @@
                 labelCloudflare.style.borderColor = '#1a1a1a';
                 labelCloudflare.style.backgroundColor = '#f8f8f8';
                 loadCloudflareChannelsForGenerate();
+                ensureCloudflareGenerateTagsLoaded();
             } else {
                 gptmailFields.style.display = 'block';
                 duckmailFields.style.display = 'none';
@@ -398,6 +412,90 @@
             await loadCloudflareDomains();
         }
 
+        async function ensureCloudflareGenerateTagsLoaded() {
+            const tags = typeof allTags === 'undefined' || !Array.isArray(allTags) ? [] : allTags;
+            if (typeof loadTags === 'function' && tags.length === 0) {
+                await loadTags();
+            }
+            renderCloudflareGenerateTagOptions();
+        }
+
+        function renderCloudflareGenerateTagOptions() {
+            const container = document.getElementById('cloudflareGenerateTagOptions');
+            if (!container) return;
+
+            const tags = typeof allTags === 'undefined' || !Array.isArray(allTags) ? [] : allTags;
+            if (!tags.length) {
+                container.innerHTML = '<div class="import-tag-empty">暂无标签</div>';
+                return;
+            }
+
+            container.innerHTML = tags.map(tag => `
+                <label class="import-tag-option">
+                    <input type="checkbox" class="cloudflare-generate-tag-checkbox" value="${escapeHtml(String(tag.id))}">
+                    <span class="import-tag-dot" style="background-color: ${escapeHtml(tag.color || '#9ca3af')};"></span>
+                    <span>${escapeHtml(tag.name || '')}</span>
+                </label>
+            `).join('');
+        }
+
+        function getCloudflareGenerateSelectedTagIds() {
+            return Array.from(document.querySelectorAll('.cloudflare-generate-tag-checkbox:checked'))
+                .map(checkbox => parseInt(checkbox.value, 10))
+                .filter(Number.isFinite);
+        }
+
+        function getCloudflareUsernameLines() {
+            const textarea = document.getElementById('cloudflareUsername');
+            return (textarea?.value || '')
+                .split(/\r?\n/)
+                .map(line => line.trim())
+                .filter(Boolean);
+        }
+
+        async function generateCloudflareAiUsernames() {
+            const btn = document.getElementById('cloudflareAiGenerateBtn');
+            const textarea = document.getElementById('cloudflareUsername');
+            const count = parseInt(document.getElementById('cloudflareGenerateCount')?.value || '1', 10);
+            if (Number.isNaN(count) || count < 1 || count > 50) {
+                showToast('数量必须在 1-50 之间', 'error');
+                return;
+            }
+            if (!btn || !textarea) return;
+
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '生成中...';
+            try {
+                const response = await fetch('/api/cloudflare/ai-usernames/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ count })
+                });
+                const data = await response.json();
+                if (data.success && Array.isArray(data.usernames)) {
+                    textarea.value = data.usernames.join('\n');
+                    showToast(`已生成 ${data.usernames.length} 个用户名`, 'success');
+                } else {
+                    handleApiError(data, 'AI 生成用户名失败');
+                }
+            } catch (error) {
+                showToast('AI 生成用户名失败', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        function formatCloudflareBatchFailureSummary(failures) {
+            const items = Array.isArray(failures) ? failures.slice(0, 3) : [];
+            return items.map(failure => {
+                const index = Number(failure.index);
+                const target = Number.isFinite(index) ? `第 ${index} 个` : (failure.email || failure.username || '邮箱');
+                return `${target}: ${failure.error || '创建失败'}`;
+            }).join('；');
+        }
+
         // 执行创建临时邮箱
         async function doGenerateTempEmail() {
             const provider = document.querySelector('input[name="tempEmailProvider"]:checked').value;
@@ -429,7 +527,12 @@
                 } else if (provider === 'cloudflare') {
                     body.channel_id = document.getElementById('cloudflareChannel').value;
                     body.domain = document.getElementById('cloudflareDomain').value;
-                    body.username = document.getElementById('cloudflareUsername').value.trim();
+                    body.count = parseInt(document.getElementById('cloudflareGenerateCount')?.value || '1', 10);
+                    body.tag_ids = getCloudflareGenerateSelectedTagIds();
+                    const usernameLines = getCloudflareUsernameLines();
+                    if (usernameLines.length > 0) {
+                        body.usernames = usernameLines;
+                    }
 
                     if (!body.channel_id) {
                         showToast('请选择渠道', 'error');
@@ -439,13 +542,18 @@
                         showToast('请选择域名', 'error');
                         return;
                     }
-                    if (body.username && body.username.length < 3) {
-                        showToast('用户名至少 3 个字符，或留空随机生成', 'error');
+                    if (Number.isNaN(body.count) || body.count < 1 || body.count > 50) {
+                        showToast('数量必须在 1-50 之间', 'error');
+                        return;
+                    }
+                    if (usernameLines.length > 0 && usernameLines.length !== body.count) {
+                        showToast('用户名数量必须与创建数量一致', 'error');
                         return;
                     }
                 }
 
-                const response = await fetch('/api/temp-emails/generate', {
+                const useCloudflareBatch = provider === 'cloudflare';
+                const response = await fetch(useCloudflareBatch ? '/api/temp-emails/generate-batch' : '/api/temp-emails/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
@@ -454,7 +562,17 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showToast(`临时邮箱已生成: ${data.email}`, 'success');
+                    if (useCloudflareBatch) {
+                        const failedText = data.failed_count ? `，失败 ${data.failed_count} 个` : '';
+                        const failureSummary = formatCloudflareBatchFailureSummary(data.failures);
+                        const failureSummaryText = failureSummary ? `：${failureSummary}` : '';
+                        showToast(
+                            `已生成 ${data.created_count || 0} 个临时邮箱${failedText}${failureSummaryText}`,
+                            data.failed_count ? 'warning' : 'success'
+                        );
+                    } else {
+                        showToast(`临时邮箱已生成: ${data.email}`, 'success');
+                    }
                     hideModal('tempEmailProviderModal');
                     delete accountsCache['temp'];
                     loadTempEmails(true);

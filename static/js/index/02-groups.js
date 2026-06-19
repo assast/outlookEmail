@@ -1990,7 +1990,8 @@
             if (channelGroup) channelGroup.style.display = isTempGroup ? '' : 'none';
             if (providerGroup) providerGroup.style.display = isTempGroup ? 'none' : '';
             accountDefaultFields.forEach(field => {
-                field.style.display = isTempGroup ? 'none' : '';
+                const isTagField = !!field.querySelector('#importTagDropdown');
+                field.style.display = isTempGroup ? (isTagField ? '' : 'none') : '';
             });
 
             if (isTempGroup) {
@@ -2006,11 +2007,11 @@
                     return;
                 }
                 if (channel === 'cloudflare') {
-                    hintEl.textContent = '格式：邮箱----JWT，每行一个。';
-                    inputEl.placeholder = '邮箱----JWT';
+                    hintEl.textContent = '格式：邮箱----JWT。可用 [cloudflare:渠道名] 分段，或使用 邮箱----JWT----渠道名。';
+                    inputEl.placeholder = '[cloudflare:cfmail-us]\nuser@example.com----jwt\nuser2@example.com----jwt----cfmail-hk';
                     if (exampleEl) {
                         exampleEl.style.display = '';
-                        exampleEl.textContent = '示例：\nuser@example.com----eyJhbGciOi...';
+                        exampleEl.textContent = '示例：\n[cloudflare:cfmail-us]\nuser@example.com----eyJhbGciOi...\nuser2@example.com----eyJhbGciOi...----cfmail-hk';
                     }
                     return;
                 }

@@ -620,6 +620,48 @@
                             <button class="btn btn-danger" type="button" id="deleteCloudflareChannelBtn" onclick="deleteCloudflareChannel()" style="display: none;">删除渠道</button>
                         </div>
                     </div>
+                    <div class="settings-panel settings-panel-grid">
+                        <div class="form-group settings-form-span-full">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="settingsCloudflareAiEnabled">
+                                <span>启用 AI 生成用户名</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">AI API 地址</label>
+                            <input type="text" class="form-input" id="settingsCloudflareAiApiUrl" placeholder="https://api.example.com/v1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">AI 模型</label>
+                            <input type="text" class="form-input" id="settingsCloudflareAiModel" placeholder="gpt-5.5">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">AI API Key</label>
+                            <input type="password" class="form-input" id="settingsCloudflareAiApiKey" placeholder="留空保留已保存的 Key">
+                            <div class="form-hint" id="settingsCloudflareAiApiKeyHint">未配置</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="settingsCloudflareAiClearApiKey">
+                                <span>清空已保存的 AI API Key</span>
+                            </label>
+                        </div>
+                        <div class="form-group settings-form-span-full">
+                            <label class="form-label">用户名生成提示词模板</label>
+                            <textarea class="form-textarea" id="settingsCloudflareAiPrompt" rows="5"></textarea>
+                            <div class="form-hint">支持 {count} 和 {seed} 变量。</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">测试数量</label>
+                            <div class="settings-inline-action">
+                                <input type="number" class="form-input" id="settingsCloudflareAiTestCount" min="1" max="50" value="5">
+                                <button class="btn btn-secondary" type="button" id="testCloudflareAiBtn" onclick="testCloudflareAiUsernames()">测试生成用户名</button>
+                            </div>
+                        </div>
+                        <div class="form-group settings-form-span-full">
+                            <div class="form-hint" id="settingsCloudflareAiTestResult">未测试</div>
+                        </div>
+                    </div>
                 </section>
                     </div>
                 </div>
