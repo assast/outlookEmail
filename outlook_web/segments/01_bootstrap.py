@@ -658,6 +658,11 @@ DUCKMAIL_API_KEY = os.getenv("DUCKMAIL_API_KEY", "")  # 可选，dk_ 前缀，�
 CLOUDFLARE_WORKER_DOMAIN = os.getenv("CLOUDFLARE_WORKER_DOMAIN") or os.getenv("WORKER_DOMAIN", "")
 CLOUDFLARE_EMAIL_DOMAINS = os.getenv("CLOUDFLARE_EMAIL_DOMAINS") or os.getenv("EMAIL_DOMAIN", "")
 CLOUDFLARE_ADMIN_PASSWORD = os.getenv("CLOUDFLARE_ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")
+CLOUDFLARE_AI_USERNAME_DEFAULT_PROMPT = os.getenv(
+    "CLOUDFLARE_AI_USERNAME_PROMPT",
+    "Generate {count} realistic, corporate-style American email username prefixes.\n"
+    "Return only a JSON array of lowercase usernames. Seed: {seed}",
+)
 
 # 临时邮箱分组 ID（系统保留）
 TEMP_EMAIL_GROUP_ID = -1
@@ -1834,6 +1839,26 @@ def init_db():
         INSERT OR IGNORE INTO settings (key, value)
         VALUES ('cloudflare_admin_password', ?)
     ''', (CLOUDFLARE_ADMIN_PASSWORD,))
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('cloudflare_ai_username_enabled', 'false')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('cloudflare_ai_username_api_url', '')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('cloudflare_ai_username_model', '')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('cloudflare_ai_username_api_key', '')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('cloudflare_ai_username_prompt', ?)
+    ''', (CLOUDFLARE_AI_USERNAME_DEFAULT_PROMPT,))
 
     cursor.execute('SELECT COUNT(*) FROM cloudflare_channels')
     cloudflare_channel_count = cursor.fetchone()[0]

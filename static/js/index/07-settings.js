@@ -936,7 +936,11 @@
                     response = await fetch('/api/temp-emails/import', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ account_string: input, provider: tempProvider })
+                        body: JSON.stringify({
+                            account_string: input,
+                            provider: tempProvider,
+                            tag_ids: tagIds
+                        })
                     });
                 } else {
                     response = await fetch('/api/accounts', {
@@ -1250,6 +1254,58 @@
             }
         }
 
+        async function testCloudflareAiUsernames() {
+            const resultEl = document.getElementById('settingsCloudflareAiTestResult');
+            const btn = document.getElementById('testCloudflareAiBtn');
+            const originalText = btn?.textContent || '';
+            const apiKey = document.getElementById('settingsCloudflareAiApiKey')?.value.trim() || '';
+            const count = parseInt(document.getElementById('settingsCloudflareAiTestCount')?.value || '5', 10);
+            const body = {
+                api_url: document.getElementById('settingsCloudflareAiApiUrl')?.value.trim() || '',
+                model: document.getElementById('settingsCloudflareAiModel')?.value.trim() || '',
+                prompt: document.getElementById('settingsCloudflareAiPrompt')?.value.trim() || '',
+                count: Number.isNaN(count) ? 5 : count
+            };
+            if (apiKey) {
+                body.api_key = apiKey;
+            }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '测试中...';
+            }
+            if (resultEl) {
+                resultEl.textContent = '测试中...';
+            }
+
+            try {
+                const response = await fetch('/api/cloudflare/ai-usernames/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    handleApiError(data, 'AI 用户名测试失败');
+                    if (resultEl) resultEl.textContent = data.error || '测试失败';
+                    return;
+                }
+                const usernames = Array.isArray(data.usernames) ? data.usernames : [];
+                if (resultEl) {
+                    resultEl.textContent = usernames.length ? usernames.join(', ') : '未返回可用用户名';
+                }
+                showToast('AI 用户名测试完成', 'success');
+            } catch (error) {
+                showToast('AI 用户名测试失败', 'error');
+                if (resultEl) resultEl.textContent = '测试失败';
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                }
+            }
+        }
+
         async function loadSettings() {
             ensureForwardingSettingsUI();
             try {
@@ -1264,6 +1320,15 @@
                     document.getElementById('settingsExternalApiKey').value = data.settings.external_api_key || '';
                     document.getElementById('settingsDuckmailBaseUrl').value = data.settings.duckmail_base_url || '';
                     document.getElementById('settingsDuckmailApiKey').value = data.settings.duckmail_api_key || '';
+                    document.getElementById('settingsCloudflareAiEnabled').checked = String(data.settings.cloudflare_ai_username_enabled) === 'true';
+                    document.getElementById('settingsCloudflareAiApiUrl').value = data.settings.cloudflare_ai_username_api_url || '';
+                    document.getElementById('settingsCloudflareAiModel').value = data.settings.cloudflare_ai_username_model || '';
+                    document.getElementById('settingsCloudflareAiApiKey').value = '';
+                    document.getElementById('settingsCloudflareAiApiKey').placeholder = data.settings.cloudflare_ai_username_api_key_configured ? '已保存，留空不修改' : '输入 AI API Key';
+                    document.getElementById('settingsCloudflareAiApiKeyHint').textContent = data.settings.cloudflare_ai_username_api_key_configured ? '已配置' : '未配置';
+                    document.getElementById('settingsCloudflareAiClearApiKey').checked = false;
+                    document.getElementById('settingsCloudflareAiPrompt').value = data.settings.cloudflare_ai_username_prompt || '';
+                    document.getElementById('settingsCloudflareAiTestResult').textContent = '未测试';
                     document.getElementById('settingsAppTimezone').value = appTimeZone;
                     document.getElementById('settingsPassword').value = '';
 
@@ -1342,6 +1407,17 @@
             settings.external_api_key = externalApiKey;
             settings.duckmail_base_url = document.getElementById('settingsDuckmailBaseUrl').value.trim();
             settings.duckmail_api_key = document.getElementById('settingsDuckmailApiKey').value.trim();
+            settings.cloudflare_ai_username_enabled = !!document.getElementById('settingsCloudflareAiEnabled')?.checked;
+            settings.cloudflare_ai_username_api_url = document.getElementById('settingsCloudflareAiApiUrl')?.value.trim() || '';
+            settings.cloudflare_ai_username_model = document.getElementById('settingsCloudflareAiModel')?.value.trim() || '';
+            settings.cloudflare_ai_username_prompt = document.getElementById('settingsCloudflareAiPrompt')?.value.trim() || '';
+            const cloudflareAiApiKey = document.getElementById('settingsCloudflareAiApiKey')?.value.trim() || '';
+            if (cloudflareAiApiKey) {
+                settings.cloudflare_ai_username_api_key = cloudflareAiApiKey;
+            }
+            if (document.getElementById('settingsCloudflareAiClearApiKey')?.checked) {
+                settings.cloudflare_ai_username_clear_api_key = true;
+            }
 
             const days = parseInt(refreshDays, 10);
             const delay = parseInt(refreshDelay, 10);

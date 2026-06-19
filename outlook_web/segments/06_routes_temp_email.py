@@ -233,6 +233,334 @@ def cloudflare_create_address(username: str = None, domain: str = None,
     return last_error
 
 
+CLOUDFLARE_BATCH_GENERATE_MAX_COUNT = 50
+CLOUDFLARE_AI_USERNAME_MIN_LENGTH = 3
+CLOUDFLARE_AI_USERNAME_MAX_LENGTH = 32
+CLOUDFLARE_AI_USERNAME_ALLOWED_RE = re.compile(r'^[A-Za-z0-9._@+-]+$')
+CLOUDFLARE_AI_USERNAME_RESERVED_WORDS = {
+    'sure',
+    'yes',
+    'ok',
+    'okay',
+    'username',
+    'usernames',
+    'name',
+    'names',
+    'prefix',
+    'prefixes',
+    'json',
+    'array',
+    'list',
+}
+
+
+def normalize_cloudflare_batch_count(value: Any) -> Optional[int]:
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return None
+    if count < 1 or count > CLOUDFLARE_BATCH_GENERATE_MAX_COUNT:
+        return None
+    return count
+
+
+def normalize_cloudflare_ai_endpoint(api_url: str) -> str:
+    normalized = str(api_url or '').strip().rstrip('/')
+    if not normalized:
+        return ''
+    if normalized.endswith('/chat/completions'):
+        return normalized
+    return f'{normalized}/chat/completions'
+
+
+def sanitize_cloudflare_username_candidate(value: Any) -> str:
+    candidate = str(value or '').strip().lower()
+    if not candidate:
+        return ''
+    if '@' in candidate:
+        candidate = candidate.split('@', 1)[0]
+    candidate = re.sub(r'[^a-z0-9]', '', candidate)
+    if len(candidate) < CLOUDFLARE_AI_USERNAME_MIN_LENGTH:
+        return ''
+    if candidate in CLOUDFLARE_AI_USERNAME_RESERVED_WORDS:
+        return ''
+    return candidate[:CLOUDFLARE_AI_USERNAME_MAX_LENGTH]
+
+
+def is_plausible_cloudflare_ai_username_fragment(value: str) -> bool:
+    fragment = str(value or '').strip().strip('"\'`')
+    if not fragment:
+        return False
+    if len(fragment) > 80:
+        return False
+    if re.search(r'\s', fragment):
+        return False
+    if ':' in fragment:
+        return False
+    if not CLOUDFLARE_AI_USERNAME_ALLOWED_RE.match(fragment):
+        return False
+    return bool(sanitize_cloudflare_username_candidate(fragment))
+
+
+def normalize_cloudflare_ai_username_list_item(value: str) -> str:
+    item = re.sub(r'^\s*(?:[-*]|\d+[.)])\s*', '', str(value or '')).strip()
+    return item.strip().strip('"\'`').strip()
+
+
+def extract_ai_username_values(value: Any) -> List[str]:
+    if isinstance(value, list):
+        results: List[str] = []
+        for item in value:
+            results.extend(extract_ai_username_values(item))
+        return results
+    if isinstance(value, dict):
+        for key in ('usernames', 'names', 'prefixes', 'data'):
+            if key in value:
+                return extract_ai_username_values(value[key])
+        return []
+    return [str(value)]
+
+
+def parse_cloudflare_ai_username_content(content: str) -> List[str]:
+    text = str(content or '').strip()
+    if not text:
+        return []
+
+    cleaned_text = re.sub(r'^```(?:json)?\s*|\s*```$', '', text, flags=re.IGNORECASE | re.MULTILINE).strip()
+    json_candidates = [cleaned_text]
+    array_match = re.search(r'\[[\s\S]*\]', cleaned_text)
+    if array_match:
+        json_candidates.insert(0, array_match.group(0))
+
+    for candidate in json_candidates:
+        try:
+            parsed = json.loads(candidate)
+            values = extract_ai_username_values(parsed)
+            if values:
+                return values
+        except Exception:
+            continue
+
+    quoted_items = re.findall(r'["\']([^"\']+)["\']', cleaned_text)
+    if quoted_items:
+        return quoted_items
+
+    items = []
+    for part in re.split(r'[\n,;]+', cleaned_text):
+        item = normalize_cloudflare_ai_username_list_item(part)
+        if is_plausible_cloudflare_ai_username_fragment(item):
+            items.append(item)
+    return items
+
+
+def clean_cloudflare_ai_usernames(values: List[Any], limit: Optional[int] = None) -> List[str]:
+    usernames: List[str] = []
+    seen = set()
+    for value in values:
+        username = sanitize_cloudflare_username_candidate(value)
+        if not username or username in seen:
+            continue
+        seen.add(username)
+        usernames.append(username)
+        if limit and len(usernames) >= limit:
+            break
+    return usernames
+
+
+def normalize_cloudflare_explicit_usernames(values: Any, expected_count: int) -> Dict[str, Any]:
+    if values is None:
+        return {'success': True, 'usernames': [], 'provided': False}
+    if not isinstance(values, list):
+        return {'success': False, 'error': '用户名列表格式无效'}
+
+    usernames: List[str] = []
+    seen = set()
+    has_non_empty_value = False
+    for index, value in enumerate(values):
+        raw_value = str(value or '').strip()
+        if not raw_value:
+            continue
+        has_non_empty_value = True
+        username = sanitize_cloudflare_username_candidate(raw_value)
+        if not username:
+            return {'success': False, 'error': f'第 {index + 1} 个用户名格式无效'}
+        if username in seen:
+            return {'success': False, 'error': '用户名不能重复'}
+        seen.add(username)
+        usernames.append(username)
+
+    if not has_non_empty_value:
+        return {'success': True, 'usernames': [], 'provided': False}
+    if len(usernames) != expected_count:
+        return {'success': False, 'error': f'用户名数量必须等于 {expected_count} 个'}
+    return {'success': True, 'usernames': usernames, 'provided': True}
+
+
+def validate_strict_cloudflare_ai_username_result(result: Dict[str, Any], expected_count: int) -> Dict[str, Any]:
+    raw_usernames = result.get('raw_usernames')
+    if raw_usernames is None:
+        raw_usernames = result.get('usernames', [])
+    if not isinstance(raw_usernames, list):
+        return {'success': False, 'error': 'AI 用户名生成响应缺少用户名列表'}
+
+    raw_count = len(raw_usernames)
+    if raw_count != expected_count:
+        return {
+            'success': False,
+            'error': f'AI 返回用户名数量为 {raw_count} 个，必须等于 {expected_count} 个',
+        }
+
+    usernames = clean_cloudflare_ai_usernames(raw_usernames)
+    if len(usernames) != expected_count:
+        return {
+            'success': False,
+            'error': f'AI 清洗后用户名数量为 {len(usernames)} 个，必须等于 {expected_count} 个',
+        }
+    return {'success': True, 'usernames': usernames}
+
+
+def build_cloudflare_ai_username_config(data: Optional[Dict[str, Any]] = None,
+                                        use_saved_secret: bool = True) -> Dict[str, Any]:
+    source = data or {}
+    api_key_provided = 'api_key' in source or 'cloudflare_ai_username_api_key' in source
+    api_key = (
+        source.get('api_key')
+        if 'api_key' in source
+        else source.get('cloudflare_ai_username_api_key')
+    )
+    if not api_key_provided and use_saved_secret:
+        api_key = get_setting_decrypted('cloudflare_ai_username_api_key', '')
+
+    return {
+        'enabled': str(
+            source.get(
+                'enabled',
+                source.get(
+                    'cloudflare_ai_username_enabled',
+                    get_setting('cloudflare_ai_username_enabled', 'false'),
+                )
+            )
+        ).strip().lower() in {'1', 'true', 'yes', 'on'},
+        'api_url': str(
+            source.get(
+                'api_url',
+                source.get(
+                    'cloudflare_ai_username_api_url',
+                    get_setting('cloudflare_ai_username_api_url', ''),
+                )
+            ) or ''
+        ).strip(),
+        'model': str(
+            source.get(
+                'model',
+                source.get(
+                    'cloudflare_ai_username_model',
+                    get_setting('cloudflare_ai_username_model', ''),
+                )
+            ) or ''
+        ).strip(),
+        'api_key': str(api_key or '').strip(),
+        'prompt': str(
+            source.get(
+                'prompt',
+                source.get(
+                    'cloudflare_ai_username_prompt',
+                    get_setting(
+                        'cloudflare_ai_username_prompt',
+                        CLOUDFLARE_AI_USERNAME_DEFAULT_PROMPT,
+                    ),
+                )
+            ) or CLOUDFLARE_AI_USERNAME_DEFAULT_PROMPT
+        ).strip(),
+    }
+
+
+def validate_cloudflare_ai_username_config(config: Dict[str, Any]) -> Optional[str]:
+    missing = []
+    if not config.get('api_url'):
+        missing.append('AI API 地址')
+    if not config.get('model'):
+        missing.append('AI 模型')
+    if not config.get('api_key'):
+        missing.append('AI API Key')
+    if missing:
+        return '缺少' + '、'.join(missing)
+    return None
+
+
+def request_cloudflare_ai_usernames(config: Dict[str, Any], count: int,
+                                    seed: str = '') -> Dict[str, Any]:
+    error = validate_cloudflare_ai_username_config(config)
+    if error:
+        return {'success': False, 'error': error, 'usernames': []}
+
+    normalized_count = normalize_cloudflare_batch_count(count) or 1
+    request_seed = seed or generate_trace_id()[:12]
+    prompt = str(config.get('prompt') or CLOUDFLARE_AI_USERNAME_DEFAULT_PROMPT)
+    prompt = prompt.replace('{count}', str(normalized_count)).replace('{seed}', request_seed)
+    url = normalize_cloudflare_ai_endpoint(config.get('api_url', ''))
+    payload = {
+        'model': config.get('model'),
+        'messages': [
+            {
+                'role': 'system',
+                'content': 'Return only a JSON array of email username prefixes. Do not include domains.',
+            },
+            {'role': 'user', 'content': prompt},
+        ],
+        'temperature': 0.7,
+    }
+
+    try:
+        response = requests.post(
+            url,
+            headers={
+                'Authorization': f"Bearer {config.get('api_key')}",
+                'Content-Type': 'application/json',
+            },
+            json=payload,
+            timeout=30,
+        )
+    except Exception as exc:
+        return {'success': False, 'error': f'AI 用户名生成请求失败: {exc}', 'usernames': []}
+
+    if response.status_code >= 400:
+        return {
+            'success': False,
+            'error': f'AI 用户名生成失败: HTTP {response.status_code} {getattr(response, "text", "")[:120]}'.strip(),
+            'usernames': [],
+        }
+
+    try:
+        data = response.json()
+    except Exception as exc:
+        return {'success': False, 'error': f'AI 用户名生成响应不是有效 JSON: {exc}', 'usernames': []}
+
+    choices = data.get('choices') if isinstance(data, dict) else None
+    content = ''
+    if choices:
+        first_choice = choices[0] or {}
+        message = first_choice.get('message') or {}
+        content = message.get('content') or first_choice.get('text') or ''
+    elif isinstance(data, dict):
+        direct_values = extract_ai_username_values(data)
+        if direct_values:
+            usernames = clean_cloudflare_ai_usernames(direct_values)
+            if usernames:
+                return {'success': True, 'usernames': usernames, 'raw_usernames': direct_values, 'seed': request_seed}
+        return {'success': False, 'error': 'AI 用户名生成响应缺少用户名列表', 'usernames': []}
+    else:
+        content = str(data)
+
+    parsed_usernames = parse_cloudflare_ai_username_content(content)
+    usernames = clean_cloudflare_ai_usernames(
+        parsed_usernames,
+    )
+    if not usernames:
+        return {'success': False, 'error': 'AI 用户名生成结果为空或不可用', 'usernames': []}
+    return {'success': True, 'usernames': usernames, 'raw_usernames': parsed_usernames, 'seed': request_seed}
+
+
 def cloudflare_get_messages(jwt: str, limit: int = 50, offset: int = 0,
                             channel: Optional[Dict[str, Any]] = None) -> Optional[List[Dict]]:
     """获取 Cloudflare Temp Email 邮件列表"""
@@ -905,6 +1233,53 @@ def remove_temp_email_tag(temp_email_id: int, tag_id: int) -> bool:
         return False
 
 
+def get_existing_temp_email_tag_ids(tag_ids: Any) -> List[int]:
+    """归一化并过滤存在的标签 ID。"""
+    normalized_tag_ids = normalize_tag_ids_input(tag_ids)
+    if not normalized_tag_ids:
+        return []
+
+    db = get_db()
+    placeholders = ','.join('?' * len(normalized_tag_ids))
+    rows = db.execute(
+        f'SELECT id FROM tags WHERE id IN ({placeholders})',
+        normalized_tag_ids,
+    ).fetchall()
+    existing_ids = {int(row['id']) for row in rows}
+    return [tag_id for tag_id in normalized_tag_ids if tag_id in existing_ids]
+
+
+def bind_temp_email_tags(temp_email_ids: List[int], tag_ids: Any) -> int:
+    """为一批临时邮箱绑定存在的标签，返回被处理的邮箱数量。"""
+    normalized_temp_email_ids = []
+    seen_email_ids = set()
+    for raw_id in temp_email_ids:
+        try:
+            temp_email_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if temp_email_id <= 0 or temp_email_id in seen_email_ids:
+            continue
+        seen_email_ids.add(temp_email_id)
+        normalized_temp_email_ids.append(temp_email_id)
+
+    existing_tag_ids = get_existing_temp_email_tag_ids(tag_ids)
+    if not normalized_temp_email_ids or not existing_tag_ids:
+        return 0
+
+    db = get_db()
+    db.executemany(
+        'INSERT OR IGNORE INTO temp_email_tags (temp_email_id, tag_id) VALUES (?, ?)',
+        [
+            (temp_email_id, tag_id)
+            for temp_email_id in normalized_temp_email_ids
+            for tag_id in existing_tag_ids
+        ],
+    )
+    db.commit()
+    return len(normalized_temp_email_ids)
+
+
 def add_temp_email(email_addr: str, provider: str = 'gptmail',
                    duckmail_token: str = None, duckmail_account_id: str = None,
                    duckmail_password: str = None, cloudflare_jwt: str = None,
@@ -1173,6 +1548,7 @@ def api_import_temp_emails():
     data = request.json or {}
     import_text = data.get('account_string', '').strip()
     provider = data.get('provider', 'gptmail')
+    tag_ids = data.get('tag_ids', [])
 
     if not import_text:
         return jsonify({'success': False, 'error': '请输入要导入的临时邮箱'})
@@ -1183,6 +1559,7 @@ def api_import_temp_emails():
     skipped = 0
     token_errors = []
     import_errors = []
+    tagged_temp_email_ids: List[int] = []
     current_cloudflare_channel = None
     if provider == 'cloudflare':
         current_cloudflare_channel = get_default_cloudflare_channel(include_disabled=True, include_secret=True)
@@ -1296,6 +1673,7 @@ def api_import_temp_emails():
                             )
                             db.commit()
                             updated += 1
+                            tagged_temp_email_ids.append(int(existing['id']))
                         elif add_temp_email(
                             email_addr,
                             provider='cloudflare',
@@ -1303,6 +1681,9 @@ def api_import_temp_emails():
                             cloudflare_channel_id=line_channel.get('id'),
                         ):
                             added += 1
+                            created_email = get_temp_email_by_address(email_addr)
+                            if created_email:
+                                tagged_temp_email_ids.append(int(created_email['id']))
                         else:
                             skipped += 1
                     else:
@@ -1327,12 +1708,15 @@ def api_import_temp_emails():
 
     total = added + updated
     if total > 0:
+        tagged_count = bind_temp_email_tags(tagged_temp_email_ids, tag_ids)
         log_audit('import', 'temp_emails', None, f"导入 {added} 个新临时邮箱，更新 {updated} 个已有邮箱")
         msg = ''
         if added > 0:
             msg += f'新增 {added} 个临时邮箱'
         if updated > 0:
             msg += ('，' if msg else '') + f'更新 {updated} 个已有邮箱'
+        if tagged_count > 0:
+            msg += f'，绑定标签 {tagged_count} 个邮箱'
         if skipped > 0:
             msg += f'，跳过 {skipped} 个（格式错误）'
         if token_errors:
@@ -1343,6 +1727,7 @@ def api_import_temp_emails():
             'success': True,
             'message': msg,
             'errors': import_errors,
+            'tagged_count': tagged_count,
         })
     else:
         error_message = '没有新的临时邮箱被导入（可能格式错误）'
@@ -1582,6 +1967,156 @@ def api_generate_temp_email():
                 return jsonify({'success': False, 'error': '邮箱已存在'})
         else:
             return jsonify({'success': False, 'error': '生成临时邮箱失败，请稍后重试'})
+
+
+@app.route('/api/cloudflare/ai-usernames/test', methods=['POST'])
+@login_required
+def api_test_cloudflare_ai_usernames():
+    data = request.json or {}
+    count = normalize_cloudflare_batch_count(data.get('count', 5))
+    if count is None:
+        return jsonify({'success': False, 'error': f'数量必须在 1-{CLOUDFLARE_BATCH_GENERATE_MAX_COUNT} 之间'})
+
+    config = build_cloudflare_ai_username_config(data, use_saved_secret=True)
+    result = request_cloudflare_ai_usernames(config, count)
+    if not result.get('success'):
+        return jsonify({'success': False, 'error': result.get('error', 'AI 用户名生成失败')})
+
+    return jsonify({
+        'success': True,
+        'usernames': result.get('usernames', []),
+        'seed': result.get('seed', ''),
+    })
+
+
+@app.route('/api/cloudflare/ai-usernames/generate', methods=['POST'])
+@login_required
+def api_generate_cloudflare_ai_usernames():
+    data = request.json or {}
+    count = normalize_cloudflare_batch_count(data.get('count', 1))
+    if count is None:
+        return jsonify({'success': False, 'error': f'数量必须在 1-{CLOUDFLARE_BATCH_GENERATE_MAX_COUNT} 之间'})
+
+    config = build_cloudflare_ai_username_config({}, use_saved_secret=True)
+    if not config.get('enabled'):
+        return jsonify({'success': False, 'error': 'Cloudflare AI 用户名功能未启用'})
+
+    config_error = validate_cloudflare_ai_username_config(config)
+    if config_error:
+        return jsonify({'success': False, 'error': config_error})
+
+    result = request_cloudflare_ai_usernames(config, count)
+    if not result.get('success'):
+        return jsonify({'success': False, 'error': result.get('error', 'AI 用户名生成失败')})
+
+    strict_result = validate_strict_cloudflare_ai_username_result(result, count)
+    if not strict_result.get('success'):
+        return jsonify({'success': False, 'error': strict_result.get('error', 'AI 用户名生成失败')})
+
+    return jsonify({
+        'success': True,
+        'usernames': strict_result.get('usernames', []),
+        'seed': result.get('seed', ''),
+    })
+
+
+@app.route('/api/temp-emails/generate-batch', methods=['POST'])
+@login_required
+def api_generate_temp_emails_batch():
+    data = request.json or {}
+    provider = data.get('provider', 'cloudflare')
+    if provider != 'cloudflare':
+        return jsonify({'success': False, 'error': '批量生成暂仅支持 Cloudflare 临时邮箱'})
+
+    count = normalize_cloudflare_batch_count(data.get('count', 1))
+    if count is None:
+        return jsonify({'success': False, 'error': f'数量必须在 1-{CLOUDFLARE_BATCH_GENERATE_MAX_COUNT} 之间'})
+
+    channel_id = data.get('channel_id')
+    channel = (
+        get_cloudflare_channel_by_id(channel_id, include_disabled=True, include_secret=True)
+        if channel_id
+        else get_default_cloudflare_channel(include_disabled=True, include_secret=True)
+    )
+    if not channel:
+        return jsonify({'success': False, 'error': '请先选择或配置 Cloudflare 渠道'})
+    if not channel.get('enabled'):
+        return jsonify({'success': False, 'error': 'Cloudflare 渠道不可用，不能创建邮箱'})
+
+    domain = data.get('domain', '').strip()
+    if not domain:
+        domains = channel.get('email_domains', [])
+        if not domains:
+            return jsonify({'success': False, 'error': '请先在设置中配置 Cloudflare 邮箱域名'})
+        domain = domains[0]
+
+    username_result = normalize_cloudflare_explicit_usernames(data.get('usernames'), count)
+    if not username_result.get('success'):
+        return jsonify({'success': False, 'error': username_result.get('error', '用户名列表无效')})
+
+    usernames = username_result.get('usernames', [])
+    if not usernames:
+        usernames = [generate_random_temp_name() for _ in range(count)]
+
+    created_emails: List[str] = []
+    created_temp_email_ids: List[int] = []
+    failures: List[Dict[str, Any]] = []
+
+    for index in range(count):
+        username = usernames[index]
+        result = cloudflare_create_address(username=username, domain=domain, channel=channel)
+        email_addr = (result or {}).get('address')
+        jwt = (result or {}).get('jwt')
+        address_id = (result or {}).get('id') or (result or {}).get('address_id')
+
+        if not email_addr or not jwt:
+            failures.append({
+                'index': index + 1,
+                'username': username,
+                'error': (result or {}).get('error', 'Cloudflare 返回数据不完整'),
+            })
+            continue
+
+        if not add_temp_email(
+            email_addr,
+            provider='cloudflare',
+            cloudflare_jwt=jwt,
+            cloudflare_address_id=address_id,
+            cloudflare_channel_id=channel.get('id'),
+        ):
+            failures.append({
+                'index': index + 1,
+                'username': username,
+                'email': email_addr,
+                'error': '邮箱已存在',
+            })
+            continue
+
+        created_emails.append(email_addr)
+        created_email = get_temp_email_by_address(email_addr)
+        if created_email:
+            created_temp_email_ids.append(int(created_email['id']))
+
+    tagged_count = bind_temp_email_tags(created_temp_email_ids, data.get('tag_ids', []))
+    failed_count = count - len(created_emails)
+    response_payload = {
+        'success': bool(created_emails),
+        'emails': created_emails,
+        'created_count': len(created_emails),
+        'failed_count': failed_count,
+        'failures': failures,
+        'tagged_count': tagged_count,
+        'ai_fallback_used': False,
+        'ai_error': '',
+    }
+
+    if created_emails:
+        response_payload['message'] = f'已创建 {len(created_emails)} 个 Cloudflare 临时邮箱'
+        return jsonify(response_payload)
+
+    first_error = failures[0]['error'] if failures else '创建 Cloudflare 临时邮箱失败'
+    response_payload['error'] = first_error
+    return jsonify(response_payload)
 
 
 @app.route('/api/temp-emails/<path:email_addr>', methods=['DELETE'])

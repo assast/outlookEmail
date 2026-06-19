@@ -2087,6 +2087,67 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('<span class="account-status-pill provider" style="--pill-accent: #f48120">Cloudflare</span>', temp_js)
         self.assertNotIn('<span class="account-status-pill muted">${escapeHtml(channelName)}</span>', temp_js)
 
+    def test_cloudflare_temp_email_batch_generate_frontend_contract(self):
+        temp_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '03-temp-emails.js').read_text(encoding='utf-8')
+        modal_css = pathlib.Path(ROOT_DIR, 'static', 'css', 'index', '06-modals-toast.css').read_text(encoding='utf-8')
+
+        self.assertIn('id="cloudflareGenerateCount"', temp_js)
+        self.assertIn('temp-email-provider-modal-content', temp_js)
+        self.assertIn('temp-email-provider-modal-body', temp_js)
+        self.assertIn('.temp-email-provider-modal-body', modal_css)
+        self.assertIn('overflow-y: auto;', modal_css)
+        self.assertIn('<textarea class="form-input" id="cloudflareUsername"', temp_js)
+        self.assertIn('一行一个用户名', temp_js)
+        self.assertIn('id="cloudflareAiGenerateBtn"', temp_js)
+        self.assertIn('async function generateCloudflareAiUsernames()', temp_js)
+        self.assertIn("fetch('/api/cloudflare/ai-usernames/generate'", temp_js)
+        self.assertIn('id="cloudflareGenerateTagOptions"', temp_js)
+        self.assertIn('async function ensureCloudflareGenerateTagsLoaded()', temp_js)
+        self.assertIn("typeof allTags === 'undefined' || !Array.isArray(allTags)", temp_js)
+        self.assertIn('body.count = parseInt(document.getElementById(\'cloudflareGenerateCount\')?.value || \'1\', 10);', temp_js)
+        self.assertIn('const usernameLines = getCloudflareUsernameLines();', temp_js)
+        self.assertIn('body.usernames = usernameLines;', temp_js)
+        self.assertIn('usernameLines.length > 0 && usernameLines.length !== body.count', temp_js)
+        self.assertIn('body.tag_ids = getCloudflareGenerateSelectedTagIds();', temp_js)
+        self.assertIn("const useCloudflareBatch = provider === 'cloudflare';", temp_js)
+        self.assertIn("fetch(useCloudflareBatch ? '/api/temp-emails/generate-batch' : '/api/temp-emails/generate'", temp_js)
+        self.assertIn('formatCloudflareBatchFailureSummary(data.failures)', temp_js)
+        self.assertNotIn("body.username = document.getElementById('cloudflareUsername')", temp_js)
+        self.assertNotIn('data.ai_fallback_used', temp_js)
+
+    def test_temp_email_import_cloudflare_channel_examples_and_tags(self):
+        dialog_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'dialogs-primary.html').read_text(encoding='utf-8')
+        groups_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '02-groups.js').read_text(encoding='utf-8')
+        settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')
+
+        self.assertIn('临时邮箱类型', dialog_html)
+        self.assertIn('id="importChannelSelect"', dialog_html)
+        self.assertNotIn('id="importCloudflareChannel', dialog_html)
+        self.assertIn("const isTagField = !!field.querySelector('#importTagDropdown');", groups_js)
+        self.assertIn("field.style.display = isTempGroup ? (isTagField ? '' : 'none') : '';", groups_js)
+        self.assertIn('[cloudflare:cfmail-us]', groups_js)
+        self.assertIn('邮箱----JWT----渠道名', groups_js)
+        self.assertIn('user2@example.com----eyJhbGciOi...----cfmail-hk', groups_js)
+        self.assertIn('tag_ids: tagIds', settings_js)
+
+    def test_cloudflare_ai_username_settings_frontend_contract(self):
+        settings_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'dialogs-management.html').read_text(encoding='utf-8')
+        settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')
+
+        self.assertIn('id="settingsCloudflareAiEnabled"', settings_html)
+        self.assertIn('id="settingsCloudflareAiApiUrl"', settings_html)
+        self.assertIn('id="settingsCloudflareAiModel"', settings_html)
+        self.assertIn('id="settingsCloudflareAiApiKey"', settings_html)
+        self.assertIn('id="settingsCloudflareAiClearApiKey"', settings_html)
+        self.assertIn('id="settingsCloudflareAiPrompt"', settings_html)
+        self.assertIn('id="testCloudflareAiBtn"', settings_html)
+        self.assertIn('async function testCloudflareAiUsernames()', settings_js)
+        self.assertIn("fetch('/api/cloudflare/ai-usernames/test'", settings_js)
+        self.assertIn("document.getElementById('settingsCloudflareAiApiKey').value = '';", settings_js)
+        self.assertIn('if (cloudflareAiApiKey) {', settings_js)
+        self.assertIn('settings.cloudflare_ai_username_api_key = cloudflareAiApiKey;', settings_js)
+        self.assertIn('settings.cloudflare_ai_username_clear_api_key = true;', settings_js)
+
     def test_account_search_terms_are_not_limited_to_emails(self):
         groups_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '02-groups.js').read_text(encoding='utf-8')
 
@@ -2281,6 +2342,14 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertNotIn('请填写渠道名称、Worker 域名和邮箱域名', settings_js)
         self.assertIn('setCloudflareChannelFormMode(false);', settings_js)
         self.assertIn('setCloudflareChannelFormMode(true);', settings_js)
+
+    def test_settings_sections_keep_multiple_panels_in_content_column(self):
+        settings_css = pathlib.Path(ROOT_DIR, 'static', 'css', 'index', '06-modals-toast.css').read_text(encoding='utf-8')
+
+        self.assertIn('.settings-section > .settings-panel + .settings-panel {', settings_css)
+        self.assertIn('.settings-section > .settings-panel {', settings_css)
+        self.assertIn('grid-column: 2;', settings_css)
+        self.assertIn('grid-row: 1;', settings_css)
 
     def test_version_popover_mentions_docker_only_online_update_setup(self):
         layout_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'layout.html').read_text(encoding='utf-8')

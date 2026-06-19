@@ -6,6 +6,19 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.71] - 2026-06-19
+
+### Added
+- Cloudflare 临时邮箱新增批量生成入口，支持按数量创建、部分失败明细和为成功创建的邮箱自动绑定标签。
+- Cloudflare 临时邮箱新增 AI 用户名生成配置，支持 OpenAI-compatible API、保存前测试生成，以及在生成弹窗中显式生成并编辑用户名列表。
+
+### Changed
+- Cloudflare 临时邮箱生成弹窗改为多行用户名输入，一行一个；提交创建时只使用显式用户名列表或随机用户名，不再在创建阶段隐式调用 AI。
+- Cloudflare 临时邮箱导入保留标签选择，并在界面示例中展示 `[cloudflare:<channel_name>]` 分段和 `邮箱----JWT----渠道名` 写法。
+
+### Fixed
+- 修复设置页同一分区包含多个面板时桌面布局错位的问题。
+
 ## [2.0.70] - 2026-06-18
 
 ### Added
