@@ -6,6 +6,15 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.72] - 2026-06-19
+
+### Changed
+- 临时邮箱生成弹窗改为 Cloudflare、GPTMail、DuckMail 分段切换布局，并优化 Cloudflare 渠道、域名、数量、用户名生成方式和标签绑定控件。
+- 设置页临时邮箱配置顺序调整为 Cloudflare、GPTMail、DuckMail，并同步侧边导航与前端测试契约。
+
+### Added
+- DuckMail 临时邮箱创建表单新增密码显示/隐藏按钮。
+
 ## [2.0.71] - 2026-06-19
 
 ### Added

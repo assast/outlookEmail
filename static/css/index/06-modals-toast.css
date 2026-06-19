@@ -149,8 +149,273 @@
             flex: 1 1 auto;
             min-height: 0;
             overflow-y: auto;
-            padding: 20px 24px;
+            padding: 14px 20px;
             overscroll-behavior: contain;
+        }
+
+        /* Segmented Control for Provider Selection */
+        .provider-tabs {
+            display: flex;
+            background-color: #f1f5f9;
+            padding: 4px;
+            border-radius: 10px;
+            gap: 4px;
+            margin-bottom: 14px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .provider-tab-item {
+            flex: 1;
+            position: relative;
+        }
+
+        .provider-tab-item input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .provider-tab-label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 6px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #64748b;
+            background-color: transparent;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+            border: 1px solid transparent;
+        }
+
+        .provider-tab-label svg {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            fill: none;
+            transition: transform 0.2s ease, stroke 0.2s ease;
+        }
+
+        .provider-tab-label:hover {
+            color: #0f172a;
+            background-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .provider-tab-label.active,
+        .provider-tab-item input[type="radio"]:checked + .provider-tab-label {
+            background-color: #ffffff;
+            color: #0f172a;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04);
+        }
+
+        .provider-tab-label.active svg,
+        .provider-tab-item input[type="radio"]:checked + .provider-tab-label svg {
+            transform: scale(1.1);
+            stroke: #1a1a1a;
+        }
+
+        /* Form Grid Layout */
+        .form-grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .temp-email-provider-modal-content .form-group {
+            margin-bottom: 12px;
+        }
+
+        /* Username Mode Selector */
+        .username-mode-selector {
+            display: flex;
+            background-color: #f1f5f9;
+            padding: 4px;
+            border-radius: 8px;
+            gap: 4px;
+            margin-bottom: 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .username-mode-selector .btn {
+            flex: 1;
+            padding: 6px 10px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 6px;
+            border: none;
+            background-color: transparent;
+            color: #64748b;
+            box-shadow: none;
+            transition: all 0.15s ease;
+        }
+
+        .username-mode-selector .btn.active {
+            background-color: #ffffff;
+            color: #0f172a;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+        }
+
+        /* AI Smart Generator Button */
+        .btn-ai-wand {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
+            color: #ffffff !important;
+            border: none !important;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            font-size: 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
+        }
+
+        .btn-ai-wand:hover {
+            background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%) !important;
+            box-shadow: 0 4px 8px rgba(79, 70, 229, 0.3) !important;
+            transform: translateY(-1px);
+        }
+
+        .btn-ai-wand:active {
+            transform: translateY(0);
+        }
+
+        .btn-ai-wand:disabled {
+            background: #94a3b8 !important;
+            box-shadow: none !important;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-ai-wand svg {
+            width: 14px;
+            height: 14px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+        }
+
+        /* Tag Cloud & Badges */
+        .tag-cloud {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            max-height: 80px;
+            overflow-y: auto;
+            padding: 6px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background-color: #ffffff;
+            scrollbar-width: thin;
+        }
+
+        .tag-cloud-empty {
+            font-size: 13px;
+            color: #94a3b8;
+            width: 100%;
+            text-align: center;
+            padding: 8px 0;
+        }
+
+        .tag-badge-item {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .tag-badge-item input[type="checkbox"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .tag-badge-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #475569;
+            background-color: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            transition: all 0.15s ease;
+        }
+
+        .tag-badge-item:hover .tag-badge-label {
+            background-color: #e2e8f0;
+            color: #0f172a;
+        }
+
+        .tag-badge-item input[type="checkbox"]:checked + .tag-badge-label {
+            background-color: var(--tag-bg, #eff6ff);
+            color: var(--tag-color, #1e40af);
+            border-color: var(--tag-border, #bfdbfe);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .tag-badge-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--dot-color, #94a3b8);
+            display: inline-block;
+            transition: transform 0.15s ease;
+        }
+
+        .tag-badge-item input[type="checkbox"]:checked + .tag-badge-label .tag-badge-dot {
+            transform: scale(1.2);
+        }
+
+        /* Password input field styling */
+        .password-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+
+        .password-wrapper .form-input {
+            padding-right: 40px;
+        }
+
+        .password-toggle-btn {
+            position: absolute;
+            right: 10px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            color: #64748b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.15s;
+        }
+
+        .password-toggle-btn:hover {
+            color: #0f172a;
+        }
+
+        .password-toggle-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
         }
 
         .form-group {

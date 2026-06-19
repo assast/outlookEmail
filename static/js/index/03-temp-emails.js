@@ -191,6 +191,48 @@
             hideModal('tempEmailProviderModal');
         }
 
+        // 切换 Duckmail 密码可见性
+        function toggleDuckmailPasswordVisibility() {
+            const input = document.getElementById('duckmailPassword');
+            const svg = document.getElementById('duckmailPasswordEyeIcon');
+            if (!input || !svg) return;
+
+            if (input.type === 'password') {
+                input.type = 'text';
+                svg.innerHTML = `
+                    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
+                    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+                    <path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
+                    <line x1="2" y1="2" x2="22" y2="22"/>
+                `;
+            } else {
+                input.type = 'password';
+                svg.innerHTML = `
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                `;
+            }
+        }
+
+        // 切换 Cloudflare 用户名生成方式
+        function toggleCloudflareUsernameMode(mode) {
+            const btnRandom = document.getElementById('usernameModeRandom');
+            const btnCustom = document.getElementById('usernameModeCustom');
+            const groupUsername = document.getElementById('cloudflareUsernameGroup');
+            const textarea = document.getElementById('cloudflareUsername');
+
+            if (mode === 'random') {
+                btnRandom?.classList.add('active');
+                btnCustom?.classList.remove('active');
+                if (groupUsername) groupUsername.style.display = 'none';
+                if (textarea) textarea.value = '';
+            } else {
+                btnRandom?.classList.remove('active');
+                btnCustom?.classList.add('active');
+                if (groupUsername) groupUsername.style.display = 'block';
+            }
+        }
+
         // 显示提供商选择弹窗
         function showTempEmailProviderModal() {
             closeAllModals();
@@ -204,29 +246,51 @@
                 modal.innerHTML = `
                     <div class="modal-content temp-email-provider-modal-content">
                         <div class="modal-header">
-                            <h3>⚡ 生成临时邮箱</h3>
+                            <h3>生成临时邮箱</h3>
                             <button class="modal-close" onclick="hideTempEmailProviderModal()">&times;</button>
                         </div>
                         <div class="modal-body temp-email-provider-modal-body">
                             <div class="form-group">
                                 <label class="form-label">选择提供商</label>
-                                <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-                                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 10px 16px; border: 2px solid #e5e5e5; border-radius: 8px; flex: 1; transition: all 0.2s;" id="providerLabelGptmail">
-                                        <input type="radio" name="tempEmailProvider" value="gptmail" checked onchange="toggleTempEmailProvider('gptmail')">
-                                        <span style="font-weight: 600;">GPTMail</span>
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 10px 16px; border: 2px solid #e5e5e5; border-radius: 8px; flex: 1; transition: all 0.2s;" id="providerLabelDuckmail">
-                                        <input type="radio" name="tempEmailProvider" value="duckmail" onchange="toggleTempEmailProvider('duckmail')">
-                                        <span style="font-weight: 600;">DuckMail</span>
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 10px 16px; border: 2px solid #e5e5e5; border-radius: 8px; flex: 1; transition: all 0.2s;" id="providerLabelCloudflare">
-                                        <input type="radio" name="tempEmailProvider" value="cloudflare" onchange="toggleTempEmailProvider('cloudflare')">
-                                        <span style="font-weight: 600;">Cloudflare</span>
-                                    </label>
+                                <div class="provider-tabs">
+                                    <div class="provider-tab-item">
+                                        <input type="radio" id="providerCloudflare" name="tempEmailProvider" value="cloudflare" checked onchange="toggleTempEmailProvider('cloudflare')">
+                                        <label class="provider-tab-label" for="providerCloudflare" id="providerLabelCloudflare">
+                                            <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-2.54-4.5-5-4.5-.48 0-.96.06-1.41.17A5.98 5.98 0 0 0 9 8c-3.12 0-5.67 2.43-5.96 5.5A4.5 4.5 0 0 0 7.5 19h10z"/>
+                                            </svg>
+                                            <span>Cloudflare</span>
+                                        </label>
+                                    </div>
+                                    <div class="provider-tab-item">
+                                        <input type="radio" id="providerGptmail" name="tempEmailProvider" value="gptmail" onchange="toggleTempEmailProvider('gptmail')">
+                                        <label class="provider-tab-label" for="providerGptmail" id="providerLabelGptmail">
+                                            <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z"/>
+                                                <path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5Z"/>
+                                                <path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1Z"/>
+                                            </svg>
+                                            <span>GPTMail</span>
+                                        </label>
+                                    </div>
+                                    <div class="provider-tab-item">
+                                        <input type="radio" id="providerDuckmail" name="tempEmailProvider" value="duckmail" onchange="toggleTempEmailProvider('duckmail')">
+                                        <label class="provider-tab-label" for="providerDuckmail" id="providerLabelDuckmail">
+                                            <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+                                                <path d="M7.5 10.5c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5z"/>
+                                                <path d="M11.5 11.5c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5z"/>
+                                                <path d="M16 14c0 1.657-2.686 3-6 3s-6-1.343-6-3"/>
+                                            </svg>
+                                            <span>DuckMail</span>
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
                             <div id="gptmailFields">
-                                <div class="form-hint" style="margin-bottom: 12px;">点击下方按钮即可一键生成 GPTMail 临时邮箱</div>
+                                <div class="form-hint" style="margin-bottom: 12px; text-align: center; padding: 20px 0; color: #64748b;">
+                                    点击下方按钮即可一键生成 GPTMail 临时邮箱
+                                </div>
                             </div>
                             <div id="duckmailFields" style="display: none;">
                                 <div class="form-group">
@@ -237,60 +301,91 @@
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">用户名</label>
-                                    <input type="text" class="form-input" id="duckmailUsername" placeholder="至少 3 个字符">
+                                    <input type="text" class="form-input" id="duckmailUsername" placeholder="请输入用户名（至少 3 个字符）">
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">密码</label>
-                                    <input type="password" class="form-input" id="duckmailPassword" placeholder="至少 6 个字符">
-                                    <div class="form-hint">用于登录邮箱，请牢记密码。邮件保存 3 天，账号不会自动删除</div>
+                                    <div class="password-wrapper">
+                                        <input type="password" class="form-input" id="duckmailPassword" placeholder="请输入登录密码（至少 6 个字符）">
+                                        <button type="button" class="password-toggle-btn" onclick="toggleDuckmailPasswordVisibility()" title="显示/隐藏密码">
+                                            <svg id="duckmailPasswordEyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                                                <circle cx="12" cy="12" r="3"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <div class="form-hint">用于登录邮箱，请务必牢记密码。邮件保存 3 天，账号不会自动删除</div>
                                 </div>
                             </div>
                             <div id="cloudflareFields" style="display: none;">
-                                <div class="form-group">
-                                    <label class="form-label">数量</label>
-                                    <input type="number" class="form-input" id="cloudflareGenerateCount" min="1" max="50" value="1" style="width: 100%;">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">渠道</label>
-                                    <select class="form-input" id="cloudflareChannel" style="width: 100%;" onchange="loadCloudflareDomains()">
-                                        <option value="">加载中...</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">域名</label>
-                                    <select class="form-input" id="cloudflareDomain" style="width: 100%;">
-                                        <option value="">加载中...</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px;">
-                                        <label class="form-label" style="margin-bottom: 0;">用户名（可选）</label>
-                                        <button class="btn btn-secondary" type="button" id="cloudflareAiGenerateBtn" onclick="generateCloudflareAiUsernames()">AI生成</button>
+                                <div class="form-grid-2">
+                                    <div class="form-group">
+                                        <label class="form-label">渠道</label>
+                                        <select class="form-input" id="cloudflareChannel" style="width: 100%;" onchange="loadCloudflareDomains()">
+                                            <option value="">加载中...</option>
+                                        </select>
                                     </div>
-                                    <textarea class="form-input" id="cloudflareUsername" rows="4" placeholder="留空则随机生成；一行一个用户名" style="width: 100%; min-height: 84px; resize: vertical;"></textarea>
-                                    <div class="form-hint">一行一个用户名；留空则按数量随机生成</div>
+                                    <div class="form-group">
+                                        <label class="form-label">域名</label>
+                                        <select class="form-input" id="cloudflareDomain" style="width: 100%;">
+                                            <option value="">加载中...</option>
+                                        </select>
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label class="form-label">标签</label>
-                                    <div class="import-tag-options" id="cloudflareGenerateTagOptions" style="max-height: 120px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px;">
-                                        <div class="import-tag-empty">暂无标签</div>
+                                <div class="form-grid-2">
+                                    <div class="form-group">
+                                        <label class="form-label">数量</label>
+                                        <input type="number" class="form-input" id="cloudflareGenerateCount" min="1" max="50" value="1" style="width: 100%;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">生成方式</label>
+                                        <div class="username-mode-selector">
+                                            <button type="button" class="btn btn-secondary" id="usernameModeRandom" onclick="toggleCloudflareUsernameMode('random')">🎲 随机</button>
+                                            <button type="button" class="btn btn-secondary active" id="usernameModeCustom" onclick="toggleCloudflareUsernameMode('custom')">✍️ 自定义</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-group" id="cloudflareUsernameGroup" style="display: block;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px;">
+                                        <label class="form-label" style="margin-bottom: 0;">用户名列表</label>
+                                        <button class="btn btn-secondary btn-ai-wand" type="button" id="cloudflareAiGenerateBtn" onclick="generateCloudflareAiUsernames()">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/>
+                                                <path d="m14 7 3 3"/>
+                                                <path d="M5 6v4"/>
+                                                <path d="M19 14v4"/>
+                                                <path d="M10 2v2"/>
+                                                <path d="M7 8H3"/>
+                                                <path d="M21 16h-4"/>
+                                                <path d="M11 3H9"/>
+                                            </svg>
+                                            AI 智能生成
+                                        </button>
+                                    </div>
+                                    <textarea class="form-input" id="cloudflareUsername" rows="2" placeholder="一行一个用户名（留空则按数量随机生成）" style="width: 100%; min-height: 48px; resize: vertical;"></textarea>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 4px;">
+                                    <label class="form-label">绑定标签</label>
+                                    <div class="tag-cloud" id="cloudflareGenerateTagOptions">
+                                        <div class="tag-cloud-empty">暂无标签</div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                         <div class="modal-footer">
                             <button class="btn btn-secondary" onclick="hideTempEmailProviderModal()">取消</button>
-                            <button class="btn btn-primary" id="createTempEmailBtn" onclick="doGenerateTempEmail()">✨ 创建邮箱</button>
+                            <button class="btn btn-primary" id="createTempEmailBtn" onclick="doGenerateTempEmail()">创建邮箱</button>
                         </div>
                     </div>
                 `;
                 document.body.appendChild(modal);
             }
             // 重置表单，使用上次保存的渠道
-            const defaultProvider = localStorage.getItem('outlook_temp_email_generate') || 'gptmail';
+            const defaultProvider = localStorage.getItem('outlook_temp_email_generate') || 'cloudflare';
             const radio = modal.querySelector(`input[value="${defaultProvider}"]`);
             if (radio) radio.checked = true;
             toggleTempEmailProvider(defaultProvider);
+            toggleCloudflareUsernameMode('custom');
             setModalVisible('tempEmailProviderModal', true);
         }
 
@@ -306,40 +401,25 @@
             const labelDuck = document.getElementById('providerLabelDuckmail');
             const labelCloudflare = document.getElementById('providerLabelCloudflare');
 
+            labelGpt?.classList.toggle('active', provider === 'gptmail');
+            labelDuck?.classList.toggle('active', provider === 'duckmail');
+            labelCloudflare?.classList.toggle('active', provider === 'cloudflare');
+
             if (provider === 'duckmail') {
                 gptmailFields.style.display = 'none';
                 duckmailFields.style.display = 'block';
                 cloudflareFields.style.display = 'none';
-                labelGpt.style.borderColor = '#e5e5e5';
-                labelGpt.style.backgroundColor = 'transparent';
-                labelDuck.style.borderColor = '#1a1a1a';
-                labelDuck.style.backgroundColor = '#f8f8f8';
-                labelCloudflare.style.borderColor = '#e5e5e5';
-                labelCloudflare.style.backgroundColor = 'transparent';
-                // 加载 DuckMail 域名
                 loadDuckmailDomains();
             } else if (provider === 'cloudflare') {
                 gptmailFields.style.display = 'none';
                 duckmailFields.style.display = 'none';
                 cloudflareFields.style.display = 'block';
-                labelGpt.style.borderColor = '#e5e5e5';
-                labelGpt.style.backgroundColor = 'transparent';
-                labelDuck.style.borderColor = '#e5e5e5';
-                labelDuck.style.backgroundColor = 'transparent';
-                labelCloudflare.style.borderColor = '#1a1a1a';
-                labelCloudflare.style.backgroundColor = '#f8f8f8';
                 loadCloudflareChannelsForGenerate();
                 ensureCloudflareGenerateTagsLoaded();
             } else {
                 gptmailFields.style.display = 'block';
                 duckmailFields.style.display = 'none';
                 cloudflareFields.style.display = 'none';
-                labelGpt.style.borderColor = '#1a1a1a';
-                labelGpt.style.backgroundColor = '#f8f8f8';
-                labelDuck.style.borderColor = '#e5e5e5';
-                labelDuck.style.backgroundColor = 'transparent';
-                labelCloudflare.style.borderColor = '#e5e5e5';
-                labelCloudflare.style.backgroundColor = 'transparent';
             }
         }
 
@@ -426,17 +506,28 @@
 
             const tags = typeof allTags === 'undefined' || !Array.isArray(allTags) ? [] : allTags;
             if (!tags.length) {
-                container.innerHTML = '<div class="import-tag-empty">暂无标签</div>';
+                container.innerHTML = '<div class="tag-cloud-empty">暂无标签</div>';
                 return;
             }
 
-            container.innerHTML = tags.map(tag => `
-                <label class="import-tag-option">
-                    <input type="checkbox" class="cloudflare-generate-tag-checkbox" value="${escapeHtml(String(tag.id))}">
-                    <span class="import-tag-dot" style="background-color: ${escapeHtml(tag.color || '#9ca3af')};"></span>
-                    <span>${escapeHtml(tag.name || '')}</span>
-                </label>
-            `).join('');
+            container.innerHTML = tags.map(tag => {
+                const color = tag.color || '#9ca3af';
+                let bgStyle = '';
+                if (color.startsWith('#')) {
+                    bgStyle = `--dot-color: ${color}; --tag-bg: ${color}15; --tag-color: ${color}; --tag-border: ${color}40;`;
+                } else {
+                    bgStyle = `--dot-color: ${color}; --tag-bg: rgba(156, 163, 175, 0.1); --tag-color: #374151; --tag-border: #e2e8f0;`;
+                }
+                return `
+                    <label class="tag-badge-item" style="${bgStyle}">
+                        <input type="checkbox" class="cloudflare-generate-tag-checkbox" value="${escapeHtml(String(tag.id))}">
+                        <span class="tag-badge-label">
+                            <span class="tag-badge-dot"></span>
+                            <span>${escapeHtml(tag.name || '')}</span>
+                        </span>
+                    </label>
+                `;
+            }).join('');
         }
 
         function getCloudflareGenerateSelectedTagIds() {

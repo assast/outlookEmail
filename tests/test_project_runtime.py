@@ -2319,13 +2319,13 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
 
         self.assertLess(settings_html.index('data-target="settingsGeneralSection"'), settings_html.index('data-target="settingsRefreshSection"'))
         self.assertLess(settings_html.index('data-target="settingsRefreshSection"'), settings_html.index('data-target="forwardingSettingsSection"'))
-        self.assertLess(settings_html.index('data-target="forwardingSettingsSection"'), settings_html.index('data-target="settingsAccessSection"'))
+        self.assertLess(settings_html.index('data-target="forwardingSettingsSection"'), settings_html.index('data-target="settingsCloudflareSection"'))
+        self.assertLess(settings_html.index('data-target="settingsCloudflareSection"'), settings_html.index('data-target="settingsAccessSection"'))
         self.assertLess(settings_html.index('data-target="settingsAccessSection"'), settings_html.index('data-target="settingsDuckMailSection"'))
-        self.assertLess(settings_html.index('data-target="settingsDuckMailSection"'), settings_html.index('data-target="settingsCloudflareSection"'))
 
-        self.assertLess(settings_html.index('id="forwardingSettingsSection"'), settings_html.index('id="settingsAccessSection"'))
+        self.assertLess(settings_html.index('id="forwardingSettingsSection"'), settings_html.index('id="settingsCloudflareSection"'))
+        self.assertLess(settings_html.index('id="settingsCloudflareSection"'), settings_html.index('id="settingsAccessSection"'))
         self.assertLess(settings_html.index('id="settingsAccessSection"'), settings_html.index('id="settingsDuckMailSection"'))
-        self.assertLess(settings_html.index('id="settingsDuckMailSection"'), settings_html.index('id="settingsCloudflareSection"'))
 
     def test_cloudflare_channel_form_actions_distinguish_create_and_reset(self):
         settings_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'dialogs-management.html').read_text(encoding='utf-8')

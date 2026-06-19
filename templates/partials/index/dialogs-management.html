@@ -42,6 +42,12 @@
                                     </button>
                                 </li>
                                 <li>
+                                    <button type="button" class="settings-sidebar-link" data-target="settingsCloudflareSection" onclick="scrollSettingsSection('settingsCloudflareSection', this)">
+                                        <strong>Cloudflare 临时邮箱</strong>
+                                        <span>Worker 域名、邮箱域名列表和管理员密码</span>
+                                    </button>
+                                </li>
+                                <li>
                                     <button type="button" class="settings-sidebar-link" data-target="settingsAccessSection" onclick="scrollSettingsSection('settingsAccessSection', this)">
                                         <strong>GPTMail 临时邮箱设置</strong>
                                         <span>GPTMail API Key</span>
@@ -51,12 +57,6 @@
                                     <button type="button" class="settings-sidebar-link" data-target="settingsDuckMailSection" onclick="scrollSettingsSection('settingsDuckMailSection', this)">
                                         <strong>DuckMail 临时邮箱</strong>
                                         <span>自部署实例地址与私有域名 API Key</span>
-                                    </button>
-                                </li>
-                                <li>
-                                    <button type="button" class="settings-sidebar-link" data-target="settingsCloudflareSection" onclick="scrollSettingsSection('settingsCloudflareSection', this)">
-                                        <strong>Cloudflare 临时邮箱</strong>
-                                        <span>Worker 域名、邮箱域名列表和管理员密码</span>
                                     </button>
                                 </li>
                             </ul>
@@ -534,41 +534,6 @@
                         </div>
                     </div>
                 </section>
-                <section class="settings-section" id="settingsAccessSection">
-                    <div class="settings-section-head">
-                        <span class="settings-section-kicker">GPTMail</span>
-                        <h4>GPTMail 临时邮箱设置</h4>
-                        <p>用于配置 GPTMail 临时邮箱能力所需的 API Key。</p>
-                    </div>
-                    <div class="settings-panel settings-panel-grid">
-                        <div class="form-group">
-                            <label class="form-label">GPTMail API Key</label>
-                            <input type="text" class="form-input" id="settingsApiKey" placeholder="输入 GPTMail API Key">
-                            <div class="form-hint">用于临时邮箱功能，可从 <a class="inline-link" href="https://mail.chatgpt.org.uk/api" target="_blank">gptmail.io</a> 获取。</div>
-                        </div>
-                    </div>
-                </section>
-
-                <section class="settings-section" id="settingsDuckMailSection">
-                    <div class="settings-section-head">
-                        <span class="settings-section-kicker">Temp Mail</span>
-                        <h4>DuckMail 临时邮箱设置</h4>
-                        <p>用于接入自部署或私有能力的 DuckMail 服务。</p>
-                    </div>
-                    <div class="settings-panel settings-panel-grid">
-                        <div class="form-group">
-                            <label class="form-label">DuckMail API 地址</label>
-                            <input type="text" class="form-input" id="settingsDuckmailBaseUrl" placeholder="https://api.duckmail.sbs">
-                            <div class="form-hint">自部署 DuckMail 实例的 API 地址，留空时默认使用官方地址。</div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">DuckMail API Key（可选）</label>
-                            <input type="text" class="form-input" id="settingsDuckmailApiKey" placeholder="dk_ 前缀的 API Key">
-                            <div class="form-hint">用于获取私有域名，可从 <a class="inline-link" href="https://domain.duckmail.sbs" target="_blank">domain.duckmail.sbs</a> 获取。</div>
-                        </div>
-                    </div>
-                </section>
-
                 <section class="settings-section" id="settingsCloudflareSection">
                     <div class="settings-section-head">
                         <span class="settings-section-kicker">Cloudflare</span>
@@ -660,6 +625,41 @@
                         </div>
                         <div class="form-group settings-form-span-full">
                             <div class="form-hint" id="settingsCloudflareAiTestResult">未测试</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="settings-section" id="settingsAccessSection">
+                    <div class="settings-section-head">
+                        <span class="settings-section-kicker">GPTMail</span>
+                        <h4>GPTMail 临时邮箱设置</h4>
+                        <p>用于配置 GPTMail 临时邮箱能力所需的 API Key。</p>
+                    </div>
+                    <div class="settings-panel settings-panel-grid">
+                        <div class="form-group">
+                            <label class="form-label">GPTMail API Key</label>
+                            <input type="text" class="form-input" id="settingsApiKey" placeholder="输入 GPTMail API Key">
+                            <div class="form-hint">用于临时邮箱功能，可从 <a class="inline-link" href="https://mail.chatgpt.org.uk/api" target="_blank">gptmail.io</a> 获取。</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="settings-section" id="settingsDuckMailSection">
+                    <div class="settings-section-head">
+                        <span class="settings-section-kicker">Temp Mail</span>
+                        <h4>DuckMail 临时邮箱设置</h4>
+                        <p>用于接入自部署或私有能力的 DuckMail 服务。</p>
+                    </div>
+                    <div class="settings-panel settings-panel-grid">
+                        <div class="form-group">
+                            <label class="form-label">DuckMail API 地址</label>
+                            <input type="text" class="form-input" id="settingsDuckmailBaseUrl" placeholder="https://api.duckmail.sbs">
+                            <div class="form-hint">自部署 DuckMail 实例的 API 地址，留空时默认使用官方地址。</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">DuckMail API Key（可选）</label>
+                            <input type="text" class="form-input" id="settingsDuckmailApiKey" placeholder="dk_ 前缀的 API Key">
+                            <div class="form-hint">用于获取私有域名，可从 <a class="inline-link" href="https://domain.duckmail.sbs" target="_blank">domain.duckmail.sbs</a> 获取。</div>
                         </div>
                     </div>
                 </section>
