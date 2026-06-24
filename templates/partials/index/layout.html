@@ -82,7 +82,13 @@
             <div class="navbar-actions-menu" id="navbarActionsMenu">
                 <button class="navbar-btn" id="refreshTokensBtn" type="button" onclick="showRefreshModal()">Token刷新管理</button>
                 <button class="navbar-btn" id="exportAccountsBtn" type="button" onclick="showExportModal()">导出邮箱</button>
-                <button class="navbar-btn" id="openSettingsBtn" type="button" onclick="showSettingsModal()">⚙️ 设置</button>
+                <button class="navbar-btn" id="openSettingsBtn" style="display: inline-flex; align-items: center; gap: 4px;" type="button" onclick="showSettingsModal()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    <span>设置</span>
+                </button>
                 <button class="navbar-btn" id="logoutBtn" type="button" onclick="logout()" style="color: #dc3545;">退出登录</button>
             </div>
         </div>
@@ -94,7 +100,14 @@
         <div class="group-panel" id="groupPanel">
             <div class="panel-header">
                 <span class="panel-title">分组</span>
-                <button class="panel-action-btn" onclick="showAddGroupModal()" title="添加分组">+</button>
+                <div style="display: flex; gap: 4px;">
+                    <button class="panel-action-btn" id="collapseGroupPanelBtn" onclick="toggleGroupPanelCollapse()" title="折叠分组栏">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="11 13 4 8 11 3"></polyline>
+                        </svg>
+                    </button>
+                    <button class="panel-action-btn" onclick="showAddGroupModal()" title="添加分组">+</button>
+                </div>
             </div>
             <div class="group-list" id="groupList">
                 <!-- 分组列表将通过 JS 动态加载 -->
@@ -104,6 +117,11 @@
         <!-- 邮箱账号面板 -->
         <div class="account-panel" id="accountPanel">
             <div class="account-panel-header">
+                <button class="panel-action-btn" id="expandGroupPanelBtn" onclick="toggleGroupPanelCollapse()" title="展开分组栏" style="display: none; flex-shrink: 0; margin-right: 8px;">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="5 3 12 8 5 13"></polyline>
+                    </svg>
+                </button>
                 <div class="account-panel-title" id="accountPanelTitle">
                     <span class="group-color" id="currentGroupColor" style="background-color: #666"></span>
                     <span class="current-group-title-wrap">
@@ -114,13 +132,29 @@
                 <div class="account-panel-header-actions">
                     <button class="panel-action-btn account-selection-mode-btn" id="accountSelectionModeBtn"
                         onclick="toggleAccountSelectionMode()" title="批量选择" aria-pressed="false">
-                        ☑
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="2" width="12" height="12" rx="2"></rect>
+                            <path d="M5 8l2 2 4-4"></path>
+                        </svg>
                     </button>
                     <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
-                        🏷️
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M7 1.5h6v6L6.5 14 2 9.5 7 1.5z"></path>
+                            <circle cx="9.5" cy="5" r="1.2" fill="currentColor"></circle>
+                        </svg>
+                    </button>
+                    <button class="panel-action-btn" id="accountMinimalBtn" onclick="toggleAccountMinimalMode()" title="切换极简展示" aria-pressed="false">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="2.5" width="12" height="2.5" rx="0.5"></rect>
+                            <rect x="2" y="6.75" width="12" height="2.5" rx="0.5"></rect>
+                            <rect x="2" y="11" width="12" height="2.5" rx="0.5"></rect>
+                        </svg>
                     </button>
                     <button class="panel-action-btn panel-action-btn-accent" onclick="showGetRefreshTokenModal()" title="授权并保存 Outlook 账号">
-                        🔑
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="5.5" cy="10.5" r="3.5"></circle>
+                            <path d="M8 8l5-5M13 3h2v2M11 5h2v2"></path>
+                        </svg>
                     </button>
                     <button class="panel-action-btn panel-action-btn-primary" onclick="showAddAccountModal()" title="导入邮箱账号">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">

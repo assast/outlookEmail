@@ -132,6 +132,18 @@
                 width: min(300px, 84vw);
             }
 
+            #collapseGroupPanelBtn,
+            #expandGroupPanelBtn {
+                display: none !important;
+            }
+
+            .group-panel-collapsed .group-panel.show {
+                width: min(300px, 84vw) !important;
+                opacity: 1 !important;
+                pointer-events: auto !important;
+                border-right: 1px solid #e5e5e5 !important;
+            }
+
             .account-panel {
                 width: min(380px, 92vw);
             }
