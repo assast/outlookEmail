@@ -11,7 +11,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ### Added
 - Cloudflare 临时邮箱导入支持自动识别并兼容旧格式 `邮箱----JWT`，自动提取邮箱部分，无需手动修改旧导出文件。
 - Cloudflare 渠道设置新增"测试连接"功能，支持一键测试域名列表、地址列表和邮件列表三项管理员 API，并展示详细测试结果。
-- Cloudflare 自动导入邮箱支持实时进度显示，使用 Server-Sent Events 流式推送导入进度、百分比和统计信息。
+- 新增Cloudflare 自动导入邮箱功能，支持实时进度显示，使用 Server-Sent Events 流式推送导入进度、百分比和统计信息。
 
 ### Changed
 - 自动导入大数据量时在界面实时显示：已导入数量/总数量 (百分比) - 新增、更新、跳过统计。
