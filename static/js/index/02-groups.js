@@ -1,4 +1,4 @@
-        /* global ACCOUNT_LIST_DEFAULT_PAGE_SIZE, ACCOUNT_LIST_MAX_PAGE_SIZE, accountListPageSize, accountListRequestSeq, accountPaginationState, accountSelectionMode, accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, formatAbsoluteDateTime, generateTempEmail, groups, handleAccountRowSelectionClick, handleAccountSelectionCheckboxClick, handleApiError, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, shouldShowAccountCreatedAt, shouldShowAccountSortOrder, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, tempEmailGroupId, toggleAccountSelectionMode, updateCurrentGroupHeader, updateMobileContext */
+        /* global ACCOUNT_LIST_DEFAULT_PAGE_SIZE, ACCOUNT_LIST_MAX_PAGE_SIZE, accountListPageSize, accountListRequestSeq, accountPaginationState, accountSelectionMode, accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, formatAbsoluteDateTime, generateTempEmail, groups, handleAccountRowSelectionClick, handleAccountSelectionCheckboxClick, handleApiError, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadCloudflareChannelsForImport, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, shouldShowAccountCreatedAt, shouldShowAccountSortOrder, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, tempEmailGroupId, toggleAccountSelectionMode, updateCurrentGroupHeader, updateMobileContext */
 
         // ==================== 分组相关 ====================
 
@@ -1977,9 +1977,13 @@
             const inputEl = document.getElementById('accountInput');
             const channelGroup = document.getElementById('importChannelGroup');
             const channelSelect = document.getElementById('importChannelSelect');
+            const cloudflareChannelGroup = document.getElementById('importCloudflareChannelGroup');
+            const cloudflareModeGroup = document.getElementById('importCloudflareModeGroup');
+            const cloudflareModeSelect = document.getElementById('importCloudflareImportMode');
             const providerGroup = document.getElementById('importProviderGroup');
             const providerSelect = document.getElementById('importProviderSelect');
             const exampleEl = document.getElementById('importFormatExample');
+            const importSource = document.querySelector('#addAccountModal .import-account-source');
             const customImapSettings = document.getElementById('customImapSettings');
             const customHost = document.getElementById('importImapHost');
             const customPort = document.getElementById('importImapPort');
@@ -1989,6 +1993,11 @@
             const isTempGroup = isTempImportGroup();
             if (channelGroup) channelGroup.style.display = isTempGroup ? '' : 'none';
             if (providerGroup) providerGroup.style.display = isTempGroup ? 'none' : '';
+            if (!isTempGroup) {
+                if (cloudflareChannelGroup) cloudflareChannelGroup.style.display = 'none';
+                if (cloudflareModeGroup) cloudflareModeGroup.style.display = 'none';
+                if (importSource) importSource.style.display = '';
+            }
             accountDefaultFields.forEach(field => {
                 const isTagField = !!field.querySelector('#importTagDropdown');
                 field.style.display = isTempGroup ? (isTagField ? '' : 'none') : '';
@@ -1997,6 +2006,14 @@
             if (isTempGroup) {
                 if (customImapSettings) customImapSettings.style.display = 'none';
                 const channel = channelSelect ? channelSelect.value : 'gptmail';
+                const isCloudflare = channel === 'cloudflare';
+                const cloudflareMode = cloudflareModeSelect ? cloudflareModeSelect.value : 'auto';
+                if (cloudflareChannelGroup) cloudflareChannelGroup.style.display = isCloudflare ? '' : 'none';
+                if (cloudflareModeGroup) cloudflareModeGroup.style.display = isCloudflare ? '' : 'none';
+                if (importSource) importSource.style.display = isCloudflare && cloudflareMode === 'auto' ? 'none' : '';
+                if (isCloudflare && typeof loadCloudflareChannelsForImport === 'function') {
+                    loadCloudflareChannelsForImport();
+                }
                 if (channel === 'duckmail') {
                     hintEl.textContent = '格式：邮箱----密码，每行一个。';
                     inputEl.placeholder = '邮箱----密码';
@@ -2007,11 +2024,20 @@
                     return;
                 }
                 if (channel === 'cloudflare') {
-                    hintEl.textContent = '格式：邮箱----JWT。可用 [cloudflare:渠道名] 分段，或使用 邮箱----JWT----渠道名。';
-                    inputEl.placeholder = '[cloudflare:cfmail-us]\nuser@example.com----jwt\nuser2@example.com----jwt----cfmail-hk';
+                    if (cloudflareMode === 'auto') {
+                        hintEl.textContent = '自动从所选 Cloudflare 渠道拉取邮箱地址并导入，不拉取 JWT。';
+                        inputEl.placeholder = '';
+                        if (exampleEl) {
+                            exampleEl.style.display = 'none';
+                            exampleEl.textContent = '';
+                        }
+                        return;
+                    }
+                    hintEl.textContent = '格式：每行一个邮箱地址。手动导入不再支持 邮箱----JWT。';
+                    inputEl.placeholder = 'user@example.com\nuser2@example.com';
                     if (exampleEl) {
                         exampleEl.style.display = '';
-                        exampleEl.textContent = '示例：\n[cloudflare:cfmail-us]\nuser@example.com----eyJhbGciOi...\nuser2@example.com----eyJhbGciOi...----cfmail-hk';
+                        exampleEl.textContent = '示例：\nuser@example.com\nuser2@example.com';
                     }
                     return;
                 }

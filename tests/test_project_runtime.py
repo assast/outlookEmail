@@ -2122,12 +2122,17 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
 
         self.assertIn('临时邮箱类型', dialog_html)
         self.assertIn('id="importChannelSelect"', dialog_html)
-        self.assertNotIn('id="importCloudflareChannel', dialog_html)
+        self.assertIn('id="importCloudflareChannelSelect"', dialog_html)
+        self.assertIn('id="importCloudflareImportMode"', dialog_html)
+        self.assertIn('自动拉取邮箱导入', dialog_html)
+        self.assertIn('手动导入', dialog_html)
         self.assertIn("const isTagField = !!field.querySelector('#importTagDropdown');", groups_js)
         self.assertIn("field.style.display = isTempGroup ? (isTagField ? '' : 'none') : '';", groups_js)
-        self.assertIn('[cloudflare:cfmail-us]', groups_js)
-        self.assertIn('邮箱----JWT----渠道名', groups_js)
-        self.assertIn('user2@example.com----eyJhbGciOi...----cfmail-hk', groups_js)
+        self.assertIn('自动从所选 Cloudflare 渠道拉取邮箱地址并导入，不拉取 JWT。', groups_js)
+        self.assertIn('手动导入不再支持 邮箱----JWT', groups_js)
+        self.assertIn('loadCloudflareChannelsForImport()', groups_js)
+        self.assertIn("'/api/temp-emails/import-cloudflare-addresses'", settings_js)
+        self.assertIn('payload.cloudflare_channel_id = cloudflareChannelId;', settings_js)
         self.assertIn('tag_ids: tagIds', settings_js)
 
     def test_cloudflare_ai_username_settings_frontend_contract(self):

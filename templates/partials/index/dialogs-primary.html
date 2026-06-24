@@ -105,6 +105,17 @@
                                     <option value="cloudflare">Cloudflare</option>
                                 </select>
                             </div>
+                            <div class="form-group" id="importCloudflareChannelGroup" style="display: none;">
+                                <label class="form-label">Cloudflare 渠道</label>
+                                <select class="form-select" id="importCloudflareChannelSelect"></select>
+                            </div>
+                            <div class="form-group" id="importCloudflareModeGroup" style="display: none;">
+                                <label class="form-label">导入方式</label>
+                                <select class="form-select" id="importCloudflareImportMode" onchange="updateImportHint()">
+                                    <option value="auto">自动拉取邮箱导入</option>
+                                    <option value="manual">手动导入</option>
+                                </select>
+                            </div>
                             <div class="form-group" id="importProviderGroup">
                                 <label class="form-label">邮箱类型</label>
                                 <select class="form-select" id="importProviderSelect" onchange="updateImportHint()">

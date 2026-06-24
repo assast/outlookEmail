@@ -1,4 +1,4 @@
-        /* global accountsCache, allTags, closeAllModals, closeMobilePanels, closeNavbarActionsMenu, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, escapeHtml, formatAbsoluteDateTime, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, invalidateNormalMailRetentionCaches, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, refreshVisibleAccountList, setAppTimeZone, setModalVisible, setSelectedForwardChannels, setShowAccountCreatedAt, setShowAccountSortOrder, setShowGroupId, setNormalMailLocalRetentionEnabled, showConfirmModal, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
+        /* global accountsCache, allTags, closeAllModals, closeMobilePanels, closeNavbarActionsMenu, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, escapeHtml, formatAbsoluteDateTime, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, invalidateNormalMailRetentionCaches, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadCloudflareChannelsForTempEmails, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, refreshVisibleAccountList, setAppTimeZone, setModalVisible, setSelectedForwardChannels, setShowAccountCreatedAt, setShowAccountSortOrder, setShowGroupId, setNormalMailLocalRetentionEnabled, showConfirmModal, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
 
         // ==================== 设置相关 ====================
         let settingsScrollSyncBound = false;
@@ -883,6 +883,28 @@
                 .filter(Number.isFinite);
         }
 
+        async function loadCloudflareChannelsForImport(forceRefresh = false) {
+            const select = document.getElementById('importCloudflareChannelSelect');
+            if (!select) return [];
+            const channels = typeof loadCloudflareChannelsForTempEmails === 'function'
+                ? await loadCloudflareChannelsForTempEmails(forceRefresh)
+                : [];
+            const enabledChannels = (Array.isArray(channels) ? channels : []).filter(channel => channel.enabled);
+            if (!enabledChannels.length) {
+                select.innerHTML = '<option value="">请先在设置中配置 Cloudflare 渠道</option>';
+                return [];
+            }
+            const currentValue = select.value;
+            select.innerHTML = enabledChannels.map(channel => (
+                `<option value="${Number(channel.id)}">${escapeHtml(channel.name || `#${channel.id}`)}</option>`
+            )).join('');
+            const defaultChannel = enabledChannels.find(channel => channel.is_default) || enabledChannels[0];
+            select.value = enabledChannels.some(channel => String(channel.id) === currentValue)
+                ? currentValue
+                : String(defaultChannel.id);
+            return enabledChannels;
+        }
+
         function showAddAccountModal() {
             showModal('addAccountModal');
             document.getElementById('accountInput').value = '';
@@ -898,14 +920,24 @@
             if (currentGroupId) {
                 document.getElementById('importGroupSelect').value = currentGroupId;
             }
+            const cloudflareMode = document.getElementById('importCloudflareImportMode');
+            if (cloudflareMode) {
+                cloudflareMode.value = 'auto';
+            }
             resetImportDefaults();
             updateImportHint();
+            loadCloudflareChannelsForImport();
         }
 
         async function addAccount() {
             const input = document.getElementById('accountInput').value.trim();
             const groupId = parseInt(document.getElementById('importGroupSelect').value);
             const provider = document.getElementById('importProviderSelect')?.value || 'outlook';
+            const isTempGroup = isTempImportGroup();
+            const tempProvider = isTempGroup ? (document.getElementById('importChannelSelect').value || 'gptmail') : '';
+            const cloudflareMode = document.getElementById('importCloudflareImportMode')?.value || 'auto';
+            const isCloudflareAutoImport = isTempGroup && tempProvider === 'cloudflare' && cloudflareMode === 'auto';
+            const cloudflareChannelId = document.getElementById('importCloudflareChannelSelect')?.value || '';
             const imapHost = document.getElementById('importImapHost')?.value.trim() || '';
             const imapPort = parseInt(document.getElementById('importImapPort')?.value || '993', 10);
             const forwardEnabled = !!document.getElementById('importForwardEnabled')?.checked;
@@ -914,14 +946,17 @@
             const tagIds = getImportSelectedTagIds();
             const importButton = document.querySelector('#addAccountModal .btn.btn-primary');
 
-            if (!input) {
+            if (!input && !isCloudflareAutoImport) {
                 showToast('请输入账号信息', 'error');
                 return;
             }
 
-            const isTempGroup = isTempImportGroup();
             if (!isTempGroup && provider === 'custom' && !imapHost) {
                 showToast('自定义 IMAP 必须填写服务器地址', 'error');
+                return;
+            }
+            if (isTempGroup && tempProvider === 'cloudflare' && !cloudflareChannelId) {
+                showToast('请选择 Cloudflare 渠道', 'error');
                 return;
             }
 
@@ -932,16 +967,96 @@
                 }
                 let response;
                 if (isTempGroup) {
-                    const tempProvider = document.getElementById('importChannelSelect').value || 'gptmail';
-                    response = await fetch('/api/temp-emails/import', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            account_string: input,
-                            provider: tempProvider,
-                            tag_ids: tagIds
-                        })
-                    });
+                    const endpoint = isCloudflareAutoImport
+                        ? '/api/temp-emails/import-cloudflare-addresses'
+                        : '/api/temp-emails/import';
+                    const payload = {
+                        provider: tempProvider,
+                        tag_ids: tagIds
+                    };
+                    if (!isCloudflareAutoImport) {
+                        payload.account_string = input;
+                    }
+                    if (tempProvider === 'cloudflare') {
+                        payload.cloudflare_channel_id = cloudflareChannelId;
+                    }
+
+                    // 自动导入支持流式进度
+                    if (isCloudflareAutoImport) {
+                        payload.stream = true;
+                        const progressHint = document.getElementById('importFormatExample');
+                        if (progressHint) {
+                            progressHint.style.display = '';
+                            progressHint.textContent = '正在拉取地址列表...';
+                        }
+
+                        response = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        // 处理 Server-Sent Events 流
+                        if (response.headers.get('content-type')?.includes('text/event-stream')) {
+                            const reader = response.body.getReader();
+                            const decoder = new TextDecoder();
+                            let buffer = '';
+                            let lastData = null;
+
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+
+                                buffer += decoder.decode(value, { stream: true });
+                                const lines = buffer.split('\n\n');
+                                buffer = lines.pop() || '';
+
+                                for (const line of lines) {
+                                    if (line.startsWith('data: ')) {
+                                        try {
+                                            const eventData = JSON.parse(line.substring(6));
+                                            lastData = eventData;
+
+                                            if (eventData.type === 'progress' && progressHint) {
+                                                const percent = eventData.total > 0
+                                                    ? Math.round((eventData.imported / eventData.total) * 100)
+                                                    : 0;
+                                                progressHint.textContent = `导入进度: ${eventData.imported}/${eventData.total} (${percent}%) - 新增 ${eventData.added}，更新 ${eventData.updated}`;
+                                            } else if (eventData.type === 'complete') {
+                                                if (progressHint) {
+                                                    progressHint.textContent = eventData.success
+                                                        ? `✅ ${eventData.message || '导入完成'}`
+                                                        : `❌ ${eventData.error || '导入失败'}`;
+                                                }
+                                            }
+                                        } catch (e) {
+                                            console.error('Parse SSE error:', e);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 使用最后收到的完整数据
+                            if (lastData && lastData.type === 'complete') {
+                                if (lastData.success) {
+                                    showToast(lastData.message, 'success');
+                                    hideAddAccountModal();
+                                    delete accountsCache[groupId];
+                                    await loadGroups();
+                                    if (currentGroupId === groupId) await loadAccountsByGroup(groupId);
+                                } else {
+                                    handleApiError(lastData, '导入临时邮箱失败');
+                                }
+                                return;
+                            }
+                        }
+                    } else {
+                        response = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                    }
                 } else {
                     response = await fetch('/api/accounts', {
                         method: 'POST',
@@ -1120,9 +1235,13 @@
             const saveBtn = document.getElementById('saveCloudflareChannelBtn');
             const resetBtn = document.getElementById('resetCloudflareChannelBtn');
             const deleteBtn = document.getElementById('deleteCloudflareChannelBtn');
+            const testBtn = document.getElementById('testCloudflareChannelBtn');
+            const testResult = document.getElementById('cloudflareChannelTestResult');
             if (saveBtn) saveBtn.textContent = isEditing ? '保存渠道' : '创建渠道';
             if (resetBtn) resetBtn.textContent = isEditing ? '新建渠道' : '清空表单';
             if (deleteBtn) deleteBtn.style.display = isEditing ? '' : 'none';
+            if (testBtn) testBtn.style.display = isEditing ? '' : 'none';
+            if (testResult) testResult.style.display = 'none';
         }
 
         function resetCloudflareChannelForm() {
@@ -1190,6 +1309,83 @@
             document.getElementById('settingsCloudflareEnabled').checked = !!channel.enabled;
             document.getElementById('settingsCloudflareDefault').checked = !!channel.is_default;
             setCloudflareChannelFormMode(true);
+        }
+
+        async function testCloudflareChannelConnection() {
+            const channelId = document.getElementById('settingsCloudflareChannelId')?.value || '';
+            if (!channelId) {
+                showToast('请先选择要测试的渠道', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('testCloudflareChannelBtn');
+            const resultContainer = document.getElementById('cloudflareChannelTestResult');
+            const resultText = document.getElementById('cloudflareChannelTestResultText');
+            const originalText = btn?.textContent || '';
+
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '测试中...';
+            }
+            if (resultContainer) {
+                resultContainer.style.display = '';
+            }
+            if (resultText) {
+                resultText.textContent = '正在测试 Cloudflare 管理员 API 连接...';
+                resultText.className = 'form-hint';
+            }
+
+            try {
+                const response = await fetch(`/api/cloudflare/channels/${encodeURIComponent(channelId)}/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (resultText) {
+                    let html = `<strong>${escapeHtml(data.message || '测试完成')}</strong><br><br>`;
+                    if (data.tests && Array.isArray(data.tests)) {
+                        html += '<ul style="margin: 0; padding-left: 20px;">';
+                        for (const test of data.tests) {
+                            const icon = test.success ? '✅' : '❌';
+                            html += `<li>${icon} ${escapeHtml(test.test)}`;
+                            if (test.success) {
+                                if (test.domains) {
+                                    html += `: ${test.domains.length} 个域名`;
+                                    if (test.domains.length > 0) {
+                                        html += ` (${test.domains.slice(0, 3).map(d => escapeHtml(d)).join(', ')}${test.domains.length > 3 ? '...' : ''})`;
+                                    }
+                                } else if (test.count !== undefined) {
+                                    html += `: 总计 ${test.count} 条记录`;
+                                }
+                            } else if (test.error) {
+                                html += `: ${escapeHtml(test.error)}`;
+                            }
+                            html += '</li>';
+                        }
+                        html += '</ul>';
+                    }
+                    resultText.innerHTML = html;
+                    resultText.className = data.success ? 'form-hint success-text' : 'form-hint error-text';
+                }
+
+                if (data.success) {
+                    showToast('连接测试通过', 'success');
+                } else {
+                    showToast(data.message || '连接测试失败', 'error');
+                }
+            } catch (error) {
+                if (resultText) {
+                    resultText.textContent = `测试失败: ${error.message}`;
+                    resultText.className = 'form-hint error-text';
+                }
+                showToast('测试连接失败', 'error');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                }
+            }
         }
 
         async function saveCloudflareChannel() {

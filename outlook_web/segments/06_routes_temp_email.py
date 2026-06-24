@@ -561,21 +561,6 @@ def request_cloudflare_ai_usernames(config: Dict[str, Any], count: int,
     return {'success': True, 'usernames': usernames, 'raw_usernames': parsed_usernames, 'seed': request_seed}
 
 
-def cloudflare_get_messages(jwt: str, limit: int = 50, offset: int = 0,
-                            channel: Optional[Dict[str, Any]] = None) -> Optional[List[Dict]]:
-    """获取 Cloudflare Temp Email 邮件列表"""
-    result = cloudflare_temp_request(
-        'GET',
-        '/api/mails',
-        jwt=jwt,
-        params={'limit': limit, 'offset': offset},
-        channel=channel,
-    )
-    if result and isinstance(result.get('results'), list):
-        return result['results']
-    return None
-
-
 def normalize_cloudflare_admin_mail_limit(value: Any, default: int = 50, maximum: int = 100) -> int:
     try:
         limit = int(value)
@@ -631,6 +616,62 @@ def cloudflare_get_admin_messages(limit: int = 50, offset: int = 0, address: str
         count = len(messages)
 
     return {'success': True, 'messages': messages, 'count': count}
+
+
+def cloudflare_get_admin_addresses(limit: int = 100, offset: int = 0, query: str = '',
+                                   channel: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """通过 Cloudflare 管理员接口获取地址列表。"""
+    params = {'limit': limit, 'offset': offset}
+    if query:
+        params['query'] = query
+    result = cloudflare_temp_request(
+        'GET',
+        '/admin/address',
+        admin_auth=True,
+        params=params,
+        channel=channel,
+    )
+    if not result:
+        return {'success': False, 'error': '获取 Cloudflare 地址列表失败'}
+    if isinstance(result, list):
+        return {'success': True, 'addresses': result, 'count': len(result)}
+    if not isinstance(result, dict):
+        return {'success': False, 'error': 'Cloudflare API 响应格式不支持'}
+    if result.get('success') is False:
+        return {'success': False, 'error': result.get('error', '获取 Cloudflare 地址列表失败')}
+
+    if isinstance(result.get('results'), list):
+        addresses = result['results']
+    elif isinstance(result.get('addresses'), list):
+        addresses = result['addresses']
+    elif isinstance(result.get('data'), dict) and isinstance(result['data'].get('results'), list):
+        addresses = result['data']['results']
+    elif isinstance(result.get('data'), list):
+        addresses = result['data']
+    else:
+        return {'success': False, 'error': 'Cloudflare API 响应缺少地址列表'}
+
+    count = result.get('count')
+    if count is None and isinstance(result.get('data'), dict):
+        count = result['data'].get('count')
+    try:
+        count = int(count)
+    except (TypeError, ValueError):
+        count = len(addresses)
+
+    return {'success': True, 'addresses': addresses, 'count': count}
+
+
+def normalize_cloudflare_address_item(item: Any) -> tuple[str, Optional[str]]:
+    if isinstance(item, str):
+        return normalize_email_address(item), None
+    if not isinstance(item, dict):
+        return '', None
+    email_addr = normalize_email_address(
+        item.get('name') or item.get('address') or item.get('email') or item.get('email_address') or ''
+    )
+    address_id = item.get('id') or item.get('address_id')
+    return email_addr, str(address_id).strip() if address_id not in (None, '') else None
 
 
 def parse_cloudflare_mail_timestamp(item: Dict[str, Any]) -> int:
@@ -705,6 +746,54 @@ def format_cloudflare_admin_messages(messages: List[Dict[str, Any]], fallback_ad
     return formatted
 
 
+def parse_cloudflare_temp_messages(email_addr: str, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    unified_messages = []
+    for index, item in enumerate(messages or []):
+        if not isinstance(item, dict):
+            continue
+        raw_email = item.get('raw') or item.get('raw_content') or item.get('source_raw')
+        if not raw_email:
+            continue
+        raw_text = raw_email if isinstance(raw_email, str) else raw_email.decode('utf-8', 'replace')
+        upstream_id = item.get('id') or item.get('mail_id')
+        fallback_id = (
+            str(upstream_id)
+            if upstream_id
+            else f"{email_addr}-{index}-{hashlib.sha256(raw_text.encode('utf-8', 'replace')).hexdigest()}"
+        )
+        unified_messages.append(
+            parse_raw_email_to_temp_message(
+                email_addr,
+                raw_text,
+                fallback_id,
+                parse_cloudflare_mail_timestamp(item),
+            )
+        )
+    return unified_messages
+
+
+def fetch_cloudflare_temp_messages(email_addr: str, temp_email: Optional[Dict[str, Any]],
+                                   limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+    """通过管理员接口获取 Cloudflare 临时邮箱邮件"""
+    channel = get_cloudflare_channel_for_temp_email(temp_email)
+    if not channel:
+        return {'success': False, 'error': 'Cloudflare 渠道归属不存在，请重新导入或创建邮箱'}
+
+    admin_result = cloudflare_get_admin_messages(
+        limit=limit,
+        offset=offset,
+        address=email_addr,
+        channel=channel,
+    )
+    if not admin_result.get('success'):
+        return {'success': False, 'error': admin_result.get('error', '获取 Cloudflare 邮件失败')}
+    return {
+        'success': True,
+        'messages': parse_cloudflare_temp_messages(email_addr, admin_result.get('messages', [])),
+        'method': 'Cloudflare Admin',
+    }
+
+
 def cloudflare_delete_address(address_id: str, channel: Optional[Dict[str, Any]] = None) -> bool:
     """删除 Cloudflare Temp Email 地址"""
     if not address_id:
@@ -716,6 +805,20 @@ def cloudflare_delete_address(address_id: str, channel: Optional[Dict[str, Any]]
         channel=channel,
     )
     return result is not None and result.get('success', False)
+
+
+def cloudflare_delete_address_by_email(email_addr: str, channel: Optional[Dict[str, Any]] = None) -> bool:
+    normalized_email = normalize_email_address(email_addr)
+    if not normalized_email:
+        return False
+    result = cloudflare_get_admin_addresses(limit=20, offset=0, query=normalized_email, channel=channel)
+    if not result.get('success'):
+        return False
+    for item in result.get('addresses') or []:
+        item_email, address_id = normalize_cloudflare_address_item(item)
+        if item_email == normalized_email and address_id:
+            return cloudflare_delete_address(address_id, channel=channel)
+    return False
 
 
 # ==================== DuckMail 临时邮箱 API ====================
@@ -1282,7 +1385,7 @@ def bind_temp_email_tags(temp_email_ids: List[int], tag_ids: Any) -> int:
 
 def add_temp_email(email_addr: str, provider: str = 'gptmail',
                    duckmail_token: str = None, duckmail_account_id: str = None,
-                   duckmail_password: str = None, cloudflare_jwt: str = None,
+                   duckmail_password: str = None,
                    cloudflare_address_id: str = None,
                    cloudflare_channel_id: Optional[int] = None) -> bool:
     """添加临时邮箱"""
@@ -1290,13 +1393,12 @@ def add_temp_email(email_addr: str, provider: str = 'gptmail',
     try:
         db.execute('''INSERT INTO temp_emails (
                         email, provider, duckmail_token, duckmail_account_id, duckmail_password,
-                        cloudflare_jwt, cloudflare_address_id, cloudflare_channel_id
-                      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                        cloudflare_address_id, cloudflare_channel_id
+                      ) VALUES (?, ?, ?, ?, ?, ?, ?)''',
                    (email_addr, provider,
                     encrypt_data(duckmail_token) if duckmail_token else None,
                     duckmail_account_id,
                     encrypt_data(duckmail_password) if duckmail_password else None,
-                    encrypt_data(cloudflare_jwt) if cloudflare_jwt else None,
                     cloudflare_address_id,
                     cloudflare_channel_id))
         db.commit()
@@ -1305,16 +1407,62 @@ def add_temp_email(email_addr: str, provider: str = 'gptmail',
         return False
 
 
-def get_cloudflare_jwt_for_email(email_addr: str) -> Optional[str]:
-    """获取临时邮箱的 Cloudflare JWT"""
-    temp_email = get_temp_email_by_address(email_addr)
-    if not temp_email or temp_email.get('provider') != 'cloudflare':
-        return None
+def upsert_cloudflare_temp_email(email_addr: str, channel: Dict[str, Any],
+                                 cloudflare_address_id: Any = None) -> tuple[str, Optional[int]]:
+    """新增或更新 Cloudflare 临时邮箱，账号凭据依赖渠道管理员权限。"""
+    normalized_email = normalize_email_address(email_addr)
+    if not normalized_email or '@' not in normalized_email:
+        return 'skipped', None
 
-    token = temp_email.get('cloudflare_jwt', '')
-    if token:
-        return decrypt_data(token)
-    return None
+    channel_id = channel.get('id') if channel else None
+    if not channel_id:
+        return 'skipped', None
+
+    address_id = str(cloudflare_address_id or '').strip() or None
+    existing = get_temp_email_by_address(normalized_email)
+    db = get_db()
+    if existing:
+        db.execute(
+            '''
+            UPDATE temp_emails
+            SET provider = ?,
+                cloudflare_jwt = NULL,
+                cloudflare_address_id = ?,
+                cloudflare_channel_id = ?
+            WHERE email = ?
+            ''',
+            ('cloudflare', address_id, channel_id, normalized_email),
+        )
+        db.commit()
+        return 'updated', int(existing['id'])
+
+    if add_temp_email(
+        normalized_email,
+        provider='cloudflare',
+        cloudflare_address_id=address_id,
+        cloudflare_channel_id=channel_id,
+    ):
+        created = get_temp_email_by_address(normalized_email)
+        return 'added', int(created['id']) if created else None
+
+    return 'skipped', None
+
+
+def get_enabled_cloudflare_channel_for_import(channel_id: Any = None) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+    if channel_id not in (None, ''):
+        channel = get_cloudflare_channel_by_id(channel_id, include_disabled=True, include_secret=True)
+        if not channel:
+            return None, 'Cloudflare 渠道不存在'
+    else:
+        channel = get_default_cloudflare_channel(include_disabled=True, include_secret=True)
+        if not channel:
+            return None, '默认 Cloudflare 渠道不存在'
+
+    if not channel.get('enabled'):
+        return None, 'Cloudflare 渠道不可用'
+    if not channel.get('worker_domain') or not decrypt_data(channel.get('admin_password', '')).strip():
+        return None, 'Cloudflare 渠道配置缺失'
+    return channel, None
 
 
 def delete_temp_email(email_addr: str) -> bool:
@@ -1344,7 +1492,11 @@ def cleanup_temp_email_provider_resource(temp_email: Optional[Dict]) -> None:
             duckmail_delete_account(token, account_id)
     elif provider == 'cloudflare':
         channel = get_cloudflare_channel_for_temp_email(temp_email)
-        cloudflare_delete_address(temp_email.get('cloudflare_address_id', ''), channel=channel)
+        address_id = temp_email.get('cloudflare_address_id', '')
+        if address_id:
+            cloudflare_delete_address(address_id, channel=channel)
+        else:
+            cloudflare_delete_address_by_email(email_addr, channel=channel)
 
 
 def save_temp_email_messages(email_addr: str, messages: List[Dict]) -> int:
@@ -1541,6 +1693,115 @@ def api_delete_cloudflare_channel(channel_id: int):
     return jsonify({'success': True, 'message': message})
 
 
+@app.route('/api/cloudflare/channels/<int:channel_id>/test', methods=['POST'])
+@login_required
+def api_test_cloudflare_channel(channel_id: int):
+    """测试 Cloudflare 渠道管理员 API 连接"""
+    channel = get_cloudflare_channel_by_id(channel_id, include_disabled=True, include_secret=True)
+    if not channel:
+        return jsonify({'success': False, 'error': 'Cloudflare 渠道不存在'}), 404
+
+    worker_domain = channel.get('worker_domain', '').strip()
+    admin_password_encrypted = channel.get('admin_password', '')
+
+    if not worker_domain:
+        return jsonify({
+            'success': False,
+            'error': 'Worker Domain 未配置',
+            'details': '请填写 Worker Domain 后重试'
+        })
+
+    if not admin_password_encrypted:
+        return jsonify({
+            'success': False,
+            'error': '管理员密码未配置',
+            'details': '请填写管理员密码后重试'
+        })
+
+    try:
+        admin_password = decrypt_data(admin_password_encrypted)
+        if not admin_password.strip():
+            return jsonify({
+                'success': False,
+                'error': '管理员密码为空',
+                'details': '请填写有效的管理员密码后重试'
+            })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': '管理员密码解密失败',
+            'details': str(e)
+        })
+
+    # 测试 1: 获取域名列表
+    test_results = []
+    domains_result, domains_error = cloudflare_get_domains(channel=channel)
+    if domains_error:
+        test_results.append({
+            'test': '获取域名列表',
+            'success': False,
+            'error': domains_error
+        })
+    else:
+        test_results.append({
+            'test': '获取域名列表',
+            'success': True,
+            'domains': domains_result[:5] if domains_result else []  # 只返回前 5 个
+        })
+
+    # 测试 2: 获取地址列表（前 10 个）
+    addresses_result = cloudflare_get_admin_addresses(limit=10, offset=0, channel=channel)
+    if not addresses_result.get('success'):
+        test_results.append({
+            'test': '获取地址列表',
+            'success': False,
+            'error': addresses_result.get('error', '获取地址列表失败')
+        })
+    else:
+        addresses = addresses_result.get('addresses', [])
+        test_results.append({
+            'test': '获取地址列表',
+            'success': True,
+            'count': addresses_result.get('count', 0),
+            'sample_size': len(addresses)
+        })
+
+    # 测试 3: 获取邮件列表（全局，前 5 封）
+    messages_result = cloudflare_get_admin_messages(limit=5, offset=0, channel=channel)
+    if not messages_result.get('success'):
+        test_results.append({
+            'test': '获取邮件列表',
+            'success': False,
+            'error': messages_result.get('error', '获取邮件列表失败')
+        })
+    else:
+        messages = messages_result.get('messages', [])
+        test_results.append({
+            'test': '获取邮件列表',
+            'success': True,
+            'count': messages_result.get('count', 0),
+            'sample_size': len(messages)
+        })
+
+    # 总结
+    all_success = all(test.get('success', False) for test in test_results)
+    failed_tests = [test['test'] for test in test_results if not test.get('success', False)]
+
+    if all_success:
+        message = f'✅ 所有测试通过 - {channel.get("name", "")} 连接正常'
+    else:
+        message = f'❌ 部分测试失败: {", ".join(failed_tests)}'
+
+    return jsonify({
+        'success': all_success,
+        'message': message,
+        'channel_id': channel_id,
+        'channel_name': channel.get('name', ''),
+        'worker_domain': worker_domain,
+        'tests': test_results,
+    })
+
+
 @app.route('/api/temp-emails/import', methods=['POST'])
 @login_required
 def api_import_temp_emails():
@@ -1549,6 +1810,7 @@ def api_import_temp_emails():
     import_text = data.get('account_string', '').strip()
     provider = data.get('provider', 'gptmail')
     tag_ids = data.get('tag_ids', [])
+    cloudflare_channel_id = data.get('cloudflare_channel_id', data.get('channel_id'))
 
     if not import_text:
         return jsonify({'success': False, 'error': '请输入要导入的临时邮箱'})
@@ -1562,7 +1824,9 @@ def api_import_temp_emails():
     tagged_temp_email_ids: List[int] = []
     current_cloudflare_channel = None
     if provider == 'cloudflare':
-        current_cloudflare_channel = get_default_cloudflare_channel(include_disabled=True, include_secret=True)
+        current_cloudflare_channel, channel_error = get_enabled_cloudflare_channel_for_import(cloudflare_channel_id)
+        if channel_error:
+            return jsonify({'success': False, 'error': channel_error})
 
     for line in lines:
         line = line.strip()
@@ -1626,70 +1890,41 @@ def api_import_temp_emails():
                         )
                         if not current_cloudflare_channel:
                             import_errors.append(f'Cloudflare 渠道不存在: {channel_name}')
+                        elif not current_cloudflare_channel.get('enabled'):
+                            import_errors.append(f'Cloudflare 渠道不可用: {channel_name}')
                     else:
-                        current_cloudflare_channel = get_default_cloudflare_channel(
-                            include_disabled=True,
-                            include_secret=True,
-                        )
-                        if not current_cloudflare_channel:
-                            import_errors.append('默认 Cloudflare 渠道不存在')
+                        current_cloudflare_channel, channel_error = get_enabled_cloudflare_channel_for_import(cloudflare_channel_id)
+                        if channel_error:
+                            import_errors.append(channel_error)
                     continue
 
-                # Cloudflare 格式：邮箱----JWT
-                parts = line.split('----')
-                if len(parts) >= 2:
-                    email_addr = parts[0].strip()
-                    cloudflare_jwt = parts[1].strip()
-                    line_channel = current_cloudflare_channel
-                    if len(parts) >= 3 and parts[2].strip():
-                        line_channel = get_cloudflare_channel_by_name(
-                            parts[2].strip(),
-                            include_disabled=True,
-                            include_secret=True,
-                        )
-                        if not line_channel:
-                            import_errors.append(f'Cloudflare 渠道不存在: {parts[2].strip()}')
-                            skipped += 1
-                            continue
-
-                    if not line_channel:
-                        import_errors.append('默认 Cloudflare 渠道不存在')
+                # 兼容旧格式 邮箱----JWT，自动提取邮箱部分
+                if '----' in line:
+                    parts = line.split('----')
+                    line = parts[0].strip()  # 只取邮箱部分
+                    if not line:
                         skipped += 1
                         continue
 
-                    if email_addr and cloudflare_jwt and '@' in email_addr:
-                        existing = get_temp_email_by_address(email_addr)
-                        db = get_db()
-                        if existing:
-                            db.execute(
-                                '''
-                                UPDATE temp_emails
-                                SET cloudflare_jwt = ?,
-                                    provider = ?,
-                                    cloudflare_channel_id = ?
-                                WHERE email = ?
-                                ''',
-                                (encrypt_data(cloudflare_jwt), 'cloudflare', line_channel.get('id'), email_addr)
-                            )
-                            db.commit()
-                            updated += 1
-                            tagged_temp_email_ids.append(int(existing['id']))
-                        elif add_temp_email(
-                            email_addr,
-                            provider='cloudflare',
-                            cloudflare_jwt=cloudflare_jwt,
-                            cloudflare_channel_id=line_channel.get('id'),
-                        ):
-                            added += 1
-                            created_email = get_temp_email_by_address(email_addr)
-                            if created_email:
-                                tagged_temp_email_ids.append(int(created_email['id']))
-                        else:
-                            skipped += 1
-                    else:
-                        skipped += 1
+                if not current_cloudflare_channel:
+                    import_errors.append('Cloudflare 渠道不存在')
+                    skipped += 1
+                    continue
+                if not current_cloudflare_channel.get('enabled'):
+                    import_errors.append(f"Cloudflare 渠道不可用: {current_cloudflare_channel.get('name', '')}")
+                    skipped += 1
+                    continue
+
+                email_addr = normalize_email_address(line)
+                status, temp_email_id = upsert_cloudflare_temp_email(email_addr, current_cloudflare_channel)
+                if status == 'added':
+                    added += 1
+                elif status == 'updated':
+                    updated += 1
                 else:
                     skipped += 1
+                if temp_email_id:
+                    tagged_temp_email_ids.append(temp_email_id)
             else:
                 # GPTMail 格式：每行一个邮箱地址
                 email_addr = line.strip()
@@ -1734,6 +1969,152 @@ def api_import_temp_emails():
         if import_errors:
             error_message = '；'.join(import_errors[:3])
         return jsonify({'success': False, 'error': error_message, 'errors': import_errors})
+
+
+@app.route('/api/temp-emails/import-cloudflare-addresses', methods=['POST'])
+@login_required
+def api_import_cloudflare_addresses():
+    """从 Cloudflare 管理员地址列表自动导入邮箱，不拉取 JWT。"""
+    from flask import Response
+    import json
+
+    data = request.json or {}
+    channel, channel_error = get_enabled_cloudflare_channel_for_import(
+        data.get('cloudflare_channel_id', data.get('channel_id'))
+    )
+    if channel_error:
+        return jsonify({'success': False, 'error': channel_error})
+
+    page_size = normalize_cloudflare_admin_mail_limit(data.get('page_size', 100), default=100, maximum=500)
+    tag_ids = data.get('tag_ids', [])
+    stream = data.get('stream', False)  # 是否流式返回进度
+
+    def generate_progress():
+        """生成器函数，流式返回导入进度"""
+        offset = 0
+        added = 0
+        updated = 0
+        skipped = 0
+        imported = 0
+        errors: List[str] = []
+        tagged_temp_email_ids: List[int] = []
+
+        # 防止无限循环的保护机制
+        MAX_AUTO_IMPORT_PAGES = 100
+        page_count = 0
+
+        while page_count < MAX_AUTO_IMPORT_PAGES:
+            result = cloudflare_get_admin_addresses(limit=page_size, offset=offset, channel=channel)
+            if not result.get('success'):
+                errors.append(result.get('error', '获取 Cloudflare 地址列表失败'))
+                break
+
+            addresses = result.get('addresses') or []
+            if not addresses:
+                break
+
+            for item in addresses:
+                email_addr, address_id = normalize_cloudflare_address_item(item)
+                if not email_addr or '@' not in email_addr:
+                    skipped += 1
+                    continue
+                status, temp_email_id = upsert_cloudflare_temp_email(email_addr, channel, address_id)
+                if status == 'added':
+                    added += 1
+                elif status == 'updated':
+                    updated += 1
+                else:
+                    skipped += 1
+                if temp_email_id:
+                    tagged_temp_email_ids.append(temp_email_id)
+                imported += 1
+
+            total_count = result.get('count', len(addresses))
+            offset += len(addresses)
+            page_count += 1
+
+            # 发送进度更新
+            if stream:
+                progress_data = {
+                    'type': 'progress',
+                    'added': added,
+                    'updated': updated,
+                    'skipped': skipped,
+                    'imported': imported,
+                    'total': total_count,
+                    'page': page_count,
+                }
+                yield f"data: {json.dumps(progress_data)}\n\n"
+
+            if len(addresses) < page_size or offset >= int(total_count or 0):
+                break
+
+        if page_count >= MAX_AUTO_IMPORT_PAGES:
+            errors.append(f'已达到最大分页限制（{MAX_AUTO_IMPORT_PAGES} 页），停止导入')
+
+        total = added + updated
+        if total <= 0:
+            error = '没有可导入的 Cloudflare 邮箱'
+            if errors:
+                error = '；'.join(errors[:3])
+            final_result = {
+                'type': 'complete',
+                'success': False,
+                'error': error,
+                'added_count': added,
+                'updated_count': updated,
+                'skipped_count': skipped,
+                'errors': errors,
+            }
+            if stream:
+                yield f"data: {json.dumps(final_result)}\n\n"
+            else:
+                yield final_result
+            return
+
+        tagged_count = bind_temp_email_tags(tagged_temp_email_ids, tag_ids)
+        message = f'自动导入 {added} 个新邮箱'
+        if updated:
+            message += f'，更新 {updated} 个已有邮箱'
+        if skipped:
+            message += f'，跳过 {skipped} 个'
+        if tagged_count:
+            message += f'，绑定标签 {tagged_count} 个邮箱'
+        if errors:
+            message += f'，{len(errors)} 个错误：' + '；'.join(errors[:3])
+        log_audit(
+            'import',
+            'temp_emails',
+            None,
+            f"从 Cloudflare 渠道 {channel.get('name', '')} 自动导入 {added} 个新临时邮箱，更新 {updated} 个已有邮箱",
+        )
+        final_result = {
+            'type': 'complete',
+            'success': True,
+            'message': message,
+            'added_count': added,
+            'updated_count': updated,
+            'skipped_count': skipped,
+            'imported_count': imported,
+            'tagged_count': tagged_count,
+            'channel_id': channel.get('id'),
+            'channel_name': channel.get('name', ''),
+            'errors': errors,
+        }
+        if stream:
+            yield f"data: {json.dumps(final_result)}\n\n"
+        else:
+            yield final_result
+
+    # 如果请求流式返回，使用 Server-Sent Events
+    if stream:
+        return Response(generate_progress(), mimetype='text/event-stream')
+
+    # 否则一次性返回结果
+    result = None
+    for r in generate_progress():
+        result = r
+    return jsonify(result)
 
 
 @app.route('/api/duckmail/domains', methods=['GET'])
@@ -1938,16 +2319,14 @@ def api_generate_temp_email():
             return jsonify({'success': False, 'error': '创建 Cloudflare 临时邮箱失败'})
 
         email_addr = result.get('address')
-        jwt = result.get('jwt')
         address_id = result.get('id') or result.get('address_id')
 
-        if not email_addr or not jwt:
+        if not email_addr:
             return jsonify({'success': False, 'error': result.get('error', 'Cloudflare 返回数据不完整')})
 
         if add_temp_email(
             email_addr,
             provider='cloudflare',
-            cloudflare_jwt=jwt,
             cloudflare_address_id=address_id,
             cloudflare_channel_id=channel.get('id'),
         ):
@@ -2066,10 +2445,9 @@ def api_generate_temp_emails_batch():
         username = usernames[index]
         result = cloudflare_create_address(username=username, domain=domain, channel=channel)
         email_addr = (result or {}).get('address')
-        jwt = (result or {}).get('jwt')
         address_id = (result or {}).get('id') or (result or {}).get('address_id')
 
-        if not email_addr or not jwt:
+        if not email_addr:
             failures.append({
                 'index': index + 1,
                 'username': username,
@@ -2080,7 +2458,6 @@ def api_generate_temp_emails_batch():
         if not add_temp_email(
             email_addr,
             provider='cloudflare',
-            cloudflare_jwt=jwt,
             cloudflare_address_id=address_id,
             cloudflare_channel_id=channel.get('id'),
         ):
@@ -2193,34 +2570,10 @@ def api_get_temp_email_messages(email_addr):
             'method': 'DuckMail'
         })
     elif provider == 'cloudflare':
-        jwt = get_cloudflare_jwt_for_email(email_addr)
-        if not jwt:
-            return jsonify({'success': False, 'error': 'Cloudflare JWT 不存在，请重新导入或创建邮箱'})
-        channel = get_cloudflare_channel_for_temp_email(temp_email)
-        if not channel:
-            return jsonify({'success': False, 'error': 'Cloudflare 渠道归属不存在，请重新导入或创建邮箱'})
-
-        messages = cloudflare_get_messages(jwt, channel=channel)
-        if messages is None:
-            return jsonify({'success': False, 'error': '获取 Cloudflare 邮件失败'})
-
-        unified_messages = []
-        for index, msg in enumerate(messages):
-            raw_email = msg.get('raw')
-            if not raw_email:
-                continue
-            fallback_id = msg.get('id') or f"{email_addr}-{index}-{hashlib.sha256(raw_email.encode('utf-8', 'replace')).hexdigest()}"
-            fallback_timestamp = 0
-            for key in ('createdAt', 'created_at', 'date'):
-                if msg.get(key):
-                    try:
-                        fallback_timestamp = int(datetime.fromisoformat(str(msg[key]).replace('Z', '+00:00')).timestamp())
-                        break
-                    except Exception:
-                        continue
-            unified_messages.append(
-                parse_raw_email_to_temp_message(email_addr, raw_email, fallback_id, fallback_timestamp)
-            )
+        fetch_result = fetch_cloudflare_temp_messages(email_addr, temp_email)
+        if not fetch_result.get('success'):
+            return jsonify({'success': False, 'error': fetch_result.get('error', '获取 Cloudflare 邮件失败')})
+        unified_messages = fetch_result.get('messages', [])
 
         save_temp_email_messages(email_addr, unified_messages)
 
@@ -2240,7 +2593,7 @@ def api_get_temp_email_messages(email_addr):
             'success': True,
             'emails': formatted,
             'count': len(formatted),
-            'method': 'Cloudflare'
+            'method': fetch_result.get('method', 'Cloudflare')
         })
     else:
         # GPTMail: 保持原有逻辑
@@ -2343,25 +2696,10 @@ def api_get_temp_email_message_detail(email_addr, message_id):
         msg = get_temp_email_message_by_id(message_id)
 
         if not msg:
-            jwt = get_cloudflare_jwt_for_email(email_addr)
-            if not jwt:
-                return jsonify({'success': False, 'error': 'Cloudflare JWT 无效'})
-            channel = get_cloudflare_channel_for_temp_email(temp_email)
-            if not channel:
-                return jsonify({'success': False, 'error': 'Cloudflare 渠道归属不存在，请重新导入或创建邮箱'})
-
-            messages = cloudflare_get_messages(jwt, channel=channel)
-            if messages is None:
-                return jsonify({'success': False, 'error': '获取 Cloudflare 邮件失败'})
-
-            parsed_messages = []
-            for index, item in enumerate(messages):
-                raw_email = item.get('raw')
-                if not raw_email:
-                    continue
-                fallback_id = item.get('id') or f"{email_addr}-{index}-{hashlib.sha256(raw_email.encode('utf-8', 'replace')).hexdigest()}"
-                parsed_messages.append(parse_raw_email_to_temp_message(email_addr, raw_email, fallback_id))
-            save_temp_email_messages(email_addr, parsed_messages)
+            fetch_result = fetch_cloudflare_temp_messages(email_addr, temp_email)
+            if not fetch_result.get('success'):
+                return jsonify({'success': False, 'error': fetch_result.get('error', '获取 Cloudflare 邮件失败')})
+            save_temp_email_messages(email_addr, fetch_result.get('messages', []))
             msg = get_temp_email_message_by_id(message_id)
 
         if msg:
@@ -2478,34 +2816,10 @@ def api_refresh_temp_email_messages(email_addr):
         else:
             return jsonify({'success': False, 'error': '获取 DuckMail 邮件失败'})
     elif provider == 'cloudflare':
-        jwt = get_cloudflare_jwt_for_email(email_addr)
-        if not jwt:
-            return jsonify({'success': False, 'error': 'Cloudflare JWT 无效，请重新导入或创建邮箱'})
-        channel = get_cloudflare_channel_for_temp_email(temp_email)
-        if not channel:
-            return jsonify({'success': False, 'error': 'Cloudflare 渠道归属不存在，请重新导入或创建邮箱'})
-
-        messages = cloudflare_get_messages(jwt, channel=channel)
-        if messages is None:
-            return jsonify({'success': False, 'error': '获取 Cloudflare 邮件失败'})
-
-        unified_messages = []
-        for index, item in enumerate(messages):
-            raw_email = item.get('raw')
-            if not raw_email:
-                continue
-            fallback_id = item.get('id') or f"{email_addr}-{index}-{hashlib.sha256(raw_email.encode('utf-8', 'replace')).hexdigest()}"
-            fallback_timestamp = 0
-            for key in ('createdAt', 'created_at', 'date'):
-                if item.get(key):
-                    try:
-                        fallback_timestamp = int(datetime.fromisoformat(str(item[key]).replace('Z', '+00:00')).timestamp())
-                        break
-                    except Exception:
-                        continue
-            unified_messages.append(
-                parse_raw_email_to_temp_message(email_addr, raw_email, fallback_id, fallback_timestamp)
-            )
+        fetch_result = fetch_cloudflare_temp_messages(email_addr, temp_email)
+        if not fetch_result.get('success'):
+            return jsonify({'success': False, 'error': fetch_result.get('error', '获取 Cloudflare 邮件失败')})
+        unified_messages = fetch_result.get('messages', [])
         saved = save_temp_email_messages(email_addr, unified_messages)
 
         formatted = []
@@ -2525,7 +2839,7 @@ def api_refresh_temp_email_messages(email_addr):
             'emails': formatted,
             'count': len(formatted),
             'new_count': saved,
-            'method': 'Cloudflare'
+            'method': fetch_result.get('method', 'Cloudflare')
         })
     else:
         # GPTMail: 保持原有逻辑

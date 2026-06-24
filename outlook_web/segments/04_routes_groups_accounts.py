@@ -394,8 +394,7 @@ def append_temp_email_export_sections(lines: List[str], temp_emails: List[Dict[s
         for channel_name in sorted(grouped.keys(), key=str.lower):
             lines.append(f'[cloudflare:{channel_name}]')
             for te in grouped[channel_name]:
-                cloudflare_jwt = decrypt_data(te.get('cloudflare_jwt', '')) if te.get('cloudflare_jwt') else ''
-                lines.append(f"{te['email']}----{cloudflare_jwt}")
+                lines.append(te['email'])
                 exported_count += 1
 
     return exported_count

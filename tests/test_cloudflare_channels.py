@@ -67,7 +67,6 @@ class CloudflareChannelMigrationTests(CloudflareChannelTestCase):
             self.assertTrue(web_outlook_app.add_temp_email(
                 'legacy@legacy.example.com',
                 provider='cloudflare',
-                cloudflare_jwt='legacy-jwt',
                 cloudflare_address_id='legacy-address-id',
             ))
 
@@ -103,7 +102,6 @@ class CloudflareChannelMigrationTests(CloudflareChannelTestCase):
             self.assertTrue(web_outlook_app.add_temp_email(
                 'legacy@unknown.example.com',
                 provider='cloudflare',
-                cloudflare_jwt='legacy-jwt',
                 cloudflare_address_id='legacy-address-id',
             ))
 
@@ -282,7 +280,6 @@ class CloudflareChannelApiTests(CloudflareChannelTestCase):
             self.assertTrue(web_outlook_app.add_temp_email(
                 'bound@updated.example.com',
                 provider='cloudflare',
-                cloudflare_jwt='bound-jwt',
                 cloudflare_address_id='bound-address-id',
                 cloudflare_channel_id=channel_id,
             ))
@@ -296,6 +293,55 @@ class CloudflareChannelApiTests(CloudflareChannelTestCase):
         domains_payload = domains_response.get_json()
         self.assertFalse(domains_payload['success'])
         self.assertIn('不可用', domains_payload['error'])
+
+    def test_channel_connection_test_validates_configuration_and_calls_admin_api(self):
+        """测试渠道连接测试功能"""
+        channel_id = self.create_channel(name='cfmail-test', enabled=True)
+
+        # 测试不存在的渠道
+        response = self.client.post('/api/cloudflare/channels/99999/test')
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(response.get_json()['success'])
+
+        # 模拟管理员 API 调用
+        with patch.object(web_outlook_app, 'cloudflare_get_domains', return_value=(['test.com', 'example.com'], None)), \
+             patch.object(web_outlook_app, 'cloudflare_get_admin_addresses', return_value={
+                 'success': True,
+                 'addresses': [{'id': 'addr-1', 'name': 'test@test.com'}],
+                 'count': 1,
+             }), \
+             patch.object(web_outlook_app, 'cloudflare_get_admin_messages', return_value={
+                 'success': True,
+                 'messages': [{'id': 'mail-1', 'raw': 'test'}],
+                 'count': 1,
+             }):
+            response = self.client.post(f'/api/cloudflare/channels/{channel_id}/test')
+
+        payload = response.get_json()
+        self.assertTrue(payload['success'], payload)
+        self.assertIn('所有测试通过', payload['message'])
+        self.assertEqual(payload['channel_id'], channel_id)
+        self.assertEqual(len(payload['tests']), 3)
+        self.assertTrue(all(test['success'] for test in payload['tests']))
+
+        # 测试部分失败的情况
+        with patch.object(web_outlook_app, 'cloudflare_get_domains', return_value=([], 'API 错误')), \
+             patch.object(web_outlook_app, 'cloudflare_get_admin_addresses', return_value={
+                 'success': False,
+                 'error': '认证失败',
+             }), \
+             patch.object(web_outlook_app, 'cloudflare_get_admin_messages', return_value={
+                 'success': True,
+                 'messages': [],
+                 'count': 0,
+             }):
+            response = self.client.post(f'/api/cloudflare/channels/{channel_id}/test')
+
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertIn('部分测试失败', payload['message'])
+        failed_tests = [test for test in payload['tests'] if not test['success']]
+        self.assertEqual(len(failed_tests), 2)
 
 
 class CloudflareChannelGlobalMailTests(CloudflareChannelTestCase):
@@ -583,12 +629,11 @@ class CloudflareBatchGenerationTests(CloudflareChannelTestCase):
 
         payload = response.get_json()
         self.assertTrue(payload['success'], payload)
-        self.assertEqual(payload['emails'], ['alpha@cfmail-partial.example.com'])
-        self.assertEqual(payload['created_count'], 1)
-        self.assertEqual(payload['failed_count'], 2)
-        self.assertEqual([failure['username'] for failure in payload['failures']], ['beta', 'gamma'])
+        self.assertEqual(payload['emails'], ['alpha@cfmail-partial.example.com', 'gamma@cfmail-partial.example.com'])
+        self.assertEqual(payload['created_count'], 2)
+        self.assertEqual(payload['failed_count'], 1)
+        self.assertEqual([failure['username'] for failure in payload['failures']], ['beta'])
         self.assertIn('upstream rejected', payload['failures'][0]['error'])
-        self.assertIn('返回数据不完整', payload['failures'][1]['error'])
 
 
 class FakeOpenAIResponse:
@@ -802,12 +847,14 @@ class CloudflareChannelImportExportTests(CloudflareChannelTestCase):
 
         response = self.client.post('/api/temp-emails/import', json={
             'provider': 'cloudflare',
+            'cloudflare_channel_id': us_channel_id,
             'account_string': '\n'.join([
                 '[cloudflare:cfmail-hk]',
-                'hk@hk.example.com----hk-jwt',
+                'hk@hk.example.com',
                 '[cloudflare]',
-                'legacy@us.example.com----legacy-jwt',
-                'line@hk.example.com----line-jwt----cfmail-hk',
+                'legacy@us.example.com',
+                '[cloudflare:cfmail-hk]',
+                'line@hk.example.com',
             ]),
         })
 
@@ -821,14 +868,30 @@ class CloudflareChannelImportExportTests(CloudflareChannelTestCase):
             self.assertEqual(hk_email['cloudflare_channel_id'], hk_channel_id)
             self.assertEqual(legacy_email['cloudflare_channel_id'], us_channel_id)
             self.assertEqual(line_email['cloudflare_channel_id'], hk_channel_id)
+            self.assertIsNone(hk_email['cloudflare_jwt'])
 
         response = self.client.post('/api/temp-emails/import', json={
             'provider': 'cloudflare',
-            'account_string': '[cloudflare:missing]\nmissing@example.com----jwt',
+            'account_string': '[cloudflare:missing]\nmissing@example.com',
         })
         payload = response.get_json()
         self.assertFalse(payload['success'])
         self.assertIn('渠道不存在', payload['error'])
+
+        response = self.client.post('/api/temp-emails/import', json={
+            'provider': 'cloudflare',
+            'cloudflare_channel_id': us_channel_id,
+            'account_string': 'legacy-format@us.example.com----jwt',
+        })
+        payload = response.get_json()
+        self.assertTrue(payload['success'], payload)
+        self.assertIn('新增', payload['message'])
+
+        with self.app.app_context():
+            imported_email = web_outlook_app.get_temp_email_by_address('legacy-format@us.example.com')
+            self.assertIsNotNone(imported_email)
+            self.assertEqual(imported_email['provider'], 'cloudflare')
+            self.assertEqual(imported_email['cloudflare_channel_id'], us_channel_id)
 
     def test_import_binds_tags_to_added_and_updated_cloudflare_emails(self):
         channel_id = self.create_channel(name='cfmail-tags', enabled=True, is_default=True)
@@ -838,16 +901,16 @@ class CloudflareChannelImportExportTests(CloudflareChannelTestCase):
             self.assertTrue(web_outlook_app.add_temp_email(
                 'existing@cfmail-tags.example.com',
                 provider='cloudflare',
-                cloudflare_jwt='old-jwt',
                 cloudflare_channel_id=channel_id,
             ))
 
         response = self.client.post('/api/temp-emails/import', json={
             'provider': 'cloudflare',
+            'cloudflare_channel_id': channel_id,
             'tag_ids': [tag_id, 999999, 'bad'],
             'account_string': '\n'.join([
-                'new@cfmail-tags.example.com----new-jwt',
-                'existing@cfmail-tags.example.com----updated-jwt',
+                'new@cfmail-tags.example.com',
+                'existing@cfmail-tags.example.com',
             ]),
         })
 
@@ -865,7 +928,112 @@ class CloudflareChannelImportExportTests(CloudflareChannelTestCase):
                 [tag['id'] for tag in web_outlook_app.get_temp_email_tags(existing_email['id'])],
                 [tag_id],
             )
-            self.assertEqual(web_outlook_app.decrypt_data(existing_email['cloudflare_jwt']), 'updated-jwt')
+
+    def test_auto_import_cloudflare_addresses_saves_address_ids_without_jwt(self):
+        channel_id = self.create_channel(name='cfmail-auto', enabled=True, is_default=True)
+        tag_id = self.create_tag(name='自动导入')
+
+        with patch.object(web_outlook_app, 'cloudflare_get_admin_addresses', side_effect=[
+            {
+                'success': True,
+                'addresses': [
+                    {'id': 'addr-1', 'name': 'one@cfmail-auto.example.com'},
+                    {'id': 'addr-2', 'name': 'two@cfmail-auto.example.com'},
+                ],
+                'count': 3,
+            },
+            {
+                'success': True,
+                'addresses': [
+                    {'id': 'addr-3', 'name': 'three@cfmail-auto.example.com'},
+                ],
+                'count': 3,
+            },
+        ]) as list_mock:
+            response = self.client.post('/api/temp-emails/import-cloudflare-addresses', json={
+                'cloudflare_channel_id': channel_id,
+                'page_size': 2,
+                'tag_ids': [tag_id],
+            })
+
+        payload = response.get_json()
+        self.assertTrue(payload['success'], payload)
+        self.assertEqual(payload['added_count'], 3)
+        self.assertEqual(payload['updated_count'], 0)
+        self.assertEqual(list_mock.call_count, 2)
+
+        with self.app.app_context():
+            one = web_outlook_app.get_temp_email_by_address('one@cfmail-auto.example.com')
+            three = web_outlook_app.get_temp_email_by_address('three@cfmail-auto.example.com')
+            self.assertEqual(one['cloudflare_channel_id'], channel_id)
+            self.assertEqual(one['cloudflare_address_id'], 'addr-1')
+            self.assertEqual(three['cloudflare_address_id'], 'addr-3')
+            self.assertEqual(
+                [tag['id'] for tag in web_outlook_app.get_temp_email_tags(one['id'])],
+                [tag_id],
+            )
+
+    def test_cloudflare_email_without_jwt_reads_messages_through_admin_api(self):
+        channel_id = self.create_channel(name='cfmail-admin-read', enabled=True, is_default=True)
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.add_temp_email(
+                'reader@cfmail-admin-read.example.com',
+                provider='cloudflare',
+                cloudflare_address_id='addr-reader',
+                cloudflare_channel_id=channel_id,
+            ))
+
+        raw_email = '\r\n'.join([
+            'From: sender@example.com',
+            'To: reader@cfmail-admin-read.example.com',
+            'Subject: Admin Read',
+            '',
+            'Body text',
+        ])
+        with patch.object(web_outlook_app, 'cloudflare_get_admin_messages', return_value={
+            'success': True,
+            'messages': [{'id': 'mail-1', 'raw': raw_email, 'created_at': '2026-06-24T10:00:00Z'}],
+            'count': 1,
+        }) as admin_mock:
+            response = self.client.get('/api/temp-emails/reader@cfmail-admin-read.example.com/messages')
+
+        payload = response.get_json()
+        self.assertTrue(payload['success'], payload)
+        self.assertEqual(payload['method'], 'Cloudflare Admin')
+        self.assertEqual(payload['count'], 1)
+        self.assertEqual(payload['emails'][0]['subject'], 'Admin Read')
+        admin_mock.assert_called_once()
+
+    def test_auto_import_protects_against_infinite_pagination_loop(self):
+        """测试自动导入的分页保护机制，防止无限循环"""
+        channel_id = self.create_channel(name='cfmail-loop-protection', enabled=True, is_default=True)
+
+        # 模拟每次都返回数据但 count 很大的场景（可能导致无限循环）
+        def mock_get_addresses(limit, offset, query='', channel=None):
+            # 模拟总是有新数据，但限制在 100 页时会被保护机制停止
+            if offset < 10000:
+                return {
+                    'success': True,
+                    'addresses': [
+                        {'id': f'addr-{offset + i}', 'name': f'test{offset + i}@example.com'}
+                        for i in range(limit)
+                    ],
+                    'count': 999999,  # 模拟一个非常大的总数
+                }
+            return {'success': True, 'addresses': [], 'count': 0}
+
+        with patch.object(web_outlook_app, 'cloudflare_get_admin_addresses', side_effect=mock_get_addresses) as mock_api:
+            response = self.client.post('/api/temp-emails/import-cloudflare-addresses', json={
+                'cloudflare_channel_id': channel_id,
+                'page_size': 100,
+            })
+
+        payload = response.get_json()
+        self.assertTrue(payload['success'], payload)
+        # 应该在 100 页时停止（100 页 * 100 条/页 = 10000 条）
+        self.assertEqual(mock_api.call_count, 100)
+        self.assertEqual(payload['added_count'], 10000)
+        self.assertIn('已达到最大分页限制', '；'.join(payload.get('errors', [])))
 
     def test_export_groups_cloudflare_temp_emails_by_channel_name(self):
         us_channel_id = self.create_channel(name='cfmail-us', enabled=True, is_default=True)
@@ -875,13 +1043,11 @@ class CloudflareChannelImportExportTests(CloudflareChannelTestCase):
             self.assertTrue(web_outlook_app.add_temp_email(
                 'us@us.example.com',
                 provider='cloudflare',
-                cloudflare_jwt='us-jwt',
                 cloudflare_channel_id=us_channel_id,
             ))
             self.assertTrue(web_outlook_app.add_temp_email(
                 'hk@hk.example.com',
                 provider='cloudflare',
-                cloudflare_jwt='hk-jwt',
                 cloudflare_channel_id=hk_channel_id,
             ))
 
@@ -890,6 +1056,8 @@ class CloudflareChannelImportExportTests(CloudflareChannelTestCase):
 
         content = '\n'.join(export_result['lines'])
         self.assertIn('[cloudflare:cfmail-us]', content)
-        self.assertIn('us@us.example.com----us-jwt', content)
+        self.assertIn('us@us.example.com', content)
+        self.assertNotIn('us@us.example.com----us-jwt', content)
         self.assertIn('[cloudflare:cfmail-hk]', content)
-        self.assertIn('hk@hk.example.com----hk-jwt', content)
+        self.assertIn('hk@hk.example.com', content)
+        self.assertNotIn('hk@hk.example.com----hk-jwt', content)

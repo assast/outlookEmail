@@ -581,8 +581,12 @@
                         </div>
                         <div class="form-group settings-form-span-full cloudflare-channel-actions">
                             <button class="btn btn-primary" type="button" id="saveCloudflareChannelBtn" onclick="saveCloudflareChannel()">创建渠道</button>
+                            <button class="btn btn-secondary" type="button" id="testCloudflareChannelBtn" onclick="testCloudflareChannelConnection()" style="display: none;">测试连接</button>
                             <button class="btn btn-secondary" type="button" id="resetCloudflareChannelBtn" onclick="resetCloudflareChannelForm()">清空表单</button>
                             <button class="btn btn-danger" type="button" id="deleteCloudflareChannelBtn" onclick="deleteCloudflareChannel()" style="display: none;">删除渠道</button>
+                        </div>
+                        <div class="form-group settings-form-span-full" id="cloudflareChannelTestResult" style="display: none;">
+                            <div class="form-hint" id="cloudflareChannelTestResultText"></div>
                         </div>
                     </div>
                     <div class="settings-panel settings-panel-grid">
