@@ -6,6 +6,18 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.74] - 2026-06-25
+
+### Added
+- 邮箱账号面板新增极简展示模式，可隐藏备注、标签、刷新状态等辅助信息以提升列表密度。
+- 桌面端分组栏新增折叠/展开控制，并记住用户上次选择的折叠状态。
+
+### Changed
+- 优化账号面板工具按钮图标展示，替换部分 emoji 按钮为一致的 SVG 图标。
+
+### Fixed
+- 修复未匹配路由等 HTTP 异常被全局异常处理器错误转换为 500 的问题，保留原始 HTTP 状态码。
+
 ## [2.0.73] - 2026-06-25
 
 ### Added

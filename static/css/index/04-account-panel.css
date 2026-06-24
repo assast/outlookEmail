@@ -1029,3 +1029,58 @@
                 justify-content: flex-start;
             }
         }
+
+        /* 极简模式样式 */
+        .account-panel.minimal-mode .account-item {
+            margin-bottom: 6px;
+            padding: 8px 12px;
+            align-items: center;
+            border-radius: 12px;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.02);
+        }
+
+        .account-panel.minimal-mode .account-item:hover {
+            box-shadow: 0 6px 12px rgba(15, 23, 42, 0.05);
+            transform: none;
+        }
+
+        .account-panel.minimal-mode .account-body {
+            gap: 0;
+            display: flex;
+            align-items: center;
+            min-height: unset;
+        }
+
+        .account-panel.minimal-mode .account-title-row {
+            margin-bottom: 0;
+            flex: 1;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .account-panel.minimal-mode .account-email {
+            font-size: 13px;
+            font-weight: 500;
+            line-height: 1.4;
+        }
+
+        .account-panel.minimal-mode .account-select-checkbox,
+        .account-panel.minimal-mode .account-leading-icon {
+            margin-top: 0;
+            align-self: center;
+        }
+
+        .account-panel.minimal-mode .account-meta-row,
+        .account-panel.minimal-mode .account-group-summary,
+        .account-panel.minimal-mode .account-alias-summary,
+        .account-panel.minimal-mode .account-remark,
+        .account-panel.minimal-mode .account-tags,
+        .account-panel.minimal-mode .account-refresh-row {
+            display: none !important;
+        }
+
+        .panel-action-btn.active {
+            background-color: #111827 !important;
+            border-color: #111827 !important;
+            color: #ffffff !important;
+        }

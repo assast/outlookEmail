@@ -828,7 +828,25 @@
             return `
                 <button class="panel-action-btn account-selection-mode-btn${activeClass}" id="accountSelectionModeBtn"
                         onclick="toggleAccountSelectionMode()" title="${title}" aria-pressed="${accountSelectionMode ? 'true' : 'false'}">
-                    ☑
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="2" width="12" height="12" rx="2"></rect>
+                        <path d="M5 8l2 2 4-4"></path>
+                    </svg>
+                </button>
+            `;
+        }
+
+        function renderAccountMinimalModeButton() {
+            const isMinimal = localStorage.getItem('outlook_account_list_minimal') === 'true';
+            const activeClass = isMinimal ? ' active' : '';
+            const title = isMinimal ? '切换详细展示' : '切换极简展示';
+            return `
+                <button class="panel-action-btn${activeClass}" id="accountMinimalBtn" onclick="toggleAccountMinimalMode()" title="${title}" aria-pressed="${isMinimal ? 'true' : 'false'}">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="2.5" width="12" height="2.5" rx="0.5"></rect>
+                        <rect x="2" y="6.75" width="12" height="2.5" rx="0.5"></rect>
+                        <rect x="2" y="11" width="12" height="2.5" rx="0.5"></rect>
+                    </svg>
                 </button>
             `;
         }
@@ -841,10 +859,16 @@
                 actions.innerHTML = `
                     ${renderAccountSelectionModeButton()}
                     <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
-                        🏷️
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M7 1.5h6v6L6.5 14 2 9.5 7 1.5z"></path>
+                            <circle cx="9.5" cy="5" r="1.2" fill="currentColor"></circle>
+                        </svg>
                     </button>
+                    ${renderAccountMinimalModeButton()}
                     <button class="panel-action-btn panel-action-btn-accent" onclick="generateTempEmail()" title="生成临时邮箱">
-                        ⚡
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="9 1 2 9 8 9 7 15 14 7 8 7 9 1"></polygon>
+                        </svg>
                     </button>
                     <button class="panel-action-btn panel-action-btn-primary" onclick="showAddAccountModal()" title="导入邮箱账号">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -871,10 +895,17 @@
                 actions.innerHTML = `
                     ${renderAccountSelectionModeButton()}
                     <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
-                        🏷️
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M7 1.5h6v6L6.5 14 2 9.5 7 1.5z"></path>
+                            <circle cx="9.5" cy="5" r="1.2" fill="currentColor"></circle>
+                        </svg>
                     </button>
+                    ${renderAccountMinimalModeButton()}
                     <button class="panel-action-btn panel-action-btn-accent" onclick="showGetRefreshTokenModal()" title="授权并保存 Outlook 账号">
-                        🔑
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="5.5" cy="10.5" r="3.5"></circle>
+                            <path d="M8 8l5-5M13 3h2v2M11 5h2v2"></path>
+                        </svg>
                     </button>
                     <button class="panel-action-btn panel-action-btn-primary" onclick="showAddAccountModal()" title="导入邮箱账号">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">

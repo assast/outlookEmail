@@ -1207,6 +1207,10 @@
                 searchInput.addEventListener('input', debouncedSearch);
             }
 
+            // 初始化折叠状态和极简模式状态
+            initGroupPanelCollapseState();
+            initAccountMinimalModeState();
+
             syncResponsiveUI();
             handleExtensionLaunchHash();
         });
@@ -2292,4 +2296,60 @@ ${details}
             nameEl.textContent = normalizeGroupName(group.name);
             idBadgeEl.textContent = badgeText;
             idBadgeEl.style.display = badgeText ? 'inline-flex' : 'none';
+        }
+
+        // ------------------ 折叠分组栏 & 极简模式 ------------------
+        function initGroupPanelCollapseState() {
+            const isCollapsed = localStorage.getItem('outlook_group_panel_collapsed') === 'true';
+            document.body.classList.toggle('group-panel-collapsed', isCollapsed);
+
+            const collapseBtn = document.getElementById('collapseGroupPanelBtn');
+            const expandBtn = document.getElementById('expandGroupPanelBtn');
+            if (collapseBtn) collapseBtn.setAttribute('aria-expanded', !isCollapsed);
+            if (expandBtn) expandBtn.setAttribute('aria-expanded', isCollapsed);
+        }
+
+        function toggleGroupPanelCollapse() {
+            const isCollapsed = !document.body.classList.contains('group-panel-collapsed');
+            document.body.classList.toggle('group-panel-collapsed', isCollapsed);
+            localStorage.setItem('outlook_group_panel_collapsed', String(isCollapsed));
+
+            const collapseBtn = document.getElementById('collapseGroupPanelBtn');
+            const expandBtn = document.getElementById('expandGroupPanelBtn');
+            if (collapseBtn) collapseBtn.setAttribute('aria-expanded', !isCollapsed);
+            if (expandBtn) expandBtn.setAttribute('aria-expanded', isCollapsed);
+
+            if (typeof syncResponsiveUI === 'function') {
+                syncResponsiveUI();
+            }
+        }
+
+        function initAccountMinimalModeState() {
+            const isMinimal = localStorage.getItem('outlook_account_list_minimal') === 'true';
+            const panel = document.getElementById('accountPanel');
+            const btn = document.getElementById('accountMinimalBtn');
+            if (panel) {
+                panel.classList.toggle('minimal-mode', isMinimal);
+            }
+            if (btn) {
+                btn.classList.toggle('active', isMinimal);
+                btn.setAttribute('aria-pressed', isMinimal ? 'true' : 'false');
+                btn.title = isMinimal ? '切换详细展示' : '切换极简展示';
+            }
+        }
+
+        function toggleAccountMinimalMode() {
+            const panel = document.getElementById('accountPanel');
+            const btn = document.getElementById('accountMinimalBtn');
+            if (!panel) return;
+
+            const isMinimal = !panel.classList.contains('minimal-mode');
+            panel.classList.toggle('minimal-mode', isMinimal);
+            localStorage.setItem('outlook_account_list_minimal', String(isMinimal));
+
+            if (btn) {
+                btn.classList.toggle('active', isMinimal);
+                btn.setAttribute('aria-pressed', isMinimal ? 'true' : 'false');
+                btn.title = isMinimal ? '切换详细展示' : '切换极简展示';
+            }
         }

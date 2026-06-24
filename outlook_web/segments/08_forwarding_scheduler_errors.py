@@ -5,6 +5,8 @@ import time
 
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from werkzeug.exceptions import HTTPException
+
 if TYPE_CHECKING:
     # These segmented files are executed into the shared `web_outlook_app`
     # globals at runtime. Importing from the assembled module keeps IDE
@@ -1624,6 +1626,9 @@ def bad_request(error):
 @app.errorhandler(Exception)
 def handle_exception(error):
     """处理未捕获的异常"""
+    if isinstance(error, HTTPException):
+        return jsonify({'success': False, 'error': error.description}), error.code
+
     safe_console_print(f"Unhandled exception: {error}")
     import traceback
     traceback.print_exc()
