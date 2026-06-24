@@ -199,7 +199,10 @@
         }
 
         .cloudflare-global-account-item {
-            grid-template-columns: minmax(0, 1fr);
+            grid-template-columns: 18px minmax(0, 1fr);
+        }
+        .cloudflare-global-account-item .account-body {
+            grid-column: 2;
         }
 
         .cloudflare-global-account-title {

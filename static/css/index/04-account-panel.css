@@ -1047,7 +1047,7 @@
         .account-panel.minimal-mode .account-body {
             gap: 0;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             min-height: unset;
         }
 
@@ -1072,7 +1072,7 @@
 
         .account-panel.minimal-mode .account-meta-row,
         .account-panel.minimal-mode .account-group-summary,
-        .account-panel.minimal-mode .account-alias-summary,
+        .account-panel.minimal-mode .account-aliases,
         .account-panel.minimal-mode .account-remark,
         .account-panel.minimal-mode .account-tags,
         .account-panel.minimal-mode .account-refresh-row {
