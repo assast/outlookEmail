@@ -973,6 +973,48 @@ class CloudflareChannelImportExportTests(CloudflareChannelTestCase):
                 [tag_id],
             )
 
+    def test_stream_auto_import_cloudflare_addresses_keeps_app_context(self):
+        channel_id = self.create_channel(name='cfmail-stream-context', enabled=True, is_default=True)
+
+        class FakeResponse:
+            status_code = 200
+            text = ''
+
+            def json(self):
+                return {
+                    'results': [
+                        {'id': 'addr-stream-1', 'name': 'stream@cfmail-stream-context.example.com'},
+                    ],
+                    'count': 1,
+                }
+
+        with patch.object(web_outlook_app.requests, 'get', return_value=FakeResponse()):
+            response = self.client.post('/api/temp-emails/import-cloudflare-addresses', json={
+                'cloudflare_channel_id': channel_id,
+                'page_size': 10,
+                'stream': True,
+            }, buffered=False)
+            body = response.get_data(as_text=True)
+
+        self.assertIn('"type": "complete"', body)
+        self.assertIn('"success": true', body)
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            temp_email = web_outlook_app.get_temp_email_by_address('stream@cfmail-stream-context.example.com')
+            self.assertIsNotNone(temp_email)
+            self.assertEqual(temp_email['cloudflare_address_id'], 'addr-stream-1')
+            audit_count = db.execute(
+                '''
+                SELECT COUNT(*) AS count
+                FROM audit_logs
+                WHERE action = 'import'
+                  AND resource_type = 'temp_emails'
+                  AND details LIKE ?
+                ''',
+                ('%cfmail-stream-context%',),
+            ).fetchone()['count']
+            self.assertEqual(audit_count, 1)
+
     def test_cloudflare_email_without_jwt_reads_messages_through_admin_api(self):
         channel_id = self.create_channel(name='cfmail-admin-read', enabled=True, is_default=True)
         with self.app.app_context():

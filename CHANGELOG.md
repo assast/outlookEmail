@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.0.75] - 2026-06-25
+
+### Fixed
+- 修复 Cloudflare 自动导入邮箱的流式进度请求在生产环境中丢失 Flask 应用上下文后返回 500 的问题。
+
 ## [2.0.74] - 2026-06-25
 
 ### Added

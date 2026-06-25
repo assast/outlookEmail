@@ -1975,7 +1975,7 @@ def api_import_temp_emails():
 @login_required
 def api_import_cloudflare_addresses():
     """从 Cloudflare 管理员地址列表自动导入邮箱，不拉取 JWT。"""
-    from flask import Response
+    from flask import Response, stream_with_context
     import json
 
     data = request.json or {}
@@ -2106,9 +2106,13 @@ def api_import_cloudflare_addresses():
         else:
             yield final_result
 
+    def generate_progress_with_app_context():
+        with app.app_context():
+            yield from generate_progress()
+
     # 如果请求流式返回，使用 Server-Sent Events
     if stream:
-        return Response(generate_progress(), mimetype='text/event-stream')
+        return Response(stream_with_context(generate_progress_with_app_context()), mimetype='text/event-stream')
 
     # 否则一次性返回结果
     result = None
