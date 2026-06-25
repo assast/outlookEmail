@@ -446,7 +446,7 @@
                 if (data.success) {
                     showToast(data.message || '账号已保存', 'success');
                     currentGroupId = oauthPreviewAccount.group_id;
-                    await loadGroups();
+                    await reloadAuthorizationAffectedViews();
                     hideGetRefreshTokenModal();
                 } else {
                     handleApiError(data, '保存账号失败');
