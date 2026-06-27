@@ -142,6 +142,12 @@
 | GET | `/api/settings` | Session | JSON | 获取系统设置 |
 | PUT | `/api/settings` | Session + CSRF | JSON | 更新系统设置 |
 | POST | `/api/settings/test-forward-channel` | Session + CSRF | JSON | 直接测试转发渠道 |
+| GET | `/api/skins` | Session | JSON | 获取系统级外观皮肤列表与当前皮肤 |
+| POST | `/api/skins/<skin_id>/activate` | Session + CSRF | JSON | 启用指定皮肤 |
+| POST | `/api/skins/upload` | Session + CSRF | JSON | 上传 zip 皮肤包 |
+| POST | `/api/skins/git/install` | Session + CSRF | JSON | 从 Git 仓库安装皮肤 |
+| POST | `/api/skins/<skin_id>/git/update` | Session + CSRF | JSON | 更新 Git 来源皮肤 |
+| DELETE | `/api/skins/<skin_id>` | Session + CSRF | JSON | 删除未启用的自定义皮肤 |
 
 ## 认证
 
@@ -1967,6 +1973,10 @@ POST /api/cloudflare/channels
 | `app_timezone` | 当前系统时区，IANA 时区名，例如 `Asia/Shanghai` |
 | `show_account_created_at` | 是否在邮箱列表展示创建时间 |
 | `show_account_sort_order` | 是否在邮箱列表展示自定义排序值 |
+| `active_skin_id` | 当前实际生效皮肤 ID；配置不可用时会返回 `classic` |
+| `configured_skin_id` | 当前保存的皮肤 ID；可能因为皮肤不可用而与 `active_skin_id` 不同 |
+| `active_skin` | 当前实际生效皮肤对象 |
+| `active_skin_asset_hash` | 当前皮肤 CSS 资源版本，用于刷新 `/assets/active-skin.css` |
 | `forward_channels` | 当前启用的转发渠道 |
 | `forward_check_interval_seconds` | 转发轮询间隔秒数 |
 | `forward_check_interval_minutes` | 兼容旧客户端的转发检查间隔分钟数 |
@@ -2006,6 +2016,7 @@ POST /api/cloudflare/channels
 | `app_timezone` | string | 系统时区，使用 IANA 时区名，例如 `Asia/Shanghai` |
 | `show_account_created_at` | bool | 是否在邮箱列表展示创建时间 |
 | `show_account_sort_order` | bool | 是否在邮箱列表展示自定义排序值 |
+| `active_skin_id` | string | 当前系统级外观皮肤 ID；所有登录设备共用同一设置 |
 | `external_api_key` | string | 对外 API Key，可传空字符串清空 |
 | `normal_mail_local_retention_enabled` | bool/string | 是否启用普通邮箱本地保留；通过 `/api/settings` 更新会同步刷新后端进程内读取缓存 |
 
@@ -2062,6 +2073,183 @@ POST /api/cloudflare/channels
   "smtp_provider": "outlook",
   "forward_channels": ["smtp", "telegram"]
 }
+```
+
+### GET `/api/skins`
+
+获取系统级外观皮肤列表、当前配置值和当前实际生效皮肤。该接口要求已登录。
+
+成功响应示例：
+
+```json
+{
+  "success": true,
+  "configured_skin_id": "midnight-sample",
+  "active_skin_id": "midnight-sample",
+  "asset_hash": "a1b2c3d4e5f6a7b8",
+  "active_skin": {
+    "id": "midnight-sample",
+    "name": "Midnight Sample",
+    "version": "1.0.0",
+    "source_type": "upload",
+    "builtin": false,
+    "active": true,
+    "status": "ok",
+    "asset_hash": "a1b2c3d4e5f6a7b8",
+    "last_error": ""
+  },
+  "skins": []
+}
+```
+
+字段说明：
+
+| 字段 | 说明 |
+| --- | --- |
+| `configured_skin_id` | `settings` 表中保存的皮肤 ID |
+| `active_skin_id` | 当前实际生效的皮肤 ID；配置不可用时会回退为 `classic` |
+| `asset_hash` | 当前皮肤 CSS 版本，可作为 `/assets/active-skin.css?v=...` 参数 |
+| `skins` | 已安装皮肤列表，始终包含内置 `classic` |
+
+皮肤对象常见字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | 皮肤 ID |
+| `name` | 显示名称 |
+| `version` | 版本 |
+| `description` | 描述 |
+| `source_type` | `builtin`、`upload` 或 `git` |
+| `builtin` | 是否内置皮肤 |
+| `active` | 是否当前实际生效 |
+| `status` | `ok` 或 `invalid` |
+| `last_error` | 最近一次校验或读取错误 |
+| `git_url` | Git 来源地址，仅 Git 来源皮肤返回 |
+| `git_ref` | Git ref，仅 Git 来源皮肤返回 |
+
+### POST `/api/skins/<skin_id>/activate`
+
+启用指定皮肤。该设置是系统级设置，保存后所有登录设备都会使用同一当前皮肤。
+
+成功响应示例：
+
+```json
+{
+  "success": true,
+  "message": "皮肤已启用",
+  "active_skin": {
+    "id": "classic",
+    "source_type": "builtin",
+    "active": false,
+    "status": "ok"
+  },
+  "asset_hash": "classic"
+}
+```
+
+失败时常见错误：
+
+- `皮肤 ID 无效`
+- `皮肤不存在`
+- `皮肤不可用`
+
+也可以通过 `PUT /api/settings` 提交 `active_skin_id` 达到同样效果。
+
+### POST `/api/skins/upload`
+
+上传 zip 皮肤包。表单字段名支持 `skin` 或 `file`。
+
+请求示例：
+
+```bash
+curl -X POST \
+  -H "X-CSRFToken: <csrf-token>" \
+  -b "session=<session-cookie>" \
+  -F "skin=@skin.zip" \
+  "http://localhost:5000/api/skins/upload"
+```
+
+成功响应示例：
+
+```json
+{
+  "success": true,
+  "message": "皮肤已安装",
+  "skin": {
+    "id": "midnight-sample",
+    "name": "Midnight Sample",
+    "version": "1.0.0",
+    "source_type": "upload",
+    "status": "ok"
+  }
+}
+```
+
+格式要求见 [`docs/skins.md`](skins.md)。上传失败不会改变当前启用皮肤。
+
+### POST `/api/skins/git/install`
+
+从 Git 仓库安装皮肤。仓库根目录必须包含 `skin.json` 和 CSS 入口文件。
+
+请求示例：
+
+```json
+{
+  "git_url": "https://github.com/user/outlook-skin.git",
+  "git_ref": "main"
+}
+```
+
+说明：
+
+- `git_url` 必填。
+- `git_ref` 可选，可以是分支、tag 或其他 `git clone --branch` 可解析的 ref。
+- 运行环境必须安装 `git`。
+- 私有仓库凭据没有专门管理入口，不建议把凭据直接写进多人可见的 URL。
+
+成功响应与上传接口一致。安装失败不会改变当前启用皮肤。
+
+### POST `/api/skins/<skin_id>/git/update`
+
+更新已安装的 Git 来源皮肤。服务端会使用该皮肤保存的 `git_url` 和 `git_ref` 重新拉取，并要求更新后的 `skin.json.id` 与原皮肤 ID 一致。
+
+成功响应示例：
+
+```json
+{
+  "success": true,
+  "message": "Git 皮肤已更新",
+  "skin": {
+    "id": "midnight-sample",
+    "source_type": "git",
+    "status": "ok"
+  }
+}
+```
+
+更新失败时不会覆盖现有皮肤文件。
+
+### DELETE `/api/skins/<skin_id>`
+
+删除未启用的自定义皮肤。不能删除内置 `classic`，也不能直接删除当前启用的皮肤；需要先切换到其他皮肤或 `classic`。
+
+成功响应示例：
+
+```json
+{
+  "success": true,
+  "message": "皮肤已删除"
+}
+```
+
+### GET `/assets/active-skin.css`
+
+返回当前实际生效皮肤的 CSS。该资源用于页面加载，不要求 Session；配置不可用或 CSS 读取失败时返回空的 classic fallback CSS。
+
+客户端可使用 `GET /api/skins` 或 `GET /api/settings` 返回的 `asset_hash` / `active_skin_asset_hash` 作为查询参数刷新缓存：
+
+```txt
+/assets/active-skin.css?v=<asset_hash>
 ```
 
 ### GET `/api/settings/normal-mail-retention/status`

@@ -712,6 +712,14 @@
                 flex: 1 1 140px;
             }
 
+            .skin-card {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .skin-card__actions {
+                justify-content: flex-start;
+            }
+
             .toast {
                 min-width: 0;
                 width: calc(100vw - 24px);

@@ -6,7 +6,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.4);
+            background-color: var(--skin-overlay);
             z-index: 1000;
             align-items: center;
             justify-content: center;
@@ -25,7 +25,7 @@
         }
 
         .modal-content {
-            background-color: #ffffff;
+            background-color: var(--skin-surface);
             border-radius: 12px;
             width: 520px;
             max-width: 90%;
@@ -94,19 +94,19 @@
 
         .modal-header {
             padding: 20px 24px;
-            border-bottom: 1px solid #e5e5e5;
+            border-bottom: 1px solid var(--skin-border);
             display: flex;
             justify-content: space-between;
             align-items: center;
             position: sticky;
             top: 0;
-            background-color: #ffffff;
+            background-color: var(--skin-surface);
         }
 
         .modal-header h3 {
             font-size: 18px;
             font-weight: 600;
-            color: #1a1a1a;
+            color: var(--skin-text);
         }
 
         .modal-close {
@@ -122,8 +122,8 @@
         }
 
         .modal-close:hover {
-            background-color: #f0f0f0;
-            color: #666;
+            background-color: var(--skin-surface-hover);
+            color: var(--skin-text-muted);
         }
 
         .modal-body {
@@ -897,9 +897,9 @@
 
         .settings-sidebar-card {
             padding: 16px 18px;
-            border: 1px solid #e5e7eb;
+            border: 1px solid var(--skin-border);
             border-radius: 16px;
-            background: #f9fafb;
+            background: var(--skin-surface-soft);
         }
 
         .settings-sidebar-card--hero {
@@ -952,9 +952,9 @@
         .settings-sidebar-link {
             width: 100%;
             padding: 12px 14px;
-            border: 1px solid #e5e7eb;
+            border: 1px solid var(--skin-border);
             border-radius: 12px;
-            background: #ffffff;
+            background: var(--skin-surface);
             display: grid;
             gap: 3px;
             text-align: left;
@@ -964,25 +964,25 @@
 
         .settings-sidebar-link:hover {
             border-color: #cfd5dd;
-            background: #fcfcfd;
+            background: var(--skin-surface-soft);
             transform: translateY(-1px);
         }
 
         .settings-sidebar-link.is-active {
-            border-color: #111827;
-            background: linear-gradient(180deg, #ffffff 0%, #f3f4f6 100%);
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+            border-color: var(--skin-primary);
+            background: linear-gradient(180deg, var(--skin-surface) 0%, var(--skin-surface-soft) 100%);
+            box-shadow: 0 10px 24px var(--skin-shadow);
         }
 
         .settings-sidebar-list strong {
             font-size: 14px;
-            color: #111827;
+            color: var(--skin-text);
         }
 
         .settings-sidebar-list span {
             font-size: 12px;
             line-height: 1.55;
-            color: #6b7280;
+            color: var(--skin-text-soft);
         }
 
         .settings-content {
@@ -990,7 +990,7 @@
         }
 
         .settings-section {
-            border-top: 1px solid #e5e5e5;
+            border-top: 1px solid var(--skin-border);
             margin: 24px 0;
             padding-top: 24px;
         }
@@ -1022,21 +1022,21 @@
             margin: 10px 0 6px;
             font-size: 16px;
             font-weight: 600;
-            color: #111827;
+            color: var(--skin-text);
         }
 
         .settings-section-head p {
             margin: 0;
             font-size: 13px;
             line-height: 1.6;
-            color: #6b7280;
+            color: var(--skin-text-soft);
         }
 
         .settings-panel {
             padding: 18px;
-            border: 1px solid #e5e7eb;
+            border: 1px solid var(--skin-border);
             border-radius: 14px;
-            background: #fbfbfc;
+            background: var(--skin-surface-soft);
         }
 
         .settings-section > .settings-panel + .settings-panel {
@@ -1113,6 +1113,89 @@
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
+        }
+
+        .skin-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .skin-card {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            padding: 14px;
+            border: 1px solid var(--skin-border);
+            border-radius: 12px;
+            background: var(--skin-surface);
+        }
+
+        .skin-card.is-active {
+            border-color: var(--skin-primary);
+            box-shadow: inset 3px 0 0 var(--skin-primary), 0 10px 24px var(--skin-shadow);
+        }
+
+        .skin-card.is-invalid {
+            border-color: #f3d6d6;
+            background: linear-gradient(180deg, var(--skin-surface) 0%, #fff7f7 100%);
+        }
+
+        .skin-card__title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--skin-text);
+        }
+
+        .skin-card__meta {
+            margin-top: 6px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            font-size: 12px;
+            color: var(--skin-text-soft);
+        }
+
+        .skin-card__error {
+            margin-top: 8px;
+            color: #b42318;
+            font-size: 12px;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+
+        .skin-card__actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .skin-pill {
+            display: inline-flex;
+            align-items: center;
+            min-height: 22px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #eef2f7;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .skin-pill--active {
+            background: var(--skin-accent-soft);
+            color: var(--skin-accent);
+        }
+
+        .skin-pill--invalid {
+            background: #fdebec;
+            color: #b42318;
         }
 
         .settings-panel > .form-group:last-child {

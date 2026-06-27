@@ -1,8 +1,8 @@
         /* 顶部导航栏 */
         .navbar {
             height: 56px;
-            background-color: #ffffff;
-            border-bottom: 1px solid #e5e5e5;
+            background-color: var(--skin-surface);
+            border-bottom: 1px solid var(--skin-border);
             display: flex;
             align-items: center;
             padding: 0 24px;
@@ -16,7 +16,7 @@
         .navbar-brand {
             font-size: 18px;
             font-weight: 600;
-            color: #1a1a1a;
+            color: var(--skin-text);
             display: flex;
             align-items: center;
             gap: 8px;
@@ -257,8 +257,8 @@
 
         .current-account {
             font-size: 14px;
-            color: #666;
-            background-color: #f5f5f5;
+            color: var(--skin-text-muted);
+            background-color: var(--skin-surface-muted);
             padding: 6px 16px;
             border-radius: 20px;
             display: none;
@@ -271,7 +271,7 @@
         }
 
         .current-account:hover {
-            background-color: #e8e8e8;
+            background-color: var(--skin-surface-hover);
         }
 
         .current-account.show {
@@ -279,7 +279,7 @@
         }
 
         .current-account strong {
-            color: #1a1a1a;
+            color: var(--skin-text);
             font-weight: 500;
         }
 
@@ -299,8 +299,8 @@
 
         .navbar-btn {
             background: none;
-            border: 1px solid #e5e5e5;
-            color: #666;
+            border: 1px solid var(--skin-border);
+            color: var(--skin-text-muted);
             cursor: pointer;
             font-size: 13px;
             padding: 6px 12px;
@@ -317,10 +317,10 @@
             gap: 6px;
             min-height: 36px;
             padding: 0 12px;
-            border: 1px solid #e5e5e5;
+            border: 1px solid var(--skin-border);
             border-radius: 10px;
-            background: #ffffff;
-            color: #374151;
+            background: var(--skin-surface);
+            color: var(--skin-text);
             cursor: pointer;
             font-size: 13px;
             font-weight: 600;
@@ -328,9 +328,9 @@
         }
 
         .mobile-nav-menu-btn:hover {
-            background-color: #f8fafc;
+            background-color: var(--skin-surface-soft);
             border-color: #cbd5e1;
-            color: #111827;
+            color: var(--skin-primary-hover);
         }
 
         .mobile-nav-menu-btn svg {
@@ -339,8 +339,8 @@
         }
 
         .navbar-btn:hover {
-            background-color: #f5f5f5;
-            border-color: #ccc;
+            background-color: var(--skin-surface-muted);
+            border-color: var(--skin-border-strong);
         }
 
         /* GitHub Star 按钮 */
