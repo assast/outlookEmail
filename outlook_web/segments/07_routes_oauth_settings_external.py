@@ -614,7 +614,13 @@ def api_get_settings():
     )
     settings['forward_channels'] = get_forward_channels()
     settings['forward_check_interval_minutes'] = get_setting('forward_check_interval_minutes', '5')
-    settings['forward_account_delay_seconds'] = get_setting('forward_account_delay_seconds', '0')
+    settings['forward_check_interval_seconds'] = str(normalize_forward_check_interval_seconds())
+    forward_execution_mode = normalize_forward_execution_mode()
+    settings['forward_execution_mode'] = forward_execution_mode
+    settings['forward_parallel_workers'] = str(normalize_forward_parallel_workers())
+    settings['forward_account_delay_seconds'] = (
+        '0' if forward_execution_mode == 'parallel' else get_setting('forward_account_delay_seconds', '0')
+    )
     settings['forward_email_window_minutes'] = get_setting('forward_email_window_minutes', '0')
     settings['forward_include_junkemail'] = get_setting('forward_include_junkemail', 'false')
     settings['email_forward_recipient'] = get_setting('email_forward_recipient', '')
@@ -920,6 +926,9 @@ def api_update_settings():
             else:
                 errors.append('保存 Cloudflare AI API Key 失败')
 
+    forward_execution_mode_for_delay = normalize_forward_execution_mode()
+    forward_account_delay_updated = False
+
     if 'forward_check_interval_minutes' in data:
         try:
             minutes = int(data['forward_check_interval_minutes'])
@@ -927,22 +936,70 @@ def api_update_settings():
                 errors.append('转发检查间隔必须在 1-60 分钟之间')
             elif set_setting('forward_check_interval_minutes', str(minutes)):
                 updated.append('转发检查间隔')
+                if 'forward_check_interval_seconds' not in data:
+                    if not set_setting('forward_check_interval_seconds', str(minutes * 60)):
+                        errors.append('保存转发秒级轮询间隔失败')
             else:
                 errors.append('保存转发检查间隔失败')
         except ValueError:
             errors.append('转发检查间隔必须是数字')
 
+    if 'forward_check_interval_seconds' in data:
+        try:
+            seconds = parse_forward_check_interval_seconds_input(data['forward_check_interval_seconds'])
+            if set_setting('forward_check_interval_seconds', str(seconds)):
+                updated.append('转发秒级轮询间隔')
+            else:
+                errors.append('保存转发秒级轮询间隔失败')
+        except ValueError as exc:
+            errors.append(str(exc))
+
+    if 'forward_execution_mode' in data:
+        try:
+            execution_mode = parse_forward_execution_mode_input(data['forward_execution_mode'])
+            if set_setting('forward_execution_mode', execution_mode):
+                updated.append('转发执行模式')
+                forward_execution_mode_for_delay = execution_mode
+            else:
+                errors.append('保存转发执行模式失败')
+        except ValueError as exc:
+            errors.append(str(exc))
+
+    if 'forward_parallel_workers' in data:
+        try:
+            workers = parse_forward_parallel_workers_input(data['forward_parallel_workers'])
+            if set_setting('forward_parallel_workers', str(workers)):
+                updated.append('转发并行 worker 数')
+            else:
+                errors.append('保存转发并行 worker 数失败')
+        except ValueError as exc:
+            errors.append(str(exc))
+
     if 'forward_account_delay_seconds' in data:
         try:
-            seconds = int(data['forward_account_delay_seconds'])
+            seconds = (
+                0 if forward_execution_mode_for_delay == 'parallel'
+                else int(data['forward_account_delay_seconds'])
+            )
             if seconds < 0 or seconds > 60:
                 errors.append('账号间拉取间隔必须在 0-60 秒之间')
             elif set_setting('forward_account_delay_seconds', str(seconds)):
                 updated.append('账号间拉取间隔')
+                forward_account_delay_updated = True
             else:
                 errors.append('保存账号间拉取间隔失败')
-        except ValueError:
+        except (TypeError, ValueError):
             errors.append('账号间拉取间隔必须是数字')
+
+    if (
+        'forward_execution_mode' in data
+        and forward_execution_mode_for_delay == 'parallel'
+        and not forward_account_delay_updated
+    ):
+        if set_setting('forward_account_delay_seconds', '0'):
+            updated.append('账号间拉取间隔')
+        else:
+            errors.append('保存账号间拉取间隔失败')
 
     if 'forward_email_window_minutes' in data:
         try:

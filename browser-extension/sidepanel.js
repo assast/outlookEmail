@@ -1858,6 +1858,12 @@
     await withSession(async (config) => {
       const payload = await Api.apiRequest(config, '/api/settings');
       const settings = payload.settings || {};
+      const forwardIntervalSeconds = settings.forward_check_interval_seconds
+        || String((toInt(settings.forward_check_interval_minutes || '5', 5) || 5) * 60);
+      const forwardExecutionMode = settings.forward_execution_mode === 'parallel' ? 'parallel' : 'serial';
+      const forwardAccountDelaySeconds = forwardExecutionMode === 'parallel'
+        ? '0'
+        : (settings.forward_account_delay_seconds || '0');
       setContent(`
         <div class="card">
           <div class="item-title">基础与刷新</div>
@@ -1892,8 +1898,12 @@
             <label class="check-row"><input name="settingForwardChannel" value="wecom" type="checkbox" ${Array.isArray(settings.forward_channels) && settings.forward_channels.includes('wecom') ? 'checked' : ''}><span>企业微信</span></label>
           </div>
           <div class="row">
-            <label><span>检查间隔（分钟）</span><input id="settingForwardCheckInterval" type="number" value="${escapeHtml(settings.forward_check_interval_minutes || '5')}"></label>
-            <label><span>账号间隔（秒）</span><input id="settingForwardAccountDelay" type="number" value="${escapeHtml(settings.forward_account_delay_seconds || '0')}"></label>
+            <label><span>检查间隔（秒）</span><input id="settingForwardCheckIntervalSeconds" type="number" min="20" max="3600" value="${escapeHtml(forwardIntervalSeconds)}"></label>
+            <label><span>执行模式</span><select id="settingForwardExecutionMode">${renderOptions([['serial', '串行'], ['parallel', '并行']], forwardExecutionMode)}</select></label>
+          </div>
+          <div class="row">
+            <label><span>账号间隔（秒）</span><input id="settingForwardAccountDelay" type="number" min="0" max="60" value="${escapeHtml(forwardAccountDelaySeconds)}"></label>
+            <label><span>并行 worker</span><input id="settingForwardParallelWorkers" type="number" min="1" max="10" value="${escapeHtml(settings.forward_parallel_workers || '4')}"></label>
           </div>
           <div class="row">
             <label><span>邮件时间窗口（分钟）</span><input id="settingForwardWindow" type="number" value="${escapeHtml(settings.forward_email_window_minutes || '0')}"></label>
@@ -1946,10 +1956,25 @@
       getEl('btnTestWecom').addEventListener('click', () => testForwardChannel(config, 'wecom'));
       getEl('btnTestWebdav').addEventListener('click', () => testWebdav(config));
       getEl('btnUploadWebdav').addEventListener('click', () => uploadWebdav(config));
+      const syncForwardExecutionMode = () => {
+        const modeEl = getEl('settingForwardExecutionMode');
+        const delayEl = getEl('settingForwardAccountDelay');
+        if (!modeEl || !delayEl) return;
+        const isParallel = modeEl.value === 'parallel';
+        delayEl.disabled = isParallel;
+        if (isParallel) {
+          delayEl.value = '0';
+        }
+      };
+      getEl('settingForwardExecutionMode')?.addEventListener('change', syncForwardExecutionMode);
+      syncForwardExecutionMode();
     }, '正在加载设置...');
   }
 
   function collectSettingsPayload() {
+    const forwardCheckIntervalSeconds = toInt(valueOf('settingForwardCheckIntervalSeconds'), 300);
+    const forwardExecutionMode = valueOf('settingForwardExecutionMode') === 'parallel' ? 'parallel' : 'serial';
+    const forwardAccountDelaySeconds = forwardExecutionMode === 'parallel' ? 0 : toInt(valueOf('settingForwardAccountDelay'), 0);
     return {
       gptmail_api_key: valueOf('settingGptmailKey'),
       app_timezone: valueOf('settingTimezone'),
@@ -1968,8 +1993,11 @@
       cloudflare_email_domains: valueOf('settingCloudflareEmailDomains'),
       cloudflare_admin_password: valueOf('settingCloudflareAdminPassword'),
       forward_channels: Array.from(document.querySelectorAll('[name="settingForwardChannel"]:checked')).map((item) => item.value),
-      forward_check_interval_minutes: valueOf('settingForwardCheckInterval'),
-      forward_account_delay_seconds: valueOf('settingForwardAccountDelay'),
+      forward_check_interval_seconds: forwardCheckIntervalSeconds,
+      forward_check_interval_minutes: Math.max(1, Math.min(60, Math.ceil(forwardCheckIntervalSeconds / 60))),
+      forward_execution_mode: forwardExecutionMode,
+      forward_parallel_workers: toInt(valueOf('settingForwardParallelWorkers'), 4),
+      forward_account_delay_seconds: forwardAccountDelaySeconds,
       forward_email_window_minutes: valueOf('settingForwardWindow'),
       forward_include_junkemail: checked('settingForwardJunk'),
       email_forward_recipient: valueOf('settingForwardRecipient'),

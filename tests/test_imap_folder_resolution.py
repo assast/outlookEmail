@@ -3256,6 +3256,64 @@ class AppTimezoneSettingsTests(unittest.TestCase):
         self.assertTrue(payload['success'])
         self.assertEqual(payload['settings']['forward_account_delay_seconds'], '7')
 
+    def test_settings_api_persists_forward_latency_controls(self):
+        response = self.client.put(
+            '/api/settings',
+            json={
+                'forward_check_interval_seconds': 20,
+                'forward_execution_mode': 'parallel',
+                'forward_parallel_workers': 3,
+                'forward_account_delay_seconds': 9,
+            }
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        response = self.client.get('/api/settings')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['settings']['forward_check_interval_seconds'], '20')
+        self.assertEqual(payload['settings']['forward_execution_mode'], 'parallel')
+        self.assertEqual(payload['settings']['forward_parallel_workers'], '3')
+        self.assertEqual(payload['settings']['forward_account_delay_seconds'], '0')
+
+    def test_settings_api_legacy_forward_minutes_updates_seconds(self):
+        response = self.client.put(
+            '/api/settings',
+            json={'forward_check_interval_minutes': 2}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        response = self.client.get('/api/settings')
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['settings']['forward_check_interval_seconds'], '120')
+
+    def test_settings_api_rejects_invalid_forward_latency_controls(self):
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting('forward_check_interval_seconds', '300'))
+
+        response = self.client.put(
+            '/api/settings',
+            json={'forward_check_interval_seconds': 10}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertIn('转发轮询间隔必须在 20-3600 秒之间', payload['error'])
+
+        response = self.client.get('/api/settings')
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['settings']['forward_check_interval_seconds'], '300')
+
     def test_validate_cron_uses_requested_timezone(self):
         response = self.client.post(
             '/api/settings/validate-cron',
@@ -3290,6 +3348,8 @@ class MultiChannelForwardingTests(unittest.TestCase):
             db.commit()
 
             self.assertTrue(web_outlook_app.set_setting('forward_channels', 'smtp,telegram'))
+            self.assertTrue(web_outlook_app.set_setting('forward_execution_mode', 'serial'))
+            self.assertTrue(web_outlook_app.set_setting('forward_parallel_workers', '4'))
             self.assertTrue(web_outlook_app.set_setting('email_forward_recipient', 'main@example.com'))
             self.assertTrue(web_outlook_app.set_setting('smtp_host', 'smtp.example.com'))
             self.assertTrue(web_outlook_app.set_setting_encrypted('telegram_bot_token', '123456:abcdef'))
@@ -3503,6 +3563,87 @@ class MultiChannelForwardingTests(unittest.TestCase):
 
         self.assertEqual(candidates_mock.call_count, 2)
         sleep_mock.assert_called_once_with(3)
+
+    def test_process_forwarding_job_skips_when_run_lock_is_active(self):
+        self.assertTrue(web_outlook_app.forwarding_run_lock.acquire(blocking=False))
+        try:
+            with patch.object(web_outlook_app, 'fetch_forward_candidates') as candidates_mock:
+                result = web_outlook_app.process_forwarding_job()
+        finally:
+            web_outlook_app.forwarding_run_lock.release()
+
+        self.assertTrue(result['skipped'])
+        self.assertEqual(result['reason'], 'already_running')
+        candidates_mock.assert_not_called()
+
+    def test_parallel_forwarding_allows_other_accounts_while_one_is_slow(self):
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting('forward_execution_mode', 'parallel'))
+            self.assertTrue(web_outlook_app.set_setting('forward_parallel_workers', '2'))
+            self.assertTrue(web_outlook_app.add_account(
+                'parallel-second@example.com',
+                'password456',
+                'client-id-2',
+                'refresh-token-2',
+                group_id=1,
+                forward_enabled=True
+            ))
+            db = web_outlook_app.get_db()
+            db.execute(
+                'UPDATE accounts SET forward_last_checked_at = NULL WHERE email = ?',
+                ('parallel-second@example.com',),
+            )
+            db.commit()
+
+        first_started = threading.Event()
+        second_processed = threading.Event()
+        first_wait = {'released_by_second': False}
+
+        def fetch_candidates(account, _top=20, _folder='inbox'):
+            if account.get('email') == 'multi-channel@example.com':
+                first_started.set()
+                first_wait['released_by_second'] = second_processed.wait(timeout=0.5)
+                return {'success': True, 'emails': [], 'error': ''}
+            if account.get('email') == 'parallel-second@example.com':
+                first_started.wait(timeout=0.5)
+                second_processed.set()
+                return {'success': True, 'emails': [], 'error': ''}
+            return {'success': True, 'emails': [], 'error': ''}
+
+        with patch.object(web_outlook_app, 'fetch_forward_candidates', side_effect=fetch_candidates):
+            result = web_outlook_app.process_forwarding_job()
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['processed_count'], 2)
+        self.assertTrue(first_wait['released_by_second'])
+
+    def test_parallel_forwarding_ignores_account_delay_seconds(self):
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.set_setting('forward_execution_mode', 'parallel'))
+            self.assertTrue(web_outlook_app.set_setting('forward_parallel_workers', '2'))
+            self.assertTrue(web_outlook_app.set_setting('forward_account_delay_seconds', '3'))
+            self.assertTrue(web_outlook_app.add_account(
+                'parallel-delay-second@example.com',
+                'password456',
+                'client-id-2',
+                'refresh-token-2',
+                group_id=1,
+                forward_enabled=True
+            ))
+            db = web_outlook_app.get_db()
+            db.execute(
+                'UPDATE accounts SET forward_last_checked_at = NULL WHERE email = ?',
+                ('parallel-delay-second@example.com',),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'fetch_forward_candidates', return_value={'success': True, 'emails': [], 'error': ''}) as candidates_mock:
+            with patch.object(web_outlook_app.time, 'sleep') as sleep_mock:
+                result = web_outlook_app.process_forwarding_job()
+
+        self.assertTrue(result['success'])
+        self.assertEqual(candidates_mock.call_count, 2)
+        sleep_mock.assert_not_called()
 
     def test_extract_message_attachments_returns_metadata_and_content(self):
         message = EmailMessage()

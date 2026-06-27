@@ -81,6 +81,7 @@ scheduler_instance = None
 scheduler_lock = threading.Lock()
 token_refresh_run_lock = threading.Lock()
 webdav_backup_run_lock = threading.Lock()
+forwarding_run_lock = threading.Lock()
 proxy_socket_lock = threading.RLock()
 
 
@@ -1985,6 +1986,28 @@ def init_db():
     cursor.execute('''
         INSERT OR IGNORE INTO settings (key, value)
         VALUES ('forward_check_interval_minutes', '5')
+    ''')
+    forward_interval_minutes_row = cursor.execute(
+        "SELECT value FROM settings WHERE key = 'forward_check_interval_minutes'"
+    ).fetchone()
+    try:
+        forward_interval_minutes = max(
+            1,
+            min(60, int(forward_interval_minutes_row[0] if forward_interval_minutes_row else '5'))
+        )
+    except (TypeError, ValueError):
+        forward_interval_minutes = 5
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('forward_check_interval_seconds', ?)
+    ''', (str(forward_interval_minutes * 60),))
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('forward_execution_mode', 'serial')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('forward_parallel_workers', '4')
     ''')
     cursor.execute('''
         INSERT OR IGNORE INTO settings (key, value)

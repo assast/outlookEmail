@@ -2058,6 +2058,26 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('overflow-y: auto;', settings_css)
         self.assertIn('scrollbar-width: thin;', settings_css)
 
+    def test_forwarding_latency_settings_ui_is_present(self):
+        settings_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'dialogs-management.html').read_text(encoding='utf-8')
+        settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')
+        extension_js = pathlib.Path(ROOT_DIR, 'browser-extension', 'sidepanel.js').read_text(encoding='utf-8')
+
+        self.assertIn('id="forwardCheckIntervalSeconds"', settings_html)
+        self.assertIn('id="forwardExecutionMode"', settings_html)
+        self.assertIn('id="forwardParallelWorkers"', settings_html)
+        self.assertIn('syncForwardExecutionModeUI()', settings_html)
+        self.assertIn('data.settings.forward_check_interval_seconds', settings_js)
+        self.assertIn('settings.forward_check_interval_seconds = forwardSeconds;', settings_js)
+        self.assertIn('settings.forward_execution_mode = forwardExecutionMode;', settings_js)
+        self.assertIn('settings.forward_parallel_workers = forwardParallelWorkers;', settings_js)
+        self.assertIn("delayEl.value = '0';", settings_js)
+        self.assertIn("forwardExecutionMode === 'parallel'", settings_js)
+        self.assertIn('id="settingForwardCheckIntervalSeconds"', extension_js)
+        self.assertIn('id="settingForwardExecutionMode"', extension_js)
+        self.assertIn('forward_check_interval_seconds: forwardCheckIntervalSeconds', extension_js)
+        self.assertIn('forward_account_delay_seconds: forwardAccountDelaySeconds', extension_js)
+
     def test_retention_status_poll_uses_backoff_constants(self):
         settings_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '07-settings.js').read_text(encoding='utf-8')
 
@@ -2605,6 +2625,21 @@ class SchedulerTimezoneMigrationTests(unittest.TestCase):
                 web_outlook_app.DEFAULT_APP_TIMEZONE,
             )
 
+    def test_init_db_derives_forward_seconds_from_legacy_minutes(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                "DELETE FROM settings WHERE key IN ('forward_check_interval_minutes', 'forward_check_interval_seconds')"
+            )
+            db.execute(
+                "INSERT INTO settings (key, value) VALUES ('forward_check_interval_minutes', '45')"
+            )
+            db.commit()
+
+            web_outlook_app.init_db()
+
+            self.assertEqual(web_outlook_app.get_setting('forward_check_interval_seconds'), '2700')
+
     def test_scheduler_uses_default_timezone_when_legacy_database_lacks_setting(self):
         class FakeScheduler:
             def __init__(self, timezone=None):
@@ -2624,12 +2659,16 @@ class SchedulerTimezoneMigrationTests(unittest.TestCase):
         def fake_cron_trigger(**kwargs):
             return {'trigger': 'cron', 'kwargs': kwargs}
 
+        def fake_interval_trigger(**kwargs):
+            return {'trigger': 'interval', 'kwargs': kwargs}
+
         with self.app.app_context():
             web_outlook_app.init_db()
             self.assertEqual(web_outlook_app.get_setting('app_timezone'), web_outlook_app.DEFAULT_APP_TIMEZONE)
 
         with patch('apscheduler.schedulers.background.BackgroundScheduler', FakeScheduler), \
              patch('apscheduler.triggers.cron.CronTrigger', side_effect=fake_cron_trigger), \
+             patch('apscheduler.triggers.interval.IntervalTrigger', side_effect=fake_interval_trigger), \
              patch('atexit.register'), \
              patch('builtins.print'):
             scheduler = web_outlook_app.init_scheduler()
@@ -2639,7 +2678,7 @@ class SchedulerTimezoneMigrationTests(unittest.TestCase):
         self.assertEqual(str(scheduler.timezone), web_outlook_app.DEFAULT_APP_TIMEZONE)
         self.assertTrue(any(job.get('id') == 'token_refresh' for job in scheduler.jobs))
 
-    def test_scheduler_supports_forward_interval_sixty_minutes(self):
+    def test_scheduler_uses_second_forward_interval_with_legacy_minute_fallback(self):
         class FakeScheduler:
             def __init__(self, timezone=None):
                 self.timezone = timezone
@@ -2658,13 +2697,20 @@ class SchedulerTimezoneMigrationTests(unittest.TestCase):
         def fake_cron_trigger(**kwargs):
             return {'trigger': 'cron', 'kwargs': kwargs}
 
+        def fake_interval_trigger(**kwargs):
+            return {'trigger': 'interval', 'kwargs': kwargs}
+
         with self.app.app_context():
             web_outlook_app.init_db()
+            db = web_outlook_app.get_db()
+            db.execute("DELETE FROM settings WHERE key = 'forward_check_interval_seconds'")
+            db.commit()
             self.assertTrue(web_outlook_app.set_setting('forward_check_interval_minutes', '60'))
             web_outlook_app.shutdown_scheduler()
 
         with patch('apscheduler.schedulers.background.BackgroundScheduler', FakeScheduler), \
              patch('apscheduler.triggers.cron.CronTrigger', side_effect=fake_cron_trigger), \
+             patch('apscheduler.triggers.interval.IntervalTrigger', side_effect=fake_interval_trigger), \
              patch('atexit.register'), \
              patch('builtins.print'):
             scheduler = web_outlook_app.init_scheduler()
@@ -2672,8 +2718,10 @@ class SchedulerTimezoneMigrationTests(unittest.TestCase):
         self.assertIsInstance(scheduler, FakeScheduler)
         self.assertTrue(scheduler.started)
         forward_job = next(job for job in scheduler.jobs if job.get('id') == 'forward_mail')
-        self.assertEqual(forward_job['trigger']['kwargs']['minute'], 0)
-        self.assertNotIn('*/60', str(forward_job['trigger']['kwargs']))
+        self.assertEqual(forward_job['trigger']['trigger'], 'interval')
+        self.assertEqual(forward_job['trigger']['kwargs']['seconds'], 3600)
+        self.assertEqual(forward_job['max_instances'], 1)
+        self.assertTrue(forward_job['coalesce'])
 
     def test_scheduler_atexit_callback_is_idempotent_after_manual_shutdown(self):
         registered_callbacks = []
@@ -2700,12 +2748,16 @@ class SchedulerTimezoneMigrationTests(unittest.TestCase):
         def fake_cron_trigger(**kwargs):
             return {'trigger': 'cron', 'kwargs': kwargs}
 
+        def fake_interval_trigger(**kwargs):
+            return {'trigger': 'interval', 'kwargs': kwargs}
+
         with self.app.app_context():
             web_outlook_app.init_db()
             web_outlook_app.shutdown_scheduler()
 
         with patch('apscheduler.schedulers.background.BackgroundScheduler', FakeScheduler), \
              patch('apscheduler.triggers.cron.CronTrigger', side_effect=fake_cron_trigger), \
+             patch('apscheduler.triggers.interval.IntervalTrigger', side_effect=fake_interval_trigger), \
              patch('atexit.register', side_effect=lambda fn: registered_callbacks.append(fn)), \
              patch('builtins.print'):
             scheduler = web_outlook_app.init_scheduler()

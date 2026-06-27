@@ -232,6 +232,66 @@ button {
     border: 1px solid var(--border-color);
     max-width: 320px;
     transition: var(--transition-fast);
+    cursor: pointer;
+    user-select: none;
+}
+
+.user-pill:hover {
+    background-color: var(--bg-active);
+    border-color: var(--border-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.user-pill:active {
+    transform: translateY(0);
+}
+
+.user-pill .copy-icon {
+    width: 13px;
+    height: 13px;
+    margin-left: 2px;
+    opacity: 0.6;
+    color: var(--text-secondary);
+    transition: var(--transition-fast);
+}
+
+.user-pill:hover .copy-icon {
+    opacity: 1;
+    color: var(--primary);
+}
+
+/* Toast Notification */
+.toast-notification {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background-color: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 12px 20px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 9999;
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.toast-notification.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+
+.toast-icon {
+    color: var(--success);
+    width: 16px;
+    height: 16px;
 }
 
 .avatar {

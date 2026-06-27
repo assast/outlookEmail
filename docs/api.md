@@ -1968,7 +1968,11 @@ POST /api/cloudflare/channels
 | `show_account_created_at` | 是否在邮箱列表展示创建时间 |
 | `show_account_sort_order` | 是否在邮箱列表展示自定义排序值 |
 | `forward_channels` | 当前启用的转发渠道 |
-| `forward_check_interval_minutes` | 转发检查间隔 |
+| `forward_check_interval_seconds` | 转发轮询间隔秒数 |
+| `forward_check_interval_minutes` | 兼容旧客户端的转发检查间隔分钟数 |
+| `forward_execution_mode` | 转发执行模式，`serial` 或 `parallel` |
+| `forward_parallel_workers` | 并行模式 worker 数 |
+| `forward_account_delay_seconds` | 串行模式下账号间隔秒数；并行模式返回 `0` |
 | `forward_email_window_minutes` | 转发时间窗口 |
 | `forward_include_junkemail` | 是否转发垃圾箱 |
 | `email_forward_recipient` | SMTP 转发收件人 |
@@ -2025,10 +2029,14 @@ POST /api/cloudflare/channels
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `forward_check_interval_minutes` | int | 轮询间隔，范围 `1-60` |
+| `forward_check_interval_seconds` | int | 轮询间隔秒数，范围 `20-3600` |
+| `forward_check_interval_minutes` | int | 兼容旧客户端的轮询间隔分钟数，范围 `1-60`；未同时传 seconds 时会同步写入秒级配置 |
+| `forward_execution_mode` | string | `serial` 或 `parallel`；保存为 `parallel` 时账号间隔会归零 |
+| `forward_parallel_workers` | int | 并行模式 worker 数，范围 `1-10` |
+| `forward_account_delay_seconds` | int | 串行模式下账号间隔，范围 `0-60`；并行模式会保存为 `0` |
 | `forward_email_window_minutes` | int | 转发邮件时间范围，范围 `0-10080`，`0` 表示不限制 |
 | `forward_include_junkemail` | bool | 是否把垃圾箱邮件也纳入转发轮询 |
-| `forward_channels` | array<string> | `smtp` / `telegram` |
+| `forward_channels` | array<string> | `smtp` / `telegram` / `wecom` |
 | `email_forward_recipient` | string | SMTP 转发收件人 |
 | `smtp_host` | string | SMTP 主机 |
 | `smtp_port` | int | SMTP 端口 |
@@ -2045,7 +2053,10 @@ POST /api/cloudflare/channels
 
 ```json
 {
-  "forward_check_interval_minutes": 5,
+  "forward_check_interval_seconds": 20,
+  "forward_execution_mode": "parallel",
+  "forward_parallel_workers": 4,
+  "forward_account_delay_seconds": 0,
   "forward_email_window_minutes": 30,
   "forward_include_junkemail": true,
   "smtp_provider": "outlook",

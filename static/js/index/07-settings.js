@@ -20,6 +20,21 @@
             return String(value).toLowerCase() === 'true';
         }
 
+        function syncForwardExecutionModeUI() {
+            const modeEl = document.getElementById('forwardExecutionMode');
+            const workersEl = document.getElementById('forwardParallelWorkers');
+            const delayEl = document.getElementById('forwardAccountDelaySeconds');
+            if (!modeEl || !workersEl) return;
+            const isParallel = modeEl.value === 'parallel';
+            workersEl.disabled = !isParallel;
+            if (delayEl) {
+                delayEl.disabled = isParallel;
+                if (isParallel) {
+                    delayEl.value = '0';
+                }
+            }
+        }
+
         function formatStorageBytes(bytes) {
             const value = Number(bytes) || 0;
             if (value < 1024) return `${value} B`;
@@ -1538,7 +1553,10 @@
                     const retentionEnabled = parseSettingsBoolean(data.settings.normal_mail_local_retention_enabled);
                     document.getElementById('normalMailLocalRetentionEnabled').checked = retentionEnabled;
                     setNormalMailLocalRetentionEnabled(retentionEnabled);
-                    document.getElementById('forwardCheckIntervalMinutes').value = data.settings.forward_check_interval_minutes || '5';
+                    const fallbackForwardSeconds = String((parseInt(data.settings.forward_check_interval_minutes || '5', 10) || 5) * 60);
+                    document.getElementById('forwardCheckIntervalSeconds').value = data.settings.forward_check_interval_seconds || fallbackForwardSeconds;
+                    document.getElementById('forwardExecutionMode').value = data.settings.forward_execution_mode === 'parallel' ? 'parallel' : 'serial';
+                    document.getElementById('forwardParallelWorkers').value = data.settings.forward_parallel_workers || '4';
                     document.getElementById('forwardAccountDelaySeconds').value = data.settings.forward_account_delay_seconds || '0';
                     document.getElementById('forwardEmailWindowMinutes').value = data.settings.forward_email_window_minutes || '0';
                     document.getElementById('forwardIncludeJunkemail').checked = String(data.settings.forward_include_junkemail) === 'true';
@@ -1569,6 +1587,7 @@
                     document.querySelector('input[name="refreshStrategy"][value="' + (useCron ? 'cron' : 'days') + '"]').checked = true;
                     toggleRefreshStrategy();
                     syncSmtpProviderUI(false);
+                    syncForwardExecutionModeUI();
                     await loadCloudflareChannelsForSettings();
                     await loadNormalMailRetentionStatus();
                 }
@@ -1617,8 +1636,12 @@
 
             const days = parseInt(refreshDays, 10);
             const delay = parseInt(refreshDelay, 10);
-            const forwardMinutes = parseInt(document.getElementById('forwardCheckIntervalMinutes').value || '5', 10);
-            const forwardAccountDelaySeconds = parseInt(document.getElementById('forwardAccountDelaySeconds').value || '0', 10);
+            const forwardSeconds = parseInt(document.getElementById('forwardCheckIntervalSeconds').value || '300', 10);
+            const forwardExecutionMode = document.getElementById('forwardExecutionMode')?.value === 'parallel' ? 'parallel' : 'serial';
+            const forwardParallelWorkers = parseInt(document.getElementById('forwardParallelWorkers').value || '4', 10);
+            const forwardAccountDelaySeconds = forwardExecutionMode === 'parallel'
+                ? 0
+                : parseInt(document.getElementById('forwardAccountDelaySeconds').value || '0', 10);
             const forwardWindowMinutes = parseInt(document.getElementById('forwardEmailWindowMinutes').value || '0', 10);
             const forwardIncludeJunkemail = !!document.getElementById('forwardIncludeJunkemail')?.checked;
             const smtpPortValue = document.getElementById('settingsSmtpPort').value.trim();
@@ -1648,8 +1671,16 @@
                 showToast('Invalid time zone', 'error');
                 return;
             }
-            if (Number.isNaN(forwardMinutes) || forwardMinutes < 1 || forwardMinutes > 60) {
-                showToast('转发轮询间隔必须在 1-60 分钟之间', 'error');
+            if (Number.isNaN(forwardSeconds) || forwardSeconds < 20 || forwardSeconds > 3600) {
+                showToast('转发轮询间隔必须在 20-3600 秒之间', 'error');
+                return;
+            }
+            if (!['serial', 'parallel'].includes(forwardExecutionMode)) {
+                showToast('转发执行模式无效', 'error');
+                return;
+            }
+            if (Number.isNaN(forwardParallelWorkers) || forwardParallelWorkers < 1 || forwardParallelWorkers > 10) {
+                showToast('转发并行 worker 数必须在 1-10 之间', 'error');
                 return;
             }
             if (Number.isNaN(forwardAccountDelaySeconds) || forwardAccountDelaySeconds < 0 || forwardAccountDelaySeconds > 60) {
@@ -1725,7 +1756,10 @@
             settings.show_group_id = showGroupId;
             settings.normal_mail_local_retention_enabled = normalMailLocalRetentionEnabled;
             settings.forward_channels = forwardChannels;
-            settings.forward_check_interval_minutes = forwardMinutes;
+            settings.forward_check_interval_seconds = forwardSeconds;
+            settings.forward_check_interval_minutes = Math.max(1, Math.min(60, Math.ceil(forwardSeconds / 60)));
+            settings.forward_execution_mode = forwardExecutionMode;
+            settings.forward_parallel_workers = forwardParallelWorkers;
             settings.forward_account_delay_seconds = forwardAccountDelaySeconds;
             settings.forward_email_window_minutes = forwardWindowMinutes;
             settings.forward_include_junkemail = forwardIncludeJunkemail;

@@ -6,6 +6,20 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-06-27
+
+### Added
+- 邮件转发新增并行执行模式，支持同时扫描多个邮箱账号，可配置并行 worker 数量（1-10）。
+- 转发轮询间隔改为秒级精度（20-3600 秒），替换原分钟级间隔，保留向后兼容。
+- 邮箱分享页面用户 pill 支持点击复制邮箱地址，新增 Toast 提示。
+- 并行模式下自动忽略账号间隔，串行模式下保留原有间隔行为。
+- 转发调度新增 `forwarding_run_lock` 防止并发执行。
+
+### Changed
+- 重构 `process_forwarding_job` 为模块化架构，提取数据库连接、账号解密、任务配置构建、渠道发送等独立函数。
+- 浏览器扩展侧边栏设置页同步适配转发秒级间隔、执行模式、并行 worker 配置。
+- 设置页转发配置 UI 改为秒级间隔输入、执行模式选择、并行 worker 输入，模式切换时自动联动禁用/启用相关控件。
+
 ## [2.1.0] - 2026-06-27
 
 ### Added

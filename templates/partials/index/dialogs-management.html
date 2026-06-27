@@ -322,10 +322,26 @@
                                 <div class="forwarding-inline-control">
                                     <label class="form-label">轮询间隔</label>
                                     <div class="input-inline">
-                                        <input type="number" class="form-input" id="forwardCheckIntervalMinutes" min="1" max="60" value="5">
-                                        <span>分钟</span>
+                                        <input type="number" class="form-input" id="forwardCheckIntervalSeconds" min="20" max="3600" value="300">
+                                        <span>秒</span>
                                     </div>
                                     <div class="form-hint">系统会按该频率扫描已开启转发的邮箱。</div>
+                                </div>
+                                <div class="forwarding-inline-control">
+                                    <label class="form-label">执行模式</label>
+                                    <select class="form-select" id="forwardExecutionMode" onchange="syncForwardExecutionModeUI()">
+                                        <option value="serial">串行</option>
+                                        <option value="parallel">并行</option>
+                                    </select>
+                                    <div class="form-hint">并行会同时扫描多个账号，默认串行更保守。</div>
+                                </div>
+                                <div class="forwarding-inline-control">
+                                    <label class="form-label">并行 worker</label>
+                                    <div class="input-inline">
+                                        <input type="number" class="form-input" id="forwardParallelWorkers" min="1" max="10" value="4">
+                                        <span>个</span>
+                                    </div>
+                                    <div class="form-hint">仅并行模式生效。</div>
                                 </div>
                                 <div class="forwarding-inline-control">
                                     <label class="form-label">账号间隔</label>

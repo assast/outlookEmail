@@ -616,12 +616,81 @@
         }
     }
 
+    function showToast(message) {
+        let toast = document.getElementById('shareToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'shareToast';
+            toast.className = 'toast-notification';
+            toast.innerHTML = `
+                <i data-lucide="check" class="toast-icon"></i>
+                <span class="toast-message"></span>
+            `;
+            document.body.appendChild(toast);
+            createLucideIcons();
+        }
+        
+        toast.querySelector('.toast-message').textContent = message;
+        toast.classList.add('show');
+        
+        if (toast.timeoutId) {
+            clearTimeout(toast.timeoutId);
+        }
+        
+        toast.timeoutId = setTimeout(() => {
+            toast.classList.remove('show');
+        }, 2000);
+    }
+
+    function fallbackCopyText(text) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            showToast('已复制邮箱地址到剪贴板');
+        } catch (err) {
+            console.error('Fallback copy failed', err);
+        }
+        document.body.removeChild(textArea);
+    }
+
+    function setupCopyEmail() {
+        const copyEmailPill = document.getElementById('copyEmailPill');
+        if (copyEmailPill) {
+            copyEmailPill.addEventListener('click', () => {
+                const emailTitle = document.getElementById('shareEmailTitle');
+                if (!emailTitle) return;
+                const emailText = emailTitle.textContent.trim();
+                
+                if (emailText && emailText.includes('@')) {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(emailText)
+                            .then(() => {
+                                showToast('已复制邮箱地址到剪贴板');
+                            })
+                            .catch(err => {
+                                console.error('Clipboard copy failed: ', err);
+                                fallbackCopyText(emailText);
+                            });
+                    } else {
+                        fallbackCopyText(emailText);
+                    }
+                }
+            });
+        }
+    }
+
     // --- Setup Initialization ---
     async function initializeSharePage() {
         insertGithubLink();
         setupTheme();
         setupSearch();
         setupScrollLoad();
+        setupCopyEmail();
 
         if (!token) {
             showInvalid('分享链接不可用');
