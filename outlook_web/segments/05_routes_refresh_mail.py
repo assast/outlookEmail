@@ -3772,6 +3772,37 @@ def api_get_raw_email(email_addr, message_id):
     })
 
 
+def fetch_email_detail_for_account(account, message_id, method='graph', folder='inbox',
+                                   id_mode='', prefer_local=False):
+    proxy_url = get_account_proxy_url(account)
+    fallback_proxy_urls = get_account_proxy_failover_urls(account)
+
+    if prefer_local and is_normal_mail_local_retention_enabled():
+        retained_detail = fetch_retained_normal_mail_detail(account, folder, message_id, id_mode)
+        if retained_detail and not retained_detail_has_incomplete_attachment_metadata(retained_detail):
+            return retained_detail
+
+    if account.get('account_type') == 'imap':
+        result = fetch_imap_account_detail_response(
+            account, folder, message_id, method, id_mode, proxy_url
+        )
+        return result
+
+    if method == 'graph':
+        result = fetch_graph_detail_response(
+            account, folder, message_id, method, id_mode, proxy_url, fallback_proxy_urls
+        )
+        if result:
+            return result
+
+    result = fetch_oauth_imap_detail_response(
+        account, folder, message_id, method, id_mode, proxy_url, fallback_proxy_urls
+    )
+    if result:
+        return result
+    return {'success': False, 'error': '获取邮件详情失败'}
+
+
 @app.route('/api/email/<email_addr>/<path:message_id>')
 @login_required
 def api_get_email_detail(email_addr, message_id):
@@ -3783,33 +3814,15 @@ def api_get_email_detail(email_addr, message_id):
     method = request.args.get('method', 'graph')
     folder = normalize_folder_name(request.args.get('folder', 'inbox'))
     id_mode = str(request.args.get('id_mode') or '').strip().lower()
-    proxy_url = get_account_proxy_url(account)
-    fallback_proxy_urls = get_account_proxy_failover_urls(account)
-
-    if is_prefer_local_detail_request() and is_normal_mail_local_retention_enabled():
-        retained_detail = fetch_retained_normal_mail_detail(account, folder, message_id, id_mode)
-        if retained_detail and not retained_detail_has_incomplete_attachment_metadata(retained_detail):
-            return jsonify(retained_detail)
-
-    if account.get('account_type') == 'imap':
-        result = fetch_imap_account_detail_response(
-            account, folder, message_id, method, id_mode, proxy_url
-        )
-        return jsonify(result)
-
-    if method == 'graph':
-        result = fetch_graph_detail_response(
-            account, folder, message_id, method, id_mode, proxy_url, fallback_proxy_urls
-        )
-        if result:
-            return jsonify(result)
-
-    result = fetch_oauth_imap_detail_response(
-        account, folder, message_id, method, id_mode, proxy_url, fallback_proxy_urls
+    result = fetch_email_detail_for_account(
+        account,
+        message_id,
+        method,
+        folder,
+        id_mode,
+        prefer_local=is_prefer_local_detail_request(),
     )
-    if result:
-        return jsonify(result)
-    return jsonify({'success': False, 'error': '获取邮件详情失败'})
+    return jsonify(result)
 
 
 def download_email_attachment_for_account(account, method, message_id, attachment_id, folder, proxy_url, fallback_proxy_urls, id_mode=''):

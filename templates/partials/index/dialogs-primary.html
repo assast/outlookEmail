@@ -438,3 +438,68 @@
             </div>
         </div>
     </div>
+
+    <!-- 邮箱分享创建模态框 -->
+    <div class="modal" id="createEmailShareModal" onmousedown="if(event.target === this) hideCreateEmailShareModal()">
+        <div class="modal-content" style="width: 520px;">
+            <div class="modal-header">
+                <h3>分享邮箱</h3>
+                <button class="modal-close" onclick="hideCreateEmailShareModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="emailShareAccountId">
+                <div class="form-group">
+                    <label class="form-label">邮箱</label>
+                    <input type="text" class="form-input" id="emailShareAccountEmail" readonly>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">有效期</label>
+                    <select class="form-select" id="emailShareDurationPreset" onchange="syncEmailShareDurationPreset()">
+                        <option value="60">1 小时</option>
+                        <option value="1440" selected>24 小时</option>
+                        <option value="10080">7 天</option>
+                        <option value="43200">30 天</option>
+                        <option value="custom">自定义分钟数</option>
+                    </select>
+                </div>
+                <div class="form-group" id="emailShareCustomDurationGroup" style="display: none;">
+                    <label class="form-label">自定义分钟数</label>
+                    <input type="number" class="form-input" id="emailShareCustomDuration" min="1" step="1" value="1440">
+                </div>
+                <div class="form-group">
+                    <label class="settings-toggle settings-toggle--inline">
+                        <input type="checkbox" id="emailShareNeverExpires" onchange="toggleEmailShareNeverExpires()">
+                        <span class="form-label">永不过期</span>
+                    </label>
+                </div>
+                <div class="share-result" id="emailShareCreateResult" hidden></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideCreateEmailShareModal()">关闭</button>
+                <button class="btn btn-primary" id="createEmailShareBtn" onclick="createEmailShare()">创建分享</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 邮箱分享管理模态框 -->
+    <div class="modal" id="emailShareManagementModal" onmousedown="if(event.target === this) hideEmailShareManagementModal()">
+        <div class="modal-content" style="width: min(860px, 92vw);">
+            <div class="modal-header">
+                <h3>分享管理</h3>
+                <button class="modal-close" onclick="hideEmailShareManagementModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="share-toolbar">
+                    <button class="btn btn-secondary" type="button" onclick="loadEmailShares()">刷新</button>
+                </div>
+                <div class="share-list" id="emailShareList">
+                    <div class="empty-state">
+                        <div class="empty-state-text">正在加载分享记录...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideEmailShareManagementModal()">关闭</button>
+            </div>
+        </div>
+    </div>

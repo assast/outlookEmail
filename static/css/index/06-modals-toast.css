@@ -2554,7 +2554,91 @@
             background-color: #dc3545;
         }
 
+        .share-toolbar {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 12px;
+        }
+
+        .share-result {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 12px;
+            background: #f9fafb;
+        }
+
+        .share-result__label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+
+        .share-result__row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .share-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 58vh;
+            overflow: auto;
+        }
+
+        .share-list-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+            padding: 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: #ffffff;
+        }
+
+        .share-list-item__main {
+            min-width: 0;
+        }
+
+        .share-list-item__email {
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 6px;
+            word-break: break-all;
+        }
+
+        .share-list-item__meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 12px;
+            color: #6b7280;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .share-list-item__url {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size: 12px;
+        }
+
+        .share-list-item__actions {
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+        }
+
         @media (max-width: 640px) {
+            .share-list-item {
+                grid-template-columns: 1fr;
+            }
+
+            .share-list-item__actions {
+                justify-content: flex-end;
+            }
+
             .release-notice-grid {
                 grid-template-columns: 1fr;
             }

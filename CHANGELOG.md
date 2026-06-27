@@ -6,6 +6,16 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-06-27
+
+### Added
+- 新增邮箱分享功能，支持为单个邮箱账号创建限时或永不过期的只读分享链接。
+- 新增分享管理入口，可查看、复制和取消已创建的邮箱分享链接。
+- 新增匿名邮箱分享页面，支持通过分享链接读取收件箱和垃圾邮件列表、查看邮件详情与附件信息。
+
+### Changed
+- 邮件详情读取逻辑复用为账号级 helper，供登录态页面和匿名分享页面使用。
+
 ## [2.0.75] - 2026-06-25
 
 ### Fixed

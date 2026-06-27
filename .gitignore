@@ -41,3 +41,5 @@ Thumbs.db
 /.tmp/
 /.qoder/
 openspec
+待办
+/.playwright-cli

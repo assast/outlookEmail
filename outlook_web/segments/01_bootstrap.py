@@ -1452,6 +1452,30 @@ def init_db():
         )
     ''')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS email_share_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            token_hash TEXT UNIQUE NOT NULL,
+            token_encrypted TEXT NOT NULL,
+            expires_at TIMESTAMP,
+            never_expires INTEGER NOT NULL DEFAULT 0,
+            revoked_at TIMESTAMP,
+            last_accessed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE CASCADE
+        )
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_email_share_links_account
+        ON email_share_links(account_id, created_at)
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_email_share_links_status
+        ON email_share_links(revoked_at, expires_at, never_expires)
+    ''')
+
     # 创建审计日志表
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS audit_logs (
