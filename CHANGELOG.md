@@ -17,7 +17,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - 导航栏新增独立的设置按钮、退出按钮和 GitHub 链接图标按钮（桌面端），替换原有的下拉菜单整合布局。
 - 新增 `editorial.css` 皮肤文件，提供 Editorial 风格的排版和配色方案。
 - 浏览器扩展 popup 和 sidepanel 重新设计为暗色主题，引入 Plus Jakarta Sans 字体和渐变按钮风格。
-
+- 注：如果发现配色很奇怪，请清理下浏览器缓存
 ### Changed
 - 导航栏布局重构：GitHub Star 按钮迁移为导航栏图标按钮，操作菜单拆分为桌面端独立图标按钮 + "更多功能"下拉菜单，移动端保留原菜单布局。
 - 邮件列表刷新按钮改为 SVG 图标 + 旋转动画，替换原文字切换显示方式。
