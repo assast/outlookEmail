@@ -18,6 +18,12 @@
                                     </button>
                                 </li>
                                 <li>
+                                    <button type="button" class="settings-sidebar-link" data-target="settingsSkinSection" onclick="scrollSettingsSection('settingsSkinSection', this)">
+                                        <strong>外观皮肤</strong>
+                                        <span>系统级皮肤、上传包与 Git 来源</span>
+                                    </button>
+                                </li>
+                                <li>
                                     <button type="button" class="settings-sidebar-link" data-target="settingsRefreshSection" onclick="scrollSettingsSection('settingsRefreshSection', this)">
                                         <strong>刷新策略</strong>
                                         <span>定时刷新开关、周期策略与请求节奏</span>
@@ -113,6 +119,47 @@
                                 </div>
                             </div>
                         </section>
+
+                <section class="settings-section" id="settingsSkinSection">
+                    <div class="settings-section-head">
+                        <span class="settings-section-kicker">Appearance</span>
+                        <h4>外观皮肤</h4>
+                        <p>选择所有登录设备统一使用的系统级界面皮肤。</p>
+                    </div>
+                    <div class="settings-panel settings-panel-stack">
+                        <div class="settings-action-row settings-action-row--toolbar">
+                            <div>
+                                <label class="form-label">当前皮肤</label>
+                                <div class="form-hint" id="settingsSkinActiveSummary">加载中...</div>
+                            </div>
+                            <button class="btn btn-secondary" type="button" onclick="loadSkinSettings()">刷新列表</button>
+                            <button class="btn btn-secondary" type="button" onclick="activateSkin('classic')">恢复经典皮肤</button>
+                        </div>
+                        <div class="skin-list" id="settingsSkinList">
+                            <div class="settings-note">正在加载皮肤列表...</div>
+                        </div>
+                        <div class="settings-note" id="settingsSkinStatus" style="display: none;"></div>
+                    </div>
+                    <div class="settings-panel settings-panel-grid">
+                        <div class="form-group">
+                            <label class="form-label" for="settingsSkinUploadFile">上传皮肤包</label>
+                            <input type="file" class="form-input" id="settingsSkinUploadFile" accept=".zip,application/zip">
+                            <div class="form-hint">上传包含 skin.json 和 CSS 入口文件的 zip 皮肤包。</div>
+                            <button class="btn btn-secondary" type="button" onclick="uploadSkinPackage()">安装上传皮肤</button>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="settingsSkinGitUrl">Git 仓库地址</label>
+                            <input type="text" class="form-input" id="settingsSkinGitUrl" placeholder="https://github.com/user/outlook-skin.git">
+                            <div class="form-hint">公开仓库根目录需要包含 skin.json。</div>
+                            <label class="form-label" for="settingsSkinGitRef">Ref（可选）</label>
+                            <input type="text" class="form-input" id="settingsSkinGitRef" placeholder="main / tag / branch">
+                            <button class="btn btn-secondary" type="button" onclick="installGitSkin()">安装 Git 皮肤</button>
+                        </div>
+                        <div class="form-group settings-form-span-full">
+                            <div class="settings-note">自定义皮肤仅加载 manifest 指定的 CSS 和可选预览图；系统不会执行皮肤包内脚本或安装命令。</div>
+                        </div>
+                    </div>
+                </section>
 
                 <section class="settings-section" id="settingsRefreshSection">
                     <div class="settings-section-head">

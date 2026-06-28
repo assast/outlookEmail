@@ -1,0 +1,455 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+
+:root {
+    --skin-app-bg: #fafaf8;
+    --skin-surface: #ffffff;
+    --skin-surface-muted: #fafaf8;
+    --skin-surface-soft: #fafaf8;
+    --skin-surface-hover: #fafaf8;
+    --skin-border: #e8e4dd;
+    --skin-border-strong: #c4beb3;
+    --skin-text: #292827;
+    --skin-text-muted: #73706d;
+    --skin-text-soft: #9a9794;
+    --skin-primary: #1b1938;
+    --skin-primary-hover: #0e0c1f;
+    --skin-primary-text: #ffffff;
+    --skin-accent: #0e3030;
+    --skin-accent-soft: #c9b4fa;
+    --skin-accent-border: #3f3a52;
+    --skin-danger: #dc3545;
+    --skin-shadow: rgba(27, 25, 56, 0.06);
+    --skin-overlay: rgba(14, 12, 31, 0.35);
+}
+
+body, button, input, select, textarea {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-weight: 460;
+    font-variation-settings: "wght" 460;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: 0;
+}
+
+/* Editorial Typography: Tight display leading and negative tracking */
+h1, .email-detail-subject {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-weight: 540;
+    font-variation-settings: "wght" 540;
+    line-height: 1.14 !important;
+    letter-spacing: -0.63px !important;
+    color: #1b1938 !important;
+}
+
+h2, h3, .panel-title, .account-panel-title, .email-list-header h2 {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-weight: 540;
+    font-variation-settings: "wght" 540;
+    line-height: 1.1 !important;
+    letter-spacing: -0.315px !important;
+    color: #292827 !important;
+}
+
+h4, h5, h6 {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-weight: 460;
+    font-variation-settings: "wght" 460;
+    line-height: 1.2 !important;
+    letter-spacing: -0.4px !important;
+    color: #292827 !important;
+}
+
+/* Top Navigation Bar - Dark Hero */
+.navbar {
+    background-color: #1b1938 !important;
+    border-bottom: 1px solid #3f3a52 !important;
+    color: #ffffff !important;
+    height: 60px !important;
+    box-shadow: 0 4px 20px rgba(14, 12, 31, 0.15) !important;
+}
+
+.navbar-brand-title {
+    color: #ffffff !important;
+    font-weight: 540 !important;
+    font-variation-settings: "wght" 540 !important;
+}
+
+.navbar-brand svg {
+    stroke: #c9b4fa !important;
+    filter: drop-shadow(0 0 4px rgba(201, 180, 250, 0.3)) !important;
+}
+
+.navbar-center {
+    color: #bcbac9 !important;
+}
+
+.current-account {
+    background-color: #0e0c1f !important;
+    border: 1px solid #3f3a52 !important;
+    color: #bcbac9 !important;
+    padding: 6px 16px !important;
+    border-radius: 20px !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.current-account:hover {
+    background-color: #1b1938 !important;
+    border-color: #c9b4fa !important;
+}
+
+#currentAccountEmail {
+    color: #ffffff !important;
+    font-weight: 540 !important;
+}
+
+.navbar-btn {
+    border: 1px solid #3f3a52 !important;
+    color: #bcbac9 !important;
+    background-color: transparent !important;
+    border-radius: 8px !important;
+    font-weight: 540 !important;
+    font-variation-settings: "wght" 540 !important;
+    padding: 8px 16px !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.navbar-btn:hover {
+    background-color: #0e0c1f !important;
+    border-color: #c9b4fa !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(201, 180, 250, 0.1) !important;
+}
+
+#openSettingsBtn {
+    background-color: #0e3030 !important;
+    border-color: #155555 !important;
+    color: #ffffff !important;
+}
+
+#openSettingsBtn:hover {
+    background-color: #155555 !important;
+    border-color: #c9b4fa !important;
+}
+
+#logoutBtn {
+    color: #fca5a5 !important;
+    border-color: rgba(220, 53, 69, 0.3) !important;
+}
+
+#logoutBtn:hover {
+    background-color: #dc3545 !important;
+    color: #ffffff !important;
+    border-color: #dc3545 !important;
+}
+
+.app-version-chip {
+    border: 1px solid #3f3a52 !important;
+    background: #0e0c1f !important;
+    color: #bcbac9 !important;
+    border-radius: 999px !important;
+    padding: 0 12px !important;
+    min-height: 28px !important;
+}
+
+.app-version-chip:hover {
+    border-color: #c9b4fa !important;
+    background: #1b1938 !important;
+    color: #ffffff !important;
+}
+
+.app-version-chip__label {
+    color: #5a5772 !important;
+}
+
+.app-version-chip__value {
+    color: #ffffff !important;
+}
+
+.github-star-btn {
+    border: 1px solid #3f3a52 !important;
+    background: transparent !important;
+    color: #bcbac9 !important;
+    border-radius: 8px !important;
+    padding: 6px 12px !important;
+}
+
+.github-star-btn:hover {
+    border-color: #c9b4fa !important;
+    color: #ffffff !important;
+    background: #0e0c1f !important;
+}
+
+/* Layout Panels & Backgrounds */
+.main-container {
+    margin-top: 60px !important;
+    height: calc(100vh - 60px) !important;
+    background-color: #fafaf8 !important;
+}
+
+.group-panel {
+    background-color: #fafaf8 !important;
+    border-right: 1px solid #e8e4dd !important;
+}
+
+.account-panel {
+    background-color: #ffffff !important;
+    border-right: 1px solid #e8e4dd !important;
+}
+
+.panel-header, .account-panel-header, .email-list-header {
+    background: #ffffff !important;
+    border-bottom: 1px solid #e8e4dd !important;
+}
+
+.account-toolbar {
+    background: #fafaf8 !important;
+    border-bottom: 1px solid #e8e4dd !important;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+    width: 6px !important;
+    height: 6px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: #e8e4dd !important;
+    border-radius: 3px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: #c4beb3 !important;
+}
+
+/* Global Buttons & Form Controls */
+.btn, .panel-action-btn, .refresh-btn {
+    border-radius: 8px !important;
+    font-weight: 540 !important;
+    font-variation-settings: "wght" 540 !important;
+    border: 1px solid #e8e4dd !important;
+    background-color: #ffffff !important;
+    color: #292827 !important;
+    cursor: pointer !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.btn:hover, .panel-action-btn:hover, .refresh-btn:hover {
+    background-color: #fafaf8 !important;
+    border-color: #c4beb3 !important;
+    color: #0e0c1f !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(27, 25, 56, 0.08) !important;
+}
+
+.btn:active, .panel-action-btn:active, .refresh-btn:active {
+    transform: translateY(0) !important;
+    box-shadow: 0 1px 3px rgba(27, 25, 56, 0.08) !important;
+}
+
+.btn-primary, .panel-action-btn-primary, .panel-action-btn-accent {
+    background-color: #1b1938 !important;
+    border-color: #1b1938 !important;
+    color: #ffffff !important;
+}
+
+.btn-primary:hover, .panel-action-btn-primary:hover, .panel-action-btn-accent:hover {
+    background-color: #0e0c1f !important;
+    border-color: #0e0c1f !important;
+    color: #ffffff !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 16px rgba(14, 12, 31, 0.2) !important;
+}
+
+.btn-primary:active, .panel-action-btn-primary:active, .panel-action-btn-accent:active {
+    transform: translateY(0) !important;
+    background-color: #0e0c1f !important;
+    box-shadow: 0 1px 3px rgba(14, 12, 31, 0.08) !important;
+}
+
+/* Left Sidebar Group Items */
+.group-item {
+    margin: 4px 8px !important;
+    padding: 10px 12px !important;
+    border-radius: 8px !important;
+    border-left: 3px solid transparent !important;
+    transition: all 0.15s ease !important;
+}
+
+.group-item:hover {
+    background-color: #fafaf8 !important;
+}
+
+.group-item.active {
+    background-color: #e8e4dd !important;
+    border-left-color: #1b1938 !important;
+}
+
+.group-item.active .group-name {
+    font-weight: 600 !important;
+}
+
+/* Account Panel Cards */
+.account-item {
+    margin: 0 12px 10px !important;
+    border: 1px solid #e8e4dd !important;
+    border-radius: 8px !important;
+    background-color: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(27, 25, 56, 0.03) !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.account-item:hover {
+    border-color: #c4beb3 !important;
+    box-shadow: 0 6px 16px rgba(27, 25, 56, 0.06) !important;
+    transform: translateY(-1px) !important;
+}
+
+.account-item.active {
+    border-color: #1b1938 !important;
+    background-color: #fafaf8 !important;
+    box-shadow: inset 3px 0 0 #1b1938, 0 6px 16px rgba(27, 25, 56, 0.06) !important;
+}
+
+.account-item.active .account-email {
+    font-weight: 600 !important;
+}
+
+/* Search Box and Input Fields */
+.search-input, .form-input, .text-input {
+    border: 1px solid #e8e4dd !important;
+    border-radius: 8px !important;
+    padding: 10px 12px !important;
+    background-color: #ffffff !important;
+    color: #292827 !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+
+.search-input:focus, .form-input:focus, .text-input:focus {
+    border-color: #1b1938 !important;
+    box-shadow: 0 0 0 3px rgba(27, 25, 56, 0.1) !important;
+    outline: none !important;
+}
+
+/* Email List Panel and Items */
+.email-list-panel {
+    background-color: #ffffff !important;
+    border-right: 1px solid #e8e4dd !important;
+}
+
+.email-item {
+    margin: 0 12px 10px !important;
+    border: 1px solid #e8e4dd !important;
+    border-radius: 8px !important;
+    background-color: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(27, 25, 56, 0.03) !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.email-item:hover {
+    border-color: #c4beb3 !important;
+    box-shadow: 0 6px 16px rgba(27, 25, 56, 0.06) !important;
+    transform: translateY(-1px) !important;
+}
+
+.email-item.active {
+    border-color: #1b1938 !important;
+    background-color: #fafaf8 !important;
+    box-shadow: inset 3px 0 0 #1b1938, 0 6px 16px rgba(27, 25, 56, 0.06) !important;
+}
+
+.email-item.unread {
+    border-color: #e8e4dd !important;
+    background-color: #ffffff !important;
+}
+
+.email-item.unread .email-subject {
+    font-weight: 700 !important;
+    color: #1b1938 !important;
+}
+
+.email-unread-dot {
+    background-color: #1b1938 !important;
+}
+
+/* Email Detail Panel & Content */
+.email-detail-panel {
+    background-color: #ffffff !important;
+}
+
+.email-detail-toolbar {
+    background-color: #fafaf8 !important;
+    border-bottom: 1px solid #e8e4dd !important;
+}
+
+.email-detail-header {
+    background-color: #ffffff !important;
+    padding: 32px 40px !important;
+    border-bottom: 1px solid #e8e4dd !important;
+}
+
+.email-detail-subject {
+    font-size: 28px !important;
+    font-weight: 540 !important;
+    font-variation-settings: "wght" 540 !important;
+    line-height: 1.14 !important;
+    letter-spacing: -0.63px !important;
+    color: #1b1938 !important;
+    margin-bottom: 20px !important;
+}
+
+.email-detail-meta {
+    color: #73706d !important;
+    font-size: 13px !important;
+}
+
+.email-detail-meta-label {
+    color: #9a9794 !important;
+}
+
+.email-detail-meta-value {
+    color: #292827 !important;
+}
+
+.email-detail-body {
+    padding: 40px !important;
+    line-height: 1.6 !important;
+    color: #292827 !important;
+    font-size: 15px !important;
+}
+
+/* Modals & Dialogs */
+.modal-content, .settings-modal, .dialog-box {
+    border-radius: 12px !important;
+    border: 1px solid #e8e4dd !important;
+    box-shadow: 0 20px 48px rgba(14, 12, 31, 0.15) !important;
+    background-color: #ffffff !important;
+}
+
+.modal-header, .dialog-header {
+    border-bottom: 1px solid #e8e4dd !important;
+    padding: 16px 24px !important;
+}
+
+.modal-footer, .dialog-footer {
+    border-top: 1px solid #e8e4dd !important;
+    padding: 16px 24px !important;
+    background-color: #fafaf8 !important;
+}
+
+.toast {
+    border-radius: 8px !important;
+    background-color: #1b1938 !important;
+    color: #ffffff !important;
+    box-shadow: 0 12px 32px rgba(14, 12, 31, 0.2) !important;
+}
+
+/* Custom highlight badges */
+.current-group-id, .app-version-chip__upgrade-badge {
+    background-color: #0e3030 !important;
+    border-color: #155555 !important;
+    color: #ffffff !important;
+}

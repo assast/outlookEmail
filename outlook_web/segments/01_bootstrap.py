@@ -23,10 +23,15 @@ import bcrypt
 import base64
 import html
 import socket
+import shutil
+import subprocess
+import tempfile
+import zipfile
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.header import decode_header
+from pathlib import Path, PurePosixPath
 from typing import Optional, List, Dict, Any
 from urllib.parse import quote, urlparse, unquote
 from zoneinfo import ZoneInfo
@@ -646,6 +651,22 @@ SMTP_FORWARD_PROVIDERS = ('outlook', 'qq', '163', '126', 'yahoo', 'aliyun', 'cus
 
 # 数据库文件
 DATABASE = os.getenv("DATABASE_PATH", str(default_database_path()))
+
+SKIN_CLASSIC_ID = 'classic'
+SKIN_SOURCE_BUILTIN = 'builtin'
+SKIN_SOURCE_UPLOAD = 'upload'
+SKIN_SOURCE_GIT = 'git'
+SKIN_MANIFEST_FILENAME = 'skin.json'
+SKIN_METADATA_FILENAME = '.outlook-skin-meta.json'
+SKIN_ID_PATTERN = re.compile(r'^[a-z0-9][a-z0-9_-]{0,63}$')
+SKIN_MAX_CSS_BYTES = 200 * 1024
+SKIN_MAX_PREVIEW_BYTES = 1024 * 1024
+SKIN_MAX_ZIP_BYTES = 5 * 1024 * 1024
+SKIN_ALLOWED_PREVIEW_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+SKIN_BLOCKED_EXTRA_EXTENSIONS = {
+    '.js', '.mjs', '.cjs', '.sh', '.bash', '.zsh', '.py',
+    '.html', '.htm', '.exe', '.bat', '.cmd', '.ps1',
+}
 
 # GPTMail API 配置
 GPTMAIL_BASE_URL = os.getenv("GPTMAIL_BASE_URL", "https://mail.chatgpt.org.uk")
@@ -1982,6 +2003,14 @@ def init_db():
         INSERT OR IGNORE INTO settings (key, value)
         VALUES ('normal_mail_local_retention_enabled', 'false')
     ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('active_skin_id', ?)
+    ''', (SKIN_CLASSIC_ID,))
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('skin_last_error', '')
+    ''')
 
     cursor.execute('''
         INSERT OR IGNORE INTO settings (key, value)
@@ -2486,6 +2515,617 @@ def get_all_settings() -> Dict[str, str]:
     cursor = db.execute('SELECT key, value FROM settings')
     rows = cursor.fetchall()
     return {row['key']: row['value'] for row in rows}
+
+
+# ==================== 皮肤管理 ====================
+
+class SkinValidationError(ValueError):
+    """皮肤包格式或安全校验失败。"""
+
+
+def normalize_skin_id(value: str) -> str:
+    candidate = str(value or '').strip().lower()
+    return candidate if SKIN_ID_PATTERN.fullmatch(candidate) else ''
+
+
+def get_skin_data_root() -> Path:
+    root = Path(DATABASE).expanduser().resolve().parent / 'skins'
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def get_skin_source_root(source_type: str) -> Path:
+    normalized_source = str(source_type or '').strip().lower()
+    if normalized_source not in (SKIN_SOURCE_UPLOAD, SKIN_SOURCE_GIT):
+        raise SkinValidationError('皮肤来源类型无效')
+    root = get_skin_data_root() / normalized_source
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def safe_skin_relative_path(value: str, field_name: str = '路径') -> Path:
+    raw_value = str(value or '').strip().replace('\\', '/')
+    if not raw_value:
+        raise SkinValidationError(f'{field_name}不能为空')
+
+    posix_path = PurePosixPath(raw_value)
+    if posix_path.is_absolute():
+        raise SkinValidationError(f'{field_name}不能是绝对路径')
+    if any(part in ('', '.', '..') for part in posix_path.parts):
+        raise SkinValidationError(f'{field_name}不能包含路径穿越')
+
+    return Path(*posix_path.parts)
+
+
+def resolve_skin_package_file(package_dir: Path, relative_path: str, field_name: str = '路径') -> Path:
+    base_dir = Path(package_dir).resolve()
+    candidate = (base_dir / safe_skin_relative_path(relative_path, field_name)).resolve()
+    if os.path.commonpath([str(base_dir), str(candidate)]) != str(base_dir):
+        raise SkinValidationError(f'{field_name}不能指向皮肤包目录外')
+    return candidate
+
+
+def compute_skin_file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open('rb') as file_obj:
+        for chunk in iter(lambda: file_obj.read(65536), b''):
+            digest.update(chunk)
+    return digest.hexdigest()[:16]
+
+
+def read_skin_json(path: Path) -> Dict[str, Any]:
+    try:
+        with Path(path).open('r', encoding='utf-8') as file_obj:
+            payload = json.load(file_obj)
+    except json.JSONDecodeError as exc:
+        raise SkinValidationError(f'skin.json 格式无效: {exc}') from exc
+    except OSError as exc:
+        raise SkinValidationError(f'读取 skin.json 失败: {exc}') from exc
+
+    if not isinstance(payload, dict):
+        raise SkinValidationError('skin.json 必须是 JSON 对象')
+    return payload
+
+
+def validate_skin_file_size(path: Path, max_bytes: int, label: str) -> None:
+    try:
+        size = Path(path).stat().st_size
+    except OSError as exc:
+        raise SkinValidationError(f'{label}不可读取: {exc}') from exc
+    if size > max_bytes:
+        raise SkinValidationError(f'{label}超过大小限制')
+
+
+def validate_skin_extra_files(package_dir: Path, allowed_paths: set[str]) -> None:
+    base_dir = Path(package_dir).resolve()
+    for file_path in base_dir.rglob('*'):
+        if not file_path.is_file():
+            continue
+
+        relative = file_path.relative_to(base_dir).as_posix()
+        suffix = file_path.suffix.lower()
+        if file_path.name == SKIN_METADATA_FILENAME:
+            continue
+        if suffix in SKIN_BLOCKED_EXTRA_EXTENSIONS:
+            raise SkinValidationError(f'皮肤包包含不允许的文件类型: {relative}')
+        if relative in allowed_paths:
+            continue
+        if suffix == '.css':
+            validate_skin_file_size(file_path, SKIN_MAX_CSS_BYTES, f'CSS 文件 {relative}')
+            continue
+        if suffix in SKIN_ALLOWED_PREVIEW_EXTENSIONS:
+            validate_skin_file_size(file_path, SKIN_MAX_PREVIEW_BYTES, f'图片文件 {relative}')
+            continue
+        if (
+            suffix in ('.md', '.txt')
+            or file_path.name.upper() in ('README', 'LICENSE')
+            or file_path.name in ('.gitignore', '.gitattributes')
+        ):
+            validate_skin_file_size(file_path, SKIN_MAX_PREVIEW_BYTES, f'说明文件 {relative}')
+            continue
+        raise SkinValidationError(f'皮肤包包含不支持的文件: {relative}')
+
+
+def validate_skin_package_directory(package_dir: Path) -> Dict[str, Any]:
+    base_dir = Path(package_dir).resolve()
+    manifest_path = base_dir / SKIN_MANIFEST_FILENAME
+    if not manifest_path.is_file():
+        raise SkinValidationError('皮肤包缺少 skin.json')
+
+    manifest = read_skin_json(manifest_path)
+    skin_id = normalize_skin_id(manifest.get('id'))
+    if not skin_id:
+        raise SkinValidationError('skin.json 的 id 只能包含小写字母、数字、下划线和短横线')
+    if skin_id == SKIN_CLASSIC_ID:
+        raise SkinValidationError('classic 是内置皮肤 ID，不能用于自定义皮肤')
+
+    name = str(manifest.get('name') or '').strip()
+    version = str(manifest.get('version') or '').strip()
+    entry = str(manifest.get('entry') or '').strip()
+    if not name:
+        raise SkinValidationError('skin.json 缺少 name')
+    if not version:
+        raise SkinValidationError('skin.json 缺少 version')
+    if not entry:
+        raise SkinValidationError('skin.json 缺少 entry')
+    if Path(entry).suffix.lower() != '.css':
+        raise SkinValidationError('entry 必须指向 CSS 文件')
+
+    entry_path = resolve_skin_package_file(base_dir, entry, 'entry')
+    if not entry_path.is_file():
+        raise SkinValidationError('entry 指向的 CSS 文件不存在')
+    validate_skin_file_size(entry_path, SKIN_MAX_CSS_BYTES, 'CSS 文件')
+
+    preview = str(manifest.get('preview') or '').strip()
+    preview_path = None
+    if preview:
+        if Path(preview).suffix.lower() not in SKIN_ALLOWED_PREVIEW_EXTENSIONS:
+            raise SkinValidationError('preview 必须是 png、jpg、gif 或 webp 图片')
+        preview_path = resolve_skin_package_file(base_dir, preview, 'preview')
+        if not preview_path.is_file():
+            raise SkinValidationError('preview 指向的图片文件不存在')
+        validate_skin_file_size(preview_path, SKIN_MAX_PREVIEW_BYTES, '预览图')
+
+    allowed_paths = {
+        SKIN_MANIFEST_FILENAME,
+        safe_skin_relative_path(entry, 'entry').as_posix(),
+    }
+    if preview:
+        allowed_paths.add(safe_skin_relative_path(preview, 'preview').as_posix())
+    validate_skin_extra_files(base_dir, allowed_paths)
+
+    return {
+        'id': skin_id,
+        'name': name,
+        'version': version,
+        'entry': safe_skin_relative_path(entry, 'entry').as_posix(),
+        'description': str(manifest.get('description') or '').strip(),
+        'preview': safe_skin_relative_path(preview, 'preview').as_posix() if preview else '',
+        'asset_hash': compute_skin_file_hash(entry_path),
+    }
+
+
+def read_skin_install_metadata(skin_dir: Path) -> Dict[str, Any]:
+    metadata_path = Path(skin_dir) / SKIN_METADATA_FILENAME
+    if not metadata_path.is_file():
+        return {}
+    try:
+        with metadata_path.open('r', encoding='utf-8') as file_obj:
+            payload = json.load(file_obj)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def write_skin_install_metadata(skin_dir: Path, metadata: Dict[str, Any]) -> None:
+    metadata_path = Path(skin_dir) / SKIN_METADATA_FILENAME
+    with metadata_path.open('w', encoding='utf-8') as file_obj:
+        json.dump(metadata, file_obj, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def build_builtin_skin_record(skin_id: str = SKIN_CLASSIC_ID, active: bool = False) -> Dict[str, Any]:
+    last_error = get_setting('skin_last_error', '') if active else ''
+    if skin_id == 'editorial':
+        return {
+            'id': 'editorial',
+            'name': '雅致暗蓝',
+            'version': APP_VERSION,
+            'description': '深邃幽蓝与微光边框，搭配极简大字字重，提供沉浸社论级排版质感。',
+            'entry': 'theme.css',
+            'preview': '',
+            'source_type': SKIN_SOURCE_BUILTIN,
+            'builtin': True,
+            'active': active,
+            'status': 'ok',
+            'asset_hash': 'editorial',
+            'last_error': last_error,
+            'git_url': '',
+            'git_ref': '',
+        }
+    return {
+        'id': SKIN_CLASSIC_ID,
+        'name': '经典',
+        'version': APP_VERSION,
+        'description': '当前默认界面皮肤',
+        'entry': '',
+        'preview': '',
+        'source_type': SKIN_SOURCE_BUILTIN,
+        'builtin': True,
+        'active': active,
+        'status': 'ok',
+        'asset_hash': SKIN_CLASSIC_ID,
+        'last_error': last_error,
+        'git_url': '',
+        'git_ref': '',
+    }
+
+
+def build_skin_record_from_dir(skin_dir: Path, source_type: str, active: bool = False) -> Dict[str, Any]:
+    metadata = read_skin_install_metadata(skin_dir)
+    try:
+        manifest = validate_skin_package_directory(skin_dir)
+        status = 'ok'
+        validation_error = ''
+    except SkinValidationError as exc:
+        manifest = {
+            'id': normalize_skin_id(metadata.get('id')) or Path(skin_dir).name,
+            'name': str(metadata.get('name') or Path(skin_dir).name),
+            'version': str(metadata.get('version') or ''),
+            'entry': str(metadata.get('entry') or ''),
+            'description': str(metadata.get('description') or ''),
+            'preview': str(metadata.get('preview') or ''),
+            'asset_hash': str(metadata.get('asset_hash') or ''),
+        }
+        status = 'invalid'
+        validation_error = str(exc)
+
+    last_error = validation_error or str(metadata.get('last_error') or '')
+    return {
+        'id': manifest['id'],
+        'name': manifest['name'],
+        'version': manifest['version'],
+        'description': manifest.get('description', ''),
+        'entry': manifest.get('entry', ''),
+        'preview': manifest.get('preview', ''),
+        'source_type': source_type,
+        'builtin': False,
+        'active': active,
+        'status': status,
+        'asset_hash': manifest.get('asset_hash', ''),
+        'last_error': last_error,
+        'git_url': str(metadata.get('git_url') or ''),
+        'git_ref': str(metadata.get('git_ref') or ''),
+        'installed_at': str(metadata.get('installed_at') or ''),
+        'updated_at': str(metadata.get('updated_at') or ''),
+    }
+
+
+def list_custom_skin_records(active_skin_id: str = '') -> List[Dict[str, Any]]:
+    records: List[Dict[str, Any]] = []
+    root = get_skin_data_root()
+    for source_type in (SKIN_SOURCE_UPLOAD, SKIN_SOURCE_GIT):
+        source_root = root / source_type
+        if not source_root.is_dir():
+            continue
+        for skin_dir in sorted(source_root.iterdir(), key=lambda item: item.name):
+            if not skin_dir.is_dir() or skin_dir.name.startswith('.'):
+                continue
+            records.append(build_skin_record_from_dir(
+                skin_dir,
+                source_type,
+                active=normalize_skin_id(active_skin_id) == normalize_skin_id(skin_dir.name),
+            ))
+    return records
+
+
+def get_skin_record_by_id(skin_id: str) -> Optional[Dict[str, Any]]:
+    normalized_id = normalize_skin_id(skin_id)
+    if normalized_id == SKIN_CLASSIC_ID:
+        return build_builtin_skin_record(SKIN_CLASSIC_ID)
+    if normalized_id == 'editorial':
+        return build_builtin_skin_record('editorial')
+    if not normalized_id:
+        return None
+
+    for record in list_custom_skin_records():
+        if normalize_skin_id(record.get('id')) == normalized_id:
+            return record
+    return None
+
+
+def get_skin_directory(record: Dict[str, Any]) -> Optional[Path]:
+    if not record or record.get('builtin'):
+        return None
+    source_type = str(record.get('source_type') or '').strip().lower()
+    skin_id = normalize_skin_id(record.get('id'))
+    if source_type not in (SKIN_SOURCE_UPLOAD, SKIN_SOURCE_GIT) or not skin_id:
+        return None
+    return get_skin_source_root(source_type) / skin_id
+
+
+def record_skin_error(skin_id: str, error: str) -> None:
+    normalized_id = normalize_skin_id(skin_id)
+    message = str(error or '').strip()
+    if not normalized_id or normalized_id in (SKIN_CLASSIC_ID, 'editorial'):
+        set_setting('skin_last_error', message)
+        return
+
+    record = get_skin_record_by_id(normalized_id)
+    skin_dir = get_skin_directory(record or {})
+    if not skin_dir:
+        set_setting('skin_last_error', message)
+        return
+    metadata = read_skin_install_metadata(skin_dir)
+    metadata['last_error'] = message
+    metadata['updated_at'] = datetime.now(timezone.utc).isoformat()
+    write_skin_install_metadata(skin_dir, metadata)
+
+
+def clear_skin_error(skin_id: str) -> None:
+    record_skin_error(skin_id, '')
+
+
+def get_configured_active_skin_id() -> str:
+    return normalize_skin_id(get_setting('active_skin_id', SKIN_CLASSIC_ID)) or SKIN_CLASSIC_ID
+
+
+def resolve_active_skin_record() -> Dict[str, Any]:
+    configured_id = get_configured_active_skin_id()
+    record = get_skin_record_by_id(configured_id)
+    if not record or record.get('status') != 'ok':
+        if configured_id not in (SKIN_CLASSIC_ID, 'editorial'):
+            record_skin_error(configured_id, f'当前皮肤 {configured_id} 不可用，已回退到 classic')
+        return build_builtin_skin_record(SKIN_CLASSIC_ID, active=True)
+
+    record['active'] = True
+    return record
+
+
+def get_skin_settings_payload() -> Dict[str, Any]:
+    configured_id = get_configured_active_skin_id()
+    active_record = resolve_active_skin_record()
+    effective_id = active_record['id']
+    skins = [
+        build_builtin_skin_record(SKIN_CLASSIC_ID, active=effective_id == SKIN_CLASSIC_ID),
+        build_builtin_skin_record('editorial', active=effective_id == 'editorial')
+    ]
+    skins.extend(list_custom_skin_records(active_skin_id=effective_id))
+    return {
+        'configured_skin_id': configured_id,
+        'active_skin_id': effective_id,
+        'active_skin': active_record,
+        'skins': skins,
+        'asset_hash': active_record.get('asset_hash') or SKIN_CLASSIC_ID,
+    }
+
+
+def set_active_skin(skin_id: str) -> tuple[bool, str, Optional[Dict[str, Any]]]:
+    normalized_id = normalize_skin_id(skin_id)
+    if not normalized_id:
+        return False, '皮肤 ID 无效', None
+
+    record = get_skin_record_by_id(normalized_id)
+    if not record:
+        return False, '皮肤不存在', None
+    if record.get('status') != 'ok':
+        return False, record.get('last_error') or '皮肤不可用', None
+
+    if set_setting('active_skin_id', normalized_id):
+        clear_skin_error(normalized_id)
+        return True, '', get_skin_record_by_id(normalized_id)
+    return False, '保存当前皮肤失败', None
+
+
+def get_active_skin_asset_hash() -> str:
+    return str(resolve_active_skin_record().get('asset_hash') or SKIN_CLASSIC_ID)
+
+
+def get_active_skin_css() -> tuple[str, str]:
+    record = resolve_active_skin_record()
+    if record.get('id') == SKIN_CLASSIC_ID:
+        return '/* classic skin: base styles */\n', SKIN_CLASSIC_ID
+    if record.get('id') == 'editorial':
+        try:
+            static_dir = Path(__file__).resolve().parent / 'static' / 'css'
+            css_path = static_dir / 'editorial.css'
+            return css_path.read_text(encoding='utf-8'), 'editorial'
+        except Exception as exc:
+            record_skin_error('editorial', f'读取内置皮肤 CSS 失败: {exc}')
+            return '/* skin unavailable, fallback to classic */\n', SKIN_CLASSIC_ID
+
+    skin_dir = get_skin_directory(record)
+    if not skin_dir:
+        record_skin_error(record.get('id'), '皮肤目录不存在')
+        return '/* skin unavailable, fallback to classic */\n', SKIN_CLASSIC_ID
+
+    try:
+        css_path = resolve_skin_package_file(skin_dir, record.get('entry', ''), 'entry')
+        validate_skin_file_size(css_path, SKIN_MAX_CSS_BYTES, 'CSS 文件')
+        return css_path.read_text(encoding='utf-8'), str(record.get('asset_hash') or compute_skin_file_hash(css_path))
+    except Exception as exc:
+        record_skin_error(record.get('id'), f'读取皮肤 CSS 失败: {exc}')
+        return '/* skin unavailable, fallback to classic */\n', SKIN_CLASSIC_ID
+
+
+def ensure_skin_id_is_installable(skin_id: str, source_type: str) -> None:
+    if skin_id in (SKIN_CLASSIC_ID, 'editorial'):
+        raise SkinValidationError(f'{skin_id} 是内置皮肤，不能覆盖')
+    existing = get_skin_record_by_id(skin_id)
+    if existing and existing.get('source_type') != source_type:
+        raise SkinValidationError('相同皮肤 ID 已由其他来源安装')
+
+
+def replace_skin_directory_atomically(source_dir: Path, target_dir: Path) -> None:
+    target_parent = Path(target_dir).parent
+    target_parent.mkdir(parents=True, exist_ok=True)
+    backup_dir = target_parent / f'.backup-{Path(target_dir).name}-{uuid.uuid4().hex}'
+    if Path(target_dir).exists():
+        Path(target_dir).rename(backup_dir)
+
+    try:
+        Path(source_dir).rename(target_dir)
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir, ignore_errors=True)
+    except Exception:
+        if Path(target_dir).exists():
+            shutil.rmtree(target_dir, ignore_errors=True)
+        if backup_dir.exists():
+            backup_dir.rename(target_dir)
+        raise
+
+
+def install_skin_from_directory(
+    package_dir: Path,
+    source_type: str,
+    source_config: Optional[Dict[str, Any]] = None,
+    expected_skin_id: str = '',
+) -> Dict[str, Any]:
+    normalized_source = str(source_type or '').strip().lower()
+    if normalized_source not in (SKIN_SOURCE_UPLOAD, SKIN_SOURCE_GIT):
+        raise SkinValidationError('皮肤来源类型无效')
+
+    manifest = validate_skin_package_directory(package_dir)
+    skin_id = manifest['id']
+    if expected_skin_id and skin_id != normalize_skin_id(expected_skin_id):
+        raise SkinValidationError('更新后的皮肤 ID 与已安装皮肤不一致')
+    ensure_skin_id_is_installable(skin_id, normalized_source)
+
+    source_root = get_skin_source_root(normalized_source)
+    target_dir = source_root / skin_id
+    temp_dir = source_root / f'.install-{skin_id}-{uuid.uuid4().hex}'
+    shutil.copytree(
+        package_dir,
+        temp_dir,
+        ignore=shutil.ignore_patterns('.git', SKIN_METADATA_FILENAME, '__pycache__'),
+    )
+    copied_manifest = validate_skin_package_directory(temp_dir)
+
+    now_text = datetime.now(timezone.utc).isoformat()
+    existing_metadata = read_skin_install_metadata(target_dir)
+    metadata = {
+        **copied_manifest,
+        'source_type': normalized_source,
+        'installed_at': existing_metadata.get('installed_at') or now_text,
+        'updated_at': now_text,
+        'last_error': '',
+    }
+    if source_config:
+        metadata.update({
+            key: str(value or '').strip()
+            for key, value in source_config.items()
+            if key in ('git_url', 'git_ref')
+        })
+    write_skin_install_metadata(temp_dir, metadata)
+    replace_skin_directory_atomically(temp_dir, target_dir)
+    return build_skin_record_from_dir(target_dir, normalized_source)
+
+
+def zip_entry_is_symlink(info: zipfile.ZipInfo) -> bool:
+    mode = (info.external_attr >> 16) & 0o170000
+    return mode == 0o120000
+
+
+def extract_zip_skin_package(zip_path: Path, output_dir: Path) -> None:
+    try:
+        archive = zipfile.ZipFile(zip_path)
+    except zipfile.BadZipFile as exc:
+        raise SkinValidationError('上传文件不是有效 zip') from exc
+
+    with archive:
+        total_size = 0
+        for info in archive.infolist():
+            if zip_entry_is_symlink(info):
+                raise SkinValidationError('zip 包不能包含符号链接')
+            relative_path = safe_skin_relative_path(info.filename, 'zip 文件路径')
+            if info.is_dir():
+                continue
+            total_size += int(info.file_size or 0)
+            if total_size > SKIN_MAX_ZIP_BYTES:
+                raise SkinValidationError('zip 包内容超过大小限制')
+            suffix = Path(relative_path).suffix.lower()
+            if suffix in SKIN_BLOCKED_EXTRA_EXTENSIONS:
+                raise SkinValidationError(f'zip 包包含不允许的文件类型: {relative_path.as_posix()}')
+
+            destination = (Path(output_dir) / relative_path).resolve()
+            base_dir = Path(output_dir).resolve()
+            if os.path.commonpath([str(base_dir), str(destination)]) != str(base_dir):
+                raise SkinValidationError('zip 包包含路径穿越')
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(info, 'r') as source_file, destination.open('wb') as target_file:
+                shutil.copyfileobj(source_file, target_file)
+
+
+def install_uploaded_skin_file(uploaded_file) -> Dict[str, Any]:
+    if not uploaded_file:
+        raise SkinValidationError('请选择 zip 皮肤包')
+    if request.content_length and request.content_length > SKIN_MAX_ZIP_BYTES:
+        raise SkinValidationError('上传文件超过大小限制')
+
+    with tempfile.TemporaryDirectory(prefix='outlook-skin-upload-') as temp_root:
+        temp_root_path = Path(temp_root)
+        zip_path = temp_root_path / 'skin.zip'
+        uploaded_file.save(zip_path)
+        validate_skin_file_size(zip_path, SKIN_MAX_ZIP_BYTES, 'zip 皮肤包')
+        package_dir = temp_root_path / 'package'
+        package_dir.mkdir()
+        extract_zip_skin_package(zip_path, package_dir)
+        return install_skin_from_directory(package_dir, SKIN_SOURCE_UPLOAD)
+
+
+def normalize_git_skin_url(value: str) -> str:
+    git_url = str(value or '').strip()
+    if not git_url:
+        raise SkinValidationError('请输入 Git 仓库地址')
+    if len(git_url) > 1000 or git_url.startswith('-') or '\n' in git_url or '\r' in git_url:
+        raise SkinValidationError('Git 仓库地址无效')
+    return git_url
+
+
+def normalize_git_skin_ref(value: str) -> str:
+    git_ref = str(value or '').strip()
+    if len(git_ref) > 128 or git_ref.startswith('-') or '\n' in git_ref or '\r' in git_ref:
+        raise SkinValidationError('Git ref 无效')
+    return git_ref
+
+
+def install_git_skin_package(git_url: str, git_ref: str = '', expected_skin_id: str = '') -> Dict[str, Any]:
+    normalized_url = normalize_git_skin_url(git_url)
+    normalized_ref = normalize_git_skin_ref(git_ref)
+    if not shutil.which('git'):
+        raise SkinValidationError('当前环境未安装 git，无法从仓库安装皮肤')
+
+    with tempfile.TemporaryDirectory(prefix='outlook-skin-git-') as temp_root:
+        repo_dir = Path(temp_root) / 'repo'
+        command = ['git', 'clone', '--depth', '1']
+        if normalized_ref:
+            command.extend(['--branch', normalized_ref])
+        command.extend([normalized_url, str(repo_dir)])
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+        )
+        if result.returncode != 0:
+            message = (result.stderr or result.stdout or 'git clone 失败').strip()
+            raise SkinValidationError(f'拉取 Git 皮肤失败: {sanitize_error_details(message)}')
+
+        git_dir = repo_dir / '.git'
+        if git_dir.exists():
+            shutil.rmtree(git_dir, ignore_errors=True)
+        return install_skin_from_directory(
+            repo_dir,
+            SKIN_SOURCE_GIT,
+            source_config={'git_url': normalized_url, 'git_ref': normalized_ref},
+            expected_skin_id=expected_skin_id,
+        )
+
+
+def update_git_skin_package(skin_id: str) -> Dict[str, Any]:
+    record = get_skin_record_by_id(skin_id)
+    if not record or record.get('source_type') != SKIN_SOURCE_GIT:
+        raise SkinValidationError('该皮肤不是 Git 来源')
+    git_url = str(record.get('git_url') or '').strip()
+    git_ref = str(record.get('git_ref') or '').strip()
+    if not git_url:
+        raise SkinValidationError('该皮肤缺少 Git 来源地址')
+    return install_git_skin_package(git_url, git_ref, expected_skin_id=record['id'])
+
+
+def delete_custom_skin(skin_id: str) -> tuple[bool, str]:
+    normalized_id = normalize_skin_id(skin_id)
+    if not normalized_id or normalized_id in (SKIN_CLASSIC_ID, 'editorial'):
+        return False, f'不能删除内置 {normalized_id} 皮肤'
+    if get_configured_active_skin_id() == normalized_id:
+        return False, '不能删除当前启用的皮肤，请先切换到其他皮肤'
+
+    record = get_skin_record_by_id(normalized_id)
+    skin_dir = get_skin_directory(record or {})
+    if not skin_dir or not skin_dir.exists():
+        return False, '皮肤不存在'
+    shutil.rmtree(skin_dir)
+    return True, ''
 
 
 def get_login_password() -> str:

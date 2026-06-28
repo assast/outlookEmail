@@ -612,6 +612,11 @@ def api_get_settings():
         'normal_mail_local_retention_enabled',
         'false',
     )
+    skin_settings = get_skin_settings_payload()
+    settings['active_skin_id'] = skin_settings['active_skin_id']
+    settings['configured_skin_id'] = skin_settings['configured_skin_id']
+    settings['active_skin'] = skin_settings['active_skin']
+    settings['active_skin_asset_hash'] = skin_settings['asset_hash']
     settings['forward_channels'] = get_forward_channels()
     settings['forward_check_interval_minutes'] = get_setting('forward_check_interval_minutes', '5')
     settings['forward_check_interval_seconds'] = str(normalize_forward_check_interval_seconds())
@@ -838,6 +843,13 @@ def api_update_settings():
                 errors.append('更新普通邮箱本地保留开关失败')
         else:
             errors.append('普通邮箱本地保留开关必须是 true 或 false')
+
+    if 'active_skin_id' in data:
+        success, error, _skin = set_active_skin(data.get('active_skin_id'))
+        if success:
+            updated.append('当前皮肤')
+        else:
+            errors.append(error or '保存当前皮肤失败')
 
     # 更新对外 API Key
     if 'external_api_key' in data:
@@ -1161,6 +1173,97 @@ def api_update_settings():
         return jsonify({'success': True, 'message': f'已更新：{", ".join(updated)}'})
     else:
         return jsonify({'success': False, 'error': '没有需要更新的设置'})
+
+
+# ==================== 皮肤管理 API ====================
+
+@app.route('/api/skins', methods=['GET'])
+@login_required
+def api_list_skins():
+    return jsonify({
+        'success': True,
+        **get_skin_settings_payload(),
+    })
+
+
+@app.route('/api/skins/<skin_id>/activate', methods=['POST'])
+@login_required
+def api_activate_skin(skin_id):
+    success, error, skin = set_active_skin(skin_id)
+    if not success:
+        return jsonify({'success': False, 'error': error or '启用皮肤失败'})
+    return jsonify({
+        'success': True,
+        'message': '皮肤已启用',
+        'active_skin': skin,
+        'asset_hash': get_active_skin_asset_hash(),
+    })
+
+
+@app.route('/api/skins/upload', methods=['POST'])
+@login_required
+def api_upload_skin():
+    uploaded_file = request.files.get('skin') or request.files.get('file')
+    try:
+        skin = install_uploaded_skin_file(uploaded_file)
+    except SkinValidationError as exc:
+        return jsonify({'success': False, 'error': str(exc)})
+    except Exception as exc:
+        return jsonify({'success': False, 'error': f'安装上传皮肤失败: {sanitize_error_details(str(exc))}'})
+
+    return jsonify({
+        'success': True,
+        'message': '皮肤已安装',
+        'skin': skin,
+    })
+
+
+@app.route('/api/skins/git/install', methods=['POST'])
+@login_required
+def api_install_git_skin():
+    data = request.get_json(silent=True) or {}
+    try:
+        skin = install_git_skin_package(data.get('git_url'), data.get('git_ref', ''))
+    except SkinValidationError as exc:
+        return jsonify({'success': False, 'error': str(exc)})
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'error': '拉取 Git 皮肤超时'})
+    except Exception as exc:
+        return jsonify({'success': False, 'error': f'安装 Git 皮肤失败: {sanitize_error_details(str(exc))}'})
+
+    return jsonify({
+        'success': True,
+        'message': 'Git 皮肤已安装',
+        'skin': skin,
+    })
+
+
+@app.route('/api/skins/<skin_id>/git/update', methods=['POST'])
+@login_required
+def api_update_git_skin(skin_id):
+    try:
+        skin = update_git_skin_package(skin_id)
+    except SkinValidationError as exc:
+        return jsonify({'success': False, 'error': str(exc)})
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'error': '更新 Git 皮肤超时'})
+    except Exception as exc:
+        return jsonify({'success': False, 'error': f'更新 Git 皮肤失败: {sanitize_error_details(str(exc))}'})
+
+    return jsonify({
+        'success': True,
+        'message': 'Git 皮肤已更新',
+        'skin': skin,
+    })
+
+
+@app.route('/api/skins/<skin_id>', methods=['DELETE'])
+@login_required
+def api_delete_skin(skin_id):
+    success, error = delete_custom_skin(skin_id)
+    if not success:
+        return jsonify({'success': False, 'error': error or '删除皮肤失败'})
+    return jsonify({'success': True, 'message': '皮肤已删除'})
 
 
 # ==================== 对外 API ====================

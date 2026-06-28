@@ -9,6 +9,7 @@
     <!-- DOMPurify for XSS protection -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('bundled_index_css') }}">
+    <link rel="stylesheet" id="activeSkinStylesheet" href="{{ url_for('active_skin_css', v=skin_asset_hash) }}">
 </head>
 
 <body>

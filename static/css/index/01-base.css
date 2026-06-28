@@ -1,3 +1,25 @@
+        :root {
+            --skin-app-bg: #ffffff;
+            --skin-surface: #ffffff;
+            --skin-surface-muted: #fafafa;
+            --skin-surface-soft: #f8fafc;
+            --skin-surface-hover: #f0f0f0;
+            --skin-border: #e5e5e5;
+            --skin-border-strong: #d9dce3;
+            --skin-text: #1a1a1a;
+            --skin-text-muted: #666666;
+            --skin-text-soft: #64748b;
+            --skin-primary: #1a1a1a;
+            --skin-primary-hover: #111827;
+            --skin-primary-text: #ffffff;
+            --skin-accent: #2563eb;
+            --skin-accent-soft: #eff6ff;
+            --skin-accent-border: #bfdbfe;
+            --skin-danger: #dc3545;
+            --skin-shadow: rgba(15, 23, 42, 0.08);
+            --skin-overlay: rgba(0, 0, 0, 0.4);
+        }
+
         html {
             height: 100%;
             overflow-x: hidden;
@@ -12,8 +34,31 @@
         body {
             min-height: 100%;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: #ffffff;
-            color: #1a1a1a;
+            background-color: var(--skin-app-bg);
+            color: var(--skin-text);
             line-height: 1.5;
             overflow-x: hidden;
+        }
+
+        :root[data-theme="dark"],
+        html[data-theme="dark"] {
+            --skin-app-bg: #09090b;
+            --skin-surface: #18181b;
+            --skin-surface-muted: #09090b;
+            --skin-surface-soft: #27272a;
+            --skin-surface-hover: #27272a;
+            --skin-border: #27272a;
+            --skin-border-strong: #3f3f46;
+            --skin-text: #f4f4f5;
+            --skin-text-muted: #a1a1aa;
+            --skin-text-soft: #71717a;
+            --skin-primary: #f4f4f5;
+            --skin-primary-hover: #e4e4e7;
+            --skin-primary-text: #09090b;
+            --skin-accent: #3b82f6;
+            --skin-accent-soft: rgba(59, 130, 246, 0.1);
+            --skin-accent-border: #3b82f6;
+            --skin-danger: #ef4444;
+            --skin-shadow: rgba(0, 0, 0, 0.5);
+            --skin-overlay: rgba(0, 0, 0, 0.8);
         }

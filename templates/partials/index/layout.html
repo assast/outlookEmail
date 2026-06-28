@@ -47,21 +47,7 @@
                         </div>
                     </div>
                 </div>
-                <a href="https://github.com/assast/outlookEmail" target="_blank" rel="noreferrer noopener"
-                    class="github-star-btn" aria-label="前往 GitHub 为 outlookEmail 点 Star">
-                    <span class="github-star-btn__badge" aria-hidden="true">
-                        <svg viewBox="0 0 16 16" fill="currentColor">
-                            <path
-                                d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z" />
-                        </svg>
-                    </span>
-                    <span class="github-star-btn__text">GitHub Star</span>
-                    <svg class="github-star-btn__arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor"
-                        stroke-width="1.6" aria-hidden="true">
-                        <path d="M5 11L11 5"></path>
-                        <path d="M6 5h5v5"></path>
-                    </svg>
-                </a>
+
             </div>
         </div>
         <div class="navbar-center">
@@ -80,17 +66,61 @@
                 操作
             </button>
             <div class="navbar-actions-menu" id="navbarActionsMenu">
-                <button class="navbar-btn" id="refreshTokensBtn" type="button" onclick="showRefreshModal()">Token刷新管理</button>
-                <button class="navbar-btn" id="emailShareManagementBtn" type="button" onclick="showEmailShareManagementModal()">分享管理</button>
-                <button class="navbar-btn" id="exportAccountsBtn" type="button" onclick="showExportModal()">导出邮箱</button>
-                <button class="navbar-btn" id="openSettingsBtn" style="display: inline-flex; align-items: center; gap: 4px;" type="button" onclick="showSettingsModal()">
+                <!-- Mobile only buttons -->
+                <button class="navbar-btn mobile-only-btn" id="refreshTokensBtn" type="button" onclick="showRefreshModal()">Token刷新管理</button>
+                <button class="navbar-btn mobile-only-btn" id="emailShareManagementBtn" type="button" onclick="showEmailShareManagementModal()">分享管理</button>
+                <button class="navbar-btn mobile-only-btn" id="exportAccountsBtn" type="button" onclick="showExportModal()">导出邮箱</button>
+                <button class="navbar-btn mobile-only-btn" id="openSettingsBtn" style="display: inline-flex; align-items: center; gap: 4px;" type="button" onclick="showSettingsModal()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="3"></circle>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l-.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l-.06-.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                     </svg>
                     <span>设置</span>
                 </button>
-                <button class="navbar-btn" id="logoutBtn" type="button" onclick="logout()" style="color: #dc3545;">退出登录</button>
+                <button class="navbar-btn mobile-only-btn" id="logoutBtn" type="button" onclick="logout()">退出登录</button>
+                
+                <button class="navbar-icon-btn desktop-only-btn" id="desktopSettingsBtn" type="button" onclick="showSettingsModal()" title="系统常规设置">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="4" y1="21" x2="4" y2="14"></line>
+                        <line x1="4" y1="10" x2="4" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12" y2="3"></line>
+                        <line x1="20" y1="21" x2="20" y2="16"></line>
+                        <line x1="20" y1="12" x2="20" y2="3"></line>
+                        <line x1="1" y1="14" x2="7" y2="14"></line>
+                        <line x1="9" y1="8" x2="15" y2="8"></line>
+                        <line x1="17" y1="16" x2="23" y2="16"></line>
+                    </svg>
+                </button>
+                
+                <button class="navbar-icon-btn desktop-only-btn" id="desktopLogoutBtn" type="button" onclick="logout()" title="退出登录">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                </button>
+
+                <!-- Desktop Only "更多功能" Dropdown -->
+                <div class="navbar-dropdown desktop-only-dropdown" id="navbarMoreFunctionsDropdown">
+                    <button class="navbar-icon-btn dropdown-toggle" type="button" title="更多功能">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="12" cy="5" r="1"></circle>
+                            <circle cx="12" cy="19" r="1"></circle>
+                        </svg>
+                    </button>
+                    <div class="navbar-dropdown-menu">
+                        <button class="dropdown-item" type="button" onclick="showRefreshModal()">Token 刷新管理</button>
+                        <button class="dropdown-item" type="button" onclick="showEmailShareManagementModal()">分享管理</button>
+                    </div>
+                </div>
+                
+                <a class="navbar-icon-btn desktop-only-btn" href="https://github.com/assast/outlookEmail" target="_blank" rel="noreferrer noopener" title="前往 GitHub" style="display: inline-flex; align-items: center; justify-content: center; text-decoration: none;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+                    </svg>
+                </a>
             </div>
         </div>
     </nav>
@@ -107,7 +137,12 @@
                             <polyline points="11 13 4 8 11 3"></polyline>
                         </svg>
                     </button>
-                    <button class="panel-action-btn" onclick="showAddGroupModal()" title="添加分组">+</button>
+                    <button class="panel-action-btn" onclick="showAddGroupModal()" title="添加分组">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
                 </div>
             </div>
             <div class="group-list" id="groupList">
@@ -130,39 +165,45 @@
                         <span class="group-id-badge current-group-id" id="currentGroupIdBadge" style="display: none;"></span>
                     </span>
                 </div>
+
                 <div class="account-panel-header-actions">
-                    <button class="panel-action-btn account-selection-mode-btn" id="accountSelectionModeBtn"
-                        onclick="toggleAccountSelectionMode()" title="批量选择" aria-pressed="false">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="2" y="2" width="12" height="12" rx="2"></rect>
-                            <path d="M5 8l2 2 4-4"></path>
-                        </svg>
-                    </button>
-                    <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M7 1.5h6v6L6.5 14 2 9.5 7 1.5z"></path>
-                            <circle cx="9.5" cy="5" r="1.2" fill="currentColor"></circle>
-                        </svg>
-                    </button>
-                    <button class="panel-action-btn" id="accountMinimalBtn" onclick="toggleAccountMinimalMode()" title="切换极简展示" aria-pressed="false">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="2" y="2.5" width="12" height="2.5" rx="0.5"></rect>
-                            <rect x="2" y="6.75" width="12" height="2.5" rx="0.5"></rect>
-                            <rect x="2" y="11" width="12" height="2.5" rx="0.5"></rect>
-                        </svg>
-                    </button>
-                    <button class="panel-action-btn panel-action-btn-accent" onclick="showGetRefreshTokenModal()" title="授权并保存 Outlook 账号">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="5.5" cy="10.5" r="3.5"></circle>
-                            <path d="M8 8l5-5M13 3h2v2M11 5h2v2"></path>
-                        </svg>
-                    </button>
-                    <button class="panel-action-btn panel-action-btn-primary" onclick="showAddAccountModal()" title="导入邮箱账号">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                            <path fill-rule="evenodd"
-                                d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" />
-                        </svg>
-                    </button>
+                    <div class="panel-action-subgroup">
+                        <button class="panel-action-btn account-selection-mode-btn" id="accountSelectionModeBtn"
+                            onclick="toggleAccountSelectionMode()" title="批量选择" aria-pressed="false">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="2" width="12" height="12" rx="2"></rect>
+                                <path d="M5 8l2 2 4-4"></path>
+                            </svg>
+                        </button>
+                        <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M7 1.5h6v6L6.5 14 2 9.5 7 1.5z"></path>
+                                <circle cx="9.5" cy="5" r="1.2" fill="currentColor"></circle>
+                            </svg>
+                        </button>
+                        <button class="panel-action-btn" id="accountMinimalBtn" onclick="toggleAccountMinimalMode()" title="切换极简展示" aria-pressed="false">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="2.5" width="12" height="2.5" rx="0.5"></rect>
+                                <rect x="2" y="6.75" width="12" height="2.5" rx="0.5"></rect>
+                                <rect x="2" y="11" width="12" height="2.5" rx="0.5"></rect>
+                            </svg>
+                        </button>
+                    </div>
+                    <span class="panel-action-separator"></span>
+                    <div class="panel-action-subgroup">
+                        <button class="panel-action-btn panel-action-btn-accent" onclick="showGetRefreshTokenModal()" title="授权并保存 Outlook 账号">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                            </svg>
+                        </button>
+                        <button class="panel-action-btn panel-action-btn-primary" onclick="showAddAccountModal()" title="导入邮箱账号">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="8" y1="2" x2="8" y2="14"></line>
+                                <line x1="2" y1="8" x2="14" y2="8"></line>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="account-toolbar">
@@ -246,18 +287,26 @@
                 <div class="batch-action-bar__controls">
                     <div class="batch-action-group">
                         <button class="batch-btn batch-btn-secondary" id="accountSelectAllBtn" onclick="toggleSelectAllAccounts()">全选</button>
-                        <button class="batch-btn batch-btn-secondary" onclick="clearAccountSelection()">清空选择</button>
+                        <button class="batch-btn batch-btn-secondary" onclick="clearAccountSelection()">清空</button>
                     </div>
                     <div class="batch-action-group batch-action-group--accent">
                         <button class="batch-btn batch-btn-primary" id="batchRefreshTokensBtn" onclick="refreshSelectedAccounts()">刷新 Token</button>
                         <button class="batch-btn batch-btn-accent" id="batchCopyEmailsBtn" onclick="copySelectedAccountsWithAliases()">复制邮箱+别名</button>
                         <button class="batch-btn batch-btn-accent" id="batchExportAccountsBtn" onclick="exportSelectedAccounts()">导出</button>
-                        <button class="batch-btn batch-btn-accent" id="batchEnableForwardingBtn" onclick="enableForwardingForSelectedAccounts()">开启转发</button>
-                        <button class="batch-btn batch-btn-accent" id="batchDisableForwardingBtn" onclick="disableForwardingForSelectedAccounts()">取消转发</button>
-                        <button class="batch-btn batch-btn-accent" id="batchProxyBtn" onclick="showBatchProxyModal()">代理</button>
-                        <button class="batch-btn batch-btn-accent" id="batchAddTagBtn" onclick="showBatchTagModal('add')">标签+</button>
-                        <button class="batch-btn batch-btn-accent" id="batchRemoveTagBtn" onclick="showBatchTagModal('remove')">标签-</button>
-                        <button class="batch-btn batch-btn-accent" id="batchMoveGroupBtn" onclick="showBatchMoveGroupModal()">移动</button>
+                        
+                        <!-- 转发和代理组 -->
+                        <span class="batch-btn-divider"></span>
+                        <button class="batch-btn batch-btn-info" id="batchEnableForwardingBtn" onclick="enableForwardingForSelectedAccounts()">开启转发</button>
+                        <button class="batch-btn batch-btn-info" id="batchDisableForwardingBtn" onclick="disableForwardingForSelectedAccounts()">取消转发</button>
+                        <button class="batch-btn batch-btn-info" id="batchProxyBtn" onclick="showBatchProxyModal()">代理</button>
+                        
+                        <!-- 分类和移动组 -->
+                        <span class="batch-btn-divider"></span>
+                        <button class="batch-btn batch-btn-neutral" id="batchMoveGroupBtn" onclick="showBatchMoveGroupModal()">移动</button>
+                        <button class="batch-btn batch-btn-neutral" id="batchAddTagBtn" onclick="showBatchTagModal('add')">标签+</button>
+                        <button class="batch-btn batch-btn-neutral" id="batchRemoveTagBtn" onclick="showBatchTagModal('remove')">标签-</button>
+                        
+                        <span class="batch-btn-divider"></span>
                         <button class="batch-btn batch-btn-danger" id="batchDeleteAccountsBtn" onclick="deleteSelectedAccounts()">删除</button>
                     </div>
                 </div>
@@ -295,7 +344,11 @@
                                 <span class="email-list-hint">按时间顺序查看邮件</span>
                             </div>
                         </div>
-                        <button class="refresh-btn" onclick="refreshEmails()">获取邮件</button>
+                        <button class="refresh-btn" onclick="refreshEmails()" title="获取邮件">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                            </svg>
+                        </button>
                     </div>
                     <div class="folder-tabs" id="folderTabs" style="display: none;">
                         <button class="folder-tab active" data-folder="all" onclick="switchFolder('all')">
@@ -342,27 +395,50 @@
                 <div class="email-detail-toolbar" id="emailDetailToolbar" style="display:none;">
                     <button class="back-btn email-detail-action-btn email-detail-action-btn--back" type="button"
                         title="返回邮件列表" aria-label="返回邮件列表" onclick="showEmailList()">
-                        <span class="email-detail-action-btn__text">← 返回</span>
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                            <line x1="19" y1="12" x2="5" y2="12"></line>
+                            <polyline points="12 19 5 12 12 5"></polyline>
+                        </svg>
+                        <span class="email-detail-action-btn__text">返回</span>
                     </button>
                     <button class="toggle-list-btn" onclick="toggleEmailList()">
                         <span id="toggleListText">隐藏列表</span>
                     </button>
                     <button class="fullscreen-btn email-detail-action-btn email-detail-action-btn--fullscreen" type="button"
                         title="全屏查看" aria-label="全屏查看" onclick="openFullscreenEmail()">
-                        <span class="email-detail-action-btn__text">🔍 全屏查看</span>
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path>
+                        </svg>
+                        <span class="email-detail-action-btn__text">全屏查看</span>
                     </button>
                     <button class="raw-email-btn email-detail-action-btn email-detail-action-btn--raw" type="button"
                         title="显示邮件源" aria-label="显示邮件源" onclick="openRawEmailModal()">
-                        <span class="email-detail-action-btn__text">📄 显示邮件源</span>
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10 9 9 9 8 9"></polyline>
+                        </svg>
+                        <span class="email-detail-action-btn__text">显示邮件源</span>
                     </button>
                     <label class="email-trust-toggle" title="信任此邮件" aria-label="信任此邮件">
                         <input type="checkbox" id="trustEmailCheckbox" onchange="toggleTrustMode(this)">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                        </svg>
                         <span style="user-select: none;">信任此邮件</span>
                     </label>
                     <div class="email-detail-toolbar-spacer"></div>
                     <button class="batch-btn danger email-detail-action-btn email-detail-action-btn--delete" type="button"
                         title="删除邮件" aria-label="删除邮件" onclick="confirmDeleteCurrentEmail()" style="padding: 4px 8px; font-size: 12px;">
-                        <span class="email-detail-action-btn__text">🗑️ 删除</span>
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            <line x1="10" y1="11" x2="10" y2="17"></line>
+                            <line x1="14" y1="11" x2="14" y2="17"></line>
+                        </svg>
+                        <span class="email-detail-action-btn__text">删除</span>
                     </button>
                 </div>
                 <div id="emailDetail">

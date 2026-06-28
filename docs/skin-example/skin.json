@@ -1,0 +1,7 @@
+{
+  "id": "midnight-sample",
+  "name": "Midnight Sample",
+  "version": "1.0.0",
+  "entry": "theme.css",
+  "description": "Sample dark skin using OutlookEmail CSS variables"
+}

@@ -10,8 +10,8 @@
         /* 邮件列表面板 */
         .email-list-panel {
             width: 400px;
-            background-color: #ffffff;
-            border-right: 1px solid #e5e5e5;
+            background-color: var(--skin-surface);
+            border-right: 1px solid var(--skin-border);
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
@@ -27,14 +27,14 @@
         /* 邮件列表头部 */
         .email-list-header {
             padding: 18px 20px 16px;
-            border-bottom: 1px solid #e5e5e5;
-            background: linear-gradient(180deg, #fafafa 0%, #f4f6f9 100%);
+            border-bottom: 1px solid var(--skin-border);
+            background: linear-gradient(180deg, var(--skin-surface-muted) 0%, var(--skin-surface-soft) 100%);
         }
 
         .email-list-header h2 {
             font-size: 16px;
             font-weight: 600;
-            color: #1a1a1a;
+            color: var(--skin-text);
         }
 
         .email-list-header-top {
@@ -69,38 +69,47 @@
 
         .email-list-hint {
             font-size: 12px;
-            color: #6b7280;
+            color: var(--skin-text-soft);
         }
 
         .email-count {
             font-size: 13px;
-            color: #6b7280;
+            color: var(--skin-text-soft);
             font-weight: 500;
         }
 
         .refresh-btn {
-            background-color: #ffffff;
-            border: 1px solid #d9dce3;
-            color: #374151;
+            background-color: var(--skin-surface);
+            border: 1px solid var(--skin-border-strong);
+            color: var(--skin-text);
             cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            padding: 8px 14px;
+            width: 34px;
+            height: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
             border-radius: 10px;
             transition: all 0.15s;
             white-space: nowrap;
         }
 
         .refresh-btn:hover {
-            background-color: #f9fafb;
+            background-color: var(--skin-surface-soft);
             border-color: #c4c9d4;
-            color: #111827;
+            color: var(--skin-primary-hover);
+        }
+
+        .refresh-btn svg {
+            width: 16px;
+            height: 16px;
+            display: block;
         }
 
         .email-list {
             flex: 1;
             overflow-y: auto;
-            background-color: #f7f8fb;
+            background-color: var(--skin-surface-soft);
             padding: 8px 0 16px;
             min-height: 0;
             -webkit-overflow-scrolling: touch;
@@ -214,7 +223,7 @@
         .email-item {
             margin: 0 12px 10px;
             padding: 14px;
-            border: 1px solid #e5e7eb;
+            border: 1px solid var(--skin-border);
             border-radius: 16px;
             cursor: pointer;
             transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
@@ -222,7 +231,7 @@
             grid-template-columns: 18px minmax(0, 1fr);
             align-items: start;
             gap: 12px;
-            background-color: #ffffff;
+            background-color: var(--skin-surface);
             box-shadow: 0 6px 16px rgba(15, 23, 42, 0.04);
         }
 
@@ -236,19 +245,19 @@
             width: 16px;
             height: 16px;
             cursor: pointer;
-            accent-color: #1a1a1a;
+            accent-color: var(--skin-primary);
         }
 
         .email-item:hover {
             border-color: #d4d9e2;
-            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+            box-shadow: 0 12px 24px var(--skin-shadow);
             transform: translateY(-1px);
         }
 
         .email-item.active {
-            background-color: #f6f7fb;
-            border-color: #1a1a1a;
-            box-shadow: inset 3px 0 0 #1a1a1a, 0 10px 24px rgba(15, 23, 42, 0.06);
+            background-color: var(--skin-surface-soft);
+            border-color: var(--skin-primary);
+            box-shadow: inset 3px 0 0 var(--skin-primary), 0 10px 24px var(--skin-shadow);
         }
 
         .email-item.newly-synced {
@@ -404,7 +413,7 @@
         /* 邮件详情面板 */
         .email-detail-panel {
             flex: 1;
-            background-color: #ffffff;
+            background-color: var(--skin-surface);
             display: flex;
             flex-direction: column;
             min-width: 0;
@@ -422,11 +431,11 @@
 
         .email-detail-toolbar {
             padding: 12px 24px;
-            border-bottom: 1px solid #e5e5e5;
+            border-bottom: 1px solid var(--skin-border);
             display: flex;
             align-items: center;
             gap: 12px;
-            background-color: #fafafa;
+            background-color: var(--skin-surface-muted);
         }
 
         .email-detail-toolbar-spacer {
@@ -953,3 +962,19 @@
                 transform: rotate(360deg);
             }
         }
+
+        /* 详情工具栏图标样式 */
+        .email-detail-action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .btn-icon {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+            display: inline-block;
+        }
+

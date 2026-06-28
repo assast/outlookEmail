@@ -13,10 +13,10 @@
         .mobile-quickbar-btn {
             min-width: 0;
             padding: 10px 12px;
-            border: 1px solid #e5e7eb;
+            border: 1px solid var(--skin-border);
             border-radius: 14px;
-            background: #ffffff;
-            color: #111827;
+            background: var(--skin-surface);
+            color: var(--skin-text);
             display: flex;
             flex-direction: column;
             align-items: flex-start;
@@ -28,8 +28,8 @@
 
         .mobile-quickbar-btn:hover {
             border-color: #cbd5e1;
-            background: #f8fafc;
-            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+            background: var(--skin-surface-soft);
+            box-shadow: 0 8px 18px var(--skin-shadow);
             transform: translateY(-1px);
         }
 
@@ -64,8 +64,8 @@
         /* 分组面板 */
         .group-panel {
             width: 200px;
-            background-color: #fafafa;
-            border-right: 1px solid #e5e5e5;
+            background-color: var(--skin-surface-muted);
+            border-right: 1px solid var(--skin-border);
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
@@ -88,7 +88,7 @@
         .panel-header {
             padding: 0 16px;
             height: 52px;
-            border-bottom: 1px solid #e5e5e5;
+            border-bottom: 1px solid var(--skin-border);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -97,7 +97,7 @@
         .panel-title {
             font-size: 14px;
             font-weight: 600;
-            color: #1a1a1a;
+            color: var(--skin-text);
         }
 
         .panel-action-btn {
@@ -106,9 +106,9 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            color: #64748b;
+            background: var(--skin-surface);
+            border: 1px solid var(--skin-border);
+            color: var(--skin-text-soft);
             cursor: pointer;
             font-size: 16px;
             padding: 0;
@@ -118,11 +118,24 @@
         }
 
         .panel-action-btn:hover {
-            background-color: #f8fafc;
-            border-color: #cbd5e1;
-            color: #0f172a;
+            background-color: var(--skin-surface-soft);
+            border-color: var(--skin-border-strong);
+            color: var(--skin-primary-hover);
             transform: translateY(-1px);
-            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+            box-shadow: 0 4px 12px var(--skin-shadow);
+        }
+
+        .spinning svg {
+            animation: spin-anim 1s linear infinite;
+        }
+
+        @keyframes spin-anim {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         .panel-action-btn svg {
@@ -131,27 +144,27 @@
         }
 
         .panel-action-btn-accent {
-            background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
-            border-color: #bfdbfe;
-            color: #1d4ed8;
+            background-color: var(--skin-accent-soft);
+            border-color: var(--skin-accent-border);
+            color: var(--skin-accent);
         }
 
         .panel-action-btn-accent:hover {
-            background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%);
-            border-color: #93c5fd;
-            color: #1d4ed8;
+            background-color: var(--skin-accent);
+            border-color: var(--skin-accent);
+            color: #ffffff;
         }
 
         .panel-action-btn-primary {
-            background: #1a1a1a;
-            border-color: #1a1a1a;
-            color: #ffffff;
+            background: var(--skin-primary);
+            border-color: var(--skin-primary);
+            color: var(--skin-primary-text);
         }
 
         .panel-action-btn-primary:hover {
-            background: #111827;
-            border-color: #111827;
-            color: #ffffff;
+            background: var(--skin-primary-hover);
+            border-color: var(--skin-primary-hover);
+            color: var(--skin-primary-text);
         }
 
         .group-list {
@@ -210,12 +223,12 @@
         }
 
         .group-item:hover {
-            background-color: #f0f0f0;
+            background-color: var(--skin-surface-hover);
         }
 
         .group-item.active {
-            background-color: #e8e8e8;
-            border-left-color: #1a1a1a;
+            background-color: var(--skin-surface-hover);
+            border-left-color: var(--skin-primary);
         }
 
         .group-row-1 {

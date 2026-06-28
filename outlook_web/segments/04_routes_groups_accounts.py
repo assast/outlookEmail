@@ -174,6 +174,16 @@ def bundled_index_css():
     return Response(combined_css, mimetype='text/css')
 
 
+@app.route('/assets/active-skin.css')
+def active_skin_css():
+    """返回当前启用皮肤的 CSS；失败时回退为空 classic 覆盖。"""
+    css_text, asset_hash = get_active_skin_css()
+    response = Response(css_text, mimetype='text/css')
+    response.headers['Cache-Control'] = 'public, max-age=300'
+    response.headers['ETag'] = f'"skin-{asset_hash}"'
+    return response
+
+
 @app.route('/')
 @login_required
 def index():
@@ -182,6 +192,7 @@ def index():
         'index.html',
         app_version=APP_VERSION,
         changelog_url=CHANGELOG_URL,
+        skin_asset_hash=get_active_skin_asset_hash(),
     )
 
 
