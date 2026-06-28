@@ -2703,8 +2703,25 @@ def write_skin_install_metadata(skin_dir: Path, metadata: Dict[str, Any]) -> Non
         json.dump(metadata, file_obj, ensure_ascii=False, indent=2, sort_keys=True)
 
 
-def build_builtin_skin_record(active: bool = False) -> Dict[str, Any]:
+def build_builtin_skin_record(skin_id: str = SKIN_CLASSIC_ID, active: bool = False) -> Dict[str, Any]:
     last_error = get_setting('skin_last_error', '') if active else ''
+    if skin_id == 'editorial':
+        return {
+            'id': 'editorial',
+            'name': '雅致暗蓝',
+            'version': APP_VERSION,
+            'description': '深邃幽蓝与微光边框，搭配极简大字字重，提供沉浸社论级排版质感。',
+            'entry': 'theme.css',
+            'preview': '',
+            'source_type': SKIN_SOURCE_BUILTIN,
+            'builtin': True,
+            'active': active,
+            'status': 'ok',
+            'asset_hash': 'editorial',
+            'last_error': last_error,
+            'git_url': '',
+            'git_ref': '',
+        }
     return {
         'id': SKIN_CLASSIC_ID,
         'name': '经典',
@@ -2784,7 +2801,9 @@ def list_custom_skin_records(active_skin_id: str = '') -> List[Dict[str, Any]]:
 def get_skin_record_by_id(skin_id: str) -> Optional[Dict[str, Any]]:
     normalized_id = normalize_skin_id(skin_id)
     if normalized_id == SKIN_CLASSIC_ID:
-        return build_builtin_skin_record()
+        return build_builtin_skin_record(SKIN_CLASSIC_ID)
+    if normalized_id == 'editorial':
+        return build_builtin_skin_record('editorial')
     if not normalized_id:
         return None
 
@@ -2807,7 +2826,7 @@ def get_skin_directory(record: Dict[str, Any]) -> Optional[Path]:
 def record_skin_error(skin_id: str, error: str) -> None:
     normalized_id = normalize_skin_id(skin_id)
     message = str(error or '').strip()
-    if not normalized_id or normalized_id == SKIN_CLASSIC_ID:
+    if not normalized_id or normalized_id in (SKIN_CLASSIC_ID, 'editorial'):
         set_setting('skin_last_error', message)
         return
 
@@ -2834,9 +2853,9 @@ def resolve_active_skin_record() -> Dict[str, Any]:
     configured_id = get_configured_active_skin_id()
     record = get_skin_record_by_id(configured_id)
     if not record or record.get('status') != 'ok':
-        if configured_id != SKIN_CLASSIC_ID:
+        if configured_id not in (SKIN_CLASSIC_ID, 'editorial'):
             record_skin_error(configured_id, f'当前皮肤 {configured_id} 不可用，已回退到 classic')
-        return build_builtin_skin_record(active=True)
+        return build_builtin_skin_record(SKIN_CLASSIC_ID, active=True)
 
     record['active'] = True
     return record
@@ -2846,7 +2865,10 @@ def get_skin_settings_payload() -> Dict[str, Any]:
     configured_id = get_configured_active_skin_id()
     active_record = resolve_active_skin_record()
     effective_id = active_record['id']
-    skins = [build_builtin_skin_record(active=effective_id == SKIN_CLASSIC_ID)]
+    skins = [
+        build_builtin_skin_record(SKIN_CLASSIC_ID, active=effective_id == SKIN_CLASSIC_ID),
+        build_builtin_skin_record('editorial', active=effective_id == 'editorial')
+    ]
     skins.extend(list_custom_skin_records(active_skin_id=effective_id))
     return {
         'configured_skin_id': configured_id,
@@ -2882,6 +2904,14 @@ def get_active_skin_css() -> tuple[str, str]:
     record = resolve_active_skin_record()
     if record.get('id') == SKIN_CLASSIC_ID:
         return '/* classic skin: base styles */\n', SKIN_CLASSIC_ID
+    if record.get('id') == 'editorial':
+        try:
+            static_dir = Path(__file__).resolve().parent / 'static' / 'css'
+            css_path = static_dir / 'editorial.css'
+            return css_path.read_text(encoding='utf-8'), 'editorial'
+        except Exception as exc:
+            record_skin_error('editorial', f'读取内置皮肤 CSS 失败: {exc}')
+            return '/* skin unavailable, fallback to classic */\n', SKIN_CLASSIC_ID
 
     skin_dir = get_skin_directory(record)
     if not skin_dir:
@@ -2898,8 +2928,8 @@ def get_active_skin_css() -> tuple[str, str]:
 
 
 def ensure_skin_id_is_installable(skin_id: str, source_type: str) -> None:
-    if skin_id == SKIN_CLASSIC_ID:
-        raise SkinValidationError('classic 是内置皮肤，不能覆盖')
+    if skin_id in (SKIN_CLASSIC_ID, 'editorial'):
+        raise SkinValidationError(f'{skin_id} 是内置皮肤，不能覆盖')
     existing = get_skin_record_by_id(skin_id)
     if existing and existing.get('source_type') != source_type:
         raise SkinValidationError('相同皮肤 ID 已由其他来源安装')
@@ -3085,10 +3115,10 @@ def update_git_skin_package(skin_id: str) -> Dict[str, Any]:
 
 def delete_custom_skin(skin_id: str) -> tuple[bool, str]:
     normalized_id = normalize_skin_id(skin_id)
-    if not normalized_id or normalized_id == SKIN_CLASSIC_ID:
-        return False, '不能删除内置 classic 皮肤'
+    if not normalized_id or normalized_id in (SKIN_CLASSIC_ID, 'editorial'):
+        return False, f'不能删除内置 {normalized_id} 皮肤'
     if get_configured_active_skin_id() == normalized_id:
-        return False, '不能删除当前启用的皮肤，请先切换到 classic'
+        return False, '不能删除当前启用的皮肤，请先切换到其他皮肤'
 
     record = get_skin_record_by_id(normalized_id)
     skin_dir = get_skin_directory(record or {})

@@ -1135,6 +1135,8 @@
 
         // 初始化
         document.addEventListener('DOMContentLoaded', async function () {
+            // 初始化主题
+            initTheme();
             // 初始化 CSRF Token
             await initCSRFToken();
             await loadAppTimeZoneFromSettings();
@@ -2310,8 +2312,13 @@ ${details}
         function updateCurrentGroupHeader(group = null, titleOverride = '') {
             const nameEl = document.getElementById('currentGroupName');
             const idBadgeEl = document.getElementById('currentGroupIdBadge');
+            const refreshBtn = document.getElementById('refreshAccountListBtn');
             if (!nameEl || !idBadgeEl) {
                 return;
+            }
+
+            if (refreshBtn) {
+                refreshBtn.style.display = (group || titleOverride) ? 'inline-flex' : 'none';
             }
 
             if (titleOverride) {
@@ -2389,3 +2396,59 @@ ${details}
                 btn.title = isMinimal ? '切换详细展示' : '切换极简展示';
             }
         }
+
+        // ==================== 主题与列表刷新相关 ====================
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const currentTheme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', currentTheme);
+            updateThemeToggleIcons(currentTheme);
+        }
+
+        function toggleTheme() {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const newTheme = isDark ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeToggleIcons(newTheme);
+        }
+
+        function updateThemeToggleIcons(theme) {
+            const sunIcon = document.querySelector('#desktopThemeToggleBtn .sun-icon');
+            const moonIcon = document.querySelector('#desktopThemeToggleBtn .moon-icon');
+            if (sunIcon && moonIcon) {
+                if (theme === 'dark') {
+                    sunIcon.style.display = 'block';
+                    moonIcon.style.display = 'none';
+                } else {
+                    sunIcon.style.display = 'none';
+                    moonIcon.style.display = 'block';
+                }
+            }
+        }
+
+        async function refreshCurrentAccountList() {
+            const refreshBtn = document.getElementById('refreshAccountListBtn');
+            if (refreshBtn) {
+                refreshBtn.classList.add('spinning');
+                refreshBtn.disabled = true;
+            }
+            try {
+                if (window.isTempEmailGroup && typeof window.loadTempEmails === 'function') {
+                    await window.loadTempEmails(true);
+                } else if (window.currentGroupId && typeof window.loadAccountsByGroup === 'function') {
+                    await window.loadAccountsByGroup(window.currentGroupId, true);
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                if (refreshBtn) {
+                    refreshBtn.classList.remove('spinning');
+                    refreshBtn.disabled = false;
+                }
+            }
+        }
+
+        window.toggleTheme = toggleTheme;
+        window.refreshCurrentAccountList = refreshCurrentAccountList;

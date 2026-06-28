@@ -47,41 +47,39 @@
         .app-version-chip {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            min-height: 32px;
-            padding: 0 12px;
-            border: 1px solid #e5e7eb;
+            gap: 6px;
+            min-height: 24px;
+            padding: 0 10px;
+            border: 1px solid var(--skin-border-strong);
             border-radius: 999px;
-            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-            color: #334155;
-            font-size: 12px;
-            font-weight: 600;
-            letter-spacing: 0.01em;
-            transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s, color 0.15s;
+            background-color: var(--skin-surface-soft);
+            color: var(--skin-text-soft);
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.15s ease;
         }
 
         .app-version-chip:hover {
-            border-color: #cbd5e1;
-            background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
-            color: #0f172a;
-            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+            border-color: var(--skin-primary);
+            background-color: var(--skin-surface);
+            color: var(--skin-text);
+            box-shadow: 0 4px 12px var(--skin-shadow);
         }
 
         .app-version.is-open .app-version-chip {
-            border-color: #94a3b8;
-            background: linear-gradient(180deg, #ffffff 0%, #eef2f7 100%);
-            color: #0f172a;
-            box-shadow: 0 12px 26px rgba(15, 23, 42, 0.12);
+            border-color: var(--skin-primary);
+            background-color: var(--skin-surface);
+            color: var(--skin-text);
         }
 
         .app-version-chip__label {
-            color: #64748b;
-            font-weight: 700;
+            color: var(--skin-text-muted);
+            font-weight: 500;
         }
 
         .app-version-chip__value {
-            color: #0f172a;
-            font-variant-numeric: tabular-nums;
+            color: var(--skin-text);
+            font-weight: 600;
         }
 
         .app-version-chip__upgrade-badge {
@@ -420,7 +418,8 @@
         /* 导航栏下拉菜单 */
         .navbar-dropdown {
             position: relative;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
         }
 
         .navbar-dropdown-menu {
@@ -437,6 +436,16 @@
             padding: 6px;
             flex-direction: column;
             gap: 2px;
+        }
+
+        .navbar-dropdown-menu::before {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: 0;
+            right: 0;
+            height: 10px;
+            background: transparent;
         }
 
         .navbar-dropdown.is-open .navbar-dropdown-menu,
@@ -537,12 +546,48 @@
         .desktop-only-dropdown {
             display: inline-block;
         }
+        .desktop-only-btn {
+            display: inline-flex !important;
+            align-items: center;
+            gap: 6px;
+        }
+        .navbar-icon-btn {
+            background: none;
+            border: 1px solid var(--skin-border);
+            color: var(--skin-text-soft);
+            cursor: pointer;
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+            position: relative;
+            z-index: 102;
+            padding: 0;
+        }
+        .navbar-icon-btn:hover {
+            background-color: var(--skin-surface-soft);
+            border-color: var(--skin-border-strong);
+            color: var(--skin-primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--skin-shadow);
+        }
+        .navbar-icon-btn svg {
+            width: 16px;
+            height: 16px;
+            display: block;
+        }
 
         @media (max-width: 768px) {
             .mobile-only-btn {
                 display: inline-flex !important;
             }
             .desktop-only-dropdown {
+                display: none !important;
+            }
+            .desktop-only-btn {
                 display: none !important;
             }
         }

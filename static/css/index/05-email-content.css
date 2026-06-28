@@ -83,9 +83,12 @@
             border: 1px solid var(--skin-border-strong);
             color: var(--skin-text);
             cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            padding: 8px 14px;
+            width: 34px;
+            height: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
             border-radius: 10px;
             transition: all 0.15s;
             white-space: nowrap;
@@ -95,6 +98,12 @@
             background-color: var(--skin-surface-soft);
             border-color: #c4c9d4;
             color: var(--skin-primary-hover);
+        }
+
+        .refresh-btn svg {
+            width: 16px;
+            height: 16px;
+            display: block;
         }
 
         .email-list {

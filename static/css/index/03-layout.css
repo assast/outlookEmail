@@ -119,10 +119,23 @@
 
         .panel-action-btn:hover {
             background-color: var(--skin-surface-soft);
-            border-color: #cbd5e1;
+            border-color: var(--skin-border-strong);
             color: var(--skin-primary-hover);
             transform: translateY(-1px);
-            box-shadow: 0 8px 18px var(--skin-shadow);
+            box-shadow: 0 4px 12px var(--skin-shadow);
+        }
+
+        .spinning svg {
+            animation: spin-anim 1s linear infinite;
+        }
+
+        @keyframes spin-anim {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         .panel-action-btn svg {
@@ -131,15 +144,15 @@
         }
 
         .panel-action-btn-accent {
-            background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
-            border-color: #bfdbfe;
-            color: #1d4ed8;
+            background-color: var(--skin-accent-soft);
+            border-color: var(--skin-accent-border);
+            color: var(--skin-accent);
         }
 
         .panel-action-btn-accent:hover {
-            background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%);
-            border-color: #93c5fd;
-            color: #1d4ed8;
+            background-color: var(--skin-accent);
+            border-color: var(--skin-accent);
+            color: #ffffff;
         }
 
         .panel-action-btn-primary {

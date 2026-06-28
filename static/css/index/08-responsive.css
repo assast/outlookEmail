@@ -322,9 +322,10 @@
             }
 
             .refresh-btn {
-                min-height: 36px;
-                padding: 0 12px;
-                font-size: 12px;
+                width: 34px;
+                height: 34px;
+                min-height: auto;
+                padding: 0;
                 border-radius: 9px;
             }
 
