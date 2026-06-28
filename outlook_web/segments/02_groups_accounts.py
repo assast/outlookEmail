@@ -1466,6 +1466,20 @@ def serialize_upload_account_row(row: Any) -> Dict[str, Any]:
     }
 
 
+def delete_upload_account(account_id: int) -> bool:
+    """删除指定 ID 的外部上传账号。
+
+    返回 True 表示删除成功，False 表示账号不存在。
+    不在本函数内 commit，由调用方统一提交。
+    """
+    db = get_db()
+    cursor = db.execute(
+        'DELETE FROM outlook_upload_accounts WHERE id = ?',
+        (account_id,)
+    )
+    return cursor.rowcount > 0
+
+
 def query_upload_accounts_page(page: int = 1, page_size: int = 20,
                                keyword: str = '') -> Dict[str, Any]:
     """分页查询外部上传的 Outlook 账号。
