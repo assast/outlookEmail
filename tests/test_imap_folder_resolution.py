@@ -2008,7 +2008,7 @@ class AssetRenderingTests(unittest.TestCase):
         html = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('href="/assets/index.css"', html)
+        self.assertRegex(html, r'href="/assets/index\.css\?v=[0-9a-f]{16}"')
         self.assertNotIn('href="/static/index.css"', html)
 
     def test_bundled_stylesheet_contains_combined_css_without_imports(self):

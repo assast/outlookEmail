@@ -155,23 +155,19 @@ def favicon():
 @app.route('/assets/index.css')
 def bundled_index_css():
     """返回合并后的首页样式，避免代理层拦截 CSS @import 子请求。"""
-    css_root = Path(app.static_folder) / 'css' / 'index'
-    css_parts = (
-        '01-base.css',
-        '02-navbar.css',
-        '03-layout.css',
-        '04-account-panel.css',
-        '05-email-content.css',
-        '06-modals-toast.css',
-        '07-meta.css',
-        '08-responsive.css',
-    )
+    static_root = Path(app.static_folder)
 
     combined_css = '\n\n'.join(
-        (css_root / filename).read_text(encoding='utf-8')
-        for filename in css_parts
+        (static_root / filename).read_text(encoding='utf-8')
+        for filename in INDEX_CSS_FILES
     )
-    return Response(combined_css, mimetype='text/css')
+    response = Response(combined_css, mimetype='text/css')
+    response.headers['ETag'] = f'"index-{compute_static_assets_hash(INDEX_CSS_FILES)}"'
+    if request.args.get('v'):
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    else:
+        response.headers['Cache-Control'] = 'no-cache, max-age=0'
+    return response
 
 
 @app.route('/assets/active-skin.css')
@@ -188,12 +184,18 @@ def active_skin_css():
 @login_required
 def index():
     """主页"""
-    return render_template(
+    response = make_response(render_template(
         'index.html',
         app_version=APP_VERSION,
         changelog_url=CHANGELOG_URL,
+        frontend_asset_hash=get_frontend_asset_hash(),
         skin_asset_hash=get_active_skin_asset_hash(),
-    )
+    ))
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    response.vary.add('Cookie')
+    return response
 
 
 @app.route('/api/version-status', methods=['GET'])
