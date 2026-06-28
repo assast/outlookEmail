@@ -1387,3 +1387,14 @@ def api_external_upload_outlook():
 
     summary = add_upload_accounts_bulk(items)
     return jsonify({'success': True, **summary})
+
+
+@app.route('/api/outlook-upload-accounts', methods=['GET'])
+@login_required
+def api_list_outlook_upload_accounts():
+    """分页查询外部上传的 Outlook 账号，供前端弹框表格展示。"""
+    page = parse_non_negative_int(request.args.get('page', 1), 1) or 1
+    page_size = parse_non_negative_int(request.args.get('page_size', 20), 20, 200)
+    keyword = str(request.args.get('keyword', '') or '').strip()
+    result = query_upload_accounts_page(page=page, page_size=page_size, keyword=keyword)
+    return jsonify({'success': True, **result})

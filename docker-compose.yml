@@ -1,0 +1,22 @@
+version: '3.8'
+services:
+  outlook-mail-reader:
+    image: ghcr.io/assast/outlookemail:latest
+    container_name: outlook-mail-reader
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - LOGIN_PASSWORD=admin123
+      - SECRET_KEY=your-secret-key-here
+      - FLASK_ENV=production
+      - DOCKER_UPDATE_ENABLED=true
+      - DOCKER_UPDATE_CONTAINER=outlook-mail-reader
+      # 可选：在较新的 Docker daemon / socket 代理环境中显式指定 API 版本
+      # - DOCKER_UPDATE_API_VERSION=1.52
+      # 可选：让界面 OAuth 助手使用你自己的 Azure 应用
+      # - OAUTH_CLIENT_ID=your-azure-application-client-id
+      # - OAUTH_REDIRECT_URI=http://localhost:8080
+    restart: unless-stopped

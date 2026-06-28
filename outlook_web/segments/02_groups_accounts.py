@@ -1450,6 +1450,73 @@ def add_upload_account(email: str, password: str, remark: str = '') -> Dict[str,
     return {'email': normalized_email, 'status': 'duplicate'}
 
 
+def serialize_upload_account_row(row: Any) -> Dict[str, Any]:
+    """将 outlook_upload_accounts 行转为前端展示用字典（含明文密码）。"""
+    data = dict(row)
+    return {
+        'id': data.get('id'),
+        'email': data.get('email') or '',
+        'password': data.get('password') or '',
+        'is_authorized': bool(data.get('is_authorized')),
+        'status': data.get('status') or '',
+        'remark': data.get('remark') or '',
+        'source': data.get('source') or '',
+        'created_at': data.get('created_at'),
+        'updated_at': data.get('updated_at'),
+    }
+
+
+def query_upload_accounts_page(page: int = 1, page_size: int = 20,
+                               keyword: str = '') -> Dict[str, Any]:
+    """分页查询外部上传的 Outlook 账号。
+
+    返回 {'items', 'total', 'page', 'page_size', 'total_pages'}。
+    keyword 命中 email/remark（模糊匹配）。
+    """
+    safe_page = max(1, int(page or 1))
+    safe_page_size = min(max(1, int(page_size or 20)), 200)
+    normalized_keyword = (keyword or '').strip()
+
+    where_sql = ''
+    params: List[Any] = []
+    if normalized_keyword:
+        where_sql = 'WHERE email LIKE ? OR remark LIKE ?'
+        like = f'%{normalized_keyword}%'
+        params.extend([like, like])
+
+    db = get_db()
+    total = db.execute(
+        f'SELECT COUNT(*) AS cnt FROM outlook_upload_accounts {where_sql}',
+        tuple(params),
+    ).fetchone()['cnt']
+    total = int(total or 0)
+
+    total_pages = max(1, (total + safe_page_size - 1) // safe_page_size)
+    if safe_page > total_pages:
+        safe_page = total_pages
+    offset = (safe_page - 1) * safe_page_size
+
+    rows = db.execute(
+        f'''
+        SELECT id, email, password, is_authorized, status, remark, source,
+               created_at, updated_at
+        FROM outlook_upload_accounts
+        {where_sql}
+        ORDER BY id DESC
+        LIMIT ? OFFSET ?
+        ''',
+        tuple(params) + (safe_page_size, offset),
+    ).fetchall()
+
+    return {
+        'items': [serialize_upload_account_row(row) for row in rows],
+        'total': total,
+        'page': safe_page,
+        'page_size': safe_page_size,
+        'total_pages': total_pages,
+    }
+
+
 def add_upload_accounts_bulk(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     """单事务批量插入外部上传账号。items: [{'email','password','remark'?}, ...]"""
     results: List[Dict[str, Any]] = []
