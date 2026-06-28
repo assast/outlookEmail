@@ -82,6 +82,16 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
+# CORS 支持：仅对外部 API (/api/external/*) 启用跨域访问
+@app.after_request
+def add_cors_headers_for_external_api(response):
+    if request.path.startswith('/api/external/'):
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key, Authorization'
+        response.headers['Access-Control-Max-Age'] = '86400'
+    return response
+
 scheduler_instance = None
 scheduler_lock = threading.Lock()
 token_refresh_run_lock = threading.Lock()
