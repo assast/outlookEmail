@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-06-28
+
+### Changed
+- 首页和邮箱分享页在没有用户保存主题时默认使用浅色主题，不再跟随系统深色偏好。
+
 ## [2.3.1] - 2026-06-28
 
 ### Changed
