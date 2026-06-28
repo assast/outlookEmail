@@ -6,7 +6,10 @@ import unittest
 
 os.environ.setdefault('SECRET_KEY', 'test-secret-key')
 if 'DATABASE_PATH' not in os.environ:
-    _temp_dir = tempfile.mkdtemp(prefix='outlookEmail-upload-tests-')
+    _test_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.test_tmp')
+    os.makedirs(_test_root, exist_ok=True)
+    _temp_dir = os.path.join(_test_root, 'outlook_upload')
+    os.makedirs(_temp_dir, exist_ok=True)
     os.environ['DATABASE_PATH'] = os.path.join(_temp_dir, 'test.db')
 
 web_outlook_app = importlib.import_module('web_outlook_app')
