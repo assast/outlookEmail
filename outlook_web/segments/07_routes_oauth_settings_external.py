@@ -1250,3 +1250,37 @@ def api_external_get_emails():
         all_errors['imap_old'] = imap_old_result.get('error')
 
     return jsonify({'success': False, 'error': '无法获取邮件，所有方式均失败', 'details': all_errors})
+
+
+@app.route('/api/external/outlook/upload', methods=['POST'])
+@csrf_exempt
+@api_key_required
+def api_external_upload_outlook():
+    """对外 API：上传 Outlook 邮箱账号密码到上传表（默认未授权）。
+
+    支持单条 {email, password, remark?} 或批量 {accounts: [...]}。
+    """
+    data = request.get_json(silent=True) or {}
+
+    raw_accounts = data.get('accounts')
+    if isinstance(raw_accounts, list) and raw_accounts:
+        items = [
+            {
+                'email': item.get('email', ''),
+                'password': item.get('password', ''),
+                'remark': item.get('remark', ''),
+            }
+            for item in raw_accounts
+            if isinstance(item, dict)
+        ]
+    elif data.get('email'):
+        items = [{
+            'email': data.get('email', ''),
+            'password': data.get('password', ''),
+            'remark': data.get('remark', ''),
+        }]
+    else:
+        return jsonify({'success': False, 'error': '请求体需包含 email/password 或非空 accounts 数组'}), 400
+
+    summary = add_upload_accounts_bulk(items)
+    return jsonify({'success': True, **summary})

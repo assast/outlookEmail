@@ -134,5 +134,82 @@ class OutlookUploadDataLayerTests(unittest.TestCase):
                          ['new1@outlook.com', 'exists@outlook.com', 'bad'])
 
 
+class OutlookUploadRouteTests(unittest.TestCase):
+    API_KEY = 'test-external-key'
+
+    def setUp(self):
+        self.app = web_outlook_app.app
+        self.app.config['TESTING'] = True
+        self.app.config['WTF_CSRF_ENABLED'] = False
+        self.client = self.app.test_client()
+        with self.app.app_context():
+            web_outlook_app.init_db()
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM outlook_upload_accounts')
+            db.commit()
+            self.assertTrue(web_outlook_app.set_setting('external_api_key', self.API_KEY))
+
+    def _headers(self):
+        return {'X-API-Key': self.API_KEY}
+
+    def test_requires_api_key(self):
+        response = self.client.post('/api/external/outlook/upload',
+                                    json={'email': 'a@outlook.com', 'password': 'p'})
+        self.assertEqual(response.status_code, 401)
+        self.assertFalse(response.get_json()['success'])
+
+    def test_single_upload_succeeds_and_hides_password(self):
+        response = self.client.post(
+            '/api/external/outlook/upload',
+            headers=self._headers(),
+            json={'email': 'single@outlook.com', 'password': 'secret', 'remark': 'n'},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['total'], 1)
+        self.assertEqual(payload['added'], 1)
+        self.assertEqual(payload['results'][0]['status'], 'added')
+        # 响应不回显 password
+        self.assertNotIn('password', payload['results'][0])
+        self.assertNotIn('secret', response.get_data(as_text=True))
+
+        with self.app.app_context():
+            row = web_outlook_app.get_db().execute(
+                "SELECT is_authorized, password FROM outlook_upload_accounts WHERE email = ?",
+                ('single@outlook.com',),
+            ).fetchone()
+        self.assertEqual(row['is_authorized'], 0)
+        self.assertEqual(row['password'], 'secret')
+
+    def test_bulk_upload_reports_counts(self):
+        response = self.client.post(
+            '/api/external/outlook/upload',
+            headers=self._headers(),
+            json={'accounts': [
+                {'email': 'b1@outlook.com', 'password': 'p1'},
+                {'email': 'b1@outlook.com', 'password': 'p2'},
+                {'email': 'bad', 'password': 'p3'},
+            ]},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['total'], 3)
+        self.assertEqual(payload['added'], 1)
+        self.assertEqual(payload['duplicate'], 1)
+        self.assertEqual(payload['invalid'], 1)
+
+    def test_empty_body_returns_400(self):
+        response = self.client.post('/api/external/outlook/upload',
+                                    headers=self._headers(), json={})
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.get_json()['success'])
+
+    def test_route_is_marked_api_key_required(self):
+        view = self.app.view_functions['api_external_upload_outlook']
+        self.assertTrue(getattr(view, '_requires_api_key', False))
+
+
 if __name__ == '__main__':
     unittest.main()
