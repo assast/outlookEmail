@@ -6,6 +6,15 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-06-28
+
+### Changed
+- 首页 CSS 和 JavaScript 资源 URL 增加内容哈希版本参数，发布后浏览器会自动刷新前端资源缓存。
+- 首页 HTML 响应改为禁止缓存，避免升级后继续加载旧入口页面。
+
+### Fixed
+- 修复内置 Editorial 皮肤使用固定缓存标识导致 CSS 更新后不生效的问题。
+
 ## [2.3.0] - 2026-06-28
 
 ### Added
