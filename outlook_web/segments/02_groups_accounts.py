@@ -1422,6 +1422,62 @@ def add_accounts_bulk(parsed_accounts: List[Dict[str, Any]], group_id: int = 1,
     }
 
 
+def normalize_upload_email(email: str) -> str:
+    return (email or '').strip().lower()
+
+
+def add_upload_account(email: str, password: str, remark: str = '') -> Dict[str, Any]:
+    """插入一条外部上传的 Outlook 账号到 outlook_upload_accounts。
+
+    密码以明文存储（不加密）。不在本函数内 commit，由调用方统一提交。
+    返回 {'email', 'status': 'added'|'duplicate'|'invalid', 'id'?}
+    """
+    normalized_email = normalize_upload_email(email)
+    raw_password = password if password is not None else ''
+    if '@' not in normalized_email or not raw_password:
+        return {'email': normalized_email or (email or ''), 'status': 'invalid'}
+
+    db = get_db()
+    cursor = db.execute(
+        '''
+        INSERT OR IGNORE INTO outlook_upload_accounts (email, password, remark, source)
+        VALUES (?, ?, ?, 'external_api')
+        ''',
+        (normalized_email, raw_password, remark or ''),
+    )
+    if cursor.rowcount == 1:
+        return {'email': normalized_email, 'status': 'added', 'id': cursor.lastrowid}
+    return {'email': normalized_email, 'status': 'duplicate'}
+
+
+def add_upload_accounts_bulk(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """单事务批量插入外部上传账号。items: [{'email','password','remark'?}, ...]"""
+    results: List[Dict[str, Any]] = []
+    added = duplicate = invalid = 0
+    db = get_db()
+    for item in items:
+        outcome = add_upload_account(
+            item.get('email', ''),
+            item.get('password', ''),
+            item.get('remark', ''),
+        )
+        if outcome['status'] == 'added':
+            added += 1
+        elif outcome['status'] == 'duplicate':
+            duplicate += 1
+        else:
+            invalid += 1
+        results.append(outcome)
+    db.commit()
+    return {
+        'total': len(items),
+        'added': added,
+        'duplicate': duplicate,
+        'invalid': invalid,
+        'results': results,
+    }
+
+
 def update_account(account_id: int, email_addr: str, password: str, client_id: str,
                    refresh_token: str, group_id: int, sort_order: Optional[int], remark: str, status: str,
                    account_type: str = 'outlook', provider: str = 'outlook',

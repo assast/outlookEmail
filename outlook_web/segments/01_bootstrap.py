@@ -1634,6 +1634,25 @@ def init_db():
         ON project_account_events(project_id, created_at)
     ''')
 
+    # 外部上传的 Outlook 账号暂存表（账号/密码/是否授权，独立于 accounts）
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS outlook_upload_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            is_authorized INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'active',
+            remark TEXT DEFAULT '',
+            source TEXT DEFAULT 'external_api',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_outlook_upload_email
+        ON outlook_upload_accounts(email)
+    ''')
+
     # 检查并添加缺失的列（数据库迁移）
     cursor.execute("PRAGMA table_info(accounts)")
     columns = [col[1] for col in cursor.fetchall()]
