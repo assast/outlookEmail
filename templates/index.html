@@ -8,7 +8,7 @@
     <link rel="icon" href="{{ url_for('favicon') }}" type="image/svg+xml">
     <!-- DOMPurify for XSS protection -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('bundled_index_css') }}">
+    <link rel="stylesheet" href="{{ url_for('bundled_index_css', v=frontend_asset_hash) }}">
     <link rel="stylesheet" id="activeSkinStylesheet" href="{{ url_for('active_skin_css', v=skin_asset_hash) }}">
 </head>
 
@@ -32,6 +32,17 @@
     <script src="{{ url_for('static', filename='js/index/09-tags.js') }}"></script>
     <script src="{{ url_for('static', filename='js/index/10-batch-actions.js') }}"></script>
     <script src="{{ url_for('static', filename='js/index/11-email-shares.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/index/01-core.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/02-groups.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/03-temp-emails.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/04-accounts.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/05-emails.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/06-utils-oauth.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/07-settings.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/08-refresh.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/09-tags.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/10-batch-actions.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/11-email-shares.js', v=frontend_asset_hash) }}"></script>
     <script src="{{ url_for('static', filename='js/index/12-outlook-upload-accounts.js') }}"></script>
 
     <!-- 全屏查看邮件模态框 -->

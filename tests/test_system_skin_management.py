@@ -2,6 +2,7 @@ import importlib
 import io
 import json
 import os
+import re
 import shutil
 import tempfile
 import types
@@ -223,6 +224,57 @@ class SystemSkinManagementTests(unittest.TestCase):
         self.assertIn('id="activeSkinStylesheet"', html)
         self.assertIn('id="settingsSkinSection"', html)
         self.assertIn('settingsSkinUploadFile', html)
+
+    def test_index_versions_frontend_css_and_scripts(self):
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        asset_hash = web_outlook_app.get_frontend_asset_hash()
+
+        self.assertIn('no-store', response.headers.get('Cache-Control', ''))
+        self.assertIn(f'/assets/index.css?v={asset_hash}', html)
+        self.assertIn(f'/static/js/index/01-core.js?v={asset_hash}', html)
+        self.assertIn(f'/static/js/index/11-email-shares.js?v={asset_hash}', html)
+
+    def test_index_template_frontend_scripts_match_hash_manifest(self):
+        template = Path(web_outlook_app.app.template_folder) / 'index.html'
+        html = template.read_text(encoding='utf-8')
+        script_files = re.findall(
+            r"url_for\('static', filename='([^']+)', v=frontend_asset_hash\)",
+            html,
+        )
+
+        self.assertEqual(script_files, list(web_outlook_app.INDEX_JS_FILES))
+        self.assertIn("url_for('bundled_index_css', v=frontend_asset_hash)", html)
+        self.assertNotRegex(html, r"url_for\('static', filename='js/index/[^']+'\)")
+
+    def test_bundled_index_css_cache_control_depends_on_version_param(self):
+        asset_hash = web_outlook_app.get_frontend_asset_hash()
+
+        versioned_response = self.client.get(f'/assets/index.css?v={asset_hash}')
+        self.assertEqual(versioned_response.status_code, 200)
+        self.assertIn('immutable', versioned_response.headers.get('Cache-Control', ''))
+        self.assertIn(f'"index-{web_outlook_app.compute_static_assets_hash(web_outlook_app.INDEX_CSS_FILES)}"',
+                      versioned_response.headers.get('ETag', ''))
+
+        unversioned_response = self.client.get('/assets/index.css')
+        self.assertEqual(unversioned_response.status_code, 200)
+        self.assertIn('no-cache', unversioned_response.headers.get('Cache-Control', ''))
+
+    def test_builtin_editorial_skin_uses_css_content_hash(self):
+        editorial_css = Path(web_outlook_app.app.static_folder) / 'css' / 'editorial.css'
+        expected_hash = web_outlook_app.compute_skin_file_hash(editorial_css)
+        with self.app.app_context():
+            web_outlook_app.set_setting('active_skin_id', 'editorial')
+
+        list_response = self.client.get('/api/skins')
+        self.assertEqual(list_response.status_code, 200)
+        payload = list_response.get_json()
+        editorial_skin = next(skin for skin in payload['skins'] if skin['id'] == 'editorial')
+        self.assertEqual(editorial_skin['asset_hash'], expected_hash)
+
+        css_response = self.client.get('/assets/active-skin.css')
+        self.assertEqual(css_response.headers.get('ETag'), f'"skin-{expected_hash}"')
 
 
 if __name__ == '__main__':

@@ -677,6 +677,29 @@ SKIN_BLOCKED_EXTRA_EXTENSIONS = {
     '.js', '.mjs', '.cjs', '.sh', '.bash', '.zsh', '.py',
     '.html', '.htm', '.exe', '.bat', '.cmd', '.ps1',
 }
+INDEX_CSS_FILES = (
+    'css/index/01-base.css',
+    'css/index/02-navbar.css',
+    'css/index/03-layout.css',
+    'css/index/04-account-panel.css',
+    'css/index/05-email-content.css',
+    'css/index/06-modals-toast.css',
+    'css/index/07-meta.css',
+    'css/index/08-responsive.css',
+)
+INDEX_JS_FILES = (
+    'js/index/01-core.js',
+    'js/index/02-groups.js',
+    'js/index/03-temp-emails.js',
+    'js/index/04-accounts.js',
+    'js/index/05-emails.js',
+    'js/index/06-utils-oauth.js',
+    'js/index/07-settings.js',
+    'js/index/08-refresh.js',
+    'js/index/09-tags.js',
+    'js/index/10-batch-actions.js',
+    'js/index/11-email-shares.js',
+)
 
 # GPTMail API 配置
 GPTMAIL_BASE_URL = os.getenv("GPTMAIL_BASE_URL", "https://mail.chatgpt.org.uk")
@@ -2602,6 +2625,33 @@ def compute_skin_file_hash(path: Path) -> str:
     return digest.hexdigest()[:16]
 
 
+def compute_static_assets_hash(relative_paths) -> str:
+    digest = hashlib.sha256()
+    static_root = Path(app.static_folder)
+    for relative_path in relative_paths:
+        digest.update(str(relative_path).encode('utf-8'))
+        digest.update(b'\0')
+        with (static_root / relative_path).open('rb') as file_obj:
+            for chunk in iter(lambda: file_obj.read(65536), b''):
+                digest.update(chunk)
+    return digest.hexdigest()[:16]
+
+
+def get_frontend_asset_hash() -> str:
+    return compute_static_assets_hash(INDEX_CSS_FILES + INDEX_JS_FILES)
+
+
+def get_builtin_editorial_skin_css_path() -> Path:
+    return Path(app.static_folder) / 'css' / 'editorial.css'
+
+
+def get_builtin_editorial_skin_asset_hash() -> str:
+    try:
+        return compute_skin_file_hash(get_builtin_editorial_skin_css_path())
+    except Exception:
+        return 'editorial'
+
+
 def read_skin_json(path: Path) -> Dict[str, Any]:
     try:
         with Path(path).open('r', encoding='utf-8') as file_obj:
@@ -2746,7 +2796,7 @@ def build_builtin_skin_record(skin_id: str = SKIN_CLASSIC_ID, active: bool = Fal
             'builtin': True,
             'active': active,
             'status': 'ok',
-            'asset_hash': 'editorial',
+            'asset_hash': get_builtin_editorial_skin_asset_hash(),
             'last_error': last_error,
             'git_url': '',
             'git_ref': '',
@@ -2935,9 +2985,8 @@ def get_active_skin_css() -> tuple[str, str]:
         return '/* classic skin: base styles */\n', SKIN_CLASSIC_ID
     if record.get('id') == 'editorial':
         try:
-            static_dir = Path(__file__).resolve().parent / 'static' / 'css'
-            css_path = static_dir / 'editorial.css'
-            return css_path.read_text(encoding='utf-8'), 'editorial'
+            css_path = get_builtin_editorial_skin_css_path()
+            return css_path.read_text(encoding='utf-8'), compute_skin_file_hash(css_path)
         except Exception as exc:
             record_skin_error('editorial', f'读取内置皮肤 CSS 失败: {exc}')
             return '/* skin unavailable, fallback to classic */\n', SKIN_CLASSIC_ID
