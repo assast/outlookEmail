@@ -6,6 +6,7 @@
         let lastLoadedWebdavBackupSettings = null;
         let cloudflareSettingsChannels = [];
         let lastNormalMailRetentionStatus = null;
+        let lastLoadedSkinSettings = null;
         let normalMailRetentionStatusPollTimer = null;
         let normalMailRetentionStatusPollDelayMs = 0;
         const NORMAL_MAIL_RETENTION_STATUS_INITIAL_POLL_MS = 2000;
@@ -317,6 +318,7 @@
             scrollSettingsSection('settingsGeneralSection');
             populateTimeZoneOptions(getAppTimeZone());
             await loadSettings();
+            await loadSkinSettings();
             scheduleSettingsSidebarSync();
         }
 
@@ -331,6 +333,247 @@
             const backupVerifyInput = document.getElementById('webdavBackupVerifyPassword');
             if (backupVerifyInput) {
                 backupVerifyInput.value = '';
+            }
+        }
+
+        function setSkinSettingsStatus(message, type = '') {
+            const statusEl = document.getElementById('settingsSkinStatus');
+            if (!statusEl) return;
+            statusEl.textContent = message || '';
+            statusEl.style.display = message ? 'block' : 'none';
+            statusEl.dataset.type = type || '';
+        }
+
+        function refreshActiveSkinStylesheet(assetHash) {
+            const link = document.getElementById('activeSkinStylesheet');
+            if (!link) return;
+            const version = encodeURIComponent(assetHash || String(Date.now()));
+            link.href = `/assets/active-skin.css?v=${version}`;
+        }
+
+        function formatSkinSourceLabel(sourceType) {
+            if (sourceType === 'builtin') return '内置';
+            if (sourceType === 'upload') return '上传';
+            if (sourceType === 'git') return 'Git';
+            return sourceType || '未知';
+        }
+
+        function renderSkinList(payload = {}) {
+            lastLoadedSkinSettings = payload || {};
+            const listEl = document.getElementById('settingsSkinList');
+            const summaryEl = document.getElementById('settingsSkinActiveSummary');
+            if (!listEl || !summaryEl) return;
+
+            const activeSkin = payload.active_skin || {};
+            const activeName = activeSkin.name || activeSkin.id || 'classic';
+            summaryEl.textContent = `${activeName}（${activeSkin.id || 'classic'}）`;
+
+            const skins = Array.isArray(payload.skins) ? payload.skins : [];
+            if (!skins.length) {
+                listEl.innerHTML = '<div class="settings-note">没有可用皮肤。</div>';
+                return;
+            }
+
+            listEl.innerHTML = skins.map(skin => {
+                const skinId = String(skin.id || '').trim();
+                const isActive = !!skin.active;
+                const isInvalid = skin.status && skin.status !== 'ok';
+                const sourceType = String(skin.source_type || '');
+                const escapedId = escapeHtml(skinId);
+                const name = escapeHtml(skin.name || skinId);
+                const version = escapeHtml(skin.version || '-');
+                const sourceLabel = escapeHtml(formatSkinSourceLabel(sourceType));
+                const description = escapeHtml(skin.description || '');
+                const error = escapeHtml(skin.last_error || '');
+                const gitMeta = sourceType === 'git' && skin.git_url
+                    ? `<span>${escapeHtml(skin.git_url)}${skin.git_ref ? ` @ ${escapeHtml(skin.git_ref)}` : ''}</span>`
+                    : '';
+                const activePill = isActive ? '<span class="skin-pill skin-pill--active">当前</span>' : '';
+                const invalidPill = isInvalid ? '<span class="skin-pill skin-pill--invalid">不可用</span>' : '';
+                const activateButton = isActive || isInvalid
+                    ? ''
+                    : `<button class="btn btn-sm btn-secondary" type="button" onclick="activateSkin('${skinId}')">启用</button>`;
+                const updateButton = sourceType === 'git'
+                    ? `<button class="btn btn-sm btn-secondary" type="button" onclick="updateGitSkin('${skinId}')">更新</button>`
+                    : '';
+                const deleteButton = !skin.builtin && !isActive
+                    ? `<button class="btn btn-sm btn-danger" type="button" onclick="deleteSkin('${skinId}')">删除</button>`
+                    : '';
+
+                return `
+                    <article class="skin-card ${isActive ? 'is-active' : ''} ${isInvalid ? 'is-invalid' : ''}">
+                        <div>
+                            <div class="skin-card__title">
+                                <span>${name}</span>
+                                ${activePill}
+                                ${invalidPill}
+                            </div>
+                            <div class="skin-card__meta">
+                                <span>ID：${escapedId}</span>
+                                <span>版本：${version}</span>
+                                <span>来源：${sourceLabel}</span>
+                                ${description ? `<span>${description}</span>` : ''}
+                                ${gitMeta}
+                            </div>
+                            ${error ? `<div class="skin-card__error">${error}</div>` : ''}
+                        </div>
+                        <div class="skin-card__actions">
+                            ${activateButton}
+                            ${updateButton}
+                            ${deleteButton}
+                        </div>
+                    </article>
+                `;
+            }).join('');
+        }
+
+        async function loadSkinSettings() {
+            const listEl = document.getElementById('settingsSkinList');
+            if (listEl) {
+                listEl.innerHTML = '<div class="settings-note">正在加载皮肤列表...</div>';
+            }
+            try {
+                const response = await fetch('/api/skins', { cache: 'no-store' });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '加载皮肤列表失败');
+                }
+                renderSkinList(data);
+                setSkinSettingsStatus('');
+                return data;
+            } catch (error) {
+                setSkinSettingsStatus(error.message || '加载皮肤列表失败', 'error');
+                if (listEl) {
+                    listEl.innerHTML = '<div class="settings-note">皮肤列表加载失败。</div>';
+                }
+                return null;
+            }
+        }
+
+        async function activateSkin(skinId) {
+            const normalizedId = String(skinId || '').trim();
+            if (!normalizedId) {
+                showToast('皮肤 ID 无效', 'error');
+                return;
+            }
+            try {
+                const response = await fetch(`/api/skins/${encodeURIComponent(normalizedId)}/activate`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '启用皮肤失败');
+                }
+                refreshActiveSkinStylesheet(data.asset_hash);
+                showToast('皮肤已启用', 'success');
+                await loadSkinSettings();
+            } catch (error) {
+                showToast(error.message || '启用皮肤失败', 'error');
+                setSkinSettingsStatus(error.message || '启用皮肤失败', 'error');
+            }
+        }
+
+        async function uploadSkinPackage() {
+            const input = document.getElementById('settingsSkinUploadFile');
+            const file = input?.files?.[0];
+            if (!file) {
+                showToast('请选择 zip 皮肤包', 'error');
+                return;
+            }
+            const formData = new FormData();
+            formData.append('skin', file);
+            setSkinSettingsStatus('正在安装上传皮肤...', 'pending');
+            try {
+                const response = await fetch('/api/skins/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '安装上传皮肤失败');
+                }
+                if (input) input.value = '';
+                showToast('皮肤已安装', 'success');
+                setSkinSettingsStatus('');
+                await loadSkinSettings();
+            } catch (error) {
+                showToast(error.message || '安装上传皮肤失败', 'error');
+                setSkinSettingsStatus(error.message || '安装上传皮肤失败', 'error');
+            }
+        }
+
+        async function installGitSkin() {
+            const gitUrl = document.getElementById('settingsSkinGitUrl')?.value.trim() || '';
+            const gitRef = document.getElementById('settingsSkinGitRef')?.value.trim() || '';
+            if (!gitUrl) {
+                showToast('请输入 Git 仓库地址', 'error');
+                return;
+            }
+            setSkinSettingsStatus('正在安装 Git 皮肤...', 'pending');
+            try {
+                const response = await fetch('/api/skins/git/install', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ git_url: gitUrl, git_ref: gitRef })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '安装 Git 皮肤失败');
+                }
+                showToast('Git 皮肤已安装', 'success');
+                setSkinSettingsStatus('');
+                await loadSkinSettings();
+            } catch (error) {
+                showToast(error.message || '安装 Git 皮肤失败', 'error');
+                setSkinSettingsStatus(error.message || '安装 Git 皮肤失败', 'error');
+            }
+        }
+
+        async function updateGitSkin(skinId) {
+            const normalizedId = String(skinId || '').trim();
+            if (!normalizedId) return;
+            setSkinSettingsStatus('正在更新 Git 皮肤...', 'pending');
+            try {
+                const response = await fetch(`/api/skins/${encodeURIComponent(normalizedId)}/git/update`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '更新 Git 皮肤失败');
+                }
+                if (lastLoadedSkinSettings?.active_skin_id === normalizedId) {
+                    refreshActiveSkinStylesheet(data.skin?.asset_hash);
+                }
+                showToast('Git 皮肤已更新', 'success');
+                setSkinSettingsStatus('');
+                await loadSkinSettings();
+            } catch (error) {
+                showToast(error.message || '更新 Git 皮肤失败', 'error');
+                setSkinSettingsStatus(error.message || '更新 Git 皮肤失败', 'error');
+            }
+        }
+
+        async function deleteSkin(skinId) {
+            const normalizedId = String(skinId || '').trim();
+            if (!normalizedId) return;
+            const confirmed = await showConfirmModal(
+                '确定要删除这个自定义皮肤吗？',
+                { title: '删除皮肤', confirmText: '确认删除' }
+            );
+            if (!confirmed) return;
+            try {
+                const response = await fetch(`/api/skins/${encodeURIComponent(normalizedId)}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '删除皮肤失败');
+                }
+                showToast('皮肤已删除', 'success');
+                await loadSkinSettings();
+            } catch (error) {
+                showToast(error.message || '删除皮肤失败', 'error');
+                setSkinSettingsStatus(error.message || '删除皮肤失败', 'error');
             }
         }
 

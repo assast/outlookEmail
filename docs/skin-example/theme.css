@@ -1,0 +1,20 @@
+:root {
+    --skin-app-bg: #0f172a;
+    --skin-surface: #111827;
+    --skin-surface-muted: #1f2937;
+    --skin-surface-soft: #172033;
+    --skin-surface-hover: #253247;
+    --skin-border: #334155;
+    --skin-border-strong: #475569;
+    --skin-text: #f8fafc;
+    --skin-text-muted: #cbd5e1;
+    --skin-text-soft: #94a3b8;
+    --skin-primary: #38bdf8;
+    --skin-primary-hover: #0ea5e9;
+    --skin-primary-text: #08111f;
+    --skin-accent: #38bdf8;
+    --skin-accent-soft: #12324a;
+    --skin-accent-border: #1d4ed8;
+    --skin-shadow: rgba(2, 6, 23, 0.35);
+    --skin-overlay: rgba(2, 6, 23, 0.72);
+}

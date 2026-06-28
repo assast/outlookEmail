@@ -62,12 +62,10 @@
 
             if (refreshBtn) {
                 refreshBtn.disabled = isLoading && !isBackgroundSync;
-                refreshBtn.textContent = isLoading
-                    ? (isBackgroundSync ? '同步中...' : '获取中...')
+                refreshBtn.classList.toggle('spinning', isLoading);
+                refreshBtn.title = isLoading
+                    ? (isBackgroundSync ? '本地保留邮件已显示，正在后台同步远程邮件' : '正在获取邮件...')
                     : '获取邮件';
-                refreshBtn.title = isLoading && isBackgroundSync
-                    ? '本地保留邮件已显示，正在后台同步远程邮件'
-                    : '';
                 refreshBtn.toggleAttribute('aria-busy', isLoading);
             }
             folderTabs.forEach(tab => {

@@ -146,6 +146,8 @@ python -c 'import secrets; print(secrets.token_hex(32))'
 
 数据库文件存储在 `./data` 目录中，通过 Docker Volume 挂载实现持久化。
 
+自定义外观皮肤文件存储在数据库文件同目录下的 `skins/` 目录。默认数据库路径是 `data/outlook_accounts.db` 时，皮肤目录为 `data/skins/`。Docker 部署应继续挂载整个 `./data:/app/data`，不要只备份单个数据库文件，否则自定义皮肤文件会丢失并回退到内置 `classic` 皮肤。
+
 数据库包含以下表：
 - `settings` - 系统设置（登录密码、API Key 等）
 - `groups` - 邮箱分组
