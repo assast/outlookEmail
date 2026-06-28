@@ -953,3 +953,19 @@
                 transform: rotate(360deg);
             }
         }
+
+        /* 详情工具栏图标样式 */
+        .email-detail-action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .btn-icon {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+            display: inline-block;
+        }
+

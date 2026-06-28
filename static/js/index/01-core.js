@@ -1144,6 +1144,40 @@
             document.addEventListener('click', handleGlobalChromeClick);
             document.addEventListener('click', handleGlobalTagFilterClick);
             document.addEventListener('click', handleGlobalImportTagClick);
+            
+            // Dropdown menu click handling (for batch actions and navbar settings)
+            document.addEventListener('click', function(e) {
+                // Batch action dropdowns
+                const activeBatchDropdown = e.target.closest('.batch-dropdown');
+                const batchToggle = e.target.closest('.batch-dropdown .dropdown-toggle');
+                
+                document.querySelectorAll('.batch-dropdown').forEach(dropdown => {
+                    if (dropdown !== activeBatchDropdown) {
+                        dropdown.classList.remove('is-open');
+                    }
+                });
+                
+                if (batchToggle && activeBatchDropdown) {
+                    activeBatchDropdown.classList.toggle('is-open');
+                    e.stopPropagation();
+                }
+
+                // Navbar dropdowns
+                const activeNavDropdown = e.target.closest('.navbar-dropdown');
+                const navToggle = e.target.closest('.navbar-dropdown .dropdown-toggle');
+                
+                document.querySelectorAll('.navbar-dropdown').forEach(dropdown => {
+                    if (dropdown !== activeNavDropdown) {
+                        dropdown.classList.remove('is-open');
+                    }
+                });
+                
+                if (navToggle && activeNavDropdown) {
+                    activeNavDropdown.classList.toggle('is-open');
+                    e.stopPropagation();
+                }
+            });
+
             document.getElementById('importImapHost')?.addEventListener('input', updateImportHint);
             document.getElementById('importImapPort')?.addEventListener('input', updateImportHint);
             document.getElementById('oauthEmailInput')?.addEventListener('input', invalidateRefreshTokenPreview);
