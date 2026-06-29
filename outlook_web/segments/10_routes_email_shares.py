@@ -357,6 +357,84 @@ def api_cancel_email_share(share_id):
     return jsonify({'success': True, 'share': serialize_email_share_row(updated)})
 
 
+@app.route('/api/email-shares/<int:share_id>', methods=['DELETE'])
+@login_required
+def api_delete_email_share(share_id):
+    share = get_email_share_row_by_id(share_id)
+    if not share:
+        return jsonify({'success': False, 'error': '分享记录不存在'}), 404
+
+    db = get_db()
+    try:
+        db.execute('DELETE FROM email_share_links WHERE id = ?', (int(share_id),))
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'删除失败: {str(e)}'})
+
+
+@app.route('/api/email-shares/batch-cancel', methods=['POST'])
+@login_required
+def api_batch_cancel_email_shares():
+    data = request.get_json(silent=True) or {}
+    share_ids = data.get('share_ids') or []
+    if not isinstance(share_ids, list):
+        return jsonify({'success': False, 'error': '参数无效'}), 400
+    if not share_ids:
+        return jsonify({'success': True, 'message': '未选择任何记录'})
+
+    try:
+        ids = [int(x) for x in share_ids]
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': '包含无效的 ID'}), 400
+
+    db = get_db()
+    try:
+        placeholders = ','.join(['?'] * len(ids))
+        db.execute(
+            f'''
+            UPDATE email_share_links
+            SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+            ''',
+            tuple(ids)
+        )
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'批量取消失败: {str(e)}'})
+
+
+@app.route('/api/email-shares/batch-delete', methods=['POST'])
+@login_required
+def api_batch_delete_email_shares():
+    data = request.get_json(silent=True) or {}
+    share_ids = data.get('share_ids') or []
+    if not isinstance(share_ids, list):
+        return jsonify({'success': False, 'error': '参数无效'}), 400
+    if not share_ids:
+        return jsonify({'success': True, 'message': '未选择任何记录'})
+
+    try:
+        ids = [int(x) for x in share_ids]
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': '包含无效的 ID'}), 400
+
+    db = get_db()
+    try:
+        placeholders = ','.join(['?'] * len(ids))
+        db.execute(
+            f'DELETE FROM email_share_links WHERE id IN ({placeholders})',
+            tuple(ids)
+        )
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'批量删除失败: {str(e)}'})
+
+
+
 @app.route('/share/email/<token>')
 def view_email_share(token):
     share = get_email_share_row_by_token(token)

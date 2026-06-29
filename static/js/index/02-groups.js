@@ -1295,14 +1295,16 @@
                 : '';
         }
 
-        function renderAccountTagSummary(tags) {
+        function renderAccountTagSummary(tags, accountId) {
             const safeTags = Array.isArray(tags) ? tags : [];
             const visibleTags = safeTags.slice(0, 2);
             const hiddenCount = Math.max(0, safeTags.length - visibleTags.length);
+            const canRemoveTags = Number.isFinite(Number(accountId)) && Number(accountId) > 0;
 
             let html = visibleTags.map(tag => `
                 <span class="account-status-pill tag" style="--pill-accent: ${tag.color}">
                     ${escapeHtml(tag.name)}
+                    ${canRemoveTags ? `<span class="tag-delete-btn" onclick="handleRemoveAccountTag(event, ${Number(accountId)}, ${Number(tag.id)}, '${escapeHtml(tag.name)}')">&times;</span>` : ''}
                 </span>
             `).join('');
 
@@ -1311,6 +1313,41 @@
             }
 
             return html;
+        }
+
+        async function handleRemoveAccountTag(event, accountId, tagId, tagName) {
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            if (!(await showConfirmModal(`确定要从该邮箱移除标签 "${tagName}" 吗？`, { title: '移除标签', confirmText: '确认移除', danger: true }))) {
+                return;
+            }
+            try {
+                const response = await fetch('/api/accounts/tags', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        account_ids: [accountId],
+                        tag_id: tagId,
+                        action: 'remove'
+                    })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast('标签已成功移除', 'success');
+                    if (typeof invalidateAccountCaches === 'function') {
+                        invalidateAccountCaches();
+                    }
+                    if (typeof refreshVisibleAccountList === 'function') {
+                        refreshVisibleAccountList(true);
+                    }
+                } else {
+                    handleApiError(data, '移除标签失败');
+                }
+            } catch (error) {
+                showToast('移除标签失败: ' + error.message, 'error');
+            }
         }
 
         function renderAccountAliasSummary(aliases) {
@@ -1418,7 +1455,7 @@
                         ${renderAccountGroupSummary(acc, showSearchGroupInfo)}
                         ${renderAccountAliasSummary(acc.aliases)}
                         ${acc.remark && acc.remark.trim() ? `<div class="account-remark" title="${escapeHtml(acc.remark)}">${escapeHtml(acc.remark)}</div>` : ''}
-                        ${(acc.tags || []).length ? `<div class="account-tags">${renderAccountTagSummary(acc.tags)}</div>` : ''}
+                        ${(acc.tags || []).length ? `<div class="account-tags">${renderAccountTagSummary(acc.tags, acc.id)}</div>` : ''}
                         ${renderAccountFooter(acc)}
                     </div>
                     <div class="account-menu-wrap">
