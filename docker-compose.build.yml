@@ -21,7 +21,7 @@ services:
     environment:
       - FLASK_ENV=production
       - DOCKER_UPDATE_ENABLED=true
-      - DOCKER_UPDATE_CONTAINER=outlook-mail-reader
+      - DOCKER_UPDATE_CONTAINER=outlook-mail
       # Optional: - DOCKER_UPDATE_API_VERSION=1.52
     restart: unless-stopped
     healthcheck:

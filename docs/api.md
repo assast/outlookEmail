@@ -505,7 +505,7 @@ curl -H "X-API-Key: your-api-key" \
 
 上传 Outlook 邮箱账号和密码，保存到独立的上传暂存表 `outlook_upload_accounts`。入库记录的"是否授权"字段默认值为未授权（`is_authorized = 0`）。支持一次上传单条或批量。
 
-> 说明：该接口仅负责存储，不触发授权流程；上传的密码以明文存储于上传表。
+> 说明：该接口仅负责存储，不触发授权流程；上传的密码会加密存储，接口响应不会回显密码。
 
 #### 请求体
 
@@ -560,7 +560,7 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
   - `added`：新增成功，附带 `id`
   - `duplicate`：`email` 已存在，被跳过（不覆盖原记录）
   - `invalid`：`email` 缺少 `@` 或 `password` 为空，未入库
-- 响应不回显 `password`
+- 上传密码加密存储，响应不回显 `password`
 - 入库记录 `is_authorized` 一律为 `0`（未授权）
 - 请求体既无 `email` 也无非空 `accounts` 时返回 HTTP 400
 - 缺少 / 无效 API Key 时由鉴权层返回 HTTP 401 / 403

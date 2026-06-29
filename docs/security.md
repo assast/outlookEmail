@@ -46,6 +46,7 @@ pip install flask-wtf>=1.2.0
 - Refresh Token（Fernet 对称加密）
 - 登录密码（bcrypt 哈希）
 - 邮箱密码（Fernet 对称加密）
+- 外部上传暂存表中的邮箱密码（Fernet 对称加密，授权成功后清空暂存密码）
 - 对外 API Key（Fernet 对称加密）
 
 **加密密钥：**

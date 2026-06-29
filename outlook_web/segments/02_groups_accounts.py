@@ -1429,7 +1429,7 @@ def normalize_upload_email(email: str) -> str:
 def add_upload_account(email: str, password: str, remark: str = '') -> Dict[str, Any]:
     """插入一条外部上传的 Outlook 账号到 outlook_upload_accounts。
 
-    密码以明文存储（不加密）。不在本函数内 commit，由调用方统一提交。
+    密码加密存储。不在本函数内 commit，由调用方统一提交。
     返回 {'email', 'status': 'added'|'duplicate'|'invalid', 'id'?}
     """
     normalized_email = normalize_upload_email(email)
@@ -1443,20 +1443,35 @@ def add_upload_account(email: str, password: str, remark: str = '') -> Dict[str,
         INSERT OR IGNORE INTO outlook_upload_accounts (email, password, remark, source)
         VALUES (?, ?, ?, 'external_api')
         ''',
-        (normalized_email, raw_password, remark or ''),
+        (normalized_email, encrypt_data(raw_password), remark or ''),
     )
     if cursor.rowcount == 1:
         return {'email': normalized_email, 'status': 'added', 'id': cursor.lastrowid}
     return {'email': normalized_email, 'status': 'duplicate'}
 
 
+def get_upload_account_plain_password(row: Any, *, tolerate_decrypt_error: bool = False) -> str:
+    data = dict(row) if hasattr(row, 'keys') else {'password': row}
+    try:
+        return decrypt_data(str(data.get('password') or ''))
+    except RuntimeError:
+        if tolerate_decrypt_error:
+            return ''
+        raise
+
+
 def serialize_upload_account_row(row: Any) -> Dict[str, Any]:
-    """将 outlook_upload_accounts 行转为前端展示用字典（含明文密码）。"""
+    """将 outlook_upload_accounts 行转为前端展示用字典，不返回明文密码。"""
     data = dict(row)
+    plain_password = get_upload_account_plain_password(
+        data.get('password') or '',
+        tolerate_decrypt_error=True,
+    )
     return {
         'id': data.get('id'),
         'email': data.get('email') or '',
-        'password': data.get('password') or '',
+        'has_password': bool(plain_password),
+        'password_length': len(plain_password),
         'is_authorized': bool(data.get('is_authorized')),
         'status': data.get('status') or '',
         'remark': data.get('remark') or '',

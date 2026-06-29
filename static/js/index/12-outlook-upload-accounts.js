@@ -17,6 +17,14 @@
                 : '<span class="upload-accounts-badge upload-accounts-badge--no">未授权</span>';
         }
 
+        function formatUploadAccountPassword(item) {
+            if (!item || !item.has_password) {
+                return '-';
+            }
+            const length = Number(item.password_length) || 0;
+            return '*'.repeat(Math.max(6, length));
+        }
+
         function renderUploadAccountsRows(items) {
             const tbody = document.getElementById('uploadAccountsTableBody');
             if (!tbody) return;
@@ -28,14 +36,14 @@
 
             tbody.innerHTML = items.map(item => {
                 const authBtn = !item.is_authorized
-                    ? `<button class="btn btn-sm btn-primary" type="button" data-graph-auth-account-id="${escapeHtml(String(item.id ?? ''))}" data-graph-auth-email="${escapeHtml(item.email || '')}" data-graph-auth-password-length="${escapeHtml(String((item.password || '').length))}">去授权</button>`
+                    ? `<button class="btn btn-sm btn-primary" type="button" data-graph-auth-account-id="${escapeHtml(String(item.id ?? ''))}" data-graph-auth-email="${escapeHtml(item.email || '')}" data-graph-auth-password-length="${escapeHtml(String(item.password_length || 0))}">去授权</button>`
                     : '';
                 const deleteBtn = `<button class="btn btn-sm btn-danger" type="button" data-delete-account-id="${escapeHtml(String(item.id ?? ''))}" data-delete-account-email="${escapeHtml(item.email || '')}" style="margin-left: 4px;">删除</button>`;
                 return `
                     <tr>
                         <td>${escapeHtml(String(item.id ?? ''))}</td>
                         <td class="upload-accounts-cell-mono">${escapeHtml(item.email || '')}</td>
-                        <td class="upload-accounts-cell-mono">${escapeHtml(item.password || '')}</td>
+                        <td class="upload-accounts-cell-mono">${escapeHtml(formatUploadAccountPassword(item))}</td>
                         <td>${formatUploadAccountAuthorized(item.is_authorized)}</td>
                         <td>${escapeHtml(item.status || '')}</td>
                         <td>${escapeHtml(item.remark || '')}</td>
@@ -389,4 +397,3 @@
                 button.dataset.deleteAccountEmail || ''
             );
         });
-

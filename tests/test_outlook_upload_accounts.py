@@ -80,7 +80,7 @@ class OutlookUploadDataLayerTests(unittest.TestCase):
             db.execute('DELETE FROM outlook_upload_accounts')
             db.commit()
 
-    def test_add_single_account_normalizes_and_persists_plaintext(self):
+    def test_add_single_account_normalizes_and_persists_encrypted_password(self):
         with self.app.app_context():
             result = web_outlook_app.add_upload_account('  USER@Outlook.com ', 'secret', 'note')
             web_outlook_app.get_db().commit()
@@ -93,7 +93,9 @@ class OutlookUploadDataLayerTests(unittest.TestCase):
                 (result['id'],),
             ).fetchone()
         self.assertEqual(row['email'], 'user@outlook.com')
-        self.assertEqual(row['password'], 'secret')   # 明文，未加密
+        self.assertNotEqual(row['password'], 'secret')
+        self.assertTrue(row['password'].startswith('enc:'))
+        self.assertEqual(web_outlook_app.decrypt_data(row['password']), 'secret')
         self.assertEqual(row['is_authorized'], 0)
         self.assertEqual(row['remark'], 'note')
 
@@ -108,7 +110,7 @@ class OutlookUploadDataLayerTests(unittest.TestCase):
                 "SELECT password FROM outlook_upload_accounts WHERE email = ?",
                 ('dupe@outlook.com',),
             ).fetchone()
-        self.assertEqual(row['password'], 'p1')   # 原值未被覆盖
+        self.assertEqual(web_outlook_app.decrypt_data(row['password']), 'p1')   # 原值未被覆盖
 
     def test_add_invalid_email_or_empty_password_returns_invalid(self):
         with self.app.app_context():
@@ -183,7 +185,45 @@ class OutlookUploadRouteTests(unittest.TestCase):
                 ('single@outlook.com',),
             ).fetchone()
         self.assertEqual(row['is_authorized'], 0)
-        self.assertEqual(row['password'], 'secret')
+        self.assertNotEqual(row['password'], 'secret')
+        self.assertEqual(web_outlook_app.decrypt_data(row['password']), 'secret')
+
+    def test_list_upload_accounts_masks_password(self):
+        with self.app.app_context():
+            web_outlook_app.add_upload_account('list@outlook.com', 'secret', 'n')
+            web_outlook_app.get_db().commit()
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+
+        response = self.client.get('/api/outlook-upload-accounts')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        item = next(item for item in payload['items'] if item['email'] == 'list@outlook.com')
+        self.assertNotIn('password', item)
+        self.assertTrue(item['has_password'])
+        self.assertEqual(item['password_length'], len('secret'))
+
+    def test_list_upload_accounts_tolerates_corrupted_encrypted_password(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            web_outlook_app.add_upload_account('good@outlook.com', 'secret', 'n')
+            db.execute(
+                "INSERT INTO outlook_upload_accounts (email, password) VALUES (?, ?)",
+                ('bad@outlook.com', 'enc:not-a-valid-token'),
+            )
+            db.commit()
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+
+        response = self.client.get('/api/outlook-upload-accounts')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        items = {item['email']: item for item in payload['items']}
+        self.assertTrue(items['good@outlook.com']['has_password'])
+        self.assertFalse(items['bad@outlook.com']['has_password'])
+        self.assertEqual(items['bad@outlook.com']['password_length'], 0)
 
     def test_bulk_upload_reports_counts(self):
         response = self.client.post(

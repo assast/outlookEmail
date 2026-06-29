@@ -3,6 +3,9 @@
         // ==================== 分组相关 ====================
 
         const ACCOUNT_SEARCH_MAX_TERMS = 200;
+        const ACCOUNT_SEARCH_QUERY_STORAGE_KEY = 'outlook_account_search_query';
+        const ACCOUNT_SORT_STORAGE_KEY = 'outlook_account_sort';
+        const ACCOUNT_TAG_FILTER_STORAGE_KEY = 'outlook_account_tag_filters';
         const GROUP_COLLAPSED_STORAGE_PREFIX = 'outlook_group_collapsed_';
         let groupTree = [];
 
@@ -761,12 +764,6 @@
             currentGroupId = groupId;
             localStorage.setItem('outlook_last_group_id', groupId);
 
-            // 清空搜索框
-            const searchInput = document.getElementById('globalSearch');
-            if (searchInput) {
-                searchInput.value = '';
-            }
-
             // 检查是否是临时邮箱分组
             const group = groups.find(g => g.id === groupId);
             isTempEmailGroup = group && group.name === '临时邮箱';
@@ -812,7 +809,12 @@
             if (isTempEmailGroup) {
                 await loadTempEmails();
             } else {
-                await loadAccountsByGroup(groupId);
+                const searchQuery = getAccountSearchQuery();
+                if (searchQuery) {
+                    await searchAccounts(searchQuery);
+                } else {
+                    await loadAccountsByGroup(groupId);
+                }
             }
 
             if (shouldAdvanceToAccounts) {
@@ -920,6 +922,7 @@
                 document.getElementById('accountPageSizeContainer').style.display = 'flex';
                 syncAccountSearchScopeVisibility();
                 syncAccountPageSizeSelect();
+                syncAccountSortButtons();
                 updateTagFilter();
                 if (searchInput) {
                     searchInput.placeholder = '邮箱|别名|备注|标签';
@@ -962,6 +965,32 @@
             const filters = getAccountTagFilterParams();
             return filters.tagIds.length > 0 || filters.includeUntagged;
         }
+
+        function loadAccountTagFilterPreference() {
+            try {
+                const storedValue = localStorage.getItem(ACCOUNT_TAG_FILTER_STORAGE_KEY);
+                const values = storedValue ? JSON.parse(storedValue) : [];
+                if (!Array.isArray(values)) {
+                    return new Set();
+                }
+                return new Set(
+                    values
+                        .map(value => normalizeTagFilterSelectionValue(value))
+                        .filter(value => value !== null)
+                );
+            } catch (error) {
+                return new Set();
+            }
+        }
+
+        function saveAccountTagFilterPreference() {
+            const values = Array.from(selectedTagFilters || [])
+                .map(value => normalizeTagFilterSelectionValue(value))
+                .filter(value => value !== null);
+            localStorage.setItem(ACCOUNT_TAG_FILTER_STORAGE_KEY, JSON.stringify(Array.from(new Set(values))));
+        }
+
+        selectedTagFilters = loadAccountTagFilterPreference();
 
         function normalizeAccountPageSize(value) {
             const parsed = parseInt(value, 10);
@@ -1007,13 +1036,49 @@
                 : 'all';
         }
 
+        function getAccountSearchQuery() {
+            return (document.getElementById('globalSearch')?.value || '').trim();
+        }
+
+        function saveAccountSearchQueryPreference(value) {
+            const query = String(value || '');
+            if (query.trim()) {
+                localStorage.setItem(ACCOUNT_SEARCH_QUERY_STORAGE_KEY, query);
+            } else {
+                localStorage.removeItem(ACCOUNT_SEARCH_QUERY_STORAGE_KEY);
+            }
+        }
+
+        function initAccountSearchInput() {
+            const input = document.getElementById('globalSearch');
+            if (!input) {
+                return;
+            }
+            const savedQuery = localStorage.getItem(ACCOUNT_SEARCH_QUERY_STORAGE_KEY);
+            if (savedQuery !== null) {
+                input.value = savedQuery;
+            }
+        }
+
+        function setAccountSearchScope(value, persist = true) {
+            const normalizedScope = value === 'all' ? 'all' : 'group';
+            const select = document.getElementById('accountSearchScopeSelect');
+            if (select) {
+                select.value = normalizedScope;
+            }
+            if (persist) {
+                localStorage.setItem('outlook_account_search_scope', normalizedScope);
+            }
+            return normalizedScope;
+        }
+
         function initAccountSearchScopeSelect() {
             const select = document.getElementById('accountSearchScopeSelect');
             if (!select) {
                 return;
             }
             const savedScope = localStorage.getItem('outlook_account_search_scope');
-            select.value = savedScope === 'group' ? 'group' : 'all';
+            select.value = savedScope === 'all' ? 'all' : 'group';
         }
 
         function syncAccountSearchScopeVisibility() {
@@ -1034,9 +1099,8 @@
         }
 
         function handleAccountSearchScopeChange(value) {
-            const normalizedScope = value === 'group' ? 'group' : 'all';
-            localStorage.setItem('outlook_account_search_scope', normalizedScope);
-            const searchQuery = (document.getElementById('globalSearch')?.value || '').trim();
+            setAccountSearchScope(value);
+            const searchQuery = getAccountSearchQuery();
             if (searchQuery && !isTempEmailGroup) {
                 searchAccounts(searchQuery, true);
             }
@@ -1380,13 +1444,72 @@
         }
 
         // 排序相关变量
+        const ACCOUNT_SORT_DEFAULT_BY = 'sort_order';
         const ACCOUNT_SORT_DEFAULT_ORDERS = {
             sort_order: 'asc',
             created_at: 'desc',
             email: 'asc'
         };
-        let currentSortBy = 'sort_order';
-        let currentSortOrder = ACCOUNT_SORT_DEFAULT_ORDERS[currentSortBy];
+
+        function normalizeAccountSortBy(value) {
+            const candidate = String(value || '').trim();
+            return Object.prototype.hasOwnProperty.call(ACCOUNT_SORT_DEFAULT_ORDERS, candidate)
+                ? candidate
+                : ACCOUNT_SORT_DEFAULT_BY;
+        }
+
+        function normalizeAccountSortOrder(value, sortBy = ACCOUNT_SORT_DEFAULT_BY) {
+            if (value === 'asc' || value === 'desc') {
+                return value;
+            }
+            return ACCOUNT_SORT_DEFAULT_ORDERS[normalizeAccountSortBy(sortBy)] || 'asc';
+        }
+
+        function loadAccountSortPreference() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(ACCOUNT_SORT_STORAGE_KEY) || '{}');
+                const by = normalizeAccountSortBy(saved?.by);
+                return {
+                    by,
+                    order: normalizeAccountSortOrder(saved?.order, by)
+                };
+            } catch (error) {
+                return {
+                    by: ACCOUNT_SORT_DEFAULT_BY,
+                    order: ACCOUNT_SORT_DEFAULT_ORDERS[ACCOUNT_SORT_DEFAULT_BY]
+                };
+            }
+        }
+
+        function saveAccountSortPreference() {
+            currentSortBy = normalizeAccountSortBy(currentSortBy);
+            currentSortOrder = normalizeAccountSortOrder(currentSortOrder, currentSortBy);
+            localStorage.setItem(ACCOUNT_SORT_STORAGE_KEY, JSON.stringify({
+                by: currentSortBy,
+                order: currentSortOrder
+            }));
+        }
+
+        function syncAccountSortButtons() {
+            document.querySelectorAll('.sort-btn').forEach(btn => {
+                btn.classList.remove('active');
+                btn.style.backgroundColor = '#ffffff';
+                btn.style.color = '#666';
+                btn.style.borderColor = '#e5e5e5';
+            });
+
+            const activeBtn = document.querySelector(`[data-sort="${currentSortBy}"]`);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+                activeBtn.style.backgroundColor = '#1a1a1a';
+                activeBtn.style.color = '#ffffff';
+                activeBtn.style.borderColor = '#1a1a1a';
+            }
+        }
+
+        const savedAccountSort = loadAccountSortPreference();
+        let currentSortBy = savedAccountSort.by;
+        let currentSortOrder = savedAccountSort.order;
         let suppressGroupClickUntil = 0;
         function createGroupDragState() {
             return {
@@ -1454,6 +1577,7 @@
 
         // 排序账号列表
         function sortAccounts(sortBy) {
+            sortBy = normalizeAccountSortBy(sortBy);
             // 如果点击同一个排序按钮，切换排序顺序
             if (currentSortBy === sortBy) {
                 currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
@@ -1462,21 +1586,8 @@
                 currentSortOrder = ACCOUNT_SORT_DEFAULT_ORDERS[sortBy] || 'asc';
             }
 
-            // 更新按钮状态
-            document.querySelectorAll('.sort-btn').forEach(btn => {
-                btn.classList.remove('active');
-                btn.style.backgroundColor = '#ffffff';
-                btn.style.color = '#666';
-                btn.style.borderColor = '#e5e5e5';
-            });
-
-            const activeBtn = document.querySelector(`[data-sort="${sortBy}"]`);
-            if (activeBtn) {
-                activeBtn.classList.add('active');
-                activeBtn.style.backgroundColor = '#1a1a1a';
-                activeBtn.style.color = '#ffffff';
-                activeBtn.style.borderColor = '#1a1a1a';
-            }
+            saveAccountSortPreference();
+            syncAccountSortButtons();
 
             invalidateAccountCaches();
             if (isTempEmailGroup) {
@@ -1663,6 +1774,7 @@
                     .map(cb => normalizeTagFilterSelectionValue(cb.value))
                     .filter(value => value !== null)
             );
+            saveAccountTagFilterPreference();
             document.querySelectorAll('.tag-filter-option').forEach(option => {
                 const checkbox = option.querySelector('.tag-filter-checkbox');
                 option.classList.toggle('is-checked', !!checkbox?.checked);
@@ -1696,6 +1808,9 @@
         // 全局搜索函数
         async function searchAccounts(query, forceRefresh = false, append = false) {
             const container = document.getElementById('accountList');
+            if (!append) {
+                saveAccountSearchQueryPreference(query);
+            }
 
             if (!query.trim()) {
                 const currentGroup = groups.find(group => group.id === currentGroupId);

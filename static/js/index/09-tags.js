@@ -1,4 +1,4 @@
-        /* global UNTAGGED_TAG_FILTER_KEY, accountsCache, currentAccountListSource, currentGroupId, handleApiError, hideModal, invalidateAccountCaches, isTempEmailGroup, isUntaggedTagFilterValue, loadAccountsByGroup, loadTempEmails, normalizeTagFilterSelectionValue, refreshVisibleAccountList, renderFilteredAccountList, renderImportTagOptions, renderTempEmailList, selectedTagFilters, showModal, showToast, updateBatchTagTagOptions, updateCurrentGroupHeader */
+        /* global UNTAGGED_TAG_FILTER_KEY, accountsCache, currentAccountListSource, currentGroupId, handleApiError, hideModal, invalidateAccountCaches, isTempEmailGroup, isUntaggedTagFilterValue, loadAccountTagFilterPreference, loadAccountsByGroup, loadTempEmails, normalizeTagFilterSelectionValue, refreshVisibleAccountList, renderFilteredAccountList, renderImportTagOptions, renderTempEmailList, saveAccountTagFilterPreference, selectedTagFilters, showModal, showToast, updateBatchTagTagOptions, updateCurrentGroupHeader */
 
         // ==================== 标签管理 ====================
 
@@ -31,18 +31,33 @@
                 const data = await response.json();
                 if (data.success) {
                     allTags = data.tags;
+                    const selectedBeforePrune = Array.from(selectedTagFilters)
+                        .map(tagId => normalizeTagFilterSelectionValue(tagId))
+                        .filter(tagId => tagId !== null)
+                        .join(',');
+                    const savedTagFilters = typeof loadAccountTagFilterPreference === 'function'
+                        ? loadAccountTagFilterPreference()
+                        : selectedTagFilters;
                     selectedTagFilters = new Set(
-                        Array.from(selectedTagFilters).filter(tagId => {
+                        Array.from(savedTagFilters).filter(tagId => {
                             if (isUntaggedTagFilterValue(tagId)) {
                                 return true;
                             }
                             return allTags.some(tag => tag.id === normalizeTagFilterSelectionValue(tagId));
                         })
                     );
+                    saveAccountTagFilterPreference();
+                    const selectedAfterPrune = Array.from(selectedTagFilters)
+                        .map(tagId => normalizeTagFilterSelectionValue(tagId))
+                        .filter(tagId => tagId !== null)
+                        .join(',');
                     renderTagList();
                     updateTagFilter();
                     if (typeof renderImportTagOptions === 'function') {
                         renderImportTagOptions();
+                    }
+                    if (selectedBeforePrune !== selectedAfterPrune && currentGroupId) {
+                        refreshVisibleAccountList(true);
                     }
                 }
             } catch (error) {
@@ -111,6 +126,7 @@
         function clearTagFilterSelection(event) {
             event?.stopPropagation();
             selectedTagFilters = new Set();
+            saveAccountTagFilterPreference();
             document.querySelectorAll('.tag-filter-checkbox').forEach(checkbox => {
                 checkbox.checked = false;
             });

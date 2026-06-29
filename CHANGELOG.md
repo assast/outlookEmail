@@ -6,6 +6,24 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-06-29
+
+### Added
+- 账号列表搜索关键字、搜索范围、排序方式和标签筛选现在会保存在浏览器本地，下次打开或切换分组后自动恢复。
+
+### Changed
+- 账号搜索范围默认改为“当前分组”，避免默认跨全部分组搜索造成误判。
+- Outlook 自动化授权列表不再向前端回显上传密码，只展示密码是否存在和掩码长度。
+- Outlook 上传账号模块纳入前端资源哈希，发布后浏览器会自动刷新该模块缓存。
+- 清理旧版 Graph OAuth 对比、实现和 Token 提取迁移文档，保留当前测试指南与 API 文档。
+
+### Fixed
+- 修复 Graph OAuth 登录过程中跟随 localhost 回调重定向导致无法稳定提取授权码的问题。
+- 修复 Docker 构建示例中的在线更新容器名与默认 compose 服务名不一致的问题。
+
+### Security
+- 外部 API 上传的 Outlook 暂存密码改为 Fernet 加密存储，授权成功后清空暂存密码。
+
 ## [2.3.2] - 2026-06-28
 
 ### Changed

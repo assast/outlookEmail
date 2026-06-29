@@ -176,7 +176,7 @@ def extract_graph_refresh_token(
                 "i19": "16393",
             },
             timeout=30,
-            allow_redirects=True,
+            allow_redirects=False,
         )
 
         for _ in range(5):
@@ -190,7 +190,7 @@ def extract_graph_refresh_token(
                         form_action,
                         data=extract_hidden_inputs(html),
                         timeout=30,
-                        allow_redirects=True,
+                        allow_redirects=False,
                     )
                     continue
             break
@@ -400,6 +400,7 @@ def mark_upload_account_authorized(account_id: int) -> None:
         '''
         UPDATE outlook_upload_accounts
         SET is_authorized = 1,
+            password = '',
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         ''',
@@ -410,7 +411,7 @@ def mark_upload_account_authorized(account_id: int) -> None:
 def save_graph_authorization_result(upload_row: Any, client_id: str,
                                     refresh_token: str) -> Dict[str, Any]:
     email = str(upload_row['email'] or '').strip()
-    password = str(upload_row['password'] or '')
+    password = get_upload_account_plain_password(upload_row)
     save_result = upsert_graph_authorized_account(email, password, client_id, refresh_token)
     mark_upload_account_authorized(int(upload_row['id']))
     get_db().commit()
@@ -433,7 +434,7 @@ def run_graph_oauth_task(account_id: int, output_queue: "queue.Queue[Dict[str, A
                 return
 
             email = str(upload_row['email'] or '').strip()
-            password = str(upload_row['password'] or '')
+            password = get_upload_account_plain_password(upload_row)
             if not email or not password:
                 emit({"type": "error", "success": False, "message": "邮箱或密码为空"})
                 emit({"type": "complete", "success": False})

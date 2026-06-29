@@ -83,11 +83,34 @@ class GraphTokenExtractorTests(unittest.TestCase):
         self.assertEqual(result['refresh_token'], 'refresh-token-value')
         self.assertEqual(result['client_id'], web_outlook_app.GRAPH_EXTRACT_CLIENT_ID)
         self.assertEqual(session.post_calls[0][0], 'https://login.live.com/post.srf')
+        self.assertFalse(session.post_calls[0][2]['allow_redirects'])
         self.assertEqual(session.post_calls[0][1]['PPFT'], 'flow-token-hidden')
         self.assertEqual(session.post_calls[0][1]['ctx'], 'ctx-value')
         self.assertEqual(session.post_calls[1][1]['code'], 'auth-code')
         self.assertNotIn('secret-password', '\n'.join(logs))
         self.assertNotIn('refresh-token-value', '\n'.join(logs))
+
+    def test_login_redirect_to_localhost_is_captured_without_following(self):
+        auth_html = '<input name="PPFT" value="flow"><script>"urlPost":"https://post"</script>'
+        session = FakeSession(
+            get_responses=[FakeResponse(url='https://auth', text=auth_html)],
+            post_responses=[
+                FakeResponse(status_code=302, headers={'Location': 'http://localhost?code=redirect-code'}),
+                FakeResponse(payload={'access_token': 'access-token', 'refresh_token': 'redirect-refresh'}),
+            ],
+        )
+
+        result = web_outlook_app.extract_graph_refresh_token(
+            'redirect@example.com',
+            'password',
+            session_factory=lambda: session,
+        )
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['refresh_token'], 'redirect-refresh')
+        self.assertEqual(session.post_calls[1][1]['code'], 'redirect-code')
+        self.assertFalse(session.post_calls[0][2]['allow_redirects'])
+        self.assertEqual(len(session.get_calls), 1)
 
     def test_handles_js_autosubmit_consent_proofs_and_sftag(self):
         server_data = {
@@ -252,6 +275,7 @@ class GraphOauthRouteTests(unittest.TestCase):
             body, events = self._consume_stream(self._start_graph_task(account_id))
 
         extract_mock.assert_called_once()
+        self.assertEqual(extract_mock.call_args.args[1], 'mail-password')
         self.assertTrue(any(event['type'] == 'success' for event in events))
         self.assertTrue(events[-1]['success'])
         self.assertNotIn('mail-password', body)
@@ -261,7 +285,7 @@ class GraphOauthRouteTests(unittest.TestCase):
         with self.app.app_context():
             formal = web_outlook_app.get_account_by_email('upload@example.com')
             upload = web_outlook_app.get_db().execute(
-                'SELECT is_authorized FROM outlook_upload_accounts WHERE id = ?',
+                'SELECT is_authorized, password FROM outlook_upload_accounts WHERE id = ?',
                 (account_id,),
             ).fetchone()
 
@@ -273,6 +297,7 @@ class GraphOauthRouteTests(unittest.TestCase):
         self.assertEqual(formal['provider'], 'outlook')
         self.assertEqual(formal['account_type'], 'outlook')
         self.assertEqual(upload['is_authorized'], 1)
+        self.assertEqual(upload['password'], '')
 
     def test_stream_success_updates_existing_formal_account(self):
         account_id = self._add_upload_account(email='exists@example.com', password='new-password')
@@ -337,12 +362,13 @@ class GraphOauthRouteTests(unittest.TestCase):
         with self.app.app_context():
             formal = web_outlook_app.get_account_by_email('invalid-token@example.com')
             upload = web_outlook_app.get_db().execute(
-                'SELECT is_authorized FROM outlook_upload_accounts WHERE id = ?',
+                'SELECT is_authorized, password FROM outlook_upload_accounts WHERE id = ?',
                 (account_id,),
             ).fetchone()
 
         self.assertIsNone(formal)
         self.assertEqual(upload['is_authorized'], 0)
+        self.assertEqual(web_outlook_app.decrypt_data(upload['password']), 'mail-password')
 
 
 class GraphOauthFrontendContractTests(unittest.TestCase):
@@ -354,6 +380,7 @@ class GraphOauthFrontendContractTests(unittest.TestCase):
             js = handle.read()
 
         self.assertNotIn("showGraphAuthModal(${item.id}, '${escapeHtml(item.email)}', '${escapeHtml(item.password)}')", js)
+        self.assertNotIn('item.password ||', js)
         self.assertNotIn('graphAuthState.password', js)
         self.assertIn('data-graph-auth-account-id', js)
 
