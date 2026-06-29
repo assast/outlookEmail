@@ -309,6 +309,49 @@ class EmailShareLinkTests(unittest.TestCase):
         })
         self.assertEqual(admin_write_response.status_code, 401)
 
+    def test_delete_and_batch_operations_on_shares(self):
+        account_id = self._insert_account()
+        share1 = self._create_share(account_id)
+        share2 = self._create_share(account_id)
+        share3 = self._create_share(account_id)
+
+        # test single delete
+        delete_response = self.client.delete(f'/api/email-shares/{share1["id"]}')
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertTrue(delete_response.get_json()['success'])
+
+        # verify deleted
+        list_response = self.client.get('/api/email-shares')
+        shares = list_response.get_json()['shares']
+        self.assertEqual(len(shares), 2)
+        self.assertNotIn(share1['id'], [s['id'] for s in shares])
+
+        # test batch cancel
+        batch_cancel_response = self.client.post('/api/email-shares/batch-cancel', json={
+            'share_ids': [share2['id'], share3['id']]
+        })
+        self.assertEqual(batch_cancel_response.status_code, 200)
+        self.assertTrue(batch_cancel_response.get_json()['success'])
+
+        # verify cancelled
+        list_response = self.client.get('/api/email-shares')
+        shares = list_response.get_json()['shares']
+        for s in shares:
+            if s['id'] in [share2['id'], share3['id']]:
+                self.assertEqual(s['status'], 'revoked')
+
+        # test batch delete
+        batch_delete_response = self.client.post('/api/email-shares/batch-delete', json={
+            'share_ids': [share2['id'], share3['id']]
+        })
+        self.assertEqual(batch_delete_response.status_code, 200)
+        self.assertTrue(batch_delete_response.get_json()['success'])
+
+        # verify deleted
+        list_response = self.client.get('/api/email-shares')
+        shares = list_response.get_json()['shares']
+        self.assertEqual(len(shares), 0)
+
 
 class EmailShareFrontendContractTests(unittest.TestCase):
     def test_admin_ui_contains_share_entry_points(self):

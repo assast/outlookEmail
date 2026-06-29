@@ -125,7 +125,6 @@
                 if (button) button.disabled = false;
             }
         }
-
         function copyEmailShareUrl(url) {
             if (!url) {
                 showToast('分享链接不可用', 'error');
@@ -134,51 +133,90 @@
             copyTextToClipboard(url, '分享链接已复制');
         }
 
-        function renderEmailShareList(shares) {
-            const container = document.getElementById('emailShareList');
-            if (!container) return;
+        let allEmailShares = [];
+
+        function renderEmailShareTable(shares) {
+            const tbody = document.getElementById('emailShareTableBody');
+            if (!tbody) return;
+
+            // Reset Select All checkbox
+            const allCheckbox = document.getElementById('shareSelectAllCheckbox');
+            if (allCheckbox) {
+                allCheckbox.checked = false;
+            }
+
             if (!Array.isArray(shares) || shares.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-text">暂无分享记录</div>
-                    </div>
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="share-empty">暂无分享记录</td>
+                    </tr>
                 `;
+                updateBatchActionButtons();
                 return;
             }
 
-            container.innerHTML = shares.map(share => `
-                <div class="share-list-item" data-share-id="${share.id}">
-                    <div class="share-list-item__main">
-                        <div class="share-list-item__email">${escapeHtml(share.email || '')}</div>
-                        <div class="share-list-item__meta">
-                            <span>状态：${escapeHtml(formatEmailShareStatus(share.status))}</span>
-                            <span>有效期：${escapeHtml(formatEmailShareExpiry(share))}</span>
-                            <span>创建：${escapeHtml(share.created_at || '')}</span>
-                        </div>
-                        <input type="text" class="form-input share-list-item__url" readonly value="${escapeHtml(share.share_url || '')}">
-                    </div>
-                    <div class="share-list-item__actions">
-                        <button class="btn btn-secondary" type="button" onclick="copyEmailShareUrl('${escapeHtml(share.share_url || '')}')">复制</button>
-                        <button class="btn btn-danger" type="button" onclick="cancelEmailShare(${Number(share.id)})" ${share.status === 'revoked' ? 'disabled' : ''}>取消</button>
-                    </div>
-                </div>
-            `).join('');
+            tbody.innerHTML = shares.map(share => {
+                const statusStr = formatEmailShareStatus(share.status);
+                let badgeClass = 'share-badge--invalid';
+                if (share.status === 'active') badgeClass = 'share-badge--active';
+                else if (share.status === 'expired') badgeClass = 'share-badge--expired';
+                else if (share.status === 'revoked') badgeClass = 'share-badge--revoked';
+
+                const expiryStr = formatEmailShareExpiry(share);
+
+                return `
+                    <tr data-share-id="${share.id}">
+                        <td>
+                            <div class="share-select-all">
+                                <input type="checkbox" class="share-checkbox share-item-checkbox" data-share-id="${share.id}" onchange="updateBatchActionButtons()">
+                            </div>
+                        </td>
+                        <td style="font-weight: 500; color: var(--text-primary, #111827);">${escapeHtml(share.email || '')}</td>
+                        <td>
+                            <span class="share-badge ${badgeClass}">${escapeHtml(statusStr)}</span>
+                        </td>
+                        <td class="share-cell-mono">${escapeHtml(expiryStr)}</td>
+                        <td class="share-cell-mono">${escapeHtml(share.created_at || '')}</td>
+                        <td>
+                            <div class="share-url-container">
+                                <input type="text" class="form-input share-url-input" readonly value="${escapeHtml(share.share_url || '')}">
+                                <button class="btn btn-secondary btn-sm-action" type="button" onclick="copyEmailShareUrl('${escapeHtml(share.share_url || '')}')">复制</button>
+                            </div>
+                        </td>
+                        <td style="text-align: right;">
+                            <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                                <button class="btn btn-secondary btn-sm-action" type="button" onclick="cancelEmailShare(${Number(share.id)})" ${share.status === 'revoked' ? 'disabled' : ''}>取消</button>
+                                <button class="btn btn-danger btn-sm-action" type="button" onclick="deleteEmailShare(${Number(share.id)})">删除</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            updateBatchActionButtons();
         }
 
         async function loadEmailShares() {
-            const container = document.getElementById('emailShareList');
-            if (container) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-text">正在加载分享记录...</div>
-                    </div>
+            const tbody = document.getElementById('emailShareTableBody');
+            if (tbody) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="share-empty">正在加载分享记录...</td>
+                    </tr>
                 `;
             }
+
+            // Disable batch buttons and uncheck Select All during load
+            const allCheckbox = document.getElementById('shareSelectAllCheckbox');
+            if (allCheckbox) allCheckbox.checked = false;
+            updateBatchActionButtons();
+
             try {
                 const response = await fetch('/api/email-shares');
                 const data = await response.json();
                 if (data.success) {
-                    renderEmailShareList(data.shares);
+                    allEmailShares = data.shares || [];
+                    applyShareFilters();
                 } else {
                     handleApiError(data, '加载分享记录失败');
                 }
@@ -187,7 +225,133 @@
             }
         }
 
+        let currentSortCol = 'created_at';
+        let currentSortDir = 'desc';
+
+        function handleHeaderSort(colName) {
+            if (currentSortCol === colName) {
+                currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSortCol = colName;
+                if (colName === 'email') {
+                    currentSortDir = 'asc';
+                } else {
+                    currentSortDir = 'desc';
+                }
+            }
+            applyShareFilters();
+        }
+
+        function updateSortHeadersUI() {
+            const headers = document.querySelectorAll('.sortable-header');
+            headers.forEach(th => {
+                const col = th.getAttribute('data-sort-col');
+                const indicator = th.querySelector('.sort-indicator');
+                if (!indicator) return;
+
+                if (col === currentSortCol) {
+                    indicator.textContent = currentSortDir === 'asc' ? ' ▲' : ' ▼';
+                    indicator.style.color = 'var(--text-primary, #111827)';
+                } else {
+                    indicator.textContent = ' ↕';
+                    indicator.style.color = 'var(--text-muted, #9ca3af)';
+                }
+            });
+        }
+
+        function applyShareFilters() {
+            const searchEmail = document.getElementById('shareFilterEmail')?.value.toLowerCase().trim() || '';
+            const filterStatus = document.getElementById('shareFilterStatus')?.value || 'all';
+
+            let filtered = [...allEmailShares];
+
+            // 筛选邮箱
+            if (searchEmail) {
+                filtered = filtered.filter(share => (share.email || '').toLowerCase().includes(searchEmail));
+            }
+
+            // 筛选状态
+            if (filterStatus !== 'all') {
+                filtered = filtered.filter(share => share.status === filterStatus);
+            }
+
+            // 排序
+            filtered.sort((a, b) => {
+                let valA, valB;
+
+                if (currentSortCol === 'email') {
+                    valA = (a.email || '').toLowerCase();
+                    valB = (b.email || '').toLowerCase();
+                } else if (currentSortCol === 'status') {
+                    valA = (a.status || '');
+                    valB = (b.status || '');
+                } else if (currentSortCol === 'expires_at') {
+                    const getExpiryTime = (s) => {
+                        if (s.never_expires) {
+                            return currentSortDir === 'asc' ? Infinity : -Infinity;
+                        }
+                        return s.expires_at ? new Date(s.expires_at).getTime() : 0;
+                    };
+                    valA = getExpiryTime(a);
+                    valB = getExpiryTime(b);
+
+                    if (valA === valB) return 0;
+                    if (valA === Infinity || valB === -Infinity) return currentSortDir === 'asc' ? 1 : -1;
+                    if (valB === Infinity || valA === -Infinity) return currentSortDir === 'asc' ? -1 : 1;
+                    return currentSortDir === 'asc' ? valA - valB : valB - valA;
+                } else if (currentSortCol === 'created_at') {
+                    valA = new Date(a.created_at || 0).getTime();
+                    valB = new Date(b.created_at || 0).getTime();
+                } else {
+                    return 0;
+                }
+
+                if (currentSortCol !== 'expires_at') {
+                    if (valA < valB) return currentSortDir === 'asc' ? -1 : 1;
+                    if (valA > valB) return currentSortDir === 'asc' ? 1 : -1;
+                    return 0;
+                }
+            });
+
+            updateSortHeadersUI();
+            renderEmailShareTable(filtered);
+        }
+
+        function toggleSelectAllShares(allCheckbox) {
+            const checkboxes = document.querySelectorAll('.share-item-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = allCheckbox.checked;
+            });
+            updateBatchActionButtons();
+        }
+
+        function updateBatchActionButtons() {
+            const checkboxes = document.querySelectorAll('.share-item-checkbox');
+            const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+
+            const cancelBtn = document.getElementById('batchCancelShareBtn');
+            const deleteBtn = document.getElementById('batchDeleteShareBtn');
+            const allCheckbox = document.getElementById('shareSelectAllCheckbox');
+
+            if (cancelBtn) cancelBtn.disabled = checkedCount === 0;
+            if (deleteBtn) deleteBtn.disabled = checkedCount === 0;
+
+            if (allCheckbox) {
+                allCheckbox.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
+            }
+        }
+
         function showEmailShareManagementModal() {
+            // Reset filter controls
+            const filterEmail = document.getElementById('shareFilterEmail');
+            if (filterEmail) filterEmail.value = '';
+            const filterStatus = document.getElementById('shareFilterStatus');
+            if (filterStatus) filterStatus.value = 'all';
+
+            // Reset sorting parameters
+            currentSortCol = 'created_at';
+            currentSortDir = 'desc';
+
             showModal('emailShareManagementModal');
             loadEmailShares();
         }
@@ -209,5 +373,79 @@
                 }
             } catch (error) {
                 showToast('取消分享失败: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteEmailShare(shareId) {
+            if (!(await showConfirmModal('确定要删除这个分享链接吗？删除后链接将永久失效且不可恢复。', { title: '删除分享', confirmText: '确认删除', danger: true }))) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/email-shares/${encodeURIComponent(shareId)}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast('分享已删除', 'success');
+                    loadEmailShares();
+                } else {
+                    handleApiError(data, '删除分享失败');
+                }
+            } catch (error) {
+                showToast('删除分享失败: ' + error.message, 'error');
+            }
+        }
+
+        async function batchCancelShares() {
+            const checkboxes = document.querySelectorAll('.share-item-checkbox:checked');
+            const ids = Array.from(checkboxes).map(cb => parseInt(cb.getAttribute('data-share-id'), 10));
+            if (ids.length === 0) return;
+
+            if (!(await showConfirmModal(`确定要取消选中的 ${ids.length} 个分享链接吗？`, { title: '批量取消分享', confirmText: '确认取消' }))) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/email-shares/batch-cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ share_ids: ids })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast('所选分享已取消', 'success');
+                    loadEmailShares();
+                } else {
+                    handleApiError(data, '批量取消失败');
+                }
+            } catch (error) {
+                showToast('批量取消失败: ' + error.message, 'error');
+            }
+        }
+
+        async function batchDeleteShares() {
+            const checkboxes = document.querySelectorAll('.share-item-checkbox:checked');
+            const ids = Array.from(checkboxes).map(cb => parseInt(cb.getAttribute('data-share-id'), 10));
+            if (ids.length === 0) return;
+
+            if (!(await showConfirmModal(`确定要删除选中的 ${ids.length} 个分享链接吗？删除后链接将永久失效且不可恢复。`, { title: '批量删除分享', confirmText: '确认删除', danger: true }))) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/email-shares/batch-delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ share_ids: ids })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast('所选分享已删除', 'success');
+                    loadEmailShares();
+                } else {
+                    handleApiError(data, '批量删除失败');
+                }
+            } catch (error) {
+                showToast('批量删除失败: ' + error.message, 'error');
             }
         }

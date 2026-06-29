@@ -483,19 +483,200 @@
 
     <!-- 邮箱分享管理模态框 -->
     <div class="modal" id="emailShareManagementModal" onmousedown="if(event.target === this) hideEmailShareManagementModal()">
-        <div class="modal-content" style="width: min(860px, 92vw);">
+        <div class="modal-content" style="width: min(1000px, 95vw);">
             <div class="modal-header">
                 <h3>分享管理</h3>
                 <button class="modal-close" onclick="hideEmailShareManagementModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="share-toolbar">
-                    <button class="btn btn-secondary" type="button" onclick="loadEmailShares()">刷新</button>
-                </div>
-                <div class="share-list" id="emailShareList">
-                    <div class="empty-state">
-                        <div class="empty-state-text">正在加载分享记录...</div>
+                <style>
+                    .share-toolbar-container {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 12px;
+                        align-items: center;
+                        justify-content: space-between;
+                        margin-bottom: 16px;
+                        padding: 12px;
+                        background: var(--bg-secondary, #f9fafb);
+                        border-radius: 8px;
+                        border: 1px solid var(--border-color, #e5e7eb);
+                    }
+                    .share-toolbar-filters {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 8px;
+                        align-items: center;
+                    }
+                    .share-toolbar-actions {
+                        display: flex;
+                        gap: 8px;
+                        align-items: center;
+                    }
+                    .share-table-wrap {
+                        overflow-x: auto;
+                        border: 1px solid var(--border-color, #e5e7eb);
+                        border-radius: 8px;
+                        max-height: 52vh;
+                    }
+                    .share-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 13px;
+                    }
+                    .share-table th,
+                    .share-table td {
+                        padding: 10px 12px;
+                        text-align: left;
+                        border-bottom: 1px solid var(--border-color, #eef0f3);
+                        white-space: nowrap;
+                        vertical-align: middle;
+                    }
+                    .share-table th {
+                        background: var(--table-head-bg, #f6f7f9);
+                        font-weight: 600;
+                        position: sticky;
+                        top: 0;
+                        z-index: 1;
+                    }
+                    .share-table tbody tr:last-child td {
+                        border-bottom: none;
+                    }
+                    .share-table tbody tr:hover {
+                        background: var(--row-hover-bg, rgba(0, 0, 0, 0.03));
+                    }
+                    .share-table td.share-empty {
+                        text-align: center;
+                        color: var(--text-muted, #6b7280);
+                        padding: 32px 12px;
+                        white-space: normal;
+                    }
+                    .share-cell-mono {
+                        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                    }
+                    .share-badge {
+                        display: inline-block;
+                        padding: 2px 6px;
+                        border-radius: 4px;
+                        font-size: 11px;
+                        font-weight: 500;
+                        text-align: center;
+                    }
+                    .share-badge--active {
+                        background-color: #ecfdf5;
+                        color: #065f46;
+                    }
+                    .share-badge--expired {
+                        background-color: #fef3c7;
+                        color: #92400e;
+                    }
+                    .share-badge--revoked {
+                        background-color: #f3f4f6;
+                        color: #374151;
+                    }
+                    .share-badge--invalid {
+                        background-color: #fee2e2;
+                        color: #991b1b;
+                    }
+                    .share-url-container {
+                        display: flex;
+                        align-items: center;
+                        gap: 6px;
+                        max-width: 320px;
+                    }
+                    .share-url-input {
+                        flex: 1;
+                        min-width: 0;
+                        height: 28px;
+                        font-size: 11px;
+                        padding: 4px 8px;
+                    }
+                    .btn-sm-action {
+                        padding: 4px 8px;
+                        font-size: 12px;
+                        height: 28px;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
+                    .share-checkbox {
+                        width: 16px;
+                        height: 16px;
+                        cursor: pointer;
+                    }
+                    .share-select-all {
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
+                    .sortable-header {
+                        cursor: pointer;
+                        user-select: none;
+                    }
+                    .sortable-header:hover {
+                        background: var(--row-hover-bg, rgba(0, 0, 0, 0.05)) !important;
+                    }
+                    .sort-indicator {
+                        display: inline-block;
+                        margin-left: 4px;
+                        font-size: 11px;
+                        color: var(--text-muted, #9ca3af);
+                        font-weight: normal;
+                    }
+                </style>
+
+                <div class="share-toolbar-container">
+                    <div class="share-toolbar-filters">
+                        <input type="text" id="shareFilterEmail" placeholder="搜索邮箱账号..." class="form-input" style="width: 200px; height: 36px; padding: 6px 12px; font-size: 13px; margin: 0;" oninput="applyShareFilters()">
+                        <select id="shareFilterStatus" class="form-select" style="width: 120px; height: 36px; padding: 6px 12px; font-size: 13px; margin: 0;" onchange="applyShareFilters()">
+                            <option value="all">所有状态</option>
+                            <option value="active">有效</option>
+                            <option value="expired">已过期</option>
+                            <option value="revoked">已取消</option>
+                        </select>
                     </div>
+                    <div class="share-toolbar-actions">
+                        <button class="btn btn-warning" id="batchCancelShareBtn" onclick="batchCancelShares()" disabled style="height: 36px; padding: 0 12px; font-size: 13px; display: inline-flex; align-items: center; margin: 0;">
+                            批量取消
+                        </button>
+                        <button class="btn btn-danger" id="batchDeleteShareBtn" onclick="batchDeleteShares()" disabled style="height: 36px; padding: 0 12px; font-size: 13px; display: inline-flex; align-items: center; margin: 0;">
+                            批量删除
+                        </button>
+                        <button class="btn btn-secondary" type="button" onclick="loadEmailShares()" style="height: 36px; padding: 0 12px; font-size: 13px; display: inline-flex; align-items: center; margin: 0;">
+                            刷新
+                        </button>
+                    </div>
+                </div>
+
+                <div class="share-table-wrap">
+                    <table class="share-table">
+                        <thead>
+                            <tr>
+                                <th width="40" class="share-select-all">
+                                    <input type="checkbox" id="shareSelectAllCheckbox" class="share-checkbox" onchange="toggleSelectAllShares(this)">
+                                </th>
+                                <th class="sortable-header" data-sort-col="email" onclick="handleHeaderSort('email')">
+                                    邮箱账号<span class="sort-indicator"> ↕</span>
+                                </th>
+                                <th width="100" class="sortable-header" data-sort-col="status" onclick="handleHeaderSort('status')">
+                                    状态<span class="sort-indicator"> ↕</span>
+                                </th>
+                                <th width="160" class="sortable-header" data-sort-col="expires_at" onclick="handleHeaderSort('expires_at')">
+                                    有效期至<span class="sort-indicator"> ↕</span>
+                                </th>
+                                <th width="160" class="sortable-header" data-sort-col="created_at" onclick="handleHeaderSort('created_at')">
+                                    创建时间<span class="sort-indicator"> ↕</span>
+                                </th>
+                                <th>分享链接</th>
+                                <th width="150" style="text-align: right;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="emailShareTableBody">
+                            <tr>
+                                <td colspan="7" class="share-empty">正在加载分享记录...</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
             <div class="modal-footer">

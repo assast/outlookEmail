@@ -695,10 +695,53 @@
             color: #475569;
         }
 
-        .account-status-pill.provider,
+        .account-status-pill.provider {
+            background-color: var(--pill-accent, #2563eb);
+            color: #ffffff;
+        }
+
         .account-status-pill.tag {
             background-color: var(--pill-accent, #2563eb);
             color: #ffffff;
+            position: relative;
+            padding-right: 10px;
+            transition: padding-right 0.15s ease;
+        }
+
+        .account-status-pill.tag:hover {
+            padding-right: 22px;
+        }
+
+        .tag-delete-btn {
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.25);
+            color: #ffffff;
+            font-size: 9px;
+            font-weight: bold;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.15s ease, background-color 0.15s ease;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .account-status-pill.tag:hover .tag-delete-btn {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .tag-delete-btn:hover {
+            background-color: rgba(255, 255, 255, 0.55);
         }
 
         .account-status-pill.success {
