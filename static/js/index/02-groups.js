@@ -1651,17 +1651,16 @@
 
             const searchQuery = (document.getElementById('globalSearch')?.value || '').trim();
             if (searchQuery) {
-                const total = Number(accountPaginationState.total) || filteredAccounts.length;
                 if (getAccountSearchScope() === 'group') {
                     const currentGroup = groups.find(group => group.id === currentGroupId);
-                    updateCurrentGroupHeader(currentGroup || null, `搜索 (${filteredAccounts.length}/${total})`);
+                    updateCurrentGroupHeader(currentGroup || null);
                 } else {
-                    updateCurrentGroupHeader(null, `搜索结果 (${filteredAccounts.length}/${total})`);
+                    updateCurrentGroupHeader(null);
                 }
             } else {
                 const currentGroup = groups.find(group => group.id === currentGroupId);
                 if (currentGroup && Number(accountPaginationState.total) > 0) {
-                    updateCurrentGroupHeader(currentGroup, `(${filteredAccounts.length}/${accountPaginationState.total})`);
+                    updateCurrentGroupHeader(currentGroup);
                 }
             }
         }

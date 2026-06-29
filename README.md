@@ -71,6 +71,8 @@ export SECRET_KEY=your-secret-key-here
 python web_outlook_app.py
 ```
 
+python -m pip install -r requirements.txt; $env:SECRET_KEY = (& python -c "import secrets; print(secrets.token_hex(32))")[0]; $env:HOST="127.0.0.1"; python web_outlook_app.py
+
 访问 `http://localhost:5000` 即可使用。
 如果是服务器部署，仍然建议显式设置固定 `SECRET_KEY`。
 

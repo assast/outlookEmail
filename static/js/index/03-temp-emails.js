@@ -94,7 +94,7 @@
 
             const currentGroup = groups.find(group => group.id === currentGroupId);
             if (searchQuery) {
-                updateCurrentGroupHeader(null, `搜索结果 (${filtered.length})`);
+                updateCurrentGroupHeader(null);
             } else if (currentGroup) {
                 updateCurrentGroupHeader(currentGroup);
             }
