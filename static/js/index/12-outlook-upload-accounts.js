@@ -35,9 +35,8 @@
             }
 
             tbody.innerHTML = items.map(item => {
-                const authBtn = !item.is_authorized
-                    ? `<button class="btn btn-sm btn-primary" type="button" data-graph-auth-account-id="${escapeHtml(String(item.id ?? ''))}" data-graph-auth-email="${escapeHtml(item.email || '')}" data-graph-auth-password-length="${escapeHtml(String(item.password_length || 0))}">去授权</button>`
-                    : '';
+                const authBtnLabel = item.is_authorized ? '重新授权' : '去授权';
+                const authBtn = `<button class="btn btn-sm btn-primary" type="button" data-graph-auth-account-id="${escapeHtml(String(item.id ?? ''))}" data-graph-auth-email="${escapeHtml(item.email || '')}" data-graph-auth-password-length="${escapeHtml(String(item.password_length || 0))}">${authBtnLabel}</button>`;
                 const deleteBtn = `<button class="btn btn-sm btn-danger" type="button" data-delete-account-id="${escapeHtml(String(item.id ?? ''))}" data-delete-account-email="${escapeHtml(item.email || '')}" style="margin-left: 4px;">删除</button>`;
                 return `
                     <tr>
