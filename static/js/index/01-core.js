@@ -2437,10 +2437,12 @@ ${details}
                 refreshBtn.disabled = true;
             }
             try {
-                if (window.isTempEmailGroup && typeof window.loadTempEmails === 'function') {
-                    await window.loadTempEmails(true);
-                } else if (window.currentGroupId && typeof window.loadAccountsByGroup === 'function') {
-                    await window.loadAccountsByGroup(window.currentGroupId, true);
+                if (typeof refreshVisibleAccountList === 'function') {
+                    await refreshVisibleAccountList(true);
+                } else if (isTempEmailGroup && typeof loadTempEmails === 'function') {
+                    await loadTempEmails(true);
+                } else if (currentGroupId && typeof loadAccountsByGroup === 'function') {
+                    await loadAccountsByGroup(currentGroupId, true);
                 }
             } catch (e) {
                 console.error(e);

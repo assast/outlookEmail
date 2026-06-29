@@ -145,11 +145,17 @@
             uploadAccountsState.keyword = '';
             const input = document.getElementById('uploadAccountsSearch');
             if (input) input.value = '';
+            resetGraphAuthPanel();
             showModal('outlookUploadAccountsModal');
             loadUploadAccounts();
         }
 
         function hideOutlookUploadAccountsModal() {
+            if (graphAuthState.eventSource) {
+                graphAuthState.eventSource.close();
+                graphAuthState.eventSource = null;
+            }
+            graphAuthState.running = false;
             hideModal('outlookUploadAccountsModal');
         }
 
@@ -210,36 +216,41 @@
 
         // ==================== Graph OAuth 授权 ====================
 
+        const GRAPH_AUTH_LOG_PLACEHOLDER = '点击账号「去授权 / 重新授权」后，授权日志会显示在这里。';
+
         let graphAuthState = {
             accountId: null,
             email: '',
             secretLength: 0,
-            eventSource: null
+            eventSource: null,
+            running: false,
         };
 
-        function showGraphAuthModal(accountId, email, passwordLength) {
-            if (graphAuthState.eventSource) {
-                graphAuthState.eventSource.close();
-                graphAuthState.eventSource = null;
-            }
-            graphAuthState.accountId = accountId;
-            graphAuthState.email = email;
-            graphAuthState.secretLength = Number(passwordLength) || 0;
-
-            document.getElementById('graphAuthEmail').textContent = email;
-            document.getElementById('graphAuthPasswordMasked').textContent = '*'.repeat(Math.max(6, graphAuthState.secretLength));
-            document.getElementById('graphAuthLog').textContent = '准备就绪，点击"授权"按钮开始...';
-            document.getElementById('startGraphAuthBtn').disabled = false;
-
-            showModal('graphAuthModal');
+        function setGraphAuthStatus(state, text) {
+            const statusEl = document.getElementById('graphAuthStatus');
+            if (!statusEl) return;
+            statusEl.dataset.state = state;
+            statusEl.textContent = text;
         }
 
-        function hideGraphAuthModal() {
+        function resetGraphAuthPanel() {
             if (graphAuthState.eventSource) {
                 graphAuthState.eventSource.close();
                 graphAuthState.eventSource = null;
             }
-            hideModal('graphAuthModal');
+            graphAuthState.accountId = null;
+            graphAuthState.email = '';
+            graphAuthState.secretLength = 0;
+            graphAuthState.running = false;
+            const logEl = document.getElementById('graphAuthLog');
+            if (logEl) logEl.textContent = GRAPH_AUTH_LOG_PLACEHOLDER;
+            setGraphAuthStatus('idle', '空闲');
+        }
+
+        function setUploadAuthButtonsDisabled(disabled) {
+            document.querySelectorAll('#uploadAccountsTableBody [data-graph-auth-account-id]').forEach(btn => {
+                btn.disabled = disabled;
+            });
         }
 
         function appendGraphAuthLog(message) {
@@ -251,23 +262,41 @@
             logEl.scrollTop = logEl.scrollHeight;
         }
 
-        async function startGraphAuth() {
-            const btn = document.getElementById('startGraphAuthBtn');
-            if (!btn) return;
-            if (!graphAuthState.accountId) {
+        async function startGraphAuthForAccount(accountId, email, passwordLength) {
+            if (graphAuthState.running) {
+                showToast('正在授权中，请等待当前任务完成', 'warning');
+                return;
+            }
+            if (!accountId) {
                 showToast('请选择要授权的账号', 'error');
                 return;
             }
 
-            btn.disabled = true;
-            btn.textContent = '授权中...';
+            if (graphAuthState.eventSource) {
+                graphAuthState.eventSource.close();
+                graphAuthState.eventSource = null;
+            }
+
+            graphAuthState.accountId = accountId;
+            graphAuthState.email = email;
+            graphAuthState.secretLength = Number(passwordLength) || 0;
+            graphAuthState.running = true;
+
+            setUploadAuthButtonsDisabled(true);
+            setGraphAuthStatus('running', '授权中');
 
             const logEl = document.getElementById('graphAuthLog');
-            logEl.textContent = '开始 Graph OAuth 授权流程...\n';
+            if (logEl) logEl.textContent = '开始 Graph OAuth 授权流程...';
             const startTime = Date.now();
 
+            const finishAuth = (state, statusText) => {
+                graphAuthState.running = false;
+                setUploadAuthButtonsDisabled(false);
+                setGraphAuthStatus(state, statusText);
+            };
+
             try {
-                appendGraphAuthLog('邮箱: ' + graphAuthState.email);
+                appendGraphAuthLog('邮箱: ' + email);
                 appendGraphAuthLog('密码: ' + '*'.repeat(Math.max(6, graphAuthState.secretLength)));
                 appendGraphAuthLog('');
                 appendGraphAuthLog('正在创建授权任务...');
@@ -279,7 +308,7 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        account_id: graphAuthState.accountId
+                        account_id: accountId
                     })
                 });
 
@@ -287,8 +316,7 @@
                 if (!response.ok || !data.success || !data.stream_url) {
                     appendGraphAuthLog('创建授权任务失败: ' + (data.error || '未知错误'));
                     showToast('Graph 授权失败: ' + (data.error || '未知错误'), 'error');
-                    btn.disabled = false;
-                    btn.textContent = '授权';
+                    finishAuth('error', '失败');
                     return;
                 }
 
@@ -328,13 +356,11 @@
                             graphAuthState.eventSource.close();
                             graphAuthState.eventSource = null;
                         }
-                        btn.disabled = false;
-                        btn.textContent = '授权';
+                        finishAuth(payload.success ? 'success' : 'error', payload.success ? '成功' : '失败');
                         if (payload.success) {
                             setTimeout(() => {
-                                hideGraphAuthModal();
                                 loadUploadAccounts();
-                            }, 1200);
+                            }, 1000);
                         }
                     }
                 };
@@ -344,23 +370,21 @@
                         graphAuthState.eventSource.close();
                         graphAuthState.eventSource = null;
                     }
-                    btn.disabled = false;
-                    btn.textContent = '授权';
+                    finishAuth('error', '连接中断');
                 };
             } catch (error) {
                 appendGraphAuthLog('');
                 appendGraphAuthLog('异常信息: ' + error.message);
 
                 showToast('授权请求失败: ' + error.message, 'error');
-                btn.disabled = false;
-                btn.textContent = '授权';
+                finishAuth('error', '失败');
             }
         }
 
         document.addEventListener('click', (event) => {
             const button = event.target.closest('[data-graph-auth-account-id]');
             if (!button) return;
-            showGraphAuthModal(
+            startGraphAuthForAccount(
                 Number(button.dataset.graphAuthAccountId),
                 button.dataset.graphAuthEmail || '',
                 Number(button.dataset.graphAuthPasswordLength) || 0

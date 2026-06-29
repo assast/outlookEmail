@@ -384,15 +384,19 @@ class GraphOauthFrontendContractTests(unittest.TestCase):
         self.assertNotIn('graphAuthState.password', js)
         self.assertIn('data-graph-auth-account-id', js)
 
-    def test_graph_auth_modal_does_not_render_plain_password_container(self):
+    def test_graph_auth_panel_embedded_without_password_container(self):
         with open(
             os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates/partials/index/dialogs-management.html'),
             encoding='utf-8',
         ) as handle:
             html = handle.read()
 
+        # 独立的 Graph API 授权弹窗已移除，授权日志面板内嵌到上传账号弹窗右侧
+        self.assertNotIn('id="graphAuthModal"', html)
+        # 不再渲染任何明文或掩码密码容器，右侧面板只展示授权日志
         self.assertNotIn('id="graphAuthPassword"', html)
-        self.assertIn('id="graphAuthPasswordMasked"', html)
+        self.assertNotIn('id="graphAuthPasswordMasked"', html)
+        self.assertIn('id="graphAuthLog"', html)
 
 
 if __name__ == '__main__':
