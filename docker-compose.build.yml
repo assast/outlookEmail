@@ -1,12 +1,12 @@
 version: '3.8'
 
 services:
-  outlook-mail:
+  outlook-mail-local:
     build:
       context: .
       dockerfile: Dockerfile
     image: outlookemail:local
-    container_name: outlook-mail
+    container_name: outlook-mail-local
     ports:
       - "5000:5000"
     volumes:
