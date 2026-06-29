@@ -2339,10 +2339,9 @@ ${details}
                 return;
             }
 
-            const badgeText = formatGroupIdBadgeText(group.id);
-            nameEl.textContent = normalizeGroupName(group.name);
-            idBadgeEl.textContent = badgeText;
-            idBadgeEl.style.display = badgeText ? 'inline-flex' : 'none';
+            nameEl.textContent = '';
+            idBadgeEl.textContent = '';
+            idBadgeEl.style.display = 'none';
         }
 
         // ------------------ 折叠分组栏 & 极简模式 ------------------
