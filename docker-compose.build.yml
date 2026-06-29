@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  outlook-mail:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: outlookemail:local
+    container_name: outlook-mail
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+      - ./static:/app/static:ro
+      - ./templates:/app/templates:ro
+      # Optional: bind-mount source for live code (uncomment for development)
+      # - ./:/app:delegated
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file:
+      - .env.local
+    environment:
+      - FLASK_ENV=production
+      - DOCKER_UPDATE_ENABLED=true
+      - DOCKER_UPDATE_CONTAINER=outlook-mail
+      # Optional: - DOCKER_UPDATE_API_VERSION=1.52
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:5000/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# Uncomment to create a named volume for persistent data instead of ./data bind-mount
+# volumes:
+#   data:
+#     driver: local

@@ -1,4 +1,4 @@
-        /* global applyPendingNewMailSync, closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, hasPendingNewMailSync, initAccountListScroll, initAccountPageSizeSelect, initAccountSearchScopeSelect, initAccountSelectionGestures, initColorPicker, initEmailListScroll, loadGroups, loadMoreCloudflareGlobalMessages, loadTags, renderEmailList, scheduleEmailListLoadCheck, searchAccounts */
+        /* global applyPendingNewMailSync, closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, hasPendingNewMailSync, initAccountListScroll, initAccountPageSizeSelect, initAccountSearchInput, initAccountSearchScopeSelect, initAccountSelectionGestures, initColorPicker, initEmailListScroll, loadGroups, loadMoreCloudflareGlobalMessages, loadTags, renderEmailList, saveAccountSearchQueryPreference, scheduleEmailListLoadCheck, searchAccounts */
 
         // 全局状态
         let csrfToken = null;
@@ -1227,6 +1227,7 @@
             initAccountListScroll();
             initAccountPageSizeSelect();
             initAccountSearchScopeSelect();
+            initAccountSearchInput();
             if (typeof initAccountSelectionGestures === 'function') {
                 initAccountSelectionGestures();
             }
@@ -1237,10 +1238,13 @@
             // 绑定搜索框事件
             const searchInput = document.getElementById('globalSearch');
             if (searchInput) {
-                const debouncedSearch = debounce((e) => {
-                    searchAccounts(e.target.value);
+                const debouncedSearch = debounce((value) => {
+                    searchAccounts(value);
                 }, 300);
-                searchInput.addEventListener('input', debouncedSearch);
+                searchInput.addEventListener('input', function (event) {
+                    saveAccountSearchQueryPreference(event.target.value);
+                    debouncedSearch(event.target.value);
+                });
             }
 
             // 初始化折叠状态和极简模式状态

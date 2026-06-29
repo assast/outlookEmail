@@ -1353,3 +1353,87 @@ def api_external_get_emails():
         all_errors['imap_old'] = imap_old_result.get('error')
 
     return jsonify({'success': False, 'error': '无法获取邮件，所有方式均失败', 'details': all_errors})
+
+
+@app.route('/api/external/outlook/upload', methods=['POST'])
+@csrf_exempt
+@api_key_required
+def api_external_upload_outlook():
+    """对外 API：上传 Outlook 邮箱账号密码到上传表（默认未授权）。
+
+    支持单条 {email, password, remark?} 或批量 {accounts: [...]}。
+    """
+    data = request.get_json(silent=True) or {}
+
+    raw_accounts = data.get('accounts')
+    if isinstance(raw_accounts, list) and raw_accounts:
+        items = [
+            {
+                'email': item.get('email', ''),
+                'password': item.get('password', ''),
+                'remark': item.get('remark', ''),
+            }
+            for item in raw_accounts
+            if isinstance(item, dict)
+        ]
+    elif data.get('email'):
+        items = [{
+            'email': data.get('email', ''),
+            'password': data.get('password', ''),
+            'remark': data.get('remark', ''),
+        }]
+    else:
+        return jsonify({'success': False, 'error': '请求体需包含 email/password 或非空 accounts 数组'}), 400
+
+    summary = add_upload_accounts_bulk(items)
+    return jsonify({'success': True, **summary})
+
+
+@app.route('/api/outlook-upload-accounts', methods=['GET'])
+@login_required
+def api_list_outlook_upload_accounts():
+    """分页查询外部上传的 Outlook 账号，供前端弹框表格展示。"""
+    page = parse_non_negative_int(request.args.get('page', 1), 1) or 1
+    page_size = parse_non_negative_int(request.args.get('page_size', 20), 20, 200)
+    keyword = str(request.args.get('keyword', '') or '').strip()
+    result = query_upload_accounts_page(page=page, page_size=page_size, keyword=keyword)
+    return jsonify({'success': True, **result})
+
+
+@app.route('/api/outlook-upload-accounts', methods=['POST'])
+@login_required
+def api_add_outlook_upload_account():
+    """添加单个外部上传的 Outlook 账号。"""
+    data = request.get_json(silent=True) or {}
+    email = str(data.get('email', '') or '').strip()
+    password = str(data.get('password', '') or '').strip()
+    remark = str(data.get('remark', '') or '').strip()
+
+    if not email:
+        return jsonify({'success': False, 'error': '邮箱不能为空'}), 400
+    if not password:
+        return jsonify({'success': False, 'error': '密码不能为空'}), 400
+
+    result = add_upload_account(email, password, remark)
+    db = get_db()
+    db.commit()
+
+    if result['status'] == 'added':
+        return jsonify({'success': True, 'message': '添加成功', 'account': result})
+    elif result['status'] == 'duplicate':
+        return jsonify({'success': False, 'error': '该邮箱已存在'}), 400
+    else:
+        return jsonify({'success': False, 'error': '邮箱格式无效'}), 400
+
+
+@app.route('/api/outlook-upload-accounts/<int:account_id>', methods=['DELETE'])
+@login_required
+def api_delete_outlook_upload_account(account_id):
+    """删除指定 ID 的外部上传账号。"""
+    success = delete_upload_account(account_id)
+    if success:
+        db = get_db()
+        db.commit()
+        return jsonify({'success': True, 'message': '删除成功'})
+    else:
+        return jsonify({'success': False, 'error': '账号不存在'}), 404

@@ -82,6 +82,16 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
+# CORS 支持：仅对外部 API (/api/external/*) 启用跨域访问
+@app.after_request
+def add_cors_headers_for_external_api(response):
+    if request.path.startswith('/api/external/'):
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key, Authorization'
+        response.headers['Access-Control-Max-Age'] = '86400'
+    return response
+
 scheduler_instance = None
 scheduler_lock = threading.Lock()
 token_refresh_run_lock = threading.Lock()
@@ -689,6 +699,7 @@ INDEX_JS_FILES = (
     'js/index/09-tags.js',
     'js/index/10-batch-actions.js',
     'js/index/11-email-shares.js',
+    'js/index/12-outlook-upload-accounts.js',
 )
 
 # GPTMail API 配置
@@ -1676,6 +1687,25 @@ def init_db():
     cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_project_events_project_created
         ON project_account_events(project_id, created_at)
+    ''')
+
+    # 外部上传的 Outlook 账号暂存表（账号/密码/是否授权，独立于 accounts）
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS outlook_upload_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            is_authorized INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'active',
+            remark TEXT DEFAULT '',
+            source TEXT DEFAULT 'external_api',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_outlook_upload_email
+        ON outlook_upload_accounts(email)
     ''')
 
     # 检查并添加缺失的列（数据库迁移）

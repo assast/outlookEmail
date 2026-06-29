@@ -1140,3 +1140,227 @@
             </div>
         </div>
     </div>
+
+    <!-- Outlook 上传账号模态框 -->
+    <div class="modal" id="outlookUploadAccountsModal" onmousedown="if(event.target === this) hideOutlookUploadAccountsModal()">
+        <div class="modal-content" style="width: min(960px, 94vw);">
+            <div class="modal-header">
+                <h3>Outlook自动化授权</h3>
+                <button class="modal-close" onclick="hideOutlookUploadAccountsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="upload-accounts-toolbar">
+                    <input type="text" id="uploadAccountsSearch" class="form-input upload-accounts-search"
+                        placeholder="搜索邮箱 / 备注" autocomplete="off"
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();searchUploadAccounts();}">
+                    <button class="btn btn-secondary" type="button" onclick="searchUploadAccounts()">搜索</button>
+                    <button class="btn btn-secondary" type="button" onclick="reloadUploadAccounts()">刷新</button>
+                    <button class="btn btn-primary" type="button" onclick="showAddUploadAccountModal()">添加</button>
+                </div>
+                <div class="upload-accounts-table-wrap">
+                    <table class="upload-accounts-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 48px;">ID</th>
+                                <th>邮箱</th>
+                                <th>密码</th>
+                                <th style="width: 84px;">授权</th>
+                                <th style="width: 84px;">状态</th>
+                                <th>备注</th>
+                                <th style="width: 160px;">创建时间</th>
+                                <th style="width: 100px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="uploadAccountsTableBody">
+                            <tr>
+                                <td colspan="8" class="upload-accounts-empty">正在加载...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="upload-accounts-pagination">
+                    <span class="upload-accounts-pagination__info" id="uploadAccountsPageInfo">共 0 条</span>
+                    <div class="upload-accounts-pagination__controls">
+                        <select id="uploadAccountsPageSize" class="form-input upload-accounts-pagination__select"
+                            onchange="changeUploadAccountsPageSize(this.value)">
+                            <option value="10">每页 10</option>
+                            <option value="20" selected>每页 20</option>
+                            <option value="50">每页 50</option>
+                            <option value="100">每页 100</option>
+                        </select>
+                        <button class="btn btn-secondary" type="button" id="uploadAccountsPrevBtn"
+                            onclick="changeUploadAccountsPage(-1)">上一页</button>
+                        <span class="upload-accounts-pagination__page" id="uploadAccountsPageText">第 1 / 1 页</span>
+                        <button class="btn btn-secondary" type="button" id="uploadAccountsNextBtn"
+                            onclick="changeUploadAccountsPage(1)">下一页</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideOutlookUploadAccountsModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Graph OAuth 授权模态框 -->
+    <div class="modal" id="graphAuthModal" onmousedown="if(event.target === this) hideGraphAuthModal()">
+        <div class="modal-content" style="width: min(720px, 92vw); max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h3>📧 Graph API 授权</h3>
+                <button class="modal-close" onclick="hideGraphAuthModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                <div class="form-group" style="flex-shrink: 0;">
+                    <div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e5e7eb;">
+                        <div style="flex: 1; min-width: 0;">
+                            <label class="form-label" style="margin-bottom: 4px;">邮箱地址</label>
+                            <div id="graphAuthEmail" style="font-family: ui-monospace, monospace; font-size: 13px; color: #111827; word-break: break-all;"></div>
+                        </div>
+                        <div style="flex: 1; min-width: 0;">
+                            <label class="form-label" style="margin-bottom: 4px;">密码</label>
+                            <div id="graphAuthPasswordMasked" style="font-family: ui-monospace, monospace; font-size: 13px; color: #111827; word-break: break-all;"></div>
+                        </div>
+                        <button class="btn btn-primary" type="button" id="startGraphAuthBtn" onclick="startGraphAuth()" style="flex-shrink: 0; white-space: nowrap;">授权</button>
+                    </div>
+                </div>
+                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                    <label class="form-label">授权日志</label>
+                    <div id="graphAuthLog" style="flex: 1; min-height: 200px; max-height: 100%; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px;"></div>
+                </div>
+            </div>
+            <div class="modal-footer" style="flex-shrink: 0;">
+                <button class="btn btn-secondary" onclick="hideGraphAuthModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .upload-accounts-toolbar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .upload-accounts-search {
+            flex: 1;
+            min-width: 180px;
+        }
+        .upload-accounts-table-wrap {
+            overflow-x: auto;
+            border: 1px solid var(--border-color, #e5e7eb);
+            border-radius: 8px;
+        }
+        .upload-accounts-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .upload-accounts-table th,
+        .upload-accounts-table td {
+            padding: 8px 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color, #eef0f3);
+            white-space: nowrap;
+        }
+        .upload-accounts-table th {
+            background: var(--table-head-bg, #f6f7f9);
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        .upload-accounts-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .upload-accounts-table tbody tr:hover {
+            background: var(--row-hover-bg, rgba(0, 0, 0, 0.03));
+        }
+        .upload-accounts-table td.upload-accounts-empty {
+            text-align: center;
+            color: var(--text-muted, #6b7280);
+            padding: 24px 10px;
+            white-space: normal;
+        }
+        .upload-accounts-cell-mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+        .upload-accounts-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .upload-accounts-badge--yes {
+            background: rgba(16, 185, 129, 0.15);
+            color: #047857;
+        }
+        .upload-accounts-badge--no {
+            background: rgba(107, 114, 128, 0.15);
+            color: #4b5563;
+        }
+        .upload-accounts-pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+        .upload-accounts-pagination__info {
+            color: var(--text-muted, #6b7280);
+            font-size: 13px;
+        }
+        .upload-accounts-pagination__controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .upload-accounts-pagination__select {
+            width: auto;
+            min-width: 96px;
+        }
+        .upload-accounts-pagination__page {
+            font-size: 13px;
+            min-width: 96px;
+            text-align: center;
+        }
+    </style>
+
+    <!-- 添加上传账号模态框 -->
+    <div class="modal" id="addUploadAccountModal" onmousedown="if(event.target === this) hideAddUploadAccountModal()">
+        <div class="modal-content" style="width: min(480px, 92vw);">
+            <div class="modal-header">
+                <h3>添加 Outlook 账号</h3>
+                <button class="modal-close" onclick="hideAddUploadAccountModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">邮箱 <span style="color: #ef4444;">*</span></label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="text" id="addUploadAccountEmailPrefix" class="form-input"
+                            placeholder="sccd952701" autocomplete="off" style="flex: 1;">
+                        <select id="addUploadAccountEmailDomain" class="form-input" style="width: 160px;">
+                            <option value="@outlook.com" selected>@outlook.com</option>
+                            <option value="@hotmail.com">@hotmail.com</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">密码 <span style="color: #ef4444;">*</span></label>
+                    <input type="text" id="addUploadAccountPassword" class="form-input"
+                        placeholder="请输入密码" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">备注（可选）</label>
+                    <input type="text" id="addUploadAccountRemark" class="form-input"
+                        placeholder="可选备注信息" autocomplete="off">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideAddUploadAccountModal()">取消</button>
+                <button class="btn btn-primary" id="submitAddUploadAccountBtn" onclick="submitAddUploadAccount()">确认添加</button>
+            </div>
+        </div>
+    </div>

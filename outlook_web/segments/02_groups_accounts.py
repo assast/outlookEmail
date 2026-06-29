@@ -1422,6 +1422,158 @@ def add_accounts_bulk(parsed_accounts: List[Dict[str, Any]], group_id: int = 1,
     }
 
 
+def normalize_upload_email(email: str) -> str:
+    return (email or '').strip().lower()
+
+
+def add_upload_account(email: str, password: str, remark: str = '') -> Dict[str, Any]:
+    """插入一条外部上传的 Outlook 账号到 outlook_upload_accounts。
+
+    密码加密存储。不在本函数内 commit，由调用方统一提交。
+    返回 {'email', 'status': 'added'|'duplicate'|'invalid', 'id'?}
+    """
+    normalized_email = normalize_upload_email(email)
+    raw_password = password if password is not None else ''
+    if '@' not in normalized_email or not raw_password:
+        return {'email': normalized_email or (email or ''), 'status': 'invalid'}
+
+    db = get_db()
+    cursor = db.execute(
+        '''
+        INSERT OR IGNORE INTO outlook_upload_accounts (email, password, remark, source)
+        VALUES (?, ?, ?, 'external_api')
+        ''',
+        (normalized_email, encrypt_data(raw_password), remark or ''),
+    )
+    if cursor.rowcount == 1:
+        return {'email': normalized_email, 'status': 'added', 'id': cursor.lastrowid}
+    return {'email': normalized_email, 'status': 'duplicate'}
+
+
+def get_upload_account_plain_password(row: Any, *, tolerate_decrypt_error: bool = False) -> str:
+    data = dict(row) if hasattr(row, 'keys') else {'password': row}
+    try:
+        return decrypt_data(str(data.get('password') or ''))
+    except RuntimeError:
+        if tolerate_decrypt_error:
+            return ''
+        raise
+
+
+def serialize_upload_account_row(row: Any) -> Dict[str, Any]:
+    """将 outlook_upload_accounts 行转为前端展示用字典，不返回明文密码。"""
+    data = dict(row)
+    plain_password = get_upload_account_plain_password(
+        data.get('password') or '',
+        tolerate_decrypt_error=True,
+    )
+    return {
+        'id': data.get('id'),
+        'email': data.get('email') or '',
+        'has_password': bool(plain_password),
+        'password_length': len(plain_password),
+        'is_authorized': bool(data.get('is_authorized')),
+        'status': data.get('status') or '',
+        'remark': data.get('remark') or '',
+        'source': data.get('source') or '',
+        'created_at': data.get('created_at'),
+        'updated_at': data.get('updated_at'),
+    }
+
+
+def delete_upload_account(account_id: int) -> bool:
+    """删除指定 ID 的外部上传账号。
+
+    返回 True 表示删除成功，False 表示账号不存在。
+    不在本函数内 commit，由调用方统一提交。
+    """
+    db = get_db()
+    cursor = db.execute(
+        'DELETE FROM outlook_upload_accounts WHERE id = ?',
+        (account_id,)
+    )
+    return cursor.rowcount > 0
+
+
+def query_upload_accounts_page(page: int = 1, page_size: int = 20,
+                               keyword: str = '') -> Dict[str, Any]:
+    """分页查询外部上传的 Outlook 账号。
+
+    返回 {'items', 'total', 'page', 'page_size', 'total_pages'}。
+    keyword 命中 email/remark（模糊匹配）。
+    """
+    safe_page = max(1, int(page or 1))
+    safe_page_size = min(max(1, int(page_size or 20)), 200)
+    normalized_keyword = (keyword or '').strip()
+
+    where_sql = ''
+    params: List[Any] = []
+    if normalized_keyword:
+        where_sql = 'WHERE email LIKE ? OR remark LIKE ?'
+        like = f'%{normalized_keyword}%'
+        params.extend([like, like])
+
+    db = get_db()
+    total = db.execute(
+        f'SELECT COUNT(*) AS cnt FROM outlook_upload_accounts {where_sql}',
+        tuple(params),
+    ).fetchone()['cnt']
+    total = int(total or 0)
+
+    total_pages = max(1, (total + safe_page_size - 1) // safe_page_size)
+    if safe_page > total_pages:
+        safe_page = total_pages
+    offset = (safe_page - 1) * safe_page_size
+
+    rows = db.execute(
+        f'''
+        SELECT id, email, password, is_authorized, status, remark, source,
+               created_at, updated_at
+        FROM outlook_upload_accounts
+        {where_sql}
+        ORDER BY id DESC
+        LIMIT ? OFFSET ?
+        ''',
+        tuple(params) + (safe_page_size, offset),
+    ).fetchall()
+
+    return {
+        'items': [serialize_upload_account_row(row) for row in rows],
+        'total': total,
+        'page': safe_page,
+        'page_size': safe_page_size,
+        'total_pages': total_pages,
+    }
+
+
+def add_upload_accounts_bulk(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """单事务批量插入外部上传账号。items: [{'email','password','remark'?}, ...]"""
+    results: List[Dict[str, Any]] = []
+    added = duplicate = invalid = 0
+    db = get_db()
+    for item in items:
+        outcome = add_upload_account(
+            item.get('email', ''),
+            item.get('password', ''),
+            item.get('remark', ''),
+        )
+        if outcome['status'] == 'added':
+            added += 1
+        elif outcome['status'] == 'duplicate':
+            duplicate += 1
+        else:
+            invalid += 1
+        results.append(outcome)
+    db.commit()
+    return {
+        'total': len(items),
+        'added': added,
+        'duplicate': duplicate,
+        'invalid': invalid,
+        'results': results,
+    }
+
+
 def update_account(account_id: int, email_addr: str, password: str, client_id: str,
                    refresh_token: str, group_id: int, sort_order: Optional[int], remark: str, status: str,
                    account_type: str = 'outlook', provider: str = 'outlook',

@@ -37,6 +37,7 @@
 | --- | --- | --- | --- | --- |
 | GET | `/api/external/accounts` | API Key | JSON | 获取普通邮箱账号列表 |
 | GET | `/api/external/emails` | API Key | JSON | 获取指定邮箱邮件列表 |
+| POST | `/api/external/outlook/upload` | API Key | JSON | 上传 Outlook 邮箱账号密码到上传表（默认未授权，支持单条/批量） |
 
 ### 分组、账号、标签、项目
 
@@ -499,6 +500,70 @@ curl -H "X-API-Key: your-api-key" \
 4. `user@googlemail.com`
 
 如果使用回退候选命中，响应会包含 `resolved_query_email`、`fallback_used`、`fallback_email` 等字段。
+
+### POST `/api/external/outlook/upload`
+
+上传 Outlook 邮箱账号和密码，保存到独立的上传暂存表 `outlook_upload_accounts`。入库记录的"是否授权"字段默认值为未授权（`is_authorized = 0`）。支持一次上传单条或批量。
+
+> 说明：该接口仅负责存储，不触发授权流程；上传的密码会加密存储，接口响应不会回显密码。
+
+#### 请求体
+
+单条：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `email` | string | 是 | 邮箱账号，入库前转小写并去除首尾空格；重复将被跳过 |
+| `password` | string | 是 | 邮箱密码 |
+| `remark` | string | 否 | 备注 |
+
+批量（与上面二选一）：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `accounts` | array | 是 | 元素为 `{email, password, remark?}` 的数组；非空时按批量处理 |
+
+#### 请求示例
+
+```bash
+# 单条
+curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
+  -d '{"email":"user@outlook.com","password":"pwd123","remark":"可选"}' \
+  "http://localhost:5000/api/external/outlook/upload"
+
+# 批量
+curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
+  -d '{"accounts":[{"email":"a@outlook.com","password":"p1"},{"email":"b@outlook.com","password":"p2"}]}' \
+  "http://localhost:5000/api/external/outlook/upload"
+```
+
+#### 成功响应示例
+
+```json
+{
+  "success": true,
+  "total": 2,
+  "added": 1,
+  "duplicate": 1,
+  "invalid": 0,
+  "results": [
+    { "email": "a@outlook.com", "status": "added", "id": 5 },
+    { "email": "b@outlook.com", "status": "duplicate" }
+  ]
+}
+```
+
+#### 返回说明
+
+- `total` / `added` / `duplicate` / `invalid`：本次处理总数与各状态计数
+- `results[].status` 取值：
+  - `added`：新增成功，附带 `id`
+  - `duplicate`：`email` 已存在，被跳过（不覆盖原记录）
+  - `invalid`：`email` 缺少 `@` 或 `password` 为空，未入库
+- 上传密码加密存储，响应不回显 `password`
+- 入库记录 `is_authorized` 一律为 `0`（未授权）
+- 请求体既无 `email` 也无非空 `accounts` 时返回 HTTP 400
+- 缺少 / 无效 API Key 时由鉴权层返回 HTTP 401 / 403
 
 ## 内部 API
 
