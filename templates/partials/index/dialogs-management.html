@@ -1163,14 +1163,14 @@
                             <table class="upload-accounts-table">
                                 <thead>
                                     <tr>
-                                        <th style="width: 48px;">ID</th>
-                                        <th>邮箱</th>
-                                        <th>密码</th>
-                                        <th style="width: 84px;">授权</th>
-                                        <th style="width: 84px;">状态</th>
-                                        <th>备注</th>
-                                        <th style="width: 160px;">创建时间</th>
-                                        <th style="width: 100px;">操作</th>
+                                        <th style="width: 42px; min-width: 42px;">ID</th>
+                                        <th style="width: 200px; min-width: 160px;">邮箱</th>
+                                        <th style="width: 80px; min-width: 70px;">密码</th>
+                                        <th style="width: 72px; min-width: 72px;">授权</th>
+                                        <th style="width: 72px; min-width: 72px;">状态</th>
+                                        <th style="width: 100px; min-width: 80px;">备注</th>
+                                        <th style="width: 130px; min-width: 120px;">创建时间</th>
+                                        <th style="width: 220px; min-width: 220px;">操作</th>
                                     </tr>
                                 </thead>
                                 <tbody id="uploadAccountsTableBody">
@@ -1266,7 +1266,8 @@
         }
         .upload-accounts-auth__log {
             flex: 1 1 auto;
-            min-height: 320px;
+            min-height: 400px;
+            max-height: 60vh;
             overflow-y: auto;
             padding: 12px;
             border-radius: 6px;
@@ -1317,6 +1318,8 @@
             text-align: left;
             border-bottom: 1px solid var(--border-color, #eef0f3);
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .upload-accounts-table th {
             background: var(--table-head-bg, #f6f7f9);
@@ -1416,6 +1419,38 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="hideAddUploadAccountModal()">取消</button>
                 <button class="btn btn-primary" id="submitAddUploadAccountBtn" onclick="submitAddUploadAccount()">确认添加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 修改上传账号模态框 -->
+    <div class="modal" id="editUploadAccountModal" onmousedown="if(event.target === this) hideEditUploadAccountModal()">
+        <div class="modal-content" style="width: min(480px, 92vw);">
+            <div class="modal-header">
+                <h3>修改 Outlook 账号</h3>
+                <button class="modal-close" onclick="hideEditUploadAccountModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editUploadAccountId">
+                <div class="form-group">
+                    <label class="form-label">邮箱 <span style="color: #ef4444;">*</span></label>
+                    <input type="text" id="editUploadAccountEmail" class="form-input"
+                        placeholder="user@outlook.com" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">密码（留空保持原密码）</label>
+                    <input type="text" id="editUploadAccountPassword" class="form-input"
+                        placeholder="留空则保持原密码" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">备注（可选）</label>
+                    <input type="text" id="editUploadAccountRemark" class="form-input"
+                        placeholder="可选备注信息" autocomplete="off">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideEditUploadAccountModal()">取消</button>
+                <button class="btn btn-primary" id="submitEditUploadAccountBtn" onclick="submitEditUploadAccount()">保存修改</button>
             </div>
         </div>
     </div>

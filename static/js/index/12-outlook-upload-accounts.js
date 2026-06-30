@@ -37,6 +37,7 @@
             tbody.innerHTML = items.map(item => {
                 const authBtnLabel = item.is_authorized ? '重新授权' : '去授权';
                 const authBtn = `<button class="btn btn-sm btn-primary" type="button" data-graph-auth-account-id="${escapeHtml(String(item.id ?? ''))}" data-graph-auth-email="${escapeHtml(item.email || '')}" data-graph-auth-password-length="${escapeHtml(String(item.password_length || 0))}">${authBtnLabel}</button>`;
+                const editBtn = `<button class="btn btn-sm btn-secondary" type="button" data-edit-account-id="${escapeHtml(String(item.id ?? ''))}" data-edit-account-email="${escapeHtml(item.email || '')}" data-edit-account-remark="${escapeHtml(item.remark || '')}" style="margin-left: 4px;">修改</button>`;
                 const deleteBtn = `<button class="btn btn-sm btn-danger" type="button" data-delete-account-id="${escapeHtml(String(item.id ?? ''))}" data-delete-account-email="${escapeHtml(item.email || '')}" style="margin-left: 4px;">删除</button>`;
                 return `
                     <tr>
@@ -47,7 +48,7 @@
                         <td>${escapeHtml(item.status || '')}</td>
                         <td>${escapeHtml(item.remark || '')}</td>
                         <td>${escapeHtml(item.created_at || '')}</td>
-                        <td>${authBtn}${deleteBtn}</td>
+                        <td>${authBtn}${editBtn}${deleteBtn}</td>
                     </tr>
                 `;
             }).join('');
@@ -213,6 +214,75 @@
                 if (btn) btn.disabled = false;
             }
         }
+
+        // ==================== 修改上传账号 ====================
+
+        function showEditUploadAccountModal(accountId, email, remark) {
+            document.getElementById('editUploadAccountId').value = String(accountId ?? '');
+            document.getElementById('editUploadAccountEmail').value = email || '';
+            document.getElementById('editUploadAccountPassword').value = '';
+            document.getElementById('editUploadAccountRemark').value = remark || '';
+            showModal('editUploadAccountModal');
+        }
+
+        function hideEditUploadAccountModal() {
+            hideModal('editUploadAccountModal');
+        }
+
+        async function submitEditUploadAccount() {
+            const accountId = document.getElementById('editUploadAccountId').value.trim();
+            const email = document.getElementById('editUploadAccountEmail').value.trim();
+            const password = document.getElementById('editUploadAccountPassword').value;
+            const remark = document.getElementById('editUploadAccountRemark').value.trim();
+
+            if (!accountId) {
+                showToast('未选中账号，无法修改', 'error');
+                return;
+            }
+            if (!email) {
+                showToast('请输入邮箱', 'error');
+                return;
+            }
+
+            const payload = { email, remark };
+            // 密码留空表示保持原密码，不下发该字段
+            if (password !== '') {
+                payload.password = password;
+            }
+
+            const btn = document.getElementById('submitEditUploadAccountBtn');
+            if (btn) btn.disabled = true;
+
+            try {
+                const response = await fetch(`/api/outlook-upload-accounts/${encodeURIComponent(accountId)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast('修改成功', 'success');
+                    hideEditUploadAccountModal();
+                    reloadUploadAccounts();
+                } else {
+                    handleApiError(data, '修改失败');
+                }
+            } catch (error) {
+                showToast('修改失败: ' + error.message, 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        document.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-edit-account-id]');
+            if (!button) return;
+            showEditUploadAccountModal(
+                Number(button.dataset.editAccountId),
+                button.dataset.editAccountEmail || '',
+                button.dataset.editAccountRemark || ''
+            );
+        });
 
         // ==================== Graph OAuth 授权 ====================
 
