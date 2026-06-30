@@ -1195,6 +1195,16 @@
                             <span class="upload-accounts-auth__title">授权日志</span>
                             <span class="upload-accounts-auth__status" id="graphAuthStatus" data-state="idle">空闲</span>
                         </div>
+                        <div class="upload-accounts-auth__mode" role="radiogroup" aria-label="授权模式">
+                            <label class="upload-accounts-auth__mode-option">
+                                <input type="radio" name="graphAuthMode" value="imap" checked>
+                                <span>IMAP授权</span>
+                            </label>
+                            <label class="upload-accounts-auth__mode-option">
+                                <input type="radio" name="graphAuthMode" value="graph">
+                                <span>Graph授权</span>
+                            </label>
+                        </div>
                         <div id="graphAuthLog" class="upload-accounts-auth__log">点击账号「去授权 / 重新授权」后，授权日志会显示在这里。</div>
                     </aside>
                 </div>
@@ -1255,6 +1265,44 @@
         .upload-accounts-auth__status[data-state="error"] {
             background: rgba(239, 68, 68, 0.15);
             color: #b91c1c;
+        }
+        .upload-accounts-auth__mode {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            padding: 4px;
+            margin-bottom: 8px;
+            border: 1px solid var(--skin-border, #e5e7eb);
+            border-radius: 8px;
+            background: var(--skin-surface-muted, #f8fafc);
+        }
+        .upload-accounts-auth__mode-option {
+            position: relative;
+            display: flex;
+            min-width: 0;
+        }
+        .upload-accounts-auth__mode-option input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .upload-accounts-auth__mode-option span {
+            flex: 1 1 auto;
+            min-width: 0;
+            padding: 6px 8px;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--skin-text-muted, #64748b);
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .upload-accounts-auth__mode-option input:checked + span {
+            background: var(--skin-surface, #ffffff);
+            color: var(--skin-text, #111827);
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
         }
         .upload-accounts-auth__log {
             flex: 1 1 auto;

@@ -24,9 +24,17 @@ GRAPH_EXTRACT_CLIENT_ID = os.getenv(
 GRAPH_EXTRACT_REDIRECT_URI = os.getenv("GRAPH_EXTRACT_REDIRECT_URI", "http://localhost")
 GRAPH_EXTRACT_SCOPE = os.getenv(
     "GRAPH_EXTRACT_SCOPE",
+    "offline_access https://outlook.office.com/IMAP.AccessAsUser.All",
+)
+GRAPH_EXTRACT_GRAPH_SCOPE = os.getenv(
+    "GRAPH_EXTRACT_GRAPH_SCOPE",
     "offline_access https://graph.microsoft.com/Mail.Read",
 )
 GRAPH_EXTRACT_AUTHORITY = os.getenv("GRAPH_EXTRACT_AUTHORITY", "consumers")
+GRAPH_EXTRACT_SCOPE_BY_MODE = {
+    "imap": GRAPH_EXTRACT_SCOPE,
+    "graph": GRAPH_EXTRACT_GRAPH_SCOPE,
+}
 
 # Backward-compatible aliases for existing docs/tests.
 GRAPH_CLIENT_ID = GRAPH_EXTRACT_CLIENT_ID
@@ -35,6 +43,15 @@ GRAPH_SCOPE = GRAPH_EXTRACT_SCOPE
 
 GRAPH_OAUTH_TASKS: Dict[str, Dict[str, Any]] = {}
 GRAPH_OAUTH_DONE = object()
+
+
+def normalize_graph_oauth_mode(mode: Any) -> str:
+    normalized = str(mode or "imap").strip().lower()
+    return normalized if normalized in GRAPH_EXTRACT_SCOPE_BY_MODE else "imap"
+
+
+def graph_oauth_mode_label(mode: str) -> str:
+    return "Graph" if mode == "graph" else "Outlook IMAP"
 
 
 def graph_oauth_sse(payload: Dict[str, Any]) -> str:
@@ -115,7 +132,7 @@ def extract_graph_refresh_token(
     log: Optional[Callable[[str], None]] = None,
     session_factory: Optional[Callable[[], Any]] = None,
 ) -> Dict[str, Any]:
-    """使用纯 HTTP OAuth2 授权码流程提取 Microsoft Graph refresh_token。"""
+    """使用纯 HTTP OAuth2 授权码流程提取 Outlook refresh_token。"""
     try:
         session = session_factory() if session_factory else requests.Session()
         session.trust_env = True
@@ -223,7 +240,7 @@ def extract_graph_refresh_token(
                 server_data = re.search(r'ServerData\s*=\s*(\{.*?\});', text, re.DOTALL)
                 if not server_data:
                     return make_graph_oauth_response(False, "同意页面处理失败", "无法解析 ServerData")
-                graph_oauth_log(log, "接受 Graph 授权同意页面")
+                graph_oauth_log(log, "接受 Outlook 授权同意页面")
                 sd = json.loads(server_data.group(1))
                 resp2 = session.post(
                     current_url,
@@ -290,7 +307,7 @@ def extract_graph_refresh_token(
         if not auth_code:
             return make_graph_oauth_response(False, "未能获取授权码", "完成所有步骤但未捕获到授权码")
 
-        graph_oauth_log(log, "使用授权码换取 Graph token")
+        graph_oauth_log(log, "使用授权码换取 Outlook token")
         token_resp = session.post(
             f"https://login.microsoftonline.com/{authority}/oauth2/v2.0/token",
             data={
@@ -312,7 +329,7 @@ def extract_graph_refresh_token(
         if not refresh_token:
             return make_graph_oauth_response(False, "未获取到 refresh_token", "响应中包含 access_token 但没有 refresh_token")
 
-        graph_oauth_log(log, "已获取 Graph refresh_token")
+        graph_oauth_log(log, "已获取 Outlook refresh_token")
         return {
             "success": True,
             "refresh_token": refresh_token,
@@ -417,7 +434,8 @@ def save_graph_authorization_result(upload_row: Any, client_id: str,
     return save_result
 
 
-def run_graph_oauth_task(account_id: int, output_queue: "queue.Queue[Dict[str, Any] | object]") -> None:
+def run_graph_oauth_task(account_id: int, output_queue: "queue.Queue[Dict[str, Any] | object]",
+                         mode: str = "imap") -> None:
     def emit(payload: Dict[str, Any]) -> None:
         output_queue.put(payload)
 
@@ -426,25 +444,36 @@ def run_graph_oauth_task(account_id: int, output_queue: "queue.Queue[Dict[str, A
 
     with app.app_context():
         try:
+            mode = normalize_graph_oauth_mode(mode)
             upload_row = get_upload_account_for_graph_auth(account_id)
             if not upload_row:
-                emit({"type": "error", "success": False, "message": "上传账号不存在"})
+                emit({"type": "error", "success": False, "mode": mode, "message": "上传账号不存在"})
                 emit({"type": "complete", "success": False})
                 return
 
             email = str(upload_row['email'] or '').strip()
             password = get_upload_account_plain_password(upload_row)
             if not email or not password:
-                emit({"type": "error", "success": False, "message": "邮箱或密码为空"})
+                emit({"type": "error", "success": False, "mode": mode, "message": "邮箱或密码为空"})
                 emit({"type": "complete", "success": False})
                 return
 
-            emit({"type": "start", "email": email, "message": "开始 Graph OAuth 授权"})
-            result = extract_graph_refresh_token(email, password, log=log)
+            mode_label = graph_oauth_mode_label(mode)
+            scope = GRAPH_EXTRACT_SCOPE_BY_MODE[mode]
+            emit({
+                "type": "start",
+                "email": email,
+                "mode": mode,
+                "message": f"开始 {mode_label} OAuth 授权",
+            })
+            log(f"授权模式: {mode_label}")
+            log(f"授权 Scope: {scope}")
+            result = extract_graph_refresh_token(email, password, scope=scope, log=log)
             if not result.get("success"):
                 emit({
                     "type": "error",
                     "success": False,
+                    "mode": mode,
                     "message": graph_oauth_safe_details(result.get("error") or "授权失败"),
                     "details": graph_oauth_safe_details(result.get("details") or ""),
                 })
@@ -453,13 +482,14 @@ def run_graph_oauth_task(account_id: int, output_queue: "queue.Queue[Dict[str, A
 
             client_id = str(result.get("client_id") or "").strip()
             refresh_token = str(result.get("refresh_token") or "").strip()
-            log("验证 Graph refresh_token")
+            log(f"验证 {mode_label} refresh_token")
             ok, error_msg, rotated_refresh_token = test_refresh_token(client_id, refresh_token)
             if not ok:
                 emit({
                     "type": "error",
                     "success": False,
-                    "message": "Graph refresh_token 验证失败",
+                    "mode": mode,
+                    "message": f"{mode_label} refresh_token 验证失败",
                     "details": graph_oauth_safe_details(error_msg),
                 })
                 emit({"type": "complete", "success": False})
@@ -470,6 +500,7 @@ def run_graph_oauth_task(account_id: int, output_queue: "queue.Queue[Dict[str, A
             emit({
                 "type": "success",
                 "success": True,
+                "mode": mode,
                 "email": email,
                 "account_id": save_result["account_id"],
                 "created": save_result["created"],
@@ -485,6 +516,7 @@ def run_graph_oauth_task(account_id: int, output_queue: "queue.Queue[Dict[str, A
             emit({
                 "type": "error",
                 "success": False,
+                "mode": normalize_graph_oauth_mode(mode),
                 "message": "授权任务异常",
                 "details": graph_oauth_safe_details(str(exc)),
             })
@@ -509,11 +541,13 @@ def api_graph_extract_token():
     if not str(row['email'] or '').strip() or not str(row['password'] or ''):
         return jsonify({'success': False, 'error': '邮箱或密码为空'}), 400
 
+    mode = normalize_graph_oauth_mode(data.get('mode'))
     task_id = uuid.uuid4().hex
-    GRAPH_OAUTH_TASKS[task_id] = {'account_id': account_id}
+    GRAPH_OAUTH_TASKS[task_id] = {'account_id': account_id, 'mode': mode}
     return jsonify({
         'success': True,
         'task_id': task_id,
+        'mode': mode,
         'stream_url': f'/api/oauth/graph-extract-token/{task_id}/stream',
     })
 
@@ -533,7 +567,7 @@ def api_graph_extract_token_stream(task_id: str):
         output_queue: "queue.Queue[Dict[str, Any] | object]" = queue.Queue()
         worker = threading.Thread(
             target=run_graph_oauth_task,
-            args=(int(task['account_id']), output_queue),
+            args=(int(task['account_id']), output_queue, normalize_graph_oauth_mode(task.get('mode'))),
             name=f"graph-oauth-{task_id[:8]}",
             daemon=True,
         )

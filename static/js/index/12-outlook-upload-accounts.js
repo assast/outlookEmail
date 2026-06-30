@@ -272,9 +272,13 @@
             );
         });
 
-        // ==================== Graph OAuth 授权 ====================
+        // ==================== Outlook IMAP OAuth 授权 ====================
 
         const GRAPH_AUTH_LOG_PLACEHOLDER = '点击账号「去授权 / 重新授权」后，授权日志会显示在这里。';
+        const GRAPH_AUTH_MODE_LABELS = {
+            imap: 'Outlook IMAP',
+            graph: 'Graph',
+        };
 
         let graphAuthState = {
             accountId: null,
@@ -320,6 +324,15 @@
             logEl.scrollTop = logEl.scrollHeight;
         }
 
+        function getGraphAuthMode() {
+            const checked = document.querySelector('input[name="graphAuthMode"]:checked');
+            return checked && checked.value === 'graph' ? 'graph' : 'imap';
+        }
+
+        function getGraphAuthModeLabel(mode) {
+            return GRAPH_AUTH_MODE_LABELS[mode] || GRAPH_AUTH_MODE_LABELS.imap;
+        }
+
         async function startGraphAuthForAccount(accountId, email, passwordLength) {
             if (graphAuthState.running) {
                 showToast('正在授权中，请等待当前任务完成', 'warning');
@@ -339,12 +352,14 @@
             graphAuthState.email = email;
             graphAuthState.secretLength = Number(passwordLength) || 0;
             graphAuthState.running = true;
+            const authMode = getGraphAuthMode();
+            const authModeLabel = getGraphAuthModeLabel(authMode);
 
             setUploadAuthButtonsDisabled(true);
             setGraphAuthStatus('running', '授权中');
 
             const logEl = document.getElementById('graphAuthLog');
-            if (logEl) logEl.textContent = '开始 Graph OAuth 授权流程...';
+            if (logEl) logEl.textContent = `开始 ${authModeLabel} OAuth 授权流程...`;
             const startTime = Date.now();
 
             const finishAuth = (state, statusText) => {
@@ -356,6 +371,7 @@
             try {
                 appendGraphAuthLog('邮箱: ' + email);
                 appendGraphAuthLog('密码: ' + '*'.repeat(Math.max(6, graphAuthState.secretLength)));
+                appendGraphAuthLog('授权模式: ' + authModeLabel);
                 appendGraphAuthLog('');
                 appendGraphAuthLog('正在创建授权任务...');
                 appendGraphAuthLog('');
@@ -366,14 +382,15 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        account_id: accountId
+                        account_id: accountId,
+                        mode: authMode
                     })
                 });
 
                 const data = await response.json();
                 if (!response.ok || !data.success || !data.stream_url) {
                     appendGraphAuthLog('创建授权任务失败: ' + (data.error || '未知错误'));
-                    showToast('Graph 授权失败: ' + (data.error || '未知错误'), 'error');
+                    showToast(authModeLabel + ' 授权失败: ' + (data.error || '未知错误'), 'error');
                     finishAuth('error', '失败');
                     return;
                 }
@@ -398,14 +415,14 @@
                         appendGraphAuthLog('授权成功，已保存到正式账号');
                         appendGraphAuthLog('Client ID: ' + (payload.client_id || '-'));
                         appendGraphAuthLog(payload.created ? '保存方式: 新增正式账号' : '保存方式: 更新已有正式账号');
-                        showToast('Graph 授权成功，已保存到正式账号', 'success');
+                        showToast(getGraphAuthModeLabel(payload.mode || authMode) + ' 授权成功，已保存到正式账号', 'success');
                     } else if (payload.type === 'error') {
                         appendGraphAuthLog('');
                         appendGraphAuthLog('授权失败: ' + (payload.message || '未知错误'));
                         if (payload.details) {
                             appendGraphAuthLog(payload.details);
                         }
-                        showToast('Graph 授权失败: ' + (payload.message || '未知错误'), 'error');
+                        showToast(getGraphAuthModeLabel(payload.mode || authMode) + ' 授权失败: ' + (payload.message || '未知错误'), 'error');
                     } else if (payload.type === 'complete') {
                         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
                         appendGraphAuthLog('');

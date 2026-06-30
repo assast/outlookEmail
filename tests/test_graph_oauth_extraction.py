@@ -2,6 +2,7 @@ import importlib
 import json
 import os
 import tempfile
+import urllib.parse
 import unittest
 from unittest.mock import patch
 
@@ -87,6 +88,11 @@ class GraphTokenExtractorTests(unittest.TestCase):
         self.assertEqual(session.post_calls[0][1]['PPFT'], 'flow-token-hidden')
         self.assertEqual(session.post_calls[0][1]['ctx'], 'ctx-value')
         self.assertEqual(session.post_calls[1][1]['code'], 'auth-code')
+        self.assertEqual(session.post_calls[1][1]['scope'], web_outlook_app.GRAPH_EXTRACT_SCOPE)
+        self.assertIn('https://outlook.office.com/IMAP.AccessAsUser.All', session.post_calls[1][1]['scope'])
+        auth_query = urllib.parse.parse_qs(urllib.parse.urlparse(session.get_calls[0][0]).query)
+        self.assertEqual(auth_query['scope'][0], web_outlook_app.GRAPH_EXTRACT_SCOPE)
+        self.assertIn('https://outlook.office.com/IMAP.AccessAsUser.All', auth_query['scope'][0])
         self.assertNotIn('secret-password', '\n'.join(logs))
         self.assertNotIn('refresh-token-value', '\n'.join(logs))
 
@@ -243,6 +249,18 @@ class GraphOauthRouteTests(unittest.TestCase):
         self.assertIn('stream_url', payload)
         return payload['stream_url']
 
+    def _start_graph_task_with_mode(self, account_id, mode):
+        response = self.client.post('/api/oauth/graph-extract-token', json={
+            'account_id': account_id,
+            'mode': mode,
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'], payload)
+        self.assertEqual(payload['mode'], mode if mode in ('imap', 'graph') else 'imap')
+        self.assertIn('stream_url', payload)
+        return payload['stream_url']
+
     def _consume_stream(self, stream_url):
         response = self.client.get(stream_url)
         self.assertEqual(response.status_code, 200)
@@ -345,6 +363,36 @@ class GraphOauthRouteTests(unittest.TestCase):
         self.assertEqual(account['remark'], 'keep existing remark')
         self.assertEqual(account['last_refresh_status'], 'never')
         self.assertIsNone(account['last_refresh_error'])
+
+    def test_stream_graph_mode_uses_graph_scope(self):
+        account_id = self._add_upload_account(email='graph-mode@example.com')
+
+        with patch.object(web_outlook_app, 'extract_graph_refresh_token', return_value={
+            'success': True,
+            'refresh_token': 'graph-refresh-token',
+            'client_id': 'graph-client-id',
+        }) as extract_mock, \
+             patch.object(web_outlook_app, 'test_refresh_token', return_value=(True, None, '')):
+            _, events = self._consume_stream(self._start_graph_task_with_mode(account_id, 'graph'))
+
+        self.assertTrue(events[-1]['success'])
+        self.assertEqual(extract_mock.call_args.kwargs['scope'], web_outlook_app.GRAPH_EXTRACT_GRAPH_SCOPE)
+        self.assertIn('https://graph.microsoft.com/Mail.Read', extract_mock.call_args.kwargs['scope'])
+
+    def test_stream_default_mode_uses_imap_scope(self):
+        account_id = self._add_upload_account(email='imap-mode@example.com')
+
+        with patch.object(web_outlook_app, 'extract_graph_refresh_token', return_value={
+            'success': True,
+            'refresh_token': 'imap-refresh-token',
+            'client_id': 'imap-client-id',
+        }) as extract_mock, \
+             patch.object(web_outlook_app, 'test_refresh_token', return_value=(True, None, '')):
+            _, events = self._consume_stream(self._start_graph_task(account_id))
+
+        self.assertTrue(events[-1]['success'])
+        self.assertEqual(extract_mock.call_args.kwargs['scope'], web_outlook_app.GRAPH_EXTRACT_SCOPE)
+        self.assertIn('https://outlook.office.com/IMAP.AccessAsUser.All', extract_mock.call_args.kwargs['scope'])
 
     def test_stream_validation_failure_does_not_write_or_mark_authorized(self):
         account_id = self._add_upload_account(email='invalid-token@example.com')
