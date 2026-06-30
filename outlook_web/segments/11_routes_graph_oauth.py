@@ -400,7 +400,6 @@ def mark_upload_account_authorized(account_id: int) -> None:
         '''
         UPDATE outlook_upload_accounts
         SET is_authorized = 1,
-            password = '',
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         ''',

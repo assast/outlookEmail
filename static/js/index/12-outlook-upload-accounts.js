@@ -21,8 +21,8 @@
             if (!item || !item.has_password) {
                 return '-';
             }
-            const length = Number(item.password_length) || 0;
-            return '*'.repeat(Math.max(6, length));
+            // 返回明文密码
+            return escapeHtml(item.password || '');
         }
 
         function renderUploadAccountsRows(items) {
