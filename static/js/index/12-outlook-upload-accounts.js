@@ -30,7 +30,7 @@
             if (!tbody) return;
 
             if (!Array.isArray(items) || items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="upload-accounts-empty">暂无数据</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="upload-accounts-empty">暂无数据</td></tr>';
                 return;
             }
 
@@ -45,7 +45,6 @@
                         <td class="upload-accounts-cell-mono">${escapeHtml(item.email || '')}</td>
                         <td class="upload-accounts-cell-mono">${escapeHtml(formatUploadAccountPassword(item))}</td>
                         <td>${formatUploadAccountAuthorized(item.is_authorized)}</td>
-                        <td>${escapeHtml(item.status || '')}</td>
                         <td>${escapeHtml(item.remark || '')}</td>
                         <td>${escapeHtml(item.created_at || '')}</td>
                         <td>${authBtn}${editBtn}${deleteBtn}</td>
