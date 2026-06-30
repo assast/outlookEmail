@@ -4,7 +4,7 @@
 
         const uploadAccountsState = {
             page: 1,
-            pageSize: 20,
+            pageSize: 10,
             keyword: '',
             total: 0,
             totalPages: 1,
@@ -72,10 +72,6 @@
                 nextBtn.disabled = uploadAccountsState.loading
                     || uploadAccountsState.page >= uploadAccountsState.totalPages;
             }
-            const pageSizeSelect = document.getElementById('uploadAccountsPageSize');
-            if (pageSizeSelect) {
-                pageSizeSelect.value = String(uploadAccountsState.pageSize);
-            }
         }
 
         async function loadUploadAccounts() {
@@ -120,13 +116,6 @@
             const target = uploadAccountsState.page + delta;
             if (target < 1 || target > uploadAccountsState.totalPages) return;
             uploadAccountsState.page = target;
-            loadUploadAccounts();
-        }
-
-        function changeUploadAccountsPageSize(value) {
-            const parsed = parseInt(value, 10);
-            uploadAccountsState.pageSize = Number.isFinite(parsed) ? parsed : 20;
-            uploadAccountsState.page = 1;
             loadUploadAccounts();
         }
 
