@@ -196,6 +196,55 @@ def extract_graph_refresh_token(
             allow_redirects=False,
         )
 
+        # 检测登录失败的情况
+        post_html = resp2.text or ""
+        post_url_check = getattr(resp2, "url", "") or post_url
+
+        if resp2.status_code == 200 and "ppsecure/post.srf" in post_url_check:
+            # 情况1：检查JavaScript错误变量和HTML错误元素
+            error_markers = [
+                (r'sErrTxt["\s:=]+["\']([^"\']+)', "JavaScript错误信息"),
+                (r'<div[^>]*id=["\']error["\'][^>]*>([^<]+)', "错误提示框"),
+                (r'data-bind=["\']text:\s*unsafe_(\w+)["\']', "验证失败"),
+                (r'<div[^>]*class=["\'][^"\']*error[^"\']*["\'][^>]*>([^<]+)', "错误样式"),
+            ]
+
+            for pattern, error_type in error_markers:
+                match = re.search(pattern, post_html, re.IGNORECASE | re.DOTALL)
+                if match:
+                    error_detail = match.group(1).strip() if match.lastindex and len(match.groups()) > 0 else error_type
+                    # 清理HTML标签
+                    error_detail = re.sub(r'<[^>]+>', '', error_detail).strip()
+                    return make_graph_oauth_response(
+                        False,
+                        "Microsoft 登录失败",
+                        f"{error_type}: {graph_oauth_safe_details(error_detail)}"
+                    )
+
+            # 情况2：没有重定向且停留在post.srf，检查是否返回了登录表单
+            if not resp2.headers.get("Location"):
+                # 如果页面包含密码输入框，说明登录失败返回了登录页面
+                if re.search(r'name=["\']passwd["\']', post_html, re.IGNORECASE):
+                    # 尝试提取更具体的错误信息
+                    specific_errors = [
+                        (r'incorrect|invalid|wrong', "密码不正确或账号不存在"),
+                        (r'verify|verification|confirm', "需要额外验证"),
+                        (r'suspicious|unusual', "检测到异常活动"),
+                        (r'disabled|locked|blocked', "账号被锁定或禁用"),
+                    ]
+
+                    error_hint = "密码不正确、账号不存在或需要额外验证"
+                    for pattern, hint in specific_errors:
+                        if re.search(pattern, post_html, re.IGNORECASE):
+                            error_hint = hint
+                            break
+
+                    return make_graph_oauth_response(
+                        False,
+                        "登录凭据验证失败",
+                        f"提交凭据后返回了登录表单，通常表示{error_hint}。请手动登录 https://outlook.live.com 确认账号状态。"
+                    )
+
         for _ in range(5):
             html = resp2.text or ""
             if ("DoSubmit" in html or ("fmHF" in html and "onload" in html)) and "action=" in html:
