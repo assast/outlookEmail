@@ -36,9 +36,9 @@
 
             tbody.innerHTML = items.map(item => {
                 const authBtnLabel = item.is_authorized ? '重新授权' : '去授权';
-                const authBtn = `<button class="btn btn-sm btn-primary" type="button" data-graph-auth-account-id="${escapeHtml(String(item.id ?? ''))}" data-graph-auth-email="${escapeHtml(item.email || '')}" data-graph-auth-password-length="${escapeHtml(String(item.password_length || 0))}">${authBtnLabel}</button>`;
-                const editBtn = `<button class="btn btn-sm btn-secondary" type="button" data-edit-account-id="${escapeHtml(String(item.id ?? ''))}" data-edit-account-email="${escapeHtml(item.email || '')}" data-edit-account-remark="${escapeHtml(item.remark || '')}" style="margin-left: 4px;">修改</button>`;
-                const deleteBtn = `<button class="btn btn-sm btn-danger" type="button" data-delete-account-id="${escapeHtml(String(item.id ?? ''))}" data-delete-account-email="${escapeHtml(item.email || '')}" style="margin-left: 4px;">删除</button>`;
+                const authBtn = `<button class="btn btn-sm btn-primary" type="button" style="width: 80px;" data-graph-auth-account-id="${escapeHtml(String(item.id ?? ''))}" data-graph-auth-email="${escapeHtml(item.email || '')}" data-graph-auth-password-length="${escapeHtml(String(item.password_length || 0))}">${authBtnLabel}</button>`;
+                const editBtn = `<button class="btn btn-sm btn-secondary" type="button" data-edit-account-id="${escapeHtml(String(item.id ?? ''))}" data-edit-account-email="${escapeHtml(item.email || '')}" data-edit-account-remark="${escapeHtml(item.remark || '')}">修改</button>`;
+                const deleteBtn = `<button class="btn btn-sm btn-danger" type="button" data-delete-account-id="${escapeHtml(String(item.id ?? ''))}" data-delete-account-email="${escapeHtml(item.email || '')}">删除</button>`;
                 return `
                     <tr>
                         <td>${escapeHtml(String(item.id ?? ''))}</td>

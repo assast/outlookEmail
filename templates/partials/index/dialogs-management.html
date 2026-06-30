@@ -1143,7 +1143,7 @@
 
     <!-- Outlook 上传账号模态框 -->
     <div class="modal" id="outlookUploadAccountsModal" onmousedown="if(event.target === this) hideOutlookUploadAccountsModal()">
-        <div class="modal-content" style="width: min(1180px, 96vw);">
+        <div class="modal-content" style="width: min(1380px, 96vw);">
             <div class="modal-header">
                 <h3>Outlook自动化授权</h3>
                 <button class="modal-close" onclick="hideOutlookUploadAccountsModal()">&times;</button>
@@ -1170,7 +1170,7 @@
                                         <th style="width: 72px; min-width: 72px;">状态</th>
                                         <th style="width: 100px; min-width: 80px;">备注</th>
                                         <th style="width: 130px; min-width: 120px;">创建时间</th>
-                                        <th style="width: 220px; min-width: 220px;">操作</th>
+                                        <th style="width: 210px; min-width: 210px;">操作</th>
                                     </tr>
                                 </thead>
                                 <tbody id="uploadAccountsTableBody">
@@ -1266,7 +1266,7 @@
         }
         .upload-accounts-auth__log {
             flex: 1 1 auto;
-            min-height: 400px;
+            min-height: 450px;
             max-height: 60vh;
             overflow-y: auto;
             padding: 12px;
@@ -1287,8 +1287,8 @@
                 flex-basis: auto;
             }
             .upload-accounts-auth__log {
-                min-height: 220px;
-                max-height: 320px;
+                min-height: 450px;
+                max-height: 450px;
             }
         }
         .upload-accounts-toolbar {
@@ -1321,11 +1321,17 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .upload-accounts-table td:last-child {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
         .upload-accounts-table th {
             background: var(--table-head-bg, #f6f7f9);
             font-weight: 600;
             position: sticky;
             top: 0;
+            text-align: center;
         }
         .upload-accounts-table tbody tr:last-child td {
             border-bottom: none;
