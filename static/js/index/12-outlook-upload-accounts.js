@@ -135,6 +135,7 @@
             const input = document.getElementById('uploadAccountsSearch');
             if (input) input.value = '';
             resetGraphAuthPanel();
+            clearAddAccountForm();
             showModal('outlookUploadAccountsModal');
             loadUploadAccounts();
         }
@@ -150,16 +151,20 @@
 
         // ==================== 添加上传账号 ====================
 
-        function showAddUploadAccountModal() {
+        function toggleAddAccountPanel() {
+            const container = document.getElementById('addAccountFormContainer');
+            const icon = document.getElementById('toggleAddPanelIcon');
+            if (!container || !icon) return;
+
+            const isCollapsed = container.classList.toggle('is-collapsed');
+            icon.textContent = isCollapsed ? '▶' : '▼';
+        }
+
+        function clearAddAccountForm() {
             document.getElementById('addUploadAccountEmailPrefix').value = '';
             document.getElementById('addUploadAccountEmailDomain').value = '@outlook.com';
             document.getElementById('addUploadAccountPassword').value = '';
             document.getElementById('addUploadAccountRemark').value = '';
-            showModal('addUploadAccountModal');
-        }
-
-        function hideAddUploadAccountModal() {
-            hideModal('addUploadAccountModal');
         }
 
         async function submitAddUploadAccount() {
@@ -191,7 +196,7 @@
                 const data = await response.json();
                 if (data.success) {
                     showToast('添加成功', 'success');
-                    hideAddUploadAccountModal();
+                    clearAddAccountForm();
                     reloadUploadAccounts();
                 } else {
                     handleApiError(data, '添加失败');
