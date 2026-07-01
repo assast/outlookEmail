@@ -9,6 +9,8 @@
             total: 0,
             totalPages: 1,
             loading: false,
+            editingRowId: null,
+            currentData: [],
         };
 
         function formatUploadAccountAuthorized(isAuthorized) {
@@ -35,21 +37,61 @@
             }
 
             tbody.innerHTML = items.map(item => {
-                const authBtnLabel = item.is_authorized ? '重新授权' : '去授权';
-                const authBtn = `<button class="btn btn-sm btn-primary" type="button" style="width: 80px;" data-graph-auth-account-id="${escapeHtml(String(item.id ?? ''))}" data-graph-auth-email="${escapeHtml(item.email || '')}" data-graph-auth-password-length="${escapeHtml(String(item.password_length || 0))}">${authBtnLabel}</button>`;
-                const editBtn = `<button class="btn btn-sm btn-secondary" type="button" data-edit-account-id="${escapeHtml(String(item.id ?? ''))}" data-edit-account-email="${escapeHtml(item.email || '')}" data-edit-account-remark="${escapeHtml(item.remark || '')}">修改</button>`;
-                const deleteBtn = `<button class="btn btn-sm btn-danger" type="button" data-delete-account-id="${escapeHtml(String(item.id ?? ''))}" data-delete-account-email="${escapeHtml(item.email || '')}">删除</button>`;
-                return `
-                    <tr>
-                        <td>${escapeHtml(String(item.id ?? ''))}</td>
-                        <td class="upload-accounts-cell-mono">${escapeHtml(item.email || '')}</td>
-                        <td class="upload-accounts-cell-mono">${escapeHtml(formatUploadAccountPassword(item))}</td>
-                        <td>${formatUploadAccountAuthorized(item.is_authorized)}</td>
-                        <td>${escapeHtml(item.remark || '')}</td>
-                        <td>${escapeHtml(item.created_at || '')}</td>
-                        <td>${authBtn}${editBtn}${deleteBtn}</td>
-                    </tr>
-                `;
+                const itemId = item.id ?? '';
+                const itemEmail = item.email || '';
+                const itemRemark = item.remark || '';
+                const itemCreatedAt = item.created_at || '';
+                const isEditing = uploadAccountsState.editingRowId === itemId;
+
+                if (isEditing) {
+                    // 编辑状态
+                    return `
+                        <tr class="upload-accounts-row--editing" data-editing-id="${escapeHtml(String(itemId))}">
+                            <td>${escapeHtml(String(itemId))}</td>
+                            <td class="upload-accounts-cell-mono">
+                                <input type="text" class="upload-accounts-edit-input"
+                                    id="edit-email-${escapeHtml(String(itemId))}"
+                                    value="${escapeHtml(itemEmail)}"
+                                    placeholder="邮箱" autocomplete="off">
+                            </td>
+                            <td>
+                                <input type="password" class="upload-accounts-edit-input"
+                                    id="edit-password-${escapeHtml(String(itemId))}"
+                                    placeholder="留空不改" autocomplete="off">
+                            </td>
+                            <td class="upload-accounts-edit-disabled">-</td>
+                            <td>
+                                <input type="text" class="upload-accounts-edit-input"
+                                    id="edit-remark-${escapeHtml(String(itemId))}"
+                                    value="${escapeHtml(itemRemark)}"
+                                    placeholder="备注" autocomplete="off">
+                            </td>
+                            <td class="upload-accounts-edit-disabled">-</td>
+                            <td>
+                                <button class="btn btn-sm btn-primary" type="button" onclick="saveRowEdit(${escapeHtml(String(itemId))})">保存修改</button>
+                                <button class="btn btn-sm btn-secondary" type="button" onclick="cancelRowEdit()">取消</button>
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    // 正常显示状态
+                    const authBtnLabel = item.is_authorized ? '重新授权' : '去授权';
+                    const editDisabled = uploadAccountsState.editingRowId !== null;
+                    const authBtn = `<button class="btn btn-sm btn-primary" type="button" style="width: 80px;" ${editDisabled ? 'disabled' : ''} data-graph-auth-account-id="${escapeHtml(String(itemId))}" data-graph-auth-email="${escapeHtml(itemEmail)}" data-graph-auth-password-length="${escapeHtml(String(item.password_length || 0))}">${authBtnLabel}</button>`;
+                    const editBtn = `<button class="btn btn-sm btn-secondary" type="button" ${editDisabled ? 'disabled' : ''} onclick="enterRowEditMode(${escapeHtml(String(itemId))}, '${escapeHtml(itemEmail)}', '${escapeHtml(itemRemark)}')">修改</button>`;
+                    const deleteBtn = `<button class="btn btn-sm btn-danger" type="button" ${editDisabled ? 'disabled' : ''} data-delete-account-id="${escapeHtml(String(itemId))}" data-delete-account-email="${escapeHtml(itemEmail)}">删除</button>`;
+                    return `
+                        <tr>
+                            <td>${escapeHtml(String(itemId))}</td>
+                            <td class="upload-accounts-cell-mono">${escapeHtml(itemEmail)}</td>
+                            <td class="upload-accounts-cell-mono">${escapeHtml(formatUploadAccountPassword(item))}</td>
+                            <td>${formatUploadAccountAuthorized(item.is_authorized)}</td>
+                            <td>${escapeHtml(itemRemark)}</td>
+                            <td>${escapeHtml(itemCreatedAt)}</td>
+                            <td>${authBtn}${editBtn}${deleteBtn}</td>
+                        </tr>
+                    `;
+                }
             }).join('');
         }
 
@@ -96,12 +138,15 @@
                     uploadAccountsState.totalPages = Math.max(1, Number(data.total_pages) || 1);
                     uploadAccountsState.page = Math.max(1, Number(data.page) || 1);
                     uploadAccountsState.pageSize = Number(data.page_size) || uploadAccountsState.pageSize;
-                    renderUploadAccountsRows(data.items);
+                    uploadAccountsState.currentData = data.items || [];
+                    renderUploadAccountsRows(uploadAccountsState.currentData);
                 } else {
+                    uploadAccountsState.currentData = [];
                     renderUploadAccountsRows([]);
                     handleApiError(data, '加载 Outlook 上传账号失败');
                 }
             } catch (error) {
+                uploadAccountsState.currentData = [];
                 renderUploadAccountsRows([]);
                 showToast('加载 Outlook 上传账号失败: ' + error.message, 'error');
             } finally {
@@ -210,23 +255,30 @@
 
         // ==================== 修改上传账号 ====================
 
-        function showEditUploadAccountModal(accountId, email, remark) {
-            document.getElementById('editUploadAccountId').value = String(accountId ?? '');
-            document.getElementById('editUploadAccountEmail').value = email || '';
-            document.getElementById('editUploadAccountPassword').value = '';
-            document.getElementById('editUploadAccountRemark').value = remark || '';
-            showModal('editUploadAccountModal');
+        function enterRowEditMode(accountId, email, remark) {
+            if (uploadAccountsState.editingRowId !== null) {
+                showToast('请先完成当前编辑', 'warning');
+                return;
+            }
+            uploadAccountsState.editingRowId = accountId;
+            renderUploadAccountsRows(uploadAccountsState.currentData);
+
+            // 聚焦到备注输入框
+            setTimeout(() => {
+                const remarkInput = document.getElementById(`edit-remark-${accountId}`);
+                if (remarkInput) remarkInput.focus();
+            }, 50);
         }
 
-        function hideEditUploadAccountModal() {
-            hideModal('editUploadAccountModal');
+        function cancelRowEdit() {
+            uploadAccountsState.editingRowId = null;
+            renderUploadAccountsRows(uploadAccountsState.currentData);
         }
 
-        async function submitEditUploadAccount() {
-            const accountId = document.getElementById('editUploadAccountId').value.trim();
-            const email = document.getElementById('editUploadAccountEmail').value.trim();
-            const password = document.getElementById('editUploadAccountPassword').value;
-            const remark = document.getElementById('editUploadAccountRemark').value.trim();
+        async function saveRowEdit(accountId) {
+            const email = document.getElementById(`edit-email-${accountId}`)?.value.trim();
+            const password = document.getElementById(`edit-password-${accountId}`)?.value.trim();
+            const remark = document.getElementById(`edit-remark-${accountId}`)?.value.trim();
 
             if (!accountId) {
                 showToast('未选中账号，无法修改', 'error');
@@ -243,8 +295,9 @@
                 payload.password = password;
             }
 
-            const btn = document.getElementById('submitEditUploadAccountBtn');
-            if (btn) btn.disabled = true;
+            // 禁用保存按钮
+            const saveBtn = document.querySelector(`[onclick="saveRowEdit(${accountId})"]`);
+            if (saveBtn) saveBtn.disabled = true;
 
             try {
                 const response = await fetch(`/api/outlook-upload-accounts/${encodeURIComponent(accountId)}`, {
@@ -255,7 +308,7 @@
                 const data = await response.json();
                 if (data.success) {
                     showToast('修改成功', 'success');
-                    hideEditUploadAccountModal();
+                    uploadAccountsState.editingRowId = null;
                     reloadUploadAccounts();
                 } else {
                     handleApiError(data, '修改失败');
@@ -263,19 +316,9 @@
             } catch (error) {
                 showToast('修改失败: ' + error.message, 'error');
             } finally {
-                if (btn) btn.disabled = false;
+                if (saveBtn) saveBtn.disabled = false;
             }
         }
-
-        document.addEventListener('click', (event) => {
-            const button = event.target.closest('[data-edit-account-id]');
-            if (!button) return;
-            showEditUploadAccountModal(
-                Number(button.dataset.editAccountId),
-                button.dataset.editAccountEmail || '',
-                button.dataset.editAccountRemark || ''
-            );
-        });
 
         // ==================== Outlook IMAP OAuth 授权 ====================
 

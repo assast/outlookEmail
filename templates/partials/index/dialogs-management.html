@@ -1570,36 +1570,48 @@
                 width: 100%;
             }
         }
+        .upload-accounts-row--editing {
+            background: #fafafa !important;
+            box-shadow: inset 0 0 0 1px #e5e7eb;
+        }
+        .upload-accounts-row--editing td {
+            padding: 8px 10px !important;
+            vertical-align: middle;
+        }
+        .upload-accounts-edit-input {
+            width: 100%;
+            height: 34px;
+            padding: 0 10px;
+            font-size: 13px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            background: #ffffff;
+            transition: all 0.2s ease;
+        }
+        .upload-accounts-edit-input:focus {
+            outline: none;
+            border-color: #6b7280;
+            background: #ffffff;
+        }
+        .upload-accounts-edit-input:hover:not(:focus) {
+            border-color: #9ca3af;
+        }
+        .upload-accounts-edit-disabled {
+            color: #9ca3af;
+            text-align: center;
+            font-size: 12px;
+        }
+        .upload-accounts-row--editing .btn {
+            margin-right: 8px;
+            font-weight: 500;
+            padding: 4px 14px;
+            border-radius: 4px;
+        }
+        .upload-accounts-row--editing .btn:last-child {
+            margin-right: 0;
+        }
+        .upload-accounts-row--editing td:last-child {
+            text-align: center;
+            white-space: nowrap;
+        }
     </style>
-
-    <!-- 修改上传账号模态框 -->
-    <div class="modal" id="editUploadAccountModal" onmousedown="if(event.target === this) hideEditUploadAccountModal()">
-        <div class="modal-content" style="width: min(480px, 92vw);">
-            <div class="modal-header">
-                <h3>修改 Outlook 账号</h3>
-                <button class="modal-close" onclick="hideEditUploadAccountModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="editUploadAccountId">
-                <div class="form-group">
-                    <label class="form-label">邮箱 <span style="color: #ef4444;">*</span></label>
-                    <input type="text" id="editUploadAccountEmail" class="form-input"
-                        placeholder="user@outlook.com" autocomplete="off">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">密码（留空保持原密码）</label>
-                    <input type="text" id="editUploadAccountPassword" class="form-input"
-                        placeholder="留空则保持原密码" autocomplete="off">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">备注（可选）</label>
-                    <input type="text" id="editUploadAccountRemark" class="form-input"
-                        placeholder="可选备注信息" autocomplete="off">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="hideEditUploadAccountModal()">取消</button>
-                <button class="btn btn-primary" id="submitEditUploadAccountBtn" onclick="submitEditUploadAccount()">保存修改</button>
-            </div>
-        </div>
-    </div>
