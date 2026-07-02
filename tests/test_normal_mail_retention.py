@@ -183,20 +183,25 @@ class NormalMailRetentionTests(unittest.TestCase):
             fresh_db_path = os.path.join(temp_dir, 'fresh.db')
             with patch.object(web_outlook_app, 'DATABASE', fresh_db_path):
                 web_outlook_app.init_db()
-                with sqlite3.connect(fresh_db_path) as db:
+                db = sqlite3.connect(fresh_db_path)
+                try:
                     row = db.execute(
                         '''
                         SELECT value FROM settings
                         WHERE key = 'normal_mail_local_retention_enabled'
                         '''
                     ).fetchone()
+                finally:
+                    db.close()
 
                 response = self.client.get('/api/settings')
+                status_code = response.status_code
+                payload = response.get_json()
+                response.close()
 
         self.assertIsNotNone(row)
         self.assertEqual(row[0], 'false')
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
+        self.assertEqual(status_code, 200)
         self.assertTrue(payload['success'])
         self.assertEqual(
             payload['settings']['normal_mail_local_retention_enabled'],

@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-07-02
+
+### Added
+- 编辑邮箱账号时支持回显和保存账号标签。
+
+### Changed
+- 导入账号的标签选择器改为复用统一的可搜索标签下拉组件。
+
 ## [2.5.0] - 2026-06-29
 
 ### Added

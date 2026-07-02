@@ -1071,62 +1071,50 @@
         }
 
         function renderImportTagOptions() {
-            const container = document.getElementById('importTagOptions');
+            const container = document.getElementById('importTagFilterOptions');
             if (!container) return;
 
             const tags = typeof allTags !== 'undefined' && Array.isArray(allTags) ? allTags : [];
-            if (!tags.length) {
-                container.innerHTML = '<div class="import-tag-empty">暂无标签</div>';
-                updateImportTagSummary();
-                return;
-            }
-
-            container.innerHTML = tags.map(tag => `
-                <label class="import-tag-option">
-                    <input type="checkbox" class="import-tag-checkbox" value="${tag.id}" onchange="updateImportTagSummary()">
-                    <span class="import-tag-dot" style="background-color: ${escapeHtml(tag.color || '#9ca3af')};"></span>
-                    <span>${escapeHtml(tag.name || '')}</span>
-                </label>
-            `).join('');
+            container.innerHTML = buildTagFilterOptionsHtml(tags, [], 'updateImportTagSummary');
             updateImportTagSummary();
         }
 
         function updateImportTagSummary() {
-            const summaryEl = document.getElementById('importTagSummary');
-            const countEl = document.getElementById('importTagCount');
+            const summaryEl = document.getElementById('importTagFilterTriggerText');
+            const countEl = document.getElementById('importTagFilterTriggerCount');
             if (!summaryEl || !countEl) return;
 
-            const selected = Array.from(document.querySelectorAll('.import-tag-checkbox:checked'))
-                .map(checkbox => {
-                    const label = checkbox.closest('.import-tag-option');
-                    return label ? label.textContent.trim() : '';
-                })
-                .filter(Boolean);
-
-            if (!selected.length) {
-                summaryEl.textContent = '未选择标签';
-                countEl.style.display = 'none';
-                countEl.textContent = '';
-                return;
-            }
-
-            summaryEl.textContent = selected.length <= 2 ? selected.join('、') : `已选 ${selected.length} 个标签`;
-            countEl.style.display = 'inline-flex';
-            countEl.textContent = String(selected.length);
+            const container = document.getElementById('importTagFilterOptions');
+            const selectedIds = getTagFilterSelectedIds(container);
+            const tags = typeof allTags !== 'undefined' && Array.isArray(allTags) ? allTags : [];
+            const selectedItems = selectedIds.map(id => tags.find(t => t.id === id)).filter(Boolean);
+            updateTagFilterSummaryText(summaryEl, countEl, selectedItems, '未选择标签');
         }
 
         function toggleImportTagDropdown(event) {
             event?.stopPropagation();
-            const dropdown = document.getElementById('importTagDropdown');
-            if (!dropdown) return;
-            dropdown.classList.toggle('open');
+            const dropdown = document.getElementById('importTagFilterDropdown');
+            const searchInput = document.getElementById('importTagFilterSearchInput');
+            toggleTagFilterDropdownState(dropdown, searchInput, '');
+        }
+
+        function filterImportTagOptions(keyword) {
+            const container = document.getElementById('importTagFilterOptions');
+            filterTagFilterOptions(keyword, container);
+        }
+
+        function clearImportTagSelection(event) {
+            event?.stopPropagation();
+            const dropdown = document.getElementById('importTagFilterDropdown');
+            clearTagFilterCheckboxes(dropdown);
+            updateImportTagSummary();
         }
 
         function resetImportDefaults() {
             const remarkInput = document.getElementById('importRemark');
             const statusSelect = document.getElementById('importStatus');
             const forwardInput = document.getElementById('importForwardEnabled');
-            const tagDropdown = document.getElementById('importTagDropdown');
+            const tagDropdown = document.getElementById('importTagFilterDropdown');
 
             if (remarkInput) remarkInput.value = '';
             if (statusSelect) statusSelect.value = 'active';
@@ -1136,9 +1124,55 @@
         }
 
         function getImportSelectedTagIds() {
-            return Array.from(document.querySelectorAll('.import-tag-checkbox:checked'))
-                .map(checkbox => parseInt(checkbox.value, 10))
-                .filter(Number.isFinite);
+            const container = document.getElementById('importTagFilterOptions');
+            return getTagFilterSelectedIds(container);
+        }
+
+        // ==================== 编辑账号模态框标签 ====================
+
+        function renderEditTagOptions(selectedTagIds) {
+            const container = document.getElementById('editTagFilterOptions');
+            if (!container) return;
+
+            const tags = typeof allTags !== 'undefined' && Array.isArray(allTags) ? allTags : [];
+            container.innerHTML = buildTagFilterOptionsHtml(tags, selectedTagIds || [], 'updateEditTagSummary');
+            updateEditTagSummary();
+        }
+
+        function updateEditTagSummary() {
+            const summaryEl = document.getElementById('editTagFilterTriggerText');
+            const countEl = document.getElementById('editTagFilterTriggerCount');
+            if (!summaryEl || !countEl) return;
+
+            const container = document.getElementById('editTagFilterOptions');
+            const selectedIds = getTagFilterSelectedIds(container);
+            const tags = typeof allTags !== 'undefined' && Array.isArray(allTags) ? allTags : [];
+            const selectedItems = selectedIds.map(id => tags.find(t => t.id === id)).filter(Boolean);
+            updateTagFilterSummaryText(summaryEl, countEl, selectedItems, '未选择标签');
+        }
+
+        function toggleEditTagDropdown(event) {
+            event?.stopPropagation();
+            const dropdown = document.getElementById('editTagFilterDropdown');
+            const searchInput = document.getElementById('editTagFilterSearchInput');
+            toggleTagFilterDropdownState(dropdown, searchInput, '');
+        }
+
+        function filterEditTagOptions(keyword) {
+            const container = document.getElementById('editTagFilterOptions');
+            filterTagFilterOptions(keyword, container);
+        }
+
+        function clearEditTagSelection(event) {
+            event?.stopPropagation();
+            const dropdown = document.getElementById('editTagFilterDropdown');
+            clearTagFilterCheckboxes(dropdown);
+            updateEditTagSummary();
+        }
+
+        function getEditSelectedTagIds() {
+            const container = document.getElementById('editTagFilterOptions');
+            return getTagFilterSelectedIds(container);
         }
 
         async function loadCloudflareChannelsForImport(forceRefresh = false) {
@@ -1391,6 +1425,8 @@
                         document.getElementById('editProviderSelect').value = acc.provider || (acc.account_type === 'imap' ? 'custom' : 'outlook');
                     }
                     updateEditAccountFields();
+                    const accTags = Array.isArray(acc.tags) ? acc.tags.map(t => t.id) : [];
+                    renderEditTagOptions(accTags);
                     setModalVisible('editAccountModal', true);
                 }
             } catch (error) {
@@ -1433,7 +1469,8 @@
                     .map(item => item.trim())
                     .filter(Boolean),
                 status: document.getElementById('editStatus').value,
-                forward_enabled: !!document.getElementById('editForwardEnabled')?.checked
+                forward_enabled: !!document.getElementById('editForwardEnabled')?.checked,
+                tag_ids: getEditSelectedTagIds()
             };
             if (shouldSubmitSecretInput(passwordInput)) {
                 data.password = passwordInput.value;

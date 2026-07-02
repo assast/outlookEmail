@@ -1805,14 +1805,16 @@
 
         // Tag Filter Change Handler
         function handleTagFilterChange() {
-            const selected = document.querySelectorAll('.tag-filter-checkbox:checked');
+            const dropdown = document.getElementById('tagFilterDropdown');
+            const selected = dropdown ? dropdown.querySelectorAll('.tag-filter-checkbox:checked') : document.querySelectorAll('.tag-filter-checkbox:checked');
             selectedTagFilters = new Set(
                 Array.from(selected)
                     .map(cb => normalizeTagFilterSelectionValue(cb.value))
                     .filter(value => value !== null)
             );
             saveAccountTagFilterPreference();
-            document.querySelectorAll('.tag-filter-option').forEach(option => {
+            const optionScope = dropdown || document;
+            optionScope.querySelectorAll('.tag-filter-option').forEach(option => {
                 const checkbox = option.querySelector('.tag-filter-checkbox');
                 option.classList.toggle('is-checked', !!checkbox?.checked);
             });
@@ -2183,7 +2185,7 @@
                 if (importSource) importSource.style.display = '';
             }
             accountDefaultFields.forEach(field => {
-                const isTagField = !!field.querySelector('#importTagDropdown');
+                const isTagField = !!field.querySelector('#importTagFilterDropdown');
                 field.style.display = isTempGroup ? (isTagField ? '' : 'none') : '';
             });
 
