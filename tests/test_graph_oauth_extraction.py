@@ -81,7 +81,7 @@ class GraphTokenExtractorTests(unittest.TestCase):
 
         self.assertTrue(result['success'])
         self.assertEqual(result['refresh_token'], 'refresh-token-value')
-        self.assertEqual(result['client_id'], web_outlook_app.GRAPH_EXTRACT_CLIENT_ID)
+        self.assertEqual(result['client_id'], web_outlook_app.OAUTH_CLIENT_ID)
         self.assertEqual(session.post_calls[0][0], 'https://login.live.com/post.srf')
         self.assertFalse(session.post_calls[0][2]['allow_redirects'])
         self.assertEqual(session.post_calls[0][1]['PPFT'], 'flow-token-hidden')
@@ -370,6 +370,176 @@ class GraphOauthRouteTests(unittest.TestCase):
         self.assertEqual(upload['is_authorized'], 0)
         self.assertEqual(web_outlook_app.decrypt_data(upload['password']), 'mail-password')
 
+    # --- Task 3.1: Successful auth overwrites formal account credentials ---
+
+    def test_3_1_successful_auth_keeps_single_account_and_overwrites_credentials(self):
+        """同邮箱自动化授权成功后只保留一个正式账号，覆盖密码/client_id/refresh_token/授权时间。"""
+        account_id = self._add_upload_account(
+            email='overwrite@example.com', password='new-mail-password'
+        )
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.add_account(
+                'overwrite@example.com',
+                'old-password',
+                'old-client-id',
+                'old-refresh-token',
+                group_id=1,
+                remark='keep remark',
+            ))
+            existing = web_outlook_app.get_account_by_email('overwrite@example.com')
+            existing_id = existing['id']
+            db = web_outlook_app.get_db()
+            db.execute(
+                "UPDATE accounts SET last_refresh_status = 'failed', "
+                "last_refresh_error = 'old failure' WHERE id = ?",
+                (existing_id,),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'extract_graph_refresh_token', return_value={
+            'success': True,
+            'refresh_token': 'new-refresh-token',
+            'client_id': 'new-client-id',
+        }), patch.object(web_outlook_app, 'test_refresh_token', return_value=(True, None, 'rotated-token')):
+            _, events = self._consume_stream(self._start_graph_task(account_id))
+
+        self.assertTrue(events[-1]['success'])
+        with self.app.app_context():
+            account = web_outlook_app.get_account_by_email('overwrite@example.com')
+            raw = web_outlook_app.get_db().execute(
+                "SELECT COUNT(*) AS total FROM accounts WHERE email = ?",
+                ('overwrite@example.com',),
+            ).fetchone()
+            raw_fields = web_outlook_app.get_db().execute(
+                "SELECT password, client_id, refresh_token, refresh_token_updated_at, "
+                "last_refresh_status, last_refresh_error FROM accounts WHERE id = ?",
+                (account['id'],),
+            ).fetchone()
+
+        # Only one formal account
+        self.assertEqual(raw['total'], 1)
+        # Same account ID (not recreated)
+        self.assertEqual(account['id'], existing_id)
+        # Credentials overwritten
+        self.assertEqual(account['password'], 'new-mail-password')
+        self.assertEqual(account['client_id'], 'new-client-id')
+        self.assertEqual(account['refresh_token'], 'rotated-token')
+        self.assertIsNotNone(raw_fields['refresh_token_updated_at'])
+        self.assertEqual(raw_fields['last_refresh_status'], 'never')
+        self.assertIsNone(raw_fields['last_refresh_error'])
+
+    # --- Task 3.2: Successful auth preserves business metadata ---
+
+    def test_3_2_successful_auth_preserves_business_metadata(self):
+        """重复自动化授权成功后保留正式账号分组/备注/别名/标签/代理/转发/排序/启停。"""
+        account_id = self._add_upload_account(
+            email='preserve@example.com', password='refresh-pwd'
+        )
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.add_account(
+                'preserve@example.com',
+                'old-pwd',
+                'old-client',
+                'old-refresh',
+                group_id=1,
+                remark='business remark',
+                account_type='outlook',
+                provider='outlook',
+                forward_enabled=True,
+                sort_order=7,
+                status='active',
+                proxy_url='socks5://primary:1080',
+                fallback_proxy_url_1='http://fallback:7890',
+                fallback_proxy_url_2='direct',
+            ))
+            account = web_outlook_app.get_account_by_email('preserve@example.com')
+            web_outlook_app.replace_account_aliases(
+                account['id'], 'preserve@example.com', ['alias@example.com']
+            )
+            tag_id = web_outlook_app.add_tag('业务标签', '#abc')
+            db = web_outlook_app.get_db()
+            db.execute(
+                'INSERT INTO account_tags (account_id, tag_id) VALUES (?, ?)',
+                (account['id'], tag_id),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'extract_graph_refresh_token', return_value={
+            'success': True,
+            'refresh_token': 'new-refresh',
+            'client_id': 'new-client',
+        }), patch.object(web_outlook_app, 'test_refresh_token', return_value=(True, None, '')):
+            _, events = self._consume_stream(self._start_graph_task(account_id))
+
+        self.assertTrue(events[-1]['success'])
+        with self.app.app_context():
+            account = web_outlook_app.get_account_by_email('preserve@example.com')
+            aliases = web_outlook_app.get_account_aliases(account['id'])
+            tags = [t['name'] for t in web_outlook_app.get_account_tags(account['id'])]
+
+        # Authorization fields overwritten
+        self.assertEqual(account['password'], 'refresh-pwd')
+        self.assertEqual(account['client_id'], 'new-client')
+        self.assertEqual(account['refresh_token'], 'new-refresh')
+        # Business metadata preserved
+        self.assertEqual(account['group_id'], 1)
+        self.assertEqual(account['remark'], 'business remark')
+        self.assertEqual(account['status'], 'active')
+        self.assertTrue(account['forward_enabled'])
+        self.assertEqual(account['sort_order'], 7)
+        self.assertEqual(account['proxy_url'], 'socks5://primary:1080')
+        self.assertEqual(account['fallback_proxy_url_1'], 'http://fallback:7890')
+        self.assertEqual(account['fallback_proxy_url_2'], 'direct')
+        self.assertEqual(aliases, ['alias@example.com'])
+        self.assertEqual(tags, ['业务标签'])
+
+    # --- Task 3.3: Token extraction failure does not overwrite ---
+
+    def test_3_3_extraction_failure_does_not_overwrite_existing_formal_account(self):
+        """Graph token 提取失败时不覆盖已有正式账号数据，暂存记录保持未授权。"""
+        account_id = self._add_upload_account(
+            email='extract-fail@example.com', password='upload-pwd'
+        )
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.add_account(
+                'extract-fail@example.com',
+                'original-pwd',
+                'original-client',
+                'original-refresh',
+                group_id=1,
+                remark='original remark',
+            ))
+            db = web_outlook_app.get_db()
+            db.execute(
+                "UPDATE accounts SET last_refresh_status = 'success' WHERE id = ?",
+                (web_outlook_app.get_account_by_email('extract-fail@example.com')['id'],),
+            )
+            db.commit()
+
+        with patch.object(web_outlook_app, 'extract_graph_refresh_token', return_value={
+            'success': False,
+            'error': 'OAuth 错误',
+            'details': 'access_denied',
+        }):
+            _, events = self._consume_stream(self._start_graph_task(account_id))
+
+        self.assertFalse(events[-1]['success'])
+        with self.app.app_context():
+            account = web_outlook_app.get_account_by_email('extract-fail@example.com')
+            upload = web_outlook_app.get_db().execute(
+                'SELECT is_authorized, password FROM outlook_upload_accounts WHERE id = ?',
+                (account_id,),
+            ).fetchone()
+
+        # Formal account unchanged
+        self.assertEqual(account['password'], 'original-pwd')
+        self.assertEqual(account['client_id'], 'original-client')
+        self.assertEqual(account['refresh_token'], 'original-refresh')
+        self.assertEqual(account['remark'], 'original remark')
+        # Upload row stays unauthorized with password
+        self.assertEqual(upload['is_authorized'], 0)
+        self.assertEqual(web_outlook_app.decrypt_data(upload['password']), 'upload-pwd')
+
 
 class GraphOauthFrontendContractTests(unittest.TestCase):
     def test_upload_accounts_frontend_does_not_inline_password_in_onclick(self):
@@ -393,6 +563,32 @@ class GraphOauthFrontendContractTests(unittest.TestCase):
 
         self.assertNotIn('id="graphAuthPassword"', html)
         self.assertIn('id="graphAuthPasswordMasked"', html)
+
+    def test_4_1_outlook_account_menu_has_auto_auth_imap_does_not(self):
+        """Outlook 账号菜单包含"加入自动授权"，IMAP 账号不包含该入口。"""
+        with open(
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static/js/index/02-groups.js'),
+            encoding='utf-8',
+        ) as handle:
+            js = handle.read()
+
+        # The menu button is conditionally rendered for non-IMAP accounts
+        self.assertIn("data-account-action=\"outlookAutoAuth\"", js)
+        self.assertIn("(acc.account_type || 'outlook') !== 'imap'", js)
+
+    def test_4_5_frontend_does_not_pass_or_render_plain_password(self):
+        """前端不传递、不记录、不渲染明文密码。"""
+        with open(
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static/js/index/12-outlook-upload-accounts.js'),
+            encoding='utf-8',
+        ) as handle:
+            js = handle.read()
+
+        # The queueAccountForOutlookAutoAuth function exists and does not send password
+        self.assertIn('queueAccountForOutlookAutoAuth', js)
+        self.assertIn('/outlook-auto-auth', js)
+        # The request body does not include a password field
+        self.assertNotIn('password:', js.split('queueAccountForOutlookAutoAuth')[1].split('window.queueAccountForOutlookAutoAuth')[0])
 
 
 if __name__ == '__main__':

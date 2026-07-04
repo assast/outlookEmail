@@ -1465,6 +1465,7 @@
                             <button class="account-action-btn" type="button" data-account-action="share" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">分享邮箱</button>
                             <button class="account-action-btn" type="button" data-account-action="forwardingLogs" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">转发日志</button>
                             <button class="account-action-btn" type="button" data-account-action="toggleStatus" data-account-id="${acc.id}" data-account-status="${escapeHtml(acc.status || 'active')}">${acc.status === 'inactive' ? '启用账号' : '停用账号'}</button>
+                            ${(acc.account_type || 'outlook') !== 'imap' ? `<button class="account-action-btn" type="button" data-account-action="outlookAutoAuth" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">加入自动授权</button>` : ''}
                             <button class="account-action-btn" type="button" data-account-action="edit" data-account-id="${acc.id}">编辑账号</button>
                             <button class="account-action-btn delete" type="button" data-account-action="delete" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">删除账号</button>
                         </div>

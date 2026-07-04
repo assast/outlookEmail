@@ -901,6 +901,40 @@ Content-Type: application/json
 - `OAUTH_EXCHANGE_FAILED`: 回调 URL 无效或 Microsoft 换取 Token 失败
 - `ACCOUNT_REAUTH_SAVE_FAILED`: 新授权信息保存失败
 
+### POST `/api/accounts/<account_id>/outlook-auto-auth`
+
+将已有 Outlook 正式账号加入 Outlook 自动化授权队列。该接口从服务端读取正式账号的邮箱和密码，写入 `outlook_upload_accounts` 暂存表，不返回明文密码。仅支持 Outlook 账号，不支持 IMAP 账号。
+
+该接口不会立即启动 Graph 自动化授权任务；用户仍需在 Outlook 自动化授权弹窗中执行授权。对同邮箱已存在暂存记录会覆盖密码并重置为未授权状态。
+
+请求体：无需参数。
+
+成功响应示例：
+
+```json
+{
+  "success": true,
+  "message": "已加入自动授权",
+  "upload_account_id": 42,
+  "email": "user@outlook.com",
+  "status": "added"
+}
+```
+
+`status` 取值：
+
+- `added`: 新增了暂存记录
+- `updated`: 覆盖了已有暂存记录（重新入队）
+
+常见错误：
+
+- `ACCOUNT_NOT_FOUND` (404): 账号不存在
+- `ACCOUNT_AUTO_AUTH_UNSUPPORTED` (400): IMAP 账号不支持加入 Outlook 自动化授权
+- `ACCOUNT_PASSWORD_MISSING` (400): 账号密码为空或无法解密
+- `ACCOUNT_AUTO_AUTH_INVALID` (400): 邮箱或密码无效
+
+> **安全约束**：该接口不会在响应中返回密码。密码仅从服务端保存的加密数据中读取并加密写入暂存表。
+
 ### POST `/api/accounts/batch-update-group`
 
 批量修改账号分组。
