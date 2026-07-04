@@ -1437,3 +1437,76 @@ def api_delete_outlook_upload_account(account_id):
         return jsonify({'success': True, 'message': '删除成功'})
     else:
         return jsonify({'success': False, 'error': '账号不存在'}), 404
+
+
+@app.route('/api/accounts/<int:account_id>/outlook-auto-auth', methods=['POST'])
+@login_required
+def api_queue_account_for_outlook_auto_auth(account_id):
+    """将已有 Outlook 正式账号加入 Outlook 自动化授权队列。
+
+    从服务端读取正式账号邮箱和密码，调用显式重新入队 helper 写入
+    outlook_upload_accounts。不返回密码。
+    """
+    account = get_account_by_id(account_id)
+    if not account:
+        return jsonify({
+            'success': False,
+            'error': build_error_payload(
+                'ACCOUNT_NOT_FOUND',
+                '账号不存在',
+                'NotFoundError',
+                404,
+                f'account_id={account_id}',
+            ),
+        }), 404
+
+    account_type = str(account.get('account_type') or 'outlook').lower()
+    if account_type == 'imap':
+        return jsonify({
+            'success': False,
+            'error': build_error_payload(
+                'ACCOUNT_AUTO_AUTH_UNSUPPORTED',
+                'IMAP 账号不支持加入 Outlook 自动化授权',
+                'UnsupportedError',
+                400,
+                f'account_id={account_id} type=imap',
+            ),
+        }), 400
+
+    email = str(account.get('email') or '').strip()
+    password = str(account.get('password') or '').strip()
+    if not email or not password:
+        return jsonify({
+            'success': False,
+            'error': build_error_payload(
+                'ACCOUNT_PASSWORD_MISSING',
+                '账号密码为空或无法解密，请先在编辑中设置密码',
+                'ValidationError',
+                400,
+                f'account_id={account_id}',
+            ),
+        }), 400
+
+    remark = str(account.get('remark') or '').strip()
+    result = upsert_upload_account_for_auto_auth(email, password, remark)
+    if result['status'] == 'invalid':
+        return jsonify({
+            'success': False,
+            'error': build_error_payload(
+                'ACCOUNT_AUTO_AUTH_INVALID',
+                '邮箱或密码无效，无法加入自动授权',
+                'ValidationError',
+                400,
+                f'account_id={account_id}',
+            ),
+        }), 400
+
+    get_db().commit()
+
+    return jsonify({
+        'success': True,
+        'message': '已加入自动授权' if result['status'] == 'added' else '已重新加入自动授权',
+        'upload_account_id': result['id'],
+        'email': result['email'],
+        'status': result['status'],
+    })

@@ -1487,6 +1487,8 @@
                         showAccountForwardingLogs(accountId, accountEmail);
                     } else if (action === 'toggleStatus') {
                         toggleAccountStatus(accountId, accountStatus);
+                    } else if (action === 'outlookAutoAuth') {
+                        queueAccountForOutlookAutoAuth(accountId, accountEmail);
                     } else if (action === 'edit') {
                         showEditAccountModal(accountId);
                     } else if (action === 'delete') {

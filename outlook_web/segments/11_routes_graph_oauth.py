@@ -17,11 +17,9 @@ if TYPE_CHECKING:
 
 # ==================== Graph OAuth 自动提取 ====================
 
-GRAPH_EXTRACT_CLIENT_ID = os.getenv(
-    "GRAPH_EXTRACT_CLIENT_ID",
-    "d71dd6f2-e632-4f47-a039-0144127715b6",
-)
-GRAPH_EXTRACT_REDIRECT_URI = os.getenv("GRAPH_EXTRACT_REDIRECT_URI", "http://localhost")
+# client_id 和 redirect_uri 复用 01_bootstrap.py 中的 OAUTH_CLIENT_ID / OAUTH_REDIRECT_URI，
+# 不再单独定义 GRAPH_EXTRACT_CLIENT_ID / GRAPH_EXTRACT_REDIRECT_URI 环境变量。
+# scope 和 authority 为 Graph 自动提取专用，值与常规 OAuth 不同，保持独立。
 GRAPH_EXTRACT_SCOPE = os.getenv(
     "GRAPH_EXTRACT_SCOPE",
     "offline_access https://graph.microsoft.com/Mail.Read",
@@ -29,8 +27,8 @@ GRAPH_EXTRACT_SCOPE = os.getenv(
 GRAPH_EXTRACT_AUTHORITY = os.getenv("GRAPH_EXTRACT_AUTHORITY", "consumers")
 
 # Backward-compatible aliases for existing docs/tests.
-GRAPH_CLIENT_ID = GRAPH_EXTRACT_CLIENT_ID
-GRAPH_REDIRECT_URI = GRAPH_EXTRACT_REDIRECT_URI
+GRAPH_CLIENT_ID = OAUTH_CLIENT_ID
+GRAPH_REDIRECT_URI = OAUTH_REDIRECT_URI
 GRAPH_SCOPE = GRAPH_EXTRACT_SCOPE
 
 GRAPH_OAUTH_TASKS: Dict[str, Dict[str, Any]] = {}
@@ -108,8 +106,8 @@ def extract_graph_refresh_token(
     email: str,
     password: str,
     *,
-    client_id: str = GRAPH_EXTRACT_CLIENT_ID,
-    redirect_uri: str = GRAPH_EXTRACT_REDIRECT_URI,
+    client_id: str = OAUTH_CLIENT_ID,
+    redirect_uri: str = OAUTH_REDIRECT_URI,
     scope: str = GRAPH_EXTRACT_SCOPE,
     authority: str = GRAPH_EXTRACT_AUTHORITY,
     log: Optional[Callable[[str], None]] = None,

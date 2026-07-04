@@ -139,6 +139,139 @@ class OutlookUploadDataLayerTests(unittest.TestCase):
                          ['new1@outlook.com', 'exists@outlook.com', 'bad'])
 
 
+class OutlookUploadRequeueTests(unittest.TestCase):
+    """Tests for upsert_upload_account_for_auto_auth (tasks 1.1 – 1.3, 1.5)."""
+
+    def setUp(self):
+        self.app = web_outlook_app.app
+        self.app.config['TESTING'] = True
+        with self.app.app_context():
+            web_outlook_app.init_db()
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM outlook_upload_accounts')
+            db.commit()
+
+    def test_1_1_new_email_creates_record_with_encrypted_password(self):
+        """正式邮箱加入自动授权时新增记录，密码加密且响应不回显明文。"""
+        with self.app.app_context():
+            result = web_outlook_app.upsert_upload_account_for_auto_auth(
+                '  New@Outlook.com ', 'secret-pwd', 'from-formal-account'
+            )
+            web_outlook_app.get_db().commit()
+
+            self.assertEqual(result['status'], 'added')
+            self.assertEqual(result['email'], 'new@outlook.com')
+            self.assertIsInstance(result['id'], int)
+
+            row = web_outlook_app.get_db().execute(
+                "SELECT email, password, is_authorized, status, remark, source "
+                "FROM outlook_upload_accounts WHERE id = ?",
+                (result['id'],),
+            ).fetchone()
+
+        self.assertEqual(row['email'], 'new@outlook.com')
+        self.assertNotEqual(row['password'], 'secret-pwd')
+        self.assertTrue(row['password'].startswith('enc:'))
+        self.assertEqual(web_outlook_app.decrypt_data(row['password']), 'secret-pwd')
+        self.assertEqual(row['is_authorized'], 0)
+        self.assertEqual(row['status'], 'active')
+        self.assertEqual(row['source'], 'auto_auth')
+        self.assertEqual(row['remark'], 'from-formal-account')
+        # 返回值不包含密码
+        self.assertNotIn('password', result)
+
+    def test_1_2_requeue_authorized_row_overwrites_and_resets(self):
+        """同邮箱已授权暂存记录重新入队时覆盖密码、重置 is_authorized=0、status=active。"""
+        with self.app.app_context():
+            # 先用 add_upload_account 添加一条，再模拟已授权
+            add_result = web_outlook_app.add_upload_account(
+                'queue@outlook.com', 'old-password', 'old remark'
+            )
+            web_outlook_app.get_db().commit()
+            upload_id = add_result['id']
+
+            db = web_outlook_app.get_db()
+            db.execute(
+                "UPDATE outlook_upload_accounts SET is_authorized = 1, password = '', "
+                "status = 'done', remark = 'authorized' WHERE id = ?",
+                (upload_id,),
+            )
+            db.commit()
+
+            # 重新入队
+            result = web_outlook_app.upsert_upload_account_for_auto_auth(
+                'queue@outlook.com', 'new-password', 'requeued'
+            )
+            web_outlook_app.get_db().commit()
+
+            self.assertEqual(result['status'], 'updated')
+            self.assertEqual(result['id'], upload_id)
+
+            row = db.execute(
+                "SELECT email, password, is_authorized, status, remark, source, "
+                "COUNT(*) OVER () AS total_rows "
+                "FROM outlook_upload_accounts WHERE email = ?",
+                ('queue@outlook.com',),
+            ).fetchone()
+
+        self.assertEqual(row['email'], 'queue@outlook.com')
+        self.assertEqual(web_outlook_app.decrypt_data(row['password']), 'new-password')
+        self.assertEqual(row['is_authorized'], 0)
+        self.assertEqual(row['status'], 'active')
+        self.assertEqual(row['remark'], 'requeued')
+        self.assertEqual(row['source'], 'auto_auth')
+        # 不创建重复记录
+        self.assertEqual(row['total_rows'], 1)
+
+    def test_1_3_requeue_unauthorized_row_overwrites_metadata(self):
+        """同邮箱未授权暂存记录重新入队时覆盖密码和备注/来源，保持单行。"""
+        with self.app.app_context():
+            add_result = web_outlook_app.add_upload_account(
+                'pending@outlook.com', 'first-pwd', 'first note'
+            )
+            web_outlook_app.get_db().commit()
+            upload_id = add_result['id']
+
+            result = web_outlook_app.upsert_upload_account_for_auto_auth(
+                'pending@outlook.com', 'second-pwd', 'second note'
+            )
+            web_outlook_app.get_db().commit()
+
+            self.assertEqual(result['status'], 'updated')
+            self.assertEqual(result['id'], upload_id)
+
+            row = web_outlook_app.get_db().execute(
+                "SELECT password, is_authorized, status, remark, source, "
+                "COUNT(*) OVER () AS total_rows "
+                "FROM outlook_upload_accounts WHERE email = ?",
+                ('pending@outlook.com',),
+            ).fetchone()
+
+        self.assertEqual(web_outlook_app.decrypt_data(row['password']), 'second-pwd')
+        self.assertEqual(row['is_authorized'], 0)
+        self.assertEqual(row['status'], 'active')
+        self.assertEqual(row['remark'], 'second note')
+        self.assertEqual(row['source'], 'auto_auth')
+        self.assertEqual(row['total_rows'], 1)
+
+    def test_1_5_external_upload_duplicate_still_returns_duplicate(self):
+        """未走显式重新入队路径时重复邮箱仍返回 duplicate 且不覆盖旧密码。"""
+        with self.app.app_context():
+            web_outlook_app.add_upload_account('ext@outlook.com', 'original')
+            web_outlook_app.get_db().commit()
+            result = web_outlook_app.add_upload_account('ext@outlook.com', 'overwrite')
+            web_outlook_app.get_db().commit()
+
+            self.assertEqual(result['status'], 'duplicate')
+
+            row = web_outlook_app.get_db().execute(
+                "SELECT password FROM outlook_upload_accounts WHERE email = ?",
+                ('ext@outlook.com',),
+            ).fetchone()
+
+        self.assertEqual(web_outlook_app.decrypt_data(row['password']), 'original')
+
+
 class OutlookUploadRouteTests(unittest.TestCase):
     API_KEY = 'test-external-key'
 

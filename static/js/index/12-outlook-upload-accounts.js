@@ -397,3 +397,35 @@
                 button.dataset.deleteAccountEmail || ''
             );
         });
+
+        // ==================== 从正式账号加入自动授权 ====================
+
+        async function queueAccountForOutlookAutoAuth(accountId, email) {
+            if (!Number.isFinite(accountId) || accountId <= 0) {
+                showToast('账号信息无效，无法加入自动授权', 'error');
+                return;
+            }
+            try {
+                const response = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/outlook-auto-auth`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const data = await response.json();
+                if (data.success) {
+                    const msg = data.status === 'updated'
+                        ? `已重新加入自动授权：${data.email || email || ''}`
+                        : `已加入自动授权：${data.email || email || ''}`;
+                    showToast(msg, 'success');
+                    const modal = document.getElementById('outlookUploadAccountsModal');
+                    if (modal && modal.classList.contains('show')) {
+                        loadUploadAccounts();
+                    }
+                } else {
+                    handleApiError(data, '加入自动授权失败');
+                }
+            } catch (error) {
+                showToast('加入自动授权失败: ' + error.message, 'error');
+            }
+        }
+
+        window.queueAccountForOutlookAutoAuth = queueAccountForOutlookAutoAuth;
