@@ -19,6 +19,34 @@
                 : '<span class="upload-accounts-badge upload-accounts-badge--no">未授权</span>';
         }
 
+        function formatUploadAccountTags(tags) {
+            const safeTags = Array.isArray(tags) ? tags : [];
+            if (!safeTags.length) {
+                return '-';
+            }
+
+            const visibleTags = safeTags.slice(0, 2);
+            const hiddenCount = Math.max(0, safeTags.length - visibleTags.length);
+            const title = safeTags
+                .map(tag => tag && tag.name ? String(tag.name) : '')
+                .filter(Boolean)
+                .join('、');
+            const tagHtml = visibleTags.map(tag => {
+                const tagName = tag && tag.name ? String(tag.name) : '';
+                const tagColor = tag && tag.color ? String(tag.color) : '#64748b';
+                return `
+                    <span class="account-status-pill tag upload-accounts-tag-pill"
+                        style="--pill-accent: ${escapeHtml(tagColor)}"
+                        title="${escapeHtml(tagName)}">${escapeHtml(tagName)}</span>
+                `;
+            }).join('');
+            const moreHtml = hiddenCount > 0
+                ? `<span class="account-status-pill outline">+${hiddenCount}</span>`
+                : '';
+
+            return `<div class="upload-accounts-tags" title="${escapeHtml(title)}">${tagHtml}${moreHtml}</div>`;
+        }
+
         function getUploadAccountPasswordMask(length) {
             return '*'.repeat(Math.max(6, Number(length) || 0));
         }
@@ -65,7 +93,7 @@
             if (!tbody) return;
 
             if (!Array.isArray(items) || items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="upload-accounts-empty">暂无数据</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="upload-accounts-empty">暂无数据</td></tr>';
                 return;
             }
 
@@ -92,6 +120,7 @@
                                     placeholder="留空不改" autocomplete="off">
                             </td>
                             <td class="upload-accounts-edit-disabled">-</td>
+                            <td class="upload-accounts-edit-disabled">-</td>
                             <td>
                                 <input type="text" class="upload-accounts-edit-input"
                                     id="edit-remark-${escapeHtml(String(itemId))}"
@@ -117,6 +146,7 @@
                             <td class="upload-accounts-cell-mono upload-accounts-cell-right">${escapeHtml(itemEmail)}</td>
                             <td class="upload-accounts-cell-mono upload-accounts-cell-right">${formatUploadAccountPassword(item)}</td>
                             <td>${formatUploadAccountAuthorized(item.is_authorized)}</td>
+                            <td>${formatUploadAccountTags(item.tags)}</td>
                             <td>${escapeHtml(itemRemark)}</td>
                             <td>${escapeHtml(itemCreatedAt)}</td>
                             <td>${authBtn}${editBtn}${deleteBtn}</td>
@@ -172,7 +202,7 @@
         async function loadUploadAccounts() {
             const tbody = document.getElementById('uploadAccountsTableBody');
             if (tbody) {
-                tbody.innerHTML = '<tr><td colspan="6" class="upload-accounts-empty">正在加载...</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="upload-accounts-empty">正在加载...</td></tr>';
             }
             uploadAccountsState.loading = true;
             syncUploadAccountsPagination();

@@ -592,7 +592,7 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 | `page_size` | integer | 否 | 每页数量，默认 `20`，最大 `200` |
 | `keyword` | string | 否 | 按邮箱或备注模糊搜索 |
 
-响应中的 `items[]` 包含已解密的 `password` 字段：
+响应中的 `items[]` 包含已解密的 `password` 字段；`tags` 来源于同邮箱正式账号在 `account_tags` / `tags` 中绑定的标签，尚未匹配正式账号时为空数组：
 
 ```json
 {
@@ -608,6 +608,14 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
       "status": "active",
       "remark": "note",
       "source": "external_api",
+      "tags": [
+        {
+          "id": 1,
+          "name": "重点",
+          "color": "#0078d4",
+          "created_at": "2026-07-06 12:00:00"
+        }
+      ],
       "created_at": "2026-07-06 12:00:00",
       "updated_at": "2026-07-06 12:00:00"
     }

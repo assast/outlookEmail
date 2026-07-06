@@ -1143,7 +1143,7 @@
 
     <!-- Outlook 上传账号模态框 -->
     <div class="modal" id="outlookUploadAccountsModal" onmousedown="if(event.target === this) hideOutlookUploadAccountsModal()">
-        <div class="modal-content" style="width: min(1380px, 96vw);">
+        <div class="modal-content" style="width: min(1500px, 96vw);">
             <div class="modal-header">
                 <h3>Outlook邮箱授权</h3>
                 <button class="modal-close" onclick="hideOutlookUploadAccountsModal()">&times;</button>
@@ -1202,6 +1202,7 @@
                                         <th style="width: 200px; min-width: 160px;">邮箱</th>
                                         <th style="width: 80px; min-width: 70px;">密码</th>
                                         <th style="width: 72px; min-width: 72px;">授权</th>
+                                        <th style="width: 120px; min-width: 100px;">标签</th>
                                         <th style="width: 100px; min-width: 80px;">备注</th>
                                         <th style="width: 130px; min-width: 120px;">创建时间</th>
                                         <th style="width: 210px; min-width: 210px;">操作</th>
@@ -1209,7 +1210,7 @@
                                 </thead>
                                 <tbody id="uploadAccountsTableBody">
                                     <tr>
-                                        <td colspan="6" class="upload-accounts-empty">正在加载...</td>
+                                        <td colspan="7" class="upload-accounts-empty">正在加载...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1444,6 +1445,22 @@
         .upload-accounts-badge--no {
             background: rgba(107, 114, 128, 0.15);
             color: #4b5563;
+        }
+        .upload-accounts-tags {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            max-width: 100%;
+            min-width: 0;
+        }
+        .upload-accounts-tag-pill {
+            max-width: 72px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .upload-accounts-tag-pill.account-status-pill.tag:hover {
+            padding-right: 10px;
         }
         .upload-accounts-pagination {
             display: flex;

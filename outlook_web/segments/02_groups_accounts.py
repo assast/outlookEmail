@@ -1426,6 +1426,40 @@ def normalize_upload_email(email: str) -> str:
     return (email or '').strip().lower()
 
 
+def get_account_tags_by_email_map(emails: List[str], db=None) -> Dict[str, List[Dict]]:
+    normalized_emails: List[str] = []
+    seen = set()
+    for email in emails:
+        normalized = normalize_upload_email(email)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        normalized_emails.append(normalized)
+
+    if not normalized_emails:
+        return {}
+
+    database = db or get_db()
+    tags_by_email: Dict[str, List[Dict]] = {email: [] for email in normalized_emails}
+    for start in range(0, len(normalized_emails), 200):
+        chunk = normalized_emails[start:start + 200]
+        placeholders = ','.join('?' * len(chunk))
+        rows = database.execute(f'''
+            SELECT LOWER(a.email) AS account_email, t.*
+            FROM accounts a
+            JOIN account_tags at ON a.id = at.account_id
+            JOIN tags t ON at.tag_id = t.id
+            WHERE LOWER(a.email) IN ({placeholders})
+            ORDER BY LOWER(a.email), t.created_at DESC
+        ''', tuple(chunk)).fetchall()
+
+        for row in rows:
+            tag = dict(row)
+            account_email = normalize_upload_email(tag.pop('account_email', ''))
+            tags_by_email.setdefault(account_email, []).append(tag)
+    return tags_by_email
+
+
 def add_upload_account(email: str, password: str, remark: str = '') -> Dict[str, Any]:
     """插入一条外部上传的 Outlook 账号到 outlook_upload_accounts。
 
@@ -1509,7 +1543,7 @@ def get_upload_account_plain_password(row: Any, *, tolerate_decrypt_error: bool 
         raise
 
 
-def serialize_upload_account_row(row: Any) -> Dict[str, Any]:
+def serialize_upload_account_row(row: Any, tags: Optional[List[Dict]] = None) -> Dict[str, Any]:
     """将 outlook_upload_accounts 行转为前端展示用字典。"""
     data = dict(row)
     plain_password = get_upload_account_plain_password(
@@ -1528,6 +1562,7 @@ def serialize_upload_account_row(row: Any) -> Dict[str, Any]:
         'source': data.get('source') or '',
         'created_at': data.get('created_at'),
         'updated_at': data.get('updated_at'),
+        'tags': tags or [],
     }
 
 
@@ -1651,8 +1686,16 @@ def query_upload_accounts_page(page: int = 1, page_size: int = 20,
         tuple(params) + (safe_page_size, offset),
     ).fetchall()
 
+    tags_by_email = get_account_tags_by_email_map([row['email'] for row in rows], db)
+
     return {
-        'items': [serialize_upload_account_row(row) for row in rows],
+        'items': [
+            serialize_upload_account_row(
+                row,
+                tags_by_email.get(normalize_upload_email(row['email']), []),
+            )
+            for row in rows
+        ],
         'total': total,
         'page': safe_page,
         'page_size': safe_page_size,
