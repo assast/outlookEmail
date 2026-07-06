@@ -147,14 +147,19 @@
                             </div>
                             <div class="form-group import-account-default-field">
                                 <label class="form-label">标签</label>
-                                <div class="import-tag-dropdown" id="importTagDropdown">
-                                    <button class="import-tag-trigger" type="button" onclick="toggleImportTagDropdown(event)">
-                                        <span class="import-tag-trigger-text" id="importTagSummary">未选择标签</span>
-                                        <span class="import-tag-trigger-count" id="importTagCount" style="display: none;"></span>
-                                        <span class="import-tag-trigger-caret">▾</span>
+                                <div class="tag-filter-dropdown" id="importTagFilterDropdown">
+                                    <button class="tag-filter-trigger" type="button" onclick="toggleImportTagDropdown(event)">
+                                        <span class="tag-filter-trigger-text" id="importTagFilterTriggerText">未选择标签</span>
+                                        <span class="tag-filter-trigger-count" id="importTagFilterTriggerCount" style="display: none;"></span>
+                                        <span class="tag-filter-trigger-caret">▾</span>
                                     </button>
-                                    <div class="import-tag-panel">
-                                        <div class="import-tag-options" id="importTagOptions"></div>
+                                    <div class="tag-filter-panel">
+                                        <div class="tag-filter-panel-header">
+                                            <input type="text" id="importTagFilterSearchInput" class="tag-filter-search-input"
+                                                placeholder="搜索标签..." oninput="filterImportTagOptions(this.value)">
+                                            <button class="tag-filter-clear-btn" type="button" onclick="clearImportTagSelection(event)">清空</button>
+                                        </div>
+                                        <div class="tag-filter-options" id="importTagFilterOptions"></div>
                                     </div>
                                 </div>
                             </div>
@@ -253,6 +258,24 @@
                                     <span class="form-label">启用邮件转发</span>
                                 </label>
                                 <div class="form-hint">开启后会按系统设置转发到邮箱或 Telegram。</div>
+                            </div>
+                            <div class="form-group edit-account-span-2">
+                                <label class="form-label">标签</label>
+                                <div class="tag-filter-dropdown" id="editTagFilterDropdown">
+                                    <button class="tag-filter-trigger" type="button" onclick="toggleEditTagDropdown(event)">
+                                        <span class="tag-filter-trigger-text" id="editTagFilterTriggerText">未选择标签</span>
+                                        <span class="tag-filter-trigger-count" id="editTagFilterTriggerCount" style="display: none;"></span>
+                                        <span class="tag-filter-trigger-caret">▾</span>
+                                    </button>
+                                    <div class="tag-filter-panel">
+                                        <div class="tag-filter-panel-header">
+                                            <input type="text" id="editTagFilterSearchInput" class="tag-filter-search-input"
+                                                placeholder="搜索标签..." oninput="filterEditTagOptions(this.value)">
+                                            <button class="tag-filter-clear-btn" type="button" onclick="clearEditTagSelection(event)">清空</button>
+                                        </div>
+                                        <div class="tag-filter-options" id="editTagFilterOptions"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </section>

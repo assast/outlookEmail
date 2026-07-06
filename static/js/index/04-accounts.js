@@ -75,6 +75,7 @@
             if (typeof clearEditAccountSecrets === 'function') {
                 clearEditAccountSecrets();
             }
+            document.getElementById('editTagFilterDropdown')?.classList.remove('open');
             hideModal('editAccountModal');
         }
 

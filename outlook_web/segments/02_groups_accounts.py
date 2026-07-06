@@ -1450,6 +1450,55 @@ def add_upload_account(email: str, password: str, remark: str = '') -> Dict[str,
     return {'email': normalized_email, 'status': 'duplicate'}
 
 
+def upsert_upload_account_for_auto_auth(email: str, password: str,
+                                        remark: str = '') -> Dict[str, Any]:
+    """显式重新入队 helper：供内部"加入自动授权"路径调用。
+
+    - 邮箱不存在时新增记录（source = 'auto_auth'）。
+    - 邮箱已存在时覆盖加密密码、备注、来源，并重置 is_authorized = 0、status = 'active'。
+    - 不改变 ``add_upload_account()`` 的默认 duplicate 行为。
+    - 不在本函数内 commit，由调用方统一提交。
+    - 返回 ``{'email', 'status': 'added'|'updated', 'id'}``。
+    """
+    normalized_email = normalize_upload_email(email)
+    raw_password = password if password is not None else ''
+    if '@' not in normalized_email or not raw_password:
+        return {'email': normalized_email or (email or ''), 'status': 'invalid'}
+
+    db = get_db()
+    encrypted_password = encrypt_data(raw_password)
+    existing = db.execute(
+        'SELECT id FROM outlook_upload_accounts WHERE email = ? LIMIT 1',
+        (normalized_email,),
+    ).fetchone()
+
+    if existing:
+        upload_id = int(existing['id'])
+        db.execute(
+            '''
+            UPDATE outlook_upload_accounts
+            SET password = ?,
+                remark = ?,
+                source = 'auto_auth',
+                is_authorized = 0,
+                status = 'active',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            ''',
+            (encrypted_password, remark or '', upload_id),
+        )
+        return {'email': normalized_email, 'status': 'updated', 'id': upload_id}
+
+    cursor = db.execute(
+        '''
+        INSERT INTO outlook_upload_accounts (email, password, remark, source, is_authorized, status)
+        VALUES (?, ?, ?, 'auto_auth', 0, 'active')
+        ''',
+        (normalized_email, encrypted_password, remark or ''),
+    )
+    return {'email': normalized_email, 'status': 'added', 'id': int(cursor.lastrowid)}
+
+
 def get_upload_account_plain_password(row: Any, *, tolerate_decrypt_error: bool = False) -> str:
     data = dict(row) if hasattr(row, 'keys') else {'password': row}
     try:

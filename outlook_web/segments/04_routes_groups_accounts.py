@@ -1286,7 +1286,8 @@ def api_get_account(account_id):
             'remark': account.get('remark', ''),
             'status': account.get('status', 'active'),
             'created_at': account.get('created_at', ''),
-            'updated_at': account.get('updated_at', '')
+            'updated_at': account.get('updated_at', ''),
+            'tags': get_account_tags(account['id'])
         }
     })
 
@@ -1494,6 +1495,8 @@ def api_update_account(account_id):
     ).strip()
     aliases_provided = 'aliases' in data
     aliases = parse_alias_payload(data.get('aliases', [])) if aliases_provided else []
+    tag_ids_provided = 'tag_ids' in data
+    normalized_tag_ids = normalize_tag_ids_input(data.get('tag_ids', [])) if tag_ids_provided else []
 
     provider_meta = get_provider_meta(provider, email_addr)
     is_outlook = (account_type == 'outlook') or provider_meta['key'] == 'outlook'
@@ -1532,13 +1535,20 @@ def api_update_account(account_id):
         proxy_url, fallback_proxy_url_1, fallback_proxy_url_2
     ):
         cleaned_aliases = get_account_aliases(account_id)
+        db = get_db()
         if aliases_provided:
-            db = get_db()
             alias_success, cleaned_aliases, alias_errors = replace_account_aliases(account_id, email_addr, aliases, db)
             if not alias_success:
                 db.rollback()
                 return jsonify({'success': False, 'error': '；'.join(alias_errors), 'errors': alias_errors})
-            db.commit()
+        if tag_ids_provided:
+            db.execute('DELETE FROM account_tags WHERE account_id = ?', (account_id,))
+            for tid in normalized_tag_ids:
+                db.execute(
+                    'INSERT OR IGNORE INTO account_tags (account_id, tag_id) VALUES (?, ?)',
+                    (account_id, tid)
+                )
+        db.commit()
         return jsonify({'success': True, 'message': '账号更新成功', 'aliases': cleaned_aliases})
     else:
         return jsonify({'success': False, 'error': '更新失败'})

@@ -1,4 +1,4 @@
-        /* global accountsCache, allTags, closeMobilePanels, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentMethod, currentSkip, escapeHtml, escapeJs, formatDate, groups, handleAccountSelectionCheckboxClick, handleApiError, hasMoreEmails, isLoadingMore, loadGroups, loadTags, loadTempEmails, matchesSelectedTagFilters, refreshEmails, renderAccountTagSummary, renderEmailDetail, renderEmailList, renderEmptyStateMarkup, scheduleEmailListLoadCheck, selectedTagFilters, showEmailList, showMobileEmailDetail, showToast, updateBatchActionBar, updateMobileContext, updateCurrentGroupHeader */
+        /* global accountsCache, allTags, closeMobilePanels, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentMethod, currentSkip, escapeHtml, escapeJs, formatDate, groups, handleAccountSelectionCheckboxClick, handleApiError, hasMoreEmails, isLoadingMore, loadGroups, loadTags, loadTempEmails, matchesSelectedTagFilters, refreshEmails, renderAccountTagSummary, renderEmailDetail, renderEmailList, renderEmptyStateMarkup, scheduleEmailListLoadCheck, selectedTagFilters, setEmailListLoadingState, showEmailList, showMobileEmailDetail, showToast, updateBatchActionBar, updateMobileContext, updateCurrentGroupHeader */
 
         // ==================== 临时邮箱相关 ====================
 
@@ -7,6 +7,18 @@
         const CLOUDFLARE_GLOBAL_PAGE_SIZE = 50;
         let currentCloudflareGlobalChannelId = null;
         let currentCloudflareGlobalChannelName = '';
+
+        function setTempEmailListLoadingState(isLoading) {
+            if (typeof setEmailListLoadingState === 'function') {
+                setEmailListLoadingState(isLoading);
+                return;
+            }
+
+            const refreshBtn = document.querySelector('.refresh-btn');
+            if (refreshBtn) {
+                refreshBtn.disabled = isLoading;
+            }
+        }
 
         // 加载临时邮箱列表
         async function loadTempEmails(forceRefresh = false) {
@@ -865,11 +877,7 @@
             currentSkip = 0;
             hasMoreEmails = true;
 
-            const refreshBtn = document.querySelector('.refresh-btn');
-            if (refreshBtn) {
-                refreshBtn.disabled = true;
-                refreshBtn.textContent = '获取中...';
-            }
+            setTempEmailListLoadingState(true);
 
             try {
                 const data = await fetchCloudflareGlobalMessagesPage(0);
@@ -898,10 +906,7 @@
                     actionTitle: '刷新邮件列表'
                 })}`;
             } finally {
-                if (refreshBtn) {
-                    refreshBtn.disabled = false;
-                    refreshBtn.textContent = '获取邮件';
-                }
+                setTempEmailListLoadingState(false);
             }
         }
 
@@ -1087,12 +1092,7 @@
             currentEmailId = null;
             currentEmailDetail = null;
 
-            // 禁用按钮
-            const refreshBtn = document.querySelector('.refresh-btn');
-            if (refreshBtn) {
-                refreshBtn.disabled = true;
-                refreshBtn.textContent = '获取中...';
-            }
+            setTempEmailListLoadingState(true);
 
             try {
                 const response = await fetch(`/api/temp-emails/${encodeURIComponent(email)}/messages`);
@@ -1128,11 +1128,7 @@
                     actionTitle: '刷新邮件列表'
                 });
             } finally {
-                // 启用按钮
-                if (refreshBtn) {
-                    refreshBtn.disabled = false;
-                    refreshBtn.textContent = '获取邮件';
-                }
+                setTempEmailListLoadingState(false);
             }
         }
 

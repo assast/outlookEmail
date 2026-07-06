@@ -1505,6 +1505,8 @@ def api_update_account_v2(account_id):
     ).strip()
     aliases_provided = 'aliases' in data
     aliases = parse_alias_payload(data.get('aliases', [])) if aliases_provided else []
+    tag_ids_provided = 'tag_ids' in data
+    normalized_tag_ids = normalize_tag_ids_input(data.get('tag_ids', [])) if tag_ids_provided else []
 
     try:
         group_id = int(group_id or 1)
@@ -1568,13 +1570,20 @@ def api_update_account_v2(account_id):
         fallback_proxy_url_2
     ):
         cleaned_aliases = get_account_aliases(account_id)
+        db = get_db()
         if aliases_provided:
-            db = get_db()
             alias_success, cleaned_aliases, alias_errors = replace_account_aliases(account_id, email_addr, aliases, db)
             if not alias_success:
                 db.rollback()
                 return jsonify({'success': False, 'error': '；'.join(alias_errors), 'errors': alias_errors})
-            db.commit()
+        if tag_ids_provided:
+            db.execute('DELETE FROM account_tags WHERE account_id = ?', (account_id,))
+            for tid in normalized_tag_ids:
+                db.execute(
+                    'INSERT OR IGNORE INTO account_tags (account_id, tag_id) VALUES (?, ?)',
+                    (account_id, tid)
+                )
+        db.commit()
         return jsonify({'success': True, 'message': '账号更新成功', 'aliases': cleaned_aliases})
     return jsonify({'success': False, 'error': '更新失败'})
 
