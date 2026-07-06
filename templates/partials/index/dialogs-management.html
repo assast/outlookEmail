@@ -1152,13 +1152,10 @@
                 <div class="upload-accounts-layout">
                     <div class="upload-accounts-main">
                         <div class="upload-accounts-add-panel">
-                            <div class="upload-accounts-add-panel__header" onclick="toggleAddAccountPanel()">
+                            <div class="upload-accounts-add-panel__header">
                                 <span class="upload-accounts-add-panel__title">添加新账号</span>
-                                <button class="upload-accounts-add-panel__toggle" type="button" id="toggleAddPanelBtn">
-                                    <span id="toggleAddPanelIcon">▶</span>
-                                </button>
                             </div>
-                            <div class="upload-accounts-add-panel__form is-collapsed" id="addAccountFormContainer">
+                            <div class="upload-accounts-add-panel__form" id="addAccountFormContainer">
                                 <div class="upload-accounts-add-form">
                                     <div class="add-form-field add-form-field--email">
                                         <label class="add-form-label">邮箱前缀</label>
@@ -1174,7 +1171,7 @@
                                     </div>
                                     <div class="add-form-field add-form-field--password">
                                         <label class="add-form-label">密码</label>
-                                        <input type="password" id="addUploadAccountPassword" class="form-input add-form-input"
+                                        <input type="text" id="addUploadAccountPassword" class="form-input add-form-input"
                                             placeholder="密码" autocomplete="off">
                                     </div>
                                     <div class="add-form-field add-form-field--remark">
@@ -1480,32 +1477,14 @@
             padding: 10px 14px;
             background: var(--skin-surface-muted, #f8fafc);
             border-bottom: 1px solid var(--skin-border, #e5e7eb);
-            cursor: pointer;
-            user-select: none;
         }
         .upload-accounts-add-panel__title {
             font-size: 14px;
             font-weight: 600;
             color: var(--skin-text, #111827);
         }
-        .upload-accounts-add-panel__toggle {
-            border: none;
-            background: transparent;
-            color: var(--skin-text-muted, #64748b);
-            font-size: 14px;
-            cursor: pointer;
-            padding: 4px 8px;
-            line-height: 1;
-            transition: color 0.15s ease;
-        }
-        .upload-accounts-add-panel__toggle:hover {
-            color: var(--skin-text, #111827);
-        }
         .upload-accounts-add-panel__form {
             padding: 14px;
-        }
-        .upload-accounts-add-panel__form.is-collapsed {
-            display: none;
         }
         .upload-accounts-add-form {
             display: grid;

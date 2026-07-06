@@ -23,8 +23,7 @@
             if (!item || !item.has_password) {
                 return '-';
             }
-            // 返回明文密码
-            return escapeHtml(item.password || '');
+            return item.password || '';
         }
 
         function renderUploadAccountsRows(items) {
@@ -39,6 +38,7 @@
             tbody.innerHTML = items.map(item => {
                 const itemId = item.id ?? '';
                 const itemEmail = item.email || '';
+                const itemPassword = item.password || '';
                 const itemRemark = item.remark || '';
                 const itemCreatedAt = item.created_at || '';
                 const isEditing = uploadAccountsState.editingRowId === itemId;
@@ -55,9 +55,10 @@
                                     placeholder="邮箱" autocomplete="off">
                             </td>
                             <td>
-                                <input type="password" class="upload-accounts-edit-input"
+                                <input type="text" class="upload-accounts-edit-input"
                                     id="edit-password-${escapeHtml(String(itemId))}"
-                                    placeholder="留空不改" autocomplete="off">
+                                    value="${escapeHtml(itemPassword)}"
+                                    placeholder="密码" autocomplete="off">
                             </td>
                             <td class="upload-accounts-edit-disabled">-</td>
                             <td>
@@ -195,15 +196,6 @@
         }
 
         // ==================== 添加上传账号 ====================
-
-        function toggleAddAccountPanel() {
-            const container = document.getElementById('addAccountFormContainer');
-            const icon = document.getElementById('toggleAddPanelIcon');
-            if (!container || !icon) return;
-
-            const isCollapsed = container.classList.toggle('is-collapsed');
-            icon.textContent = isCollapsed ? '▶' : '▼';
-        }
 
         function clearAddAccountForm() {
             document.getElementById('addUploadAccountEmailPrefix').value = '';
