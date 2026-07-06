@@ -60,6 +60,10 @@
 | POST | `/api/accounts` | Session + CSRF | JSON | 批量导入账号 |
 | PUT | `/api/accounts/<account_id>` | Session + CSRF | JSON | 更新账号 |
 | POST | `/api/accounts/<account_id>/reauthorize` | Session + CSRF | JSON | 重新授权已有 Outlook 账号并自动刷新验证 |
+| GET | `/api/outlook-upload-accounts` | Session | JSON | 分页查询 Outlook 自动化授权上传账号，不返回明文密码 |
+| POST | `/api/outlook-upload-accounts` | Session + CSRF | JSON | 新增 Outlook 自动化授权上传账号 |
+| PUT | `/api/outlook-upload-accounts/<account_id>` | Session + CSRF | JSON | 修改上传账号邮箱、密码或备注 |
+| DELETE | `/api/outlook-upload-accounts/<account_id>` | Session + CSRF | JSON | 删除上传账号 |
 | DELETE | `/api/accounts/<account_id>` | Session + CSRF | JSON | 按 ID 删除账号 |
 | DELETE | `/api/accounts/email/<email_addr>` | Session + CSRF | JSON | 按邮箱删除账号 |
 | POST | `/api/accounts/batch-delete` | Session + CSRF | JSON | 批量删除账号 |
@@ -564,6 +568,82 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 - 入库记录 `is_authorized` 一律为 `0`（未授权）
 - 请求体既无 `email` 也无非空 `accounts` 时返回 HTTP 400
 - 缺少 / 无效 API Key 时由鉴权层返回 HTTP 401 / 403
+
+### Outlook 上传账号管理
+
+这些接口用于 Web 管理端维护 `outlook_upload_accounts` 中的 Outlook 自动化授权账号。
+
+安全约束：
+
+- 后端保留加密后的邮箱密码。
+- 列表和新增/修改响应都不返回 `password` 明文。
+- 前端只根据 `has_password` / `password_length` 判断是否已保存密码。
+
+#### GET `/api/outlook-upload-accounts`
+
+分页查询上传账号。
+
+查询参数：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `page` | integer | 否 | 页码，默认 `1` |
+| `page_size` | integer | 否 | 每页数量，默认 `20`，最大 `200` |
+| `keyword` | string | 否 | 按邮箱或备注模糊搜索 |
+
+响应中的 `items[]` 不包含 `password` 字段：
+
+```json
+{
+  "success": true,
+  "items": [
+    {
+      "id": 42,
+      "email": "user@outlook.com",
+      "has_password": true,
+      "password_length": 12,
+      "is_authorized": false,
+      "status": "active",
+      "remark": "note",
+      "source": "external_api",
+      "created_at": "2026-07-06 12:00:00",
+      "updated_at": "2026-07-06 12:00:00"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "page_size": 20,
+  "total_pages": 1
+}
+```
+
+#### POST `/api/outlook-upload-accounts`
+
+新增单个上传账号。请求体：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `email` | string | 是 | 邮箱地址，入库前转小写并去除首尾空格 |
+| `password` | string | 是 | 邮箱密码，加密存储 |
+| `remark` | string | 否 | 备注 |
+
+重复邮箱返回 HTTP 400，响应不会回显密码。
+
+#### PUT `/api/outlook-upload-accounts/<account_id>`
+
+修改上传账号。请求体字段都可选：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `email` | string | 否 | 非空时更新邮箱；修改后 `is_authorized` 重置为 `0` |
+| `password` | string | 否 | 非空时更新密码；修改后 `is_authorized` 重置为 `0` |
+| `remark` | string | 否 | 更新备注；只改备注不改变 `is_authorized` |
+
+`password` 省略或传空字符串表示保留原密码。重复邮箱返回 HTTP 400，账号不存在返回 HTTP 404。
+
+#### DELETE `/api/outlook-upload-accounts/<account_id>`
+
+删除上传账号。账号不存在返回 HTTP 404。
 
 ## 内部 API
 
