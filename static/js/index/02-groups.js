@@ -345,13 +345,6 @@
                                 ${!isDefault && !isSystem ? `<button class="group-action-btn" onclick="event.stopPropagation(); deleteGroup(${group.id})" title="删除">🗑️</button>` : ''}
                             </div>
                         </div>
-                        ${groupIdBadgeText ? `
-                        <div class="group-row-2">
-                            <div class="group-meta">
-                                <span class="group-id-badge">${escapeHtml(groupIdBadgeText)}</span>
-                            </div>
-                        </div>
-                        ` : ''}
                     </div>
                     ${hasChildren && !collapsed ? renderGroupTree(group.children) : ''}
                 `;
@@ -823,6 +816,18 @@
             updateMobileContext();
         }
 
+        // 刷新按钮（复用 refreshCurrentAccountList 功能）
+        function renderAccountRefreshButton() {
+            return `
+                <button class="panel-action-btn" onclick="refreshCurrentAccountList()" title="刷新邮箱列表">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 8a7 7 0 0 1 13.22-3.22M15 8a7 7 0 0 1-13.22 3.22"/>
+                        <path d="M14 1v3.5H10.5M2 15v-3.5h3.5"/>
+                    </svg>
+                </button>
+            `;
+        }
+
         // 更新账号面板头部动作按钮
         function renderAccountSelectionModeButton() {
             const activeClass = accountSelectionMode ? ' active' : '';
@@ -859,6 +864,7 @@
             if (!actions) return;
             if (isTempEmailGroup) {
                 actions.innerHTML = `
+                    ${renderAccountRefreshButton()}
                     ${renderAccountSelectionModeButton()}
                     <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -895,6 +901,7 @@
                 }
             } else {
                 actions.innerHTML = `
+                    ${renderAccountRefreshButton()}
                     ${renderAccountSelectionModeButton()}
                     <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -1645,18 +1652,16 @@
 
             const searchQuery = (document.getElementById('globalSearch')?.value || '').trim();
             if (searchQuery) {
-                const total = Number(accountPaginationState.total) || filteredAccounts.length;
                 if (getAccountSearchScope() === 'group') {
                     const currentGroup = groups.find(group => group.id === currentGroupId);
-                    const groupName = currentGroup ? normalizeGroupName(currentGroup.name) : '当前分组';
-                    updateCurrentGroupHeader(currentGroup || null, `${groupName} 搜索 (${filteredAccounts.length}/${total})`);
+                    updateCurrentGroupHeader(currentGroup || null);
                 } else {
-                    updateCurrentGroupHeader(null, `搜索结果 (${filteredAccounts.length}/${total})`);
+                    updateCurrentGroupHeader(null);
                 }
             } else {
                 const currentGroup = groups.find(group => group.id === currentGroupId);
                 if (currentGroup && Number(accountPaginationState.total) > 0) {
-                    updateCurrentGroupHeader(currentGroup, `${normalizeGroupName(currentGroup.name)} (${filteredAccounts.length}/${accountPaginationState.total})`);
+                    updateCurrentGroupHeader(currentGroup);
                 }
             }
         }

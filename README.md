@@ -73,6 +73,8 @@ export SECRET_KEY=your-secret-key-here
 python web_outlook_app.py
 ```
 
+python -m pip install -r requirements.txt; $env:SECRET_KEY = (& python -c "import secrets; print(secrets.token_hex(32))")[0]; $env:HOST="127.0.0.1"; python web_outlook_app.py
+
 访问 `http://localhost:5000` 即可使用。
 如果是服务器部署，仍然建议显式设置固定 `SECRET_KEY`。
 
@@ -138,6 +140,62 @@ services:
       # - OAUTH_REDIRECT_URI=http://localhost:8080
     restart: unless-stopped
 ```
+
+### 方式五：本地源码构建并运行（docker-compose.build.yml）
+
+适合在本机基于源码自行构建镜像（而非拉取 `ghcr.io` 上的预构建镜像）后运行，便于本地改动后立即验证。
+
+仓库根目录已提供 `docker-compose.build.yml`，它会用根目录的 `Dockerfile` 从源码构建镜像并启动容器。
+
+#### 步骤 1：准备环境变量文件 `.env.local`
+
+`docker-compose.build.yml` 通过 `env_file: .env.local` 注入环境变量，该文件**不存在时 Compose 会直接报错拒绝启动**，需先从模板复制并修改：
+
+```bash
+cp .env.example .env.local
+```
+
+至少修改以下两项：
+
+```bash
+# 生成随机串后填入 .env.local 的 SECRET_KEY
+python -c 'import secrets; print(secrets.token_hex(32))'
+```
+
+- `SECRET_KEY`：填入上面生成的随机串（务必修改，勿用占位值）
+- `LOGIN_PASSWORD`：登录密码，默认 `admin123`，建议改为强密码
+
+可选：如需调整 Gunicorn 线程数 / 超时，在 `.env.local` 中追加 `GUNICORN_THREADS`、`GUNICORN_TIMEOUT`（不填则使用默认值 4 / 300）。
+
+#### 步骤 2：构建并启动
+
+```bash
+docker compose -f docker-compose.build.yml up -d --build
+```
+
+- `--build` 强制从源码重新构建镜像（镜像标签为 `outlookemail:local`）
+- 容器名为 `outlook-mail`，映射端口 `5000:5000`
+- 数据持久化在宿主机 `./data`；`./static`、`./templates` 以只读方式挂载，便于本地编辑模板/静态资源实时生效
+
+启动后访问 `http://localhost:5000`，使用 `.env.local` 中的 `LOGIN_PASSWORD` 登录。
+
+#### 步骤 3：常用运维命令
+
+```bash
+# 查看日志
+docker compose -f docker-compose.build.yml logs -f
+
+# 查看健康检查与状态
+docker compose -f docker-compose.build.yml ps
+
+# 改动源码后重新构建并重启
+docker compose -f docker-compose.build.yml up -d --build
+
+# 停止并移除容器（数据仍保留在 ./data）
+docker compose -f docker-compose.build.yml down
+```
+
+> 提示：`docker-compose.build.yml` 默认未挂载宿主机 Docker socket，因此界面里的「Docker 在线更新」不可用——本地构建场景请直接用上面的 `up -d --build` 重新构建来更新。
 
 ## ✨ 功能特性
 

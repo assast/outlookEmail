@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Changed
+- OAuth 授权 Scope 新增 `https://outlook.office.com/IMAP.AccessAsUser.All` 权限，使导出的 RefreshToken 同时支持 Graph API 和 IMAP 访问。
+
+### Fixed
+- 修复 OAuth 授权后导出的 RefreshToken 无法用于 IMAP 获取邮件的问题（授权时未申请 IMAP 权限）。
+
+**重要提示**: 已授权的账号需要重新授权才能获得 IMAP 访问权限。
+
 ## [2.7.0] - 2026-07-04
 
 ### Added

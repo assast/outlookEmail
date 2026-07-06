@@ -1,36 +1,39 @@
 version: '3.8'
 
 services:
-  outlook-mail:
+  outlook-mail-local:
     build:
       context: .
       dockerfile: Dockerfile
     image: outlookemail:local
-    container_name: outlook-mail
+    container_name: outlook-mail-local
     ports:
       - "5000:5000"
     volumes:
+      # 持久化数据（数据库、token 等）
       - ./data:/app/data
+      # 只读挂载静态资源与模板（支持宿主机编辑实时生效）
       - ./static:/app/static:ro
       - ./templates:/app/templates:ro
-      # Optional: bind-mount source for live code (uncomment for development)
-      # - ./:/app:delegated
-      - /var/run/docker.sock:/var/run/docker.sock
     env_file:
       - .env.local
     environment:
       - FLASK_ENV=production
-      - DOCKER_UPDATE_ENABLED=true
-      - DOCKER_UPDATE_CONTAINER=outlook-mail
-      # Optional: - DOCKER_UPDATE_API_VERSION=1.52
+      # Docker 自更新（如需启用请取消注释，并确认 .env.local 中有 DOCKER_UPDATE_ENABLED=true）
+      # - /var/run/docker.sock:/var/run/docker.sock
+      # 用 docker-compose 管理时删掉下面两行，保留给用户按需启用
+      # - DOCKER_UPDATE_ENABLED=true
+      # - DOCKER_UPDATE_CONTAINER=outlook-mail
+    # 镜像标签建议用 mutable tag（latest / main / dev）以便自更新；如用固定版本号（v2.0.x）则无更新能力
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:5000/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 15s  # 给启动留缓冲，避免健康检查未就绪时误判
 
-# Uncomment to create a named volume for persistent data instead of ./data bind-mount
+# 如需使用 Docker 命名卷替代 ./data 绑定挂载，取消下面注释：
 # volumes:
-#   data:
+#   outlook-data:
 #     driver: local

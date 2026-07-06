@@ -387,5 +387,91 @@ class OutlookUploadRouteTests(unittest.TestCase):
         self.assertTrue(getattr(view, '_requires_api_key', False))
 
 
+class OutlookUploadUpdateRouteTests(unittest.TestCase):
+    def setUp(self):
+        self.app = web_outlook_app.app
+        self.app.config['TESTING'] = True
+        self.app.config['WTF_CSRF_ENABLED'] = False
+        self.client = self.app.test_client()
+        with self.app.app_context():
+            web_outlook_app.init_db()
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM outlook_upload_accounts')
+            db.commit()
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+
+    def _seed(self, email='edit@outlook.com', password='oldpw', remark='old'):
+        with self.app.app_context():
+            result = web_outlook_app.add_upload_account(email, password, remark)
+            web_outlook_app.get_db().commit()
+        return result['id']
+
+    def test_update_changes_email_password_and_remark(self):
+        account_id = self._seed()
+        response = self.client.put(
+            f'/api/outlook-upload-accounts/{account_id}',
+            json={'email': 'new@outlook.com', 'password': 'newpw', 'remark': 'updated'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()['success'])
+        with self.app.app_context():
+            row = web_outlook_app.get_db().execute(
+                "SELECT email, password, remark FROM outlook_upload_accounts WHERE id = ?",
+                (account_id,),
+            ).fetchone()
+        self.assertEqual(row['email'], 'new@outlook.com')
+        self.assertEqual(web_outlook_app.decrypt_data(row['password']), 'newpw')
+        self.assertEqual(row['remark'], 'updated')
+
+    def test_update_keeps_password_when_omitted_or_empty(self):
+        account_id = self._seed(password='keepme')
+        response = self.client.put(
+            f'/api/outlook-upload-accounts/{account_id}',
+            json={'email': 'edit@outlook.com', 'remark': 'r'},
+        )
+        self.assertEqual(response.status_code, 200)
+        response2 = self.client.put(
+            f'/api/outlook-upload-accounts/{account_id}',
+            json={'email': 'edit@outlook.com', 'password': '', 'remark': 'r'},
+        )
+        self.assertEqual(response2.status_code, 200)
+        with self.app.app_context():
+            row = web_outlook_app.get_db().execute(
+                "SELECT password FROM outlook_upload_accounts WHERE id = ?",
+                (account_id,),
+            ).fetchone()
+        self.assertEqual(web_outlook_app.decrypt_data(row['password']), 'keepme')
+
+    def test_update_duplicate_email_returns_400(self):
+        self._seed(email='a@outlook.com')
+        account_id_b = self._seed(email='b@outlook.com')
+        response = self.client.put(
+            f'/api/outlook-upload-accounts/{account_id_b}',
+            json={'email': 'a@outlook.com'},
+        )
+        self.assertEqual(response.status_code, 400)
+        body = response.get_json()
+        self.assertFalse(body['success'])
+        self.assertIn('已存在', body['error'])
+
+    def test_update_invalid_email_returns_400(self):
+        account_id = self._seed()
+        response = self.client.put(
+            f'/api/outlook-upload-accounts/{account_id}',
+            json={'email': 'no-at-sign'},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.get_json()['success'])
+
+    def test_update_not_found_returns_404(self):
+        response = self.client.put(
+            '/api/outlook-upload-accounts/99999',
+            json={'email': 'x@outlook.com'},
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(response.get_json()['success'])
+
+
 if __name__ == '__main__':
     unittest.main()

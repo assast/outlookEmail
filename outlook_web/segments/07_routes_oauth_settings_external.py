@@ -1426,6 +1426,45 @@ def api_add_outlook_upload_account():
         return jsonify({'success': False, 'error': '邮箱格式无效'}), 400
 
 
+@app.route('/api/outlook-upload-accounts/<int:account_id>', methods=['PUT'])
+@login_required
+def api_update_outlook_upload_account(account_id):
+    """更新指定 ID 的外部上传账号（邮箱 / 密码 / 备注）。
+
+    请求体字段都可选；password 留空表示保持原密码；email/remark 不传入则保持原值。
+    """
+    data = request.get_json(silent=True) or {}
+    email = data.get('email')
+    password = data.get('password')
+    remark = data.get('remark')
+
+    if email is not None:
+        email = str(email).strip()
+    if password is not None:
+        password = str(password)
+    if remark is not None:
+        remark = str(remark).strip()
+
+    result = update_upload_account(
+        account_id,
+        email=email,
+        password=password,
+        remark=remark,
+    )
+    status = result.get('status')
+    if status == 'updated':
+        db = get_db()
+        db.commit()
+        return jsonify({'success': True, 'message': '修改成功', 'account': result})
+    if status == 'not_found':
+        return jsonify({'success': False, 'error': '账号不存在'}), 404
+    if status == 'duplicate':
+        return jsonify({'success': False, 'error': '该邮箱已存在'}), 400
+    if status == 'invalid':
+        return jsonify({'success': False, 'error': '邮箱格式无效'}), 400
+    return jsonify({'success': False, 'error': '修改失败'}), 400
+
+
 @app.route('/api/outlook-upload-accounts/<int:account_id>', methods=['DELETE'])
 @login_required
 def api_delete_outlook_upload_account(account_id):
