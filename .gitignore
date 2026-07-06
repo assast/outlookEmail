@@ -34,6 +34,7 @@ data/
 Thumbs.db
 /get_oauth_token.py
 .ace-tool/
+/.agents/
 /CLAUDE.md
 /.claude/
 安全漏洞.md
