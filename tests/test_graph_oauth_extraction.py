@@ -318,7 +318,6 @@ class GraphOauthRouteTests(unittest.TestCase):
         self.assertNotEqual(upload['password'], 'mail-password')
         self.assertTrue(upload['password'].startswith('enc:'))
         self.assertEqual(web_outlook_app.decrypt_data(upload['password']), 'mail-password')
-        self.assertEqual(web_outlook_app.decrypt_data(upload['password']), 'mail-password')
 
     def test_stream_success_updates_existing_formal_account(self):
         account_id = self._add_upload_account(email='exists@example.com', password='new-password')
@@ -593,7 +592,7 @@ class GraphOauthRouteTests(unittest.TestCase):
 
 
 class GraphOauthFrontendContractTests(unittest.TestCase):
-    def test_upload_accounts_frontend_displays_password_without_auth_inline_secret(self):
+    def test_upload_accounts_frontend_does_not_inline_password_in_onclick(self):
         with open(
             os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static/js/index/12-outlook-upload-accounts.js'),
             encoding='utf-8',
@@ -601,11 +600,9 @@ class GraphOauthFrontendContractTests(unittest.TestCase):
             js = handle.read()
 
         self.assertNotIn("showGraphAuthModal(${item.id}, '${escapeHtml(item.email)}', '${escapeHtml(item.password)}')", js)
-        self.assertIn("return item.password || '';", js)
-        self.assertIn('formatUploadAccountPassword(item)', js)
+        self.assertNotIn('item.password ||', js)
         self.assertNotIn('graphAuthState.password', js)
         self.assertIn('data-graph-auth-account-id', js)
-        self.assertIn('data-graph-auth-password-length', js)
 
     def test_graph_auth_panel_embedded_without_password_container(self):
         with open(
@@ -650,8 +647,8 @@ class GraphOauthFrontendContractTests(unittest.TestCase):
         self.assertIn("data-account-action=\"outlookAutoAuth\"", js)
         self.assertIn("(acc.account_type || 'outlook') !== 'imap'", js)
 
-    def test_4_5_frontend_queue_action_does_not_send_plain_password(self):
-        """正式账号加入自动授权时前端不传递明文密码。"""
+    def test_4_5_frontend_does_not_pass_or_render_plain_password(self):
+        """前端不传递、不记录、不渲染明文密码。"""
         with open(
             os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static/js/index/12-outlook-upload-accounts.js'),
             encoding='utf-8',
