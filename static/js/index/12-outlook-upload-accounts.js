@@ -23,8 +23,7 @@
             if (!item || !item.has_password) {
                 return '-';
             }
-            // 返回明文密码
-            return escapeHtml(item.password || '');
+            return '已保存';
         }
 
         function renderUploadAccountsRows(items) {
@@ -325,7 +324,7 @@
         const GRAPH_AUTH_LOG_PLACEHOLDER = '点击账号「去授权 / 重新授权」后，授权日志会显示在这里。';
         const GRAPH_AUTH_MODE_LABELS = {
             imap: 'Outlook IMAP',
-            graph: 'Graph',
+            graph: 'Graph-only（不含 IMAP 权限）',
         };
 
         let graphAuthState = {

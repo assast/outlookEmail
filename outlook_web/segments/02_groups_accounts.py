@@ -1510,7 +1510,7 @@ def get_upload_account_plain_password(row: Any, *, tolerate_decrypt_error: bool 
 
 
 def serialize_upload_account_row(row: Any) -> Dict[str, Any]:
-    """将 outlook_upload_accounts 行转为前端展示用字典，返回明文密码。"""
+    """将 outlook_upload_accounts 行转为前端展示用字典，不返回明文密码。"""
     data = dict(row)
     plain_password = get_upload_account_plain_password(
         data.get('password') or '',
@@ -1519,7 +1519,6 @@ def serialize_upload_account_row(row: Any) -> Dict[str, Any]:
     return {
         'id': data.get('id'),
         'email': data.get('email') or '',
-        'password': plain_password,  # 返回明文密码
         'has_password': bool(plain_password),
         'password_length': len(plain_password),
         'is_authorized': bool(data.get('is_authorized')),
@@ -1568,6 +1567,7 @@ def update_upload_account(account_id: int, *, email: Optional[str] = None,
     updates: List[str] = []
     params: List[Any] = []
     new_email: Optional[str] = None
+    reset_authorized = False
 
     if email is not None and email.strip() != '':
         new_email = normalize_upload_email(email)
@@ -1582,10 +1582,12 @@ def update_upload_account(account_id: int, *, email: Optional[str] = None,
                 return {'status': 'duplicate', 'id': account_id, 'email': new_email}
             updates.append('email = ?')
             params.append(new_email)
+            reset_authorized = True
 
     if password is not None and password != '':
         updates.append('password = ?')
         params.append(encrypt_data(password))
+        reset_authorized = True
 
     if remark is not None:
         updates.append('remark = ?')
@@ -1593,6 +1595,9 @@ def update_upload_account(account_id: int, *, email: Optional[str] = None,
 
     if not updates:
         return {'status': 'updated', 'id': account_id, 'email': row['email']}
+
+    if reset_authorized:
+        updates.append('is_authorized = 0')
 
     updates.append("updated_at = CURRENT_TIMESTAMP")
     params.append(account_id)

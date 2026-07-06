@@ -6,13 +6,30 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-07-06
+
+### Added
+- Outlook 自动化授权弹窗支持 `Outlook IMAP` 与 `Graph-only` 双模式授权，并将授权日志内嵌到上传账号管理面板右侧。
+- 上传账号管理支持顶部内联添加、表格行内编辑和已授权账号重新授权入口。
+- 分组面板新增折叠、搜索标题和排序交互优化。
+- README 与 Docker 配置补充本地源码构建运行说明。
+
 ### Changed
-- OAuth 授权 Scope 新增 `https://outlook.office.com/IMAP.AccessAsUser.All` 权限，使导出的 RefreshToken 同时支持 Graph API 和 IMAP 访问。
+- OAuth 授权 Scope 新增 `https://outlook.office.com/IMAP.AccessAsUser.All` 权限，使 IMAP 授权模式导出的 RefreshToken 同时支持 Graph API 和 IMAP 访问。
+- Outlook 上传账号列表接口不再返回明文密码，前端列表只显示密码是否已保存。
+- 修改 Outlook 上传账号的邮箱或密码时会将 `is_authorized` 重置为 `0`；仅修改备注不会改变授权状态。
+- Graph 授权模式文案调整为 `Graph-only`，并明确提示不含 IMAP 权限。
+- 优化上传账号表格列宽、按钮显示、授权日志高度与滚动样式。
 
 ### Fixed
 - 修复 OAuth 授权后导出的 RefreshToken 无法用于 IMAP 获取邮件的问题（授权时未申请 IMAP 权限）。
+- 修复 Graph OAuth 登录失败检测不稳定的问题。
+- 修复上传账号列表曾可能向前端返回并展示明文密码的问题。
 
-**重要提示**: 已授权的账号需要重新授权才能获得 IMAP 访问权限。
+### Security
+- Outlook 上传账号暂存密码继续加密保留在后端，列表 API、前端表格和授权日志均不返回、不展示明文密码。
+
+**重要提示**: 已授权的账号需要重新授权才能获得 IMAP 访问权限；`Graph-only` 模式不含 IMAP 权限，如需 IMAP 访问请选择 `Outlook IMAP` 授权模式。
 
 ## [2.7.0] - 2026-07-04
 

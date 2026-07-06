@@ -315,7 +315,9 @@ class GraphOauthRouteTests(unittest.TestCase):
         self.assertEqual(formal['provider'], 'outlook')
         self.assertEqual(formal['account_type'], 'outlook')
         self.assertEqual(upload['is_authorized'], 1)
-        self.assertEqual(upload['password'], '')
+        self.assertNotEqual(upload['password'], 'mail-password')
+        self.assertTrue(upload['password'].startswith('enc:'))
+        self.assertEqual(web_outlook_app.decrypt_data(upload['password']), 'mail-password')
 
     def test_stream_success_updates_existing_formal_account(self):
         account_id = self._add_upload_account(email='exists@example.com', password='new-password')
@@ -615,6 +617,23 @@ class GraphOauthFrontendContractTests(unittest.TestCase):
         self.assertNotIn('id="graphAuthPassword"', html)
         self.assertNotIn('id="graphAuthPasswordMasked"', html)
         self.assertIn('id="graphAuthLog"', html)
+
+    def test_graph_only_mode_text_makes_imap_limitation_explicit(self):
+        root = os.path.dirname(os.path.dirname(__file__))
+        with open(
+            os.path.join(root, 'templates/partials/index/dialogs-management.html'),
+            encoding='utf-8',
+        ) as handle:
+            html = handle.read()
+        with open(
+            os.path.join(root, 'static/js/index/12-outlook-upload-accounts.js'),
+            encoding='utf-8',
+        ) as handle:
+            js = handle.read()
+
+        self.assertIn('Graph-only', html)
+        self.assertIn('不含 IMAP 权限', html)
+        self.assertIn('Graph-only（不含 IMAP 权限）', js)
 
     def test_4_1_outlook_account_menu_has_auto_auth_imap_does_not(self):
         """Outlook 账号菜单包含"加入自动授权"，IMAP 账号不包含该入口。"""

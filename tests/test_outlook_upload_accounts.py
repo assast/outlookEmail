@@ -424,6 +424,74 @@ class OutlookUploadUpdateRouteTests(unittest.TestCase):
         self.assertEqual(web_outlook_app.decrypt_data(row['password']), 'newpw')
         self.assertEqual(row['remark'], 'updated')
 
+    def test_update_email_resets_authorized_status(self):
+        account_id = self._seed()
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                "UPDATE outlook_upload_accounts SET is_authorized = 1 WHERE id = ?",
+                (account_id,),
+            )
+            db.commit()
+
+        response = self.client.put(
+            f'/api/outlook-upload-accounts/{account_id}',
+            json={'email': 'changed@outlook.com'},
+        )
+        self.assertEqual(response.status_code, 200)
+        with self.app.app_context():
+            row = web_outlook_app.get_db().execute(
+                "SELECT is_authorized FROM outlook_upload_accounts WHERE id = ?",
+                (account_id,),
+            ).fetchone()
+        self.assertEqual(row['is_authorized'], 0)
+
+    def test_update_password_resets_authorized_status(self):
+        account_id = self._seed()
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                "UPDATE outlook_upload_accounts SET is_authorized = 1 WHERE id = ?",
+                (account_id,),
+            )
+            db.commit()
+
+        response = self.client.put(
+            f'/api/outlook-upload-accounts/{account_id}',
+            json={'password': 'new-secret'},
+        )
+        self.assertEqual(response.status_code, 200)
+        with self.app.app_context():
+            row = web_outlook_app.get_db().execute(
+                "SELECT is_authorized, password FROM outlook_upload_accounts WHERE id = ?",
+                (account_id,),
+            ).fetchone()
+        self.assertEqual(row['is_authorized'], 0)
+        self.assertEqual(web_outlook_app.decrypt_data(row['password']), 'new-secret')
+
+    def test_update_remark_only_keeps_authorized_status(self):
+        account_id = self._seed()
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                "UPDATE outlook_upload_accounts SET is_authorized = 1 WHERE id = ?",
+                (account_id,),
+            )
+            db.commit()
+
+        response = self.client.put(
+            f'/api/outlook-upload-accounts/{account_id}',
+            json={'remark': 'remark-only'},
+        )
+        self.assertEqual(response.status_code, 200)
+        with self.app.app_context():
+            row = web_outlook_app.get_db().execute(
+                "SELECT is_authorized, remark FROM outlook_upload_accounts WHERE id = ?",
+                (account_id,),
+            ).fetchone()
+        self.assertEqual(row['is_authorized'], 1)
+        self.assertEqual(row['remark'], 'remark-only')
+
     def test_update_keeps_password_when_omitted_or_empty(self):
         account_id = self._seed(password='keepme')
         response = self.client.put(

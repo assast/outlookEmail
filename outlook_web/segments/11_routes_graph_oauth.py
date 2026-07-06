@@ -49,7 +49,7 @@ def normalize_graph_oauth_mode(mode: Any) -> str:
 
 
 def graph_oauth_mode_label(mode: str) -> str:
-    return "Graph" if mode == "graph" else "Outlook IMAP"
+    return "Graph-only（不含 IMAP 权限）" if mode == "graph" else "Outlook IMAP"
 
 
 def graph_oauth_sse(payload: Dict[str, Any]) -> str:
