@@ -1544,6 +1544,70 @@ def delete_upload_account(account_id: int) -> bool:
     return cursor.rowcount > 0
 
 
+def update_upload_account(account_id: int, *, email: Optional[str] = None,
+                          password: Optional[str] = None,
+                          remark: Optional[str] = None) -> Dict[str, Any]:
+    """更新指定 ID 的外部上传账号。
+
+    - email: 传入非空字符串才会修改；会规范化并校验包含 '@'。
+    - password: 仅当为非空字符串时才会更新密码（加密存储）；None 或空字符串视为保持原密码。
+    - remark: 仅当不为 None 时才会更新备注（允许空字符串清空）。
+    修改 email/password 时同步刷新 updated_at。不在本函数内 commit。
+
+    返回 {'status': 'updated'|'not_found'|'duplicate'|'invalid', 'id', 'email'?}
+    """
+    db = get_db()
+    row = db.execute(
+        'SELECT id, email FROM outlook_upload_accounts WHERE id = ?',
+        (account_id,),
+    ).fetchone()
+    if not row:
+        return {'status': 'not_found', 'id': account_id}
+
+    updates: List[str] = []
+    params: List[Any] = []
+    new_email: Optional[str] = None
+    reset_authorized = False
+
+    if email is not None and email.strip() != '':
+        new_email = normalize_upload_email(email)
+        if '@' not in new_email:
+            return {'status': 'invalid', 'id': account_id, 'email': new_email}
+        if new_email != row['email']:
+            dup = db.execute(
+                'SELECT id FROM outlook_upload_accounts WHERE email = ? AND id != ?',
+                (new_email, account_id),
+            ).fetchone()
+            if dup:
+                return {'status': 'duplicate', 'id': account_id, 'email': new_email}
+            updates.append('email = ?')
+            params.append(new_email)
+            reset_authorized = True
+
+    if password is not None and password != '':
+        updates.append('password = ?')
+        params.append(encrypt_data(password))
+        reset_authorized = True
+
+    if remark is not None:
+        updates.append('remark = ?')
+        params.append(remark)
+
+    if not updates:
+        return {'status': 'updated', 'id': account_id, 'email': row['email']}
+
+    if reset_authorized:
+        updates.append('is_authorized = 0')
+
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(account_id)
+    db.execute(
+        f"UPDATE outlook_upload_accounts SET {', '.join(updates)} WHERE id = ?",
+        tuple(params),
+    )
+    return {'status': 'updated', 'id': account_id, 'email': new_email or row['email']}
+
+
 def query_upload_accounts_page(page: int = 1, page_size: int = 20,
                                keyword: str = '') -> Dict[str, Any]:
     """分页查询外部上传的 Outlook 账号。

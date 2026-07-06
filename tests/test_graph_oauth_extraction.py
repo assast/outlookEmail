@@ -2,6 +2,7 @@ import importlib
 import json
 import os
 import tempfile
+import urllib.parse
 import unittest
 from unittest.mock import patch
 
@@ -87,6 +88,11 @@ class GraphTokenExtractorTests(unittest.TestCase):
         self.assertEqual(session.post_calls[0][1]['PPFT'], 'flow-token-hidden')
         self.assertEqual(session.post_calls[0][1]['ctx'], 'ctx-value')
         self.assertEqual(session.post_calls[1][1]['code'], 'auth-code')
+        self.assertEqual(session.post_calls[1][1]['scope'], web_outlook_app.GRAPH_EXTRACT_SCOPE)
+        self.assertIn('https://outlook.office.com/IMAP.AccessAsUser.All', session.post_calls[1][1]['scope'])
+        auth_query = urllib.parse.parse_qs(urllib.parse.urlparse(session.get_calls[0][0]).query)
+        self.assertEqual(auth_query['scope'][0], web_outlook_app.GRAPH_EXTRACT_SCOPE)
+        self.assertIn('https://outlook.office.com/IMAP.AccessAsUser.All', auth_query['scope'][0])
         self.assertNotIn('secret-password', '\n'.join(logs))
         self.assertNotIn('refresh-token-value', '\n'.join(logs))
 
@@ -243,6 +249,18 @@ class GraphOauthRouteTests(unittest.TestCase):
         self.assertIn('stream_url', payload)
         return payload['stream_url']
 
+    def _start_graph_task_with_mode(self, account_id, mode):
+        response = self.client.post('/api/oauth/graph-extract-token', json={
+            'account_id': account_id,
+            'mode': mode,
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'], payload)
+        self.assertEqual(payload['mode'], mode if mode in ('imap', 'graph') else 'imap')
+        self.assertIn('stream_url', payload)
+        return payload['stream_url']
+
     def _consume_stream(self, stream_url):
         response = self.client.get(stream_url)
         self.assertEqual(response.status_code, 200)
@@ -297,7 +315,9 @@ class GraphOauthRouteTests(unittest.TestCase):
         self.assertEqual(formal['provider'], 'outlook')
         self.assertEqual(formal['account_type'], 'outlook')
         self.assertEqual(upload['is_authorized'], 1)
-        self.assertEqual(upload['password'], '')
+        self.assertNotEqual(upload['password'], 'mail-password')
+        self.assertTrue(upload['password'].startswith('enc:'))
+        self.assertEqual(web_outlook_app.decrypt_data(upload['password']), 'mail-password')
 
     def test_stream_success_updates_existing_formal_account(self):
         account_id = self._add_upload_account(email='exists@example.com', password='new-password')
@@ -345,6 +365,36 @@ class GraphOauthRouteTests(unittest.TestCase):
         self.assertEqual(account['remark'], 'keep existing remark')
         self.assertEqual(account['last_refresh_status'], 'never')
         self.assertIsNone(account['last_refresh_error'])
+
+    def test_stream_graph_mode_uses_graph_scope(self):
+        account_id = self._add_upload_account(email='graph-mode@example.com')
+
+        with patch.object(web_outlook_app, 'extract_graph_refresh_token', return_value={
+            'success': True,
+            'refresh_token': 'graph-refresh-token',
+            'client_id': 'graph-client-id',
+        }) as extract_mock, \
+             patch.object(web_outlook_app, 'test_refresh_token', return_value=(True, None, '')):
+            _, events = self._consume_stream(self._start_graph_task_with_mode(account_id, 'graph'))
+
+        self.assertTrue(events[-1]['success'])
+        self.assertEqual(extract_mock.call_args.kwargs['scope'], web_outlook_app.GRAPH_EXTRACT_GRAPH_SCOPE)
+        self.assertIn('https://graph.microsoft.com/Mail.Read', extract_mock.call_args.kwargs['scope'])
+
+    def test_stream_default_mode_uses_imap_scope(self):
+        account_id = self._add_upload_account(email='imap-mode@example.com')
+
+        with patch.object(web_outlook_app, 'extract_graph_refresh_token', return_value={
+            'success': True,
+            'refresh_token': 'imap-refresh-token',
+            'client_id': 'imap-client-id',
+        }) as extract_mock, \
+             patch.object(web_outlook_app, 'test_refresh_token', return_value=(True, None, '')):
+            _, events = self._consume_stream(self._start_graph_task(account_id))
+
+        self.assertTrue(events[-1]['success'])
+        self.assertEqual(extract_mock.call_args.kwargs['scope'], web_outlook_app.GRAPH_EXTRACT_SCOPE)
+        self.assertIn('https://outlook.office.com/IMAP.AccessAsUser.All', extract_mock.call_args.kwargs['scope'])
 
     def test_stream_validation_failure_does_not_write_or_mark_authorized(self):
         account_id = self._add_upload_account(email='invalid-token@example.com')
@@ -554,15 +604,36 @@ class GraphOauthFrontendContractTests(unittest.TestCase):
         self.assertNotIn('graphAuthState.password', js)
         self.assertIn('data-graph-auth-account-id', js)
 
-    def test_graph_auth_modal_does_not_render_plain_password_container(self):
+    def test_graph_auth_panel_embedded_without_password_container(self):
         with open(
             os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates/partials/index/dialogs-management.html'),
             encoding='utf-8',
         ) as handle:
             html = handle.read()
 
+        # 独立的 Graph API 授权弹窗已移除，授权日志面板内嵌到上传账号弹窗右侧
+        self.assertNotIn('id="graphAuthModal"', html)
+        # 不再渲染任何明文或掩码密码容器，右侧面板只展示授权日志
         self.assertNotIn('id="graphAuthPassword"', html)
-        self.assertIn('id="graphAuthPasswordMasked"', html)
+        self.assertNotIn('id="graphAuthPasswordMasked"', html)
+        self.assertIn('id="graphAuthLog"', html)
+
+    def test_graph_only_mode_text_makes_imap_limitation_explicit(self):
+        root = os.path.dirname(os.path.dirname(__file__))
+        with open(
+            os.path.join(root, 'templates/partials/index/dialogs-management.html'),
+            encoding='utf-8',
+        ) as handle:
+            html = handle.read()
+        with open(
+            os.path.join(root, 'static/js/index/12-outlook-upload-accounts.js'),
+            encoding='utf-8',
+        ) as handle:
+            js = handle.read()
+
+        self.assertIn('Graph-only', html)
+        self.assertIn('不含 IMAP 权限', html)
+        self.assertIn('Graph-only（不含 IMAP 权限）', js)
 
     def test_4_1_outlook_account_menu_has_auto_auth_imap_does_not(self):
         """Outlook 账号菜单包含"加入自动授权"，IMAP 账号不包含该入口。"""
