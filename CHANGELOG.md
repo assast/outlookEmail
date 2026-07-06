@@ -14,6 +14,27 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 **重要提示**: 已授权的账号需要重新授权才能获得 IMAP 访问权限。
 
+## [2.7.0] - 2026-07-04
+
+### Added
+- 正式邮箱账号操作菜单新增"加入自动授权"入口，可将已有 Outlook 账号直接加入自动化授权队列；同邮箱重新入队会覆盖暂存密码并重置为未授权状态。
+- 新增 `POST /api/accounts/<account_id>/outlook-auto-auth` 接口和 `upsert_upload_account_for_auto_auth` 数据层 helper，从服务端读取正式账号邮箱和密码写入暂存表，不返回明文密码。
+- Outlook 自动化授权支持重复授权：授权成功后覆盖正式账号的密码、`client_id`、`refresh_token` 和授权更新时间，同时保留分组、备注、别名、标签、代理、转发、排序和启停等业务字段；授权失败时不覆盖已有正式账号数据。
+
+### Changed
+- Graph OAuth 自动提取不再单独定义 `GRAPH_EXTRACT_CLIENT_ID` / `GRAPH_EXTRACT_REDIRECT_URI` 环境变量，改为复用 `01_bootstrap.py` 中的 `OAUTH_CLIENT_ID` / `OAUTH_REDIRECT_URI`；`scope` 和 `authority` 仍为 Graph 自动提取专用，保持独立。
+
+### Security
+- 加入自动授权接口不从响应返回明文密码，密码仅从服务端加密数据读取并加密写入暂存表。
+
+## [2.6.0] - 2026-07-02
+
+### Added
+- 编辑邮箱账号时支持回显和保存账号标签。
+
+### Changed
+- 导入账号的标签选择器改为复用统一的可搜索标签下拉组件。
+
 ## [2.5.0] - 2026-06-29
 
 ### Added

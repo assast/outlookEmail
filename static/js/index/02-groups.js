@@ -1472,6 +1472,7 @@
                             <button class="account-action-btn" type="button" data-account-action="share" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">分享邮箱</button>
                             <button class="account-action-btn" type="button" data-account-action="forwardingLogs" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">转发日志</button>
                             <button class="account-action-btn" type="button" data-account-action="toggleStatus" data-account-id="${acc.id}" data-account-status="${escapeHtml(acc.status || 'active')}">${acc.status === 'inactive' ? '启用账号' : '停用账号'}</button>
+                            ${(acc.account_type || 'outlook') !== 'imap' ? `<button class="account-action-btn" type="button" data-account-action="outlookAutoAuth" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">加入自动授权</button>` : ''}
                             <button class="account-action-btn" type="button" data-account-action="edit" data-account-id="${acc.id}">编辑账号</button>
                             <button class="account-action-btn delete" type="button" data-account-action="delete" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">删除账号</button>
                         </div>
@@ -1810,14 +1811,16 @@
 
         // Tag Filter Change Handler
         function handleTagFilterChange() {
-            const selected = document.querySelectorAll('.tag-filter-checkbox:checked');
+            const dropdown = document.getElementById('tagFilterDropdown');
+            const selected = dropdown ? dropdown.querySelectorAll('.tag-filter-checkbox:checked') : document.querySelectorAll('.tag-filter-checkbox:checked');
             selectedTagFilters = new Set(
                 Array.from(selected)
                     .map(cb => normalizeTagFilterSelectionValue(cb.value))
                     .filter(value => value !== null)
             );
             saveAccountTagFilterPreference();
-            document.querySelectorAll('.tag-filter-option').forEach(option => {
+            const optionScope = dropdown || document;
+            optionScope.querySelectorAll('.tag-filter-option').forEach(option => {
                 const checkbox = option.querySelector('.tag-filter-checkbox');
                 option.classList.toggle('is-checked', !!checkbox?.checked);
             });
@@ -2188,7 +2191,7 @@
                 if (importSource) importSource.style.display = '';
             }
             accountDefaultFields.forEach(field => {
-                const isTagField = !!field.querySelector('#importTagDropdown');
+                const isTagField = !!field.querySelector('#importTagFilterDropdown');
                 field.style.display = isTempGroup ? (isTagField ? '' : 'none') : '';
             });
 

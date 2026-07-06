@@ -13,6 +13,119 @@
             return [UNTAGGED_TAG_FILTER_ITEM, ...allTags];
         }
 
+        // ==================== 通用标签下拉组件函数 ====================
+        // 供邮箱列表筛选条件、导入模态框、编辑模态框共用
+
+        /**
+         * 生成 tag-filter-option checkbox 列表 HTML
+         * @param {Array} tags - 标签列表 [{id, name, color}, ...]
+         * @param {Array|Set} selectedIds - 已选中的标签 ID 集合
+         * @param {string} onchangeFn - onchange 调用的函数名（不含括号）
+         * @param {boolean} includeUntagged - 是否包含"无标签"选项（仅筛选条件用）
+         */
+        function buildTagFilterOptionsHtml(tags, selectedIds, onchangeFn, includeUntagged) {
+            const selectedSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds);
+            let items = includeUntagged ? [UNTAGGED_TAG_FILTER_ITEM, ...tags] : (tags || []);
+            if (!items.length) {
+                return '<div class="tag-filter-empty" style="display: block;">暂无标签</div>';
+            }
+            return items.map(tag => `
+                <label class="tag-filter-option ${selectedSet.has(tag.id) ? 'is-checked' : ''}" data-tag-name="${escapeHtml(tag.name)}">
+                    <input type="checkbox" class="tag-filter-checkbox" value="${tag.id}"
+                        ${selectedSet.has(tag.id) ? 'checked' : ''}
+                        ${onchangeFn ? `onchange="${onchangeFn}()"` : ''}>
+                    <span class="tag-filter-dot" style="background-color: ${tag.color};"></span>
+                    <span class="tag-filter-name">${escapeHtml(tag.name)}</span>
+                </label>
+            `).join('');
+        }
+
+        /**
+         * 在指定 options 容器内按关键字过滤标签选项
+         */
+        function filterTagFilterOptions(keyword, optionsContainer) {
+            if (!optionsContainer) return;
+            const kw = (keyword || '').trim().toLowerCase();
+            let visibleCount = 0;
+            optionsContainer.querySelectorAll('.tag-filter-option').forEach(option => {
+                const tagName = (option.dataset.tagName || '').toLowerCase();
+                const isVisible = !kw || tagName.includes(kw);
+                option.classList.toggle('hidden', !isVisible);
+                if (isVisible) visibleCount += 1;
+            });
+            const emptyState = optionsContainer.querySelector('.tag-filter-empty');
+            if (emptyState) {
+                const hasOptions = optionsContainer.querySelectorAll('.tag-filter-option').length > 0;
+                emptyState.style.display = (visibleCount === 0 && (kw || !hasOptions)) ? 'block' : 'none';
+                if (kw && visibleCount === 0) {
+                    emptyState.textContent = '没有匹配的标签';
+                } else if (!hasOptions) {
+                    emptyState.textContent = '暂无标签';
+                }
+            }
+        }
+
+        /**
+         * 从指定 options 容器获取已选中标签 ID 数组
+         */
+        function getTagFilterSelectedIds(optionsContainer) {
+            if (!optionsContainer) return [];
+            return Array.from(optionsContainer.querySelectorAll('.tag-filter-checkbox:checked'))
+                .map(checkbox => parseInt(checkbox.value, 10))
+                .filter(Number.isFinite);
+        }
+
+        /**
+         * 更新标签下拉触发器的汇总文本和计数徽章
+         * @param {HTMLElement} triggerTextEl - 汇总文本元素
+         * @param {HTMLElement} countEl - 计数徽章元素
+         * @param {Array} selectedItems - 已选标签对象数组 [{id, name, color}, ...]
+         * @param {string} defaultText - 无选中时的默认文本
+         */
+        function updateTagFilterSummaryText(triggerTextEl, countEl, selectedItems, defaultText) {
+            if (!triggerTextEl || !countEl) return;
+            const count = selectedItems.length;
+            if (!count) {
+                triggerTextEl.textContent = defaultText || '未选择标签';
+                countEl.style.display = 'none';
+                countEl.textContent = '';
+                return;
+            }
+            triggerTextEl.textContent = count <= 2
+                ? selectedItems.map(t => t.name).join('、')
+                : `已选 ${count} 个标签`;
+            countEl.style.display = 'inline-flex';
+            countEl.textContent = String(count);
+        }
+
+        /**
+         * 切换标签下拉面板的开关状态，打开时聚焦搜索框
+         */
+        function toggleTagFilterDropdownState(dropdownEl, searchInputEl, keyword) {
+            if (!dropdownEl) return;
+            const willOpen = !dropdownEl.classList.contains('open');
+            dropdownEl.classList.toggle('open', willOpen);
+            if (willOpen && searchInputEl) {
+                searchInputEl.value = keyword || '';
+                const optionsContainer = dropdownEl.querySelector('.tag-filter-options');
+                filterTagFilterOptions(searchInputEl.value, optionsContainer);
+                window.requestAnimationFrame(() => searchInputEl.focus());
+            }
+        }
+
+        /**
+         * 清空标签下拉中所有选中状态（仅 UI 层面）
+         */
+        function clearTagFilterCheckboxes(dropdownEl) {
+            if (!dropdownEl) return;
+            dropdownEl.querySelectorAll('.tag-filter-checkbox').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            dropdownEl.querySelectorAll('.tag-filter-option').forEach(option => {
+                option.classList.remove('is-checked');
+            });
+        }
+
         // 显示标签管理模态框
         async function showTagManagementModal() {
             showModal('tagManagementModal');
@@ -81,58 +194,29 @@
         function updateTagFilterSummary() {
             const triggerText = document.getElementById('tagFilterTriggerText');
             const countBadge = document.getElementById('tagFilterTriggerCount');
-            if (!triggerText || !countBadge) return;
-
-            const selectedCount = selectedTagFilters.size;
-            triggerText.textContent = getTagFilterSummaryText();
-            countBadge.style.display = selectedCount > 0 ? 'inline-flex' : 'none';
-            countBadge.textContent = String(selectedCount);
+            updateTagFilterSummaryText(triggerText, countBadge, getSelectedTagFilterItems(), '全部标签');
         }
 
         function filterTagOptions(keyword = '') {
             tagFilterKeyword = keyword.trim().toLowerCase();
-            let visibleCount = 0;
-            document.querySelectorAll('.tag-filter-option').forEach(option => {
-                const tagName = (option.dataset.tagName || '').toLowerCase();
-                const isVisible = !tagFilterKeyword || tagName.includes(tagFilterKeyword);
-                option.classList.toggle('hidden', !isVisible);
-                if (isVisible) visibleCount += 1;
-            });
-
-            const emptyState = document.getElementById('tagFilterEmptyState');
-            if (emptyState) {
-                emptyState.style.display = visibleCount === 0 ? 'block' : 'none';
-            }
+            const dropdown = document.getElementById('tagFilterDropdown');
+            const optionsContainer = dropdown?.querySelector('.tag-filter-options');
+            filterTagFilterOptions(tagFilterKeyword, optionsContainer);
         }
 
         function toggleTagFilterDropdown(event) {
             event?.stopPropagation();
             const dropdown = document.getElementById('tagFilterDropdown');
-            if (!dropdown) return;
-
-            const willOpen = !dropdown.classList.contains('open');
-            dropdown.classList.toggle('open', willOpen);
-
-            if (willOpen) {
-                const searchInput = document.getElementById('tagFilterSearchInput');
-                if (searchInput) {
-                    searchInput.value = tagFilterKeyword;
-                    filterTagOptions(searchInput.value);
-                    window.requestAnimationFrame(() => searchInput.focus());
-                }
-            }
+            const searchInput = document.getElementById('tagFilterSearchInput');
+            toggleTagFilterDropdownState(dropdown, searchInput, tagFilterKeyword);
         }
 
         function clearTagFilterSelection(event) {
             event?.stopPropagation();
             selectedTagFilters = new Set();
             saveAccountTagFilterPreference();
-            document.querySelectorAll('.tag-filter-checkbox').forEach(checkbox => {
-                checkbox.checked = false;
-            });
-            document.querySelectorAll('.tag-filter-option').forEach(option => {
-                option.classList.remove('is-checked');
-            });
+            const dropdown = document.getElementById('tagFilterDropdown');
+            clearTagFilterCheckboxes(dropdown);
             updateTagFilterSummary();
             if (isTempEmailGroup) {
                 if (currentAccountListSource.length) {
@@ -152,15 +236,9 @@
 
             container.style.display = 'flex';
 
-            const optionsHtml = getTagFilterOptionItems().map(tag => `
-                <label class="tag-filter-option ${selectedTagFilters.has(tag.id) ? 'is-checked' : ''}" data-tag-name="${escapeHtml(tag.name)}">
-                    <input type="checkbox" class="tag-filter-checkbox" value="${tag.id}"
-                        ${selectedTagFilters.has(tag.id) ? 'checked' : ''}
-                        onchange="handleTagFilterChange()">
-                    <span class="tag-filter-dot" style="background-color: ${tag.color};"></span>
-                    <span class="tag-filter-name">${escapeHtml(tag.name)}</span>
-                </label>
-            `).join('');
+            const optionsHtml = buildTagFilterOptionsHtml(
+                allTags, selectedTagFilters, 'handleTagFilterChange', true
+            );
 
             container.innerHTML = `
                 <span class="toolbar-label">标签</span>

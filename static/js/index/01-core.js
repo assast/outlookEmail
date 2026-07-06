@@ -1146,6 +1146,7 @@
             document.addEventListener('click', handleGlobalChromeClick);
             document.addEventListener('click', handleGlobalTagFilterClick);
             document.addEventListener('click', handleGlobalImportTagClick);
+            document.addEventListener('click', handleGlobalEditTagClick);
             
             // Dropdown menu click handling (for batch actions and navbar settings)
             document.addEventListener('click', function(e) {
@@ -1423,12 +1424,22 @@
         }
 
         function closeImportTagDropdown() {
-            document.getElementById('importTagDropdown')?.classList.remove('open');
+            document.getElementById('importTagFilterDropdown')?.classList.remove('open');
         }
 
         function handleGlobalImportTagClick(event) {
-            if (!event.target.closest('#importTagDropdown')) {
+            if (!event.target.closest('#importTagFilterDropdown')) {
                 closeImportTagDropdown();
+            }
+        }
+
+        function closeEditTagDropdown() {
+            document.getElementById('editTagFilterDropdown')?.classList.remove('open');
+        }
+
+        function handleGlobalEditTagClick(event) {
+            if (!event.target.closest('#editTagFilterDropdown')) {
+                closeEditTagDropdown();
             }
         }
 
@@ -1476,6 +1487,8 @@
                         showAccountForwardingLogs(accountId, accountEmail);
                     } else if (action === 'toggleStatus') {
                         toggleAccountStatus(accountId, accountStatus);
+                    } else if (action === 'outlookAutoAuth') {
+                        queueAccountForOutlookAutoAuth(accountId, accountEmail);
                     } else if (action === 'edit') {
                         showEditAccountModal(accountId);
                     } else if (action === 'delete') {

@@ -2235,7 +2235,7 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('id="importCloudflareImportMode"', dialog_html)
         self.assertIn('自动拉取邮箱导入', dialog_html)
         self.assertIn('手动导入', dialog_html)
-        self.assertIn("const isTagField = !!field.querySelector('#importTagDropdown');", groups_js)
+        self.assertIn("const isTagField = !!field.querySelector('#importTagFilterDropdown');", groups_js)
         self.assertIn("field.style.display = isTempGroup ? (isTagField ? '' : 'none') : '';", groups_js)
         self.assertIn('自动从所选 Cloudflare 渠道拉取邮箱地址并导入，不拉取 JWT。', groups_js)
         self.assertIn('手动导入不再支持 邮箱----JWT', groups_js)
