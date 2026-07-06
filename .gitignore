@@ -19,6 +19,7 @@ data/
 
 # 环境变量
 .env
+secret_key.txt
 
 # IDE
 .vscode/
@@ -28,6 +29,7 @@ data/
 
 # 日志
 *.log
+debug_response_*.html
 
 # 系统文件
 .DS_Store
@@ -37,6 +39,7 @@ Thumbs.db
 /.agents/
 /CLAUDE.md
 /.claude/
+/.superpowers/
 安全漏洞.md
 /.codex/
 /.tmp/
