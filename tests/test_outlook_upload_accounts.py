@@ -457,6 +457,16 @@ class OutlookUploadFrontendStructureTests(unittest.TestCase):
         self.assertIn('<td class="upload-accounts-cell-mono upload-accounts-cell-right">', js)
         self.assertIn('<td class="upload-accounts-cell-right">', js)
 
+    def test_upload_accounts_table_reserves_space_during_pagination_loading(self):
+        html = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'dialogs-management.html').read_text(encoding='utf-8')
+
+        table_wrap_css = html.split('.upload-accounts-table-wrap {', 1)[1].split('}', 1)[0]
+        table_css = html.split('.upload-accounts-table {', 1)[1].split('}', 1)[0]
+
+        self.assertIn('min-height: 410px;', table_wrap_css)
+        self.assertIn('table-layout: fixed;', table_css)
+        self.assertIn('min-width: 912px;', table_css)
+
     def test_table_password_uses_eye_toggle(self):
         js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
 
