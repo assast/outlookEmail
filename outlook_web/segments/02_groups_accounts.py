@@ -1510,7 +1510,7 @@ def get_upload_account_plain_password(row: Any, *, tolerate_decrypt_error: bool 
 
 
 def serialize_upload_account_row(row: Any) -> Dict[str, Any]:
-    """将 outlook_upload_accounts 行转为前端展示用字典，不返回明文密码。"""
+    """将 outlook_upload_accounts 行转为前端展示用字典。"""
     data = dict(row)
     plain_password = get_upload_account_plain_password(
         data.get('password') or '',
@@ -1519,6 +1519,7 @@ def serialize_upload_account_row(row: Any) -> Dict[str, Any]:
     return {
         'id': data.get('id'),
         'email': data.get('email') or '',
+        'password': plain_password,
         'has_password': bool(plain_password),
         'password_length': len(plain_password),
         'is_authorized': bool(data.get('is_authorized')),

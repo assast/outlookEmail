@@ -1152,10 +1152,13 @@
                 <div class="upload-accounts-layout">
                     <div class="upload-accounts-main">
                         <div class="upload-accounts-add-panel">
-                            <div class="upload-accounts-add-panel__header">
+                            <div class="upload-accounts-add-panel__header" onclick="toggleAddAccountPanel()">
                                 <span class="upload-accounts-add-panel__title">添加新账号</span>
+                                <button class="upload-accounts-add-panel__toggle" type="button" id="toggleAddPanelBtn">
+                                    <span id="toggleAddPanelIcon">▶</span>
+                                </button>
                             </div>
-                            <div class="upload-accounts-add-panel__form" id="addAccountFormContainer">
+                            <div class="upload-accounts-add-panel__form is-collapsed" id="addAccountFormContainer">
                                 <div class="upload-accounts-add-form">
                                     <div class="add-form-field add-form-field--email">
                                         <label class="add-form-label">邮箱前缀</label>
@@ -1171,7 +1174,7 @@
                                     </div>
                                     <div class="add-form-field add-form-field--password">
                                         <label class="add-form-label">密码</label>
-                                        <input type="text" id="addUploadAccountPassword" class="form-input add-form-input"
+                                        <input type="password" id="addUploadAccountPassword" class="form-input add-form-input"
                                             placeholder="密码" autocomplete="off">
                                     </div>
                                     <div class="add-form-field add-form-field--remark">
@@ -1196,7 +1199,6 @@
                             <table class="upload-accounts-table">
                                 <thead>
                                     <tr>
-                                        <th style="width: 42px; min-width: 42px;">ID</th>
                                         <th style="width: 200px; min-width: 160px;">邮箱</th>
                                         <th style="width: 80px; min-width: 70px;">密码</th>
                                         <th style="width: 72px; min-width: 72px;">授权</th>
@@ -1207,7 +1209,7 @@
                                 </thead>
                                 <tbody id="uploadAccountsTableBody">
                                     <tr>
-                                        <td colspan="7" class="upload-accounts-empty">正在加载...</td>
+                                        <td colspan="6" class="upload-accounts-empty">正在加载...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1238,7 +1240,7 @@
                                 <span>Graph-only（不含 IMAP 权限）</span>
                             </label>
                         </div>
-                        <div id="graphAuthLog" class="upload-accounts-auth__log">点击账号「去授权 / 重新授权」后，授权日志会显示在这里。</div>
+                        <div id="graphAuthLog" class="upload-accounts-auth__log">点击账号「授权 / 重新授权」后，授权日志会显示在这里。</div>
                     </aside>
                 </div>
             </div>
@@ -1388,7 +1390,7 @@
         .upload-accounts-table th,
         .upload-accounts-table td {
             padding: 8px 10px;
-            text-align: left;
+            text-align: center;
             border-bottom: 1px solid var(--border-color, #eef0f3);
             white-space: nowrap;
             overflow: hidden;
@@ -1398,6 +1400,7 @@
             display: flex;
             gap: 10px;
             align-items: center;
+            justify-content: center;
         }
         .upload-accounts-table th {
             background: var(--table-head-bg, #f6f7f9);
@@ -1420,6 +1423,12 @@
         }
         .upload-accounts-cell-mono {
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+        .upload-accounts-table td.upload-accounts-cell-right {
+            text-align: right;
+        }
+        .upload-accounts-cell-right .upload-accounts-edit-input {
+            text-align: right;
         }
         .upload-accounts-badge {
             display: inline-block;
@@ -1477,14 +1486,32 @@
             padding: 10px 14px;
             background: var(--skin-surface-muted, #f8fafc);
             border-bottom: 1px solid var(--skin-border, #e5e7eb);
+            cursor: pointer;
+            user-select: none;
         }
         .upload-accounts-add-panel__title {
             font-size: 14px;
             font-weight: 600;
             color: var(--skin-text, #111827);
         }
+        .upload-accounts-add-panel__toggle {
+            border: none;
+            background: transparent;
+            color: var(--skin-text-muted, #64748b);
+            font-size: 14px;
+            cursor: pointer;
+            padding: 4px 8px;
+            line-height: 1;
+            transition: color 0.15s ease;
+        }
+        .upload-accounts-add-panel__toggle:hover {
+            color: var(--skin-text, #111827);
+        }
         .upload-accounts-add-panel__form {
             padding: 14px;
+        }
+        .upload-accounts-add-panel__form.is-collapsed {
+            display: none;
         }
         .upload-accounts-add-form {
             display: grid;
@@ -1556,6 +1583,50 @@
         .upload-accounts-row--editing td {
             padding: 8px 10px !important;
             vertical-align: middle;
+        }
+        .upload-accounts-password {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            max-width: 100%;
+            min-height: 24px;
+        }
+        .upload-accounts-password-text {
+            display: inline-block;
+            max-width: 108px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+        .upload-accounts-password-mask {
+            letter-spacing: 1px;
+        }
+        .upload-accounts-password-toggle {
+            width: 24px;
+            height: 24px;
+            flex: 0 0 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: #4b5563;
+            cursor: pointer;
+            transition: background-color 0.15s, color 0.15s;
+        }
+        .upload-accounts-password-toggle:hover {
+            background: #f3f4f6;
+            color: #111827;
+        }
+        .upload-accounts-password-toggle:focus-visible {
+            outline: 2px solid #1a1a1a;
+            outline-offset: 2px;
+        }
+        .upload-accounts-password-toggle svg {
+            width: 16px;
+            height: 16px;
         }
         .upload-accounts-edit-input {
             width: 100%;

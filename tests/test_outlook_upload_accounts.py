@@ -323,7 +323,7 @@ class OutlookUploadRouteTests(unittest.TestCase):
         self.assertNotEqual(row['password'], 'secret')
         self.assertEqual(web_outlook_app.decrypt_data(row['password']), 'secret')
 
-    def test_list_upload_accounts_returns_password_for_inline_edit(self):
+    def test_list_upload_accounts_returns_password_for_table_reveal(self):
         with self.app.app_context():
             web_outlook_app.add_upload_account('list@outlook.com', 'secret', 'n')
             web_outlook_app.get_db().commit()
@@ -357,6 +357,7 @@ class OutlookUploadRouteTests(unittest.TestCase):
         self.assertTrue(payload['success'])
         items = {item['email']: item for item in payload['items']}
         self.assertTrue(items['good@outlook.com']['has_password'])
+        self.assertEqual(items['good@outlook.com']['password'], 'secret')
         self.assertFalse(items['bad@outlook.com']['has_password'])
         self.assertEqual(items['bad@outlook.com']['password_length'], 0)
 
@@ -387,6 +388,49 @@ class OutlookUploadRouteTests(unittest.TestCase):
     def test_route_is_marked_api_key_required(self):
         view = self.app.view_functions['api_external_upload_outlook']
         self.assertTrue(getattr(view, '_requires_api_key', False))
+
+
+class OutlookUploadFrontendStructureTests(unittest.TestCase):
+    def test_upload_accounts_table_does_not_show_id_column(self):
+        html = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'dialogs-management.html').read_text(encoding='utf-8')
+        js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
+
+        self.assertNotIn('<th style="width: 42px; min-width: 42px;">ID</th>', html)
+        self.assertIn('<td colspan="6" class="upload-accounts-empty">正在加载...</td>', html)
+        self.assertIn('<tr class="upload-accounts-row--editing" data-editing-id="${escapeHtml(String(itemId))}">', js)
+        self.assertNotIn('<td>${escapeHtml(String(itemId))}</td>', js)
+        self.assertIn('<tr><td colspan="6" class="upload-accounts-empty">暂无数据</td></tr>', js)
+        self.assertIn('<tr><td colspan="6" class="upload-accounts-empty">正在加载...</td></tr>', js)
+
+    def test_upload_accounts_table_alignment_rules(self):
+        html = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'dialogs-management.html').read_text(encoding='utf-8')
+        js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
+
+        self.assertIn('text-align: center;', html)
+        self.assertIn('.upload-accounts-cell-right', html)
+        self.assertIn('text-align: right;', html)
+        self.assertIn('justify-content: center;', html)
+        self.assertIn('<td class="upload-accounts-cell-mono upload-accounts-cell-right">', js)
+        self.assertIn('<td class="upload-accounts-cell-right">', js)
+
+    def test_table_password_uses_eye_toggle(self):
+        js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
+
+        self.assertIn('toggleUploadAccountPasswordVisibility', js)
+        self.assertIn('data-upload-account-password', js)
+        self.assertIn('upload-accounts-password-mask', js)
+        self.assertIn('aria-label="显示密码"', js)
+        self.assertIn("'隐藏密码'", js)
+        self.assertNotIn('<td class="upload-accounts-cell-mono">${escapeHtml(formatUploadAccountPassword(item))}</td>', js)
+
+    def test_table_password_reveal_does_not_inline_password_in_graph_auth_button(self):
+        js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
+
+        auth_button_start = js.index('const authBtn =')
+        auth_button_end = js.index('const editBtn =', auth_button_start)
+        auth_button_js = js[auth_button_start:auth_button_end]
+        self.assertNotIn('data-upload-account-password', auth_button_js)
+        self.assertNotIn('item.password ||', auth_button_js)
 
 
 class OutlookUploadUpdateRouteTests(unittest.TestCase):
@@ -541,47 +585,6 @@ class OutlookUploadUpdateRouteTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 404)
         self.assertFalse(response.get_json()['success'])
-
-
-class OutlookUploadFrontendStructureTests(unittest.TestCase):
-    def test_add_account_form_is_inline_above_table(self):
-        html = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'dialogs-management.html').read_text(encoding='utf-8')
-        js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
-
-        add_panel_index = html.index('class="upload-accounts-add-panel"')
-        table_index = html.index('class="upload-accounts-table-wrap"')
-        self.assertLess(add_panel_index, table_index)
-        self.assertNotIn('id="toggleAddPanelBtn"', html)
-        self.assertNotIn('upload-accounts-add-panel__form is-collapsed', html)
-        self.assertNotIn('toggleAddAccountPanel', js)
-
-    def test_add_account_password_is_visible(self):
-        html = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'dialogs-management.html').read_text(encoding='utf-8')
-
-        self.assertIn('type="text" id="addUploadAccountPassword"', html)
-        self.assertNotIn('type="password" id="addUploadAccountPassword"', html)
-
-    def test_edit_row_prefills_visible_password(self):
-        js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
-
-        self.assertIn("const itemPassword = item.password || '';", js)
-        self.assertIn('id="edit-password-${escapeHtml(String(itemId))}"', js)
-        self.assertIn('value="${escapeHtml(itemPassword)}"', js)
-        self.assertNotIn('input type="password" class="upload-accounts-edit-input"', js)
-        self.assertNotIn('placeholder="留空不改"', js)
-
-    def test_passwords_are_visible_without_reveal_controls(self):
-        html = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'dialogs-management.html').read_text(encoding='utf-8')
-        js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
-
-        self.assertIn("return item.password || '';", js)
-        self.assertIn('<td class="upload-accounts-cell-mono">${escapeHtml(formatUploadAccountPassword(item))}</td>', js)
-        self.assertNotIn("return escapeHtml(item.password || '')", js)
-        self.assertNotIn('id="addUploadAccountPassword" type="password"', html)
-        self.assertNotIn('password-toggle', html)
-        self.assertNotIn('secret-reveal', html)
-        self.assertNotIn('password-toggle', js)
-        self.assertNotIn('secret-reveal', js)
 
 
 if __name__ == '__main__':
