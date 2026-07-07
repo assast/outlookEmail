@@ -732,10 +732,12 @@ OAUTH_CLIENT_ID = os.getenv("OAUTH_CLIENT_ID", "6daa9f56-5e67-4cb6-ae52-ef89ef91
 OAUTH_REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI", "http://localhost:8080")
 OAUTH_SCOPES = [
     "offline_access",
+    "https://outlook.office.com/IMAP.AccessAsUser.All"
+]
+OAUTH_GRAPH_SCOPES = [
     "https://graph.microsoft.com/Mail.Read",
     "https://graph.microsoft.com/Mail.ReadWrite",
     "https://graph.microsoft.com/User.Read",
-    "https://outlook.office.com/IMAP.AccessAsUser.All"
 ]
 
 

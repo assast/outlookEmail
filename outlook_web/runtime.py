@@ -61,7 +61,7 @@ def startup_log_path() -> Path:
 
 
 def resolve_secret_key() -> str | None:
-    secret_key = os.getenv("SECRET_KEY")
+    secret_key = (os.getenv("SECRET_KEY") or "").strip()
     if secret_key:
         return secret_key
 

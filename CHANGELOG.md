@@ -6,6 +6,23 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.8.1] - 2026-07-07
+
+### Added
+- Outlook 自动化授权上传账号表格新增正式账号标签展示，并支持在管理端表格中切换显示/隐藏已保存密码。
+- 新增 Windows `start.bat` / `start.ps1` 本地启动脚本和项目协作说明。
+
+### Changed
+- 手动 OAuth 助手调整为只请求 Outlook IMAP 单资源权限，Graph token fallback 改用独立 Graph scope，避免 Microsoft OAuth v2 跨资源混用报错。
+- 优化 Outlook 自动化授权账号表格的列宽、按钮文案、编辑态和授权操作布局稳定性。
+- 上传账号列表接口会向已登录管理端返回解密后的 `password` 字段，用于前端表格显示切换；新增/修改响应仍不返回明文密码。
+- `SECRET_KEY` 环境变量读取时会忽略首尾空白，并同步 README 配置说明。
+- 清理过时 OAuth 与项目设计文档，保留当前 API 与安全说明。
+
+### Fixed
+- 修复手动 OAuth 授权链接和授权码换 token 请求可能混入 Graph scope 的问题。
+- 修复 Outlook 自动化授权账号表格在标签、密码和操作列下的显示抖动问题。
+
 ## [2.8.0] - 2026-07-06
 
 ### Added
@@ -15,7 +32,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - README 与 Docker 配置补充本地源码构建运行说明。
 
 ### Changed
-- OAuth 授权 Scope 新增 `https://outlook.office.com/IMAP.AccessAsUser.All` 权限，使 IMAP 授权模式导出的 RefreshToken 同时支持 Graph API 和 IMAP 访问。
+- OAuth 授权 Scope 新增 `https://outlook.office.com/IMAP.AccessAsUser.All` 权限，用于让 IMAP 授权模式获取 IMAP 访问能力。
 - Outlook 上传账号列表接口不再返回明文密码，前端列表只显示密码是否已保存。
 - 修改 Outlook 上传账号的邮箱或密码时会将 `is_authorized` 重置为 `0`；仅修改备注不会改变授权状态。
 - Graph 授权模式文案调整为 `Graph-only`，并明确提示不含 IMAP 权限。
@@ -30,23 +47,6 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Outlook 上传账号暂存密码继续加密保留在后端，列表 API、前端表格和授权日志均不返回、不展示明文密码。
 
 **重要提示**: 已授权的账号需要重新授权才能获得 IMAP 访问权限；`Graph-only` 模式不含 IMAP 权限，如需 IMAP 访问请选择 `Outlook IMAP` 授权模式。
-
-## [2.7.0] - 2026-07-04
-
-### Added
-- 正式邮箱账号操作菜单新增"加入自动授权"入口，可将已有 Outlook 账号直接加入自动化授权队列；同邮箱重新入队会覆盖暂存密码并重置为未授权状态。
-- 新增 `POST /api/accounts/<account_id>/outlook-auto-auth` 接口和 `upsert_upload_account_for_auto_auth` 数据层 helper，从服务端读取正式账号邮箱和密码写入暂存表，不返回明文密码。
-- Outlook 自动化授权支持重复授权：授权成功后覆盖正式账号的密码、`client_id`、`refresh_token` 和授权更新时间，同时保留分组、备注、别名、标签、代理、转发、排序和启停等业务字段；授权失败时不覆盖已有正式账号数据。
-
-### Changed
-- Graph OAuth 自动提取不再单独定义 `GRAPH_EXTRACT_CLIENT_ID` / `GRAPH_EXTRACT_REDIRECT_URI` 环境变量，改为复用 `01_bootstrap.py` 中的 `OAUTH_CLIENT_ID` / `OAUTH_REDIRECT_URI`；`scope` 和 `authority` 仍为 Graph 自动提取专用，保持独立。
-
-### Security
-- 加入自动授权接口不从响应返回明文密码，密码仅从服务端加密数据读取并加密写入暂存表。
-
-## [2.6.0] - 2026-07-02
-
-**重要提示**: 已授权的账号需要重新授权才能获得 IMAP 访问权限。
 
 ## [2.7.0] - 2026-07-04
 

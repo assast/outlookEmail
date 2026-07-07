@@ -162,7 +162,7 @@ cp .env.example .env.local
 python -c 'import secrets; print(secrets.token_hex(32))'
 ```
 
-- `SECRET_KEY`：填入上面生成的随机串（务必修改，勿用占位值）
+- `SECRET_KEY`：填入上面生成的随机串（务必修改，勿用占位值；首尾空白会被忽略）
 - `LOGIN_PASSWORD`：登录密码，默认 `admin123`，建议改为强密码
 
 可选：如需调整 Gunicorn 线程数 / 超时，在 `.env.local` 中追加 `GUNICORN_THREADS`、`GUNICORN_TIMEOUT`（不填则使用默认值 4 / 300）。
@@ -335,12 +335,12 @@ Web 应用采用四栏式布局设计：
 
 #### 步骤 4：配置 API 权限  这一步应该可以省略，目前内置的客户端id就没有设置这一步也能正常使用
 
-在「API 权限」中添加以下权限：
+手动 OAuth 助手默认只请求 Outlook IMAP 单资源权限，避免 Microsoft OAuth v2 在同一次授权中混用 Graph 和 Outlook 资源时报 `AADSTS70011`：
 - `offline_access` - 获取刷新令牌
-- `Mail.Read` - 读取邮件
-- `Mail.ReadWrite` - 读写邮件
-- `User.Read` - 读取用户信息
 - `IMAP.AccessAsUser.All` - IMAP 访问
+
+如果需要单独测试 Graph 授权，再为 Graph 流程配置 `Mail.Read` / `Mail.ReadWrite` / `User.Read`，不要和 `IMAP.AccessAsUser.All` 放在同一次手动授权链接里。
+
 #### 步骤 5：获取 Refresh Token
 
 使用本工具内置的 OAuth2 助手获取 Refresh Token：
