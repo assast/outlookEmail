@@ -150,7 +150,7 @@ def build_graph_refresh_scope(graph_scopes: List[str]) -> str:
 
 def get_graph_token_scope_candidates(include_original_scope_fallback: bool = False) -> List[tuple[str, str]]:
     configured_graph_scopes = [
-        scope for scope in OAUTH_SCOPES
+        scope for scope in OAUTH_GRAPH_SCOPES
         if str(scope or '').startswith('https://graph.microsoft.com/')
     ]
     read_graph_scopes = [
