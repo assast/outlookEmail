@@ -1110,6 +1110,9 @@
             const searchQuery = getAccountSearchQuery();
             if (searchQuery && !isTempEmailGroup) {
                 searchAccounts(searchQuery, true);
+            } else if (!isTempEmailGroup && hasAccountServerSideFilters()) {
+                invalidateAccountCaches();
+                refreshVisibleAccountList(true);
             }
         }
 
@@ -1248,10 +1251,13 @@
                 container.innerHTML = '<div class="loading loading-small"><div class="loading-spinner"></div></div>';
             }
 
-            const params = appendAccountListParams(new URLSearchParams({
-                group_id: String(groupId),
+            const params = new URLSearchParams({
                 offset: String(offset)
-            }));
+            });
+            if (getAccountSearchScope() === 'group' || !hasAccountServerSideFilters()) {
+                params.set('group_id', String(groupId));
+            }
+            appendAccountListParams(params);
             const requestId = ++accountListRequestSeq;
 
             try {
@@ -1411,7 +1417,8 @@
         function renderAccountList(accounts) {
             const container = document.getElementById('accountList');
             const isSearchMode = !!(document.getElementById('globalSearch')?.value || '').trim();
-            const showSearchGroupInfo = isSearchMode && getAccountSearchScope() === 'all';
+            const hasTagFilters = hasAccountServerSideFilters();
+            const showSearchGroupInfo = (isSearchMode || hasTagFilters) && getAccountSearchScope() === 'all';
             const normalizedGroupId = Number(currentGroupId);
             const refreshAction = Number.isFinite(normalizedGroupId) && normalizedGroupId > 0
                 ? `loadAccountsByGroup(${normalizedGroupId}, true)`
@@ -1659,9 +1666,13 @@
                     updateCurrentGroupHeader(null);
                 }
             } else {
-                const currentGroup = groups.find(group => group.id === currentGroupId);
-                if (currentGroup && Number(accountPaginationState.total) > 0) {
-                    updateCurrentGroupHeader(currentGroup);
+                if (hasAccountServerSideFilters() && getAccountSearchScope() === 'all') {
+                    updateCurrentGroupHeader(null);
+                } else {
+                    const currentGroup = groups.find(group => group.id === currentGroupId);
+                    if (currentGroup && Number(accountPaginationState.total) > 0) {
+                        updateCurrentGroupHeader(currentGroup);
+                    }
                 }
             }
         }

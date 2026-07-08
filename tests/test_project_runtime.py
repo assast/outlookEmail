@@ -1975,7 +1975,7 @@ class FrontendAccountSearchScopeTests(unittest.TestCase):
         self.assertNotIn("setAccountSearchScope('group');", empty_branch)
         self.assertIn('loadAccountsByGroup(currentGroupId, forceRefresh);', empty_branch)
 
-    def test_search_scope_change_only_researches_when_query_exists(self):
+    def test_search_scope_change_researches_when_query_exists_or_has_tag_filters(self):
         groups_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '02-groups.js').read_text(encoding='utf-8')
         function_start = groups_js.index('function handleAccountSearchScopeChange')
         function_end = groups_js.index('function handleAccountPageSizeChange', function_start)
@@ -1983,7 +1983,7 @@ class FrontendAccountSearchScopeTests(unittest.TestCase):
 
         self.assertIn('setAccountSearchScope(value);', function_source)
         self.assertIn('if (searchQuery && !isTempEmailGroup) {', function_source)
-        self.assertNotIn('refreshVisibleAccountList(true);', function_source)
+        self.assertIn('refreshVisibleAccountList(true);', function_source)
 
     def test_account_search_input_is_saved_and_restored(self):
         core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
