@@ -48,3 +48,71 @@ def test_reauthorize_entry_is_scoped_to_outlook_accounts():
     assert 'id="oauthPasswordGroup"' in oauth_html
     assert 'id="oauthTargetGroup"' in oauth_html
     assert 'id="oauthForwardGroup"' in oauth_html
+
+
+def test_oauth_dialog_has_copy_email_and_password_reveal_buttons():
+    html = OAUTH_DIALOG_PATH.read_text(encoding='utf-8')
+
+    assert 'id="copyOauthEmailBtn"' in html
+    assert "onclick=" in html and 'copyOauthField' in html
+    assert 'id="revealOauthPasswordBtn"' in html
+    assert 'toggleOauthPasswordVisibility' in html
+    assert 'id="oauthPasswordLabel"' in html
+    assert 'secret-input-row' in html
+
+
+def test_oauth_js_has_toggle_password_and_copy_field_functions():
+    source = OAUTH_JS_PATH.read_text(encoding='utf-8')
+
+    assert 'function toggleOauthPasswordVisibility' in source
+    assert 'function copyOauthField' in source
+    assert 'input.dataset.secretValue' in source
+    assert "input.dataset.secretRevealed" in source
+    assert "'*'.repeat(Math.max(6, " in source
+
+
+def test_oauth_js_toggle_cycles_between_mask_and_plaintext():
+    source = OAUTH_JS_PATH.read_text(encoding='utf-8')
+    toggle_start = source.index('function toggleOauthPasswordVisibility')
+    toggle_end = source.index('function invalidateRefreshTokenPreview', toggle_start)
+    toggle_source = source[toggle_start:toggle_end]
+
+    assert "input.dataset.secretRevealed === 'true'" in toggle_source
+    assert 'input.value = mask' in toggle_source
+    assert 'input.value = secretValue' in toggle_source
+    assert "input.dataset.secretRevealed = 'false'" in toggle_source
+    assert "input.dataset.secretRevealed = 'true'" in toggle_source
+
+
+def test_oauth_js_copy_uses_secret_value_with_fallback():
+    source = OAUTH_JS_PATH.read_text(encoding='utf-8')
+    copy_start = source.index('function copyOauthField')
+    copy_end = source.index('function toggleOauthPasswordVisibility', copy_start)
+    copy_source = source[copy_start:copy_end]
+
+    assert 'input.dataset.secretValue || input.value' in copy_source
+    assert 'copyTextToClipboard' in copy_source
+    assert '内容为空' in copy_source
+
+
+def test_reauthorize_fetches_account_password_when_missing():
+    source = OAUTH_JS_PATH.read_text(encoding='utf-8')
+    reauth_start = source.index('async function showReauthorizeAccountModal')
+    reauth_end = source.index('function showReauthorizeAccountModalFromEdit', reauth_start)
+    reauth_source = source[reauth_start:reauth_end]
+
+    assert 'let accountPassword = normalizedAccount.password' in reauth_source
+    assert "fetch(`/api/accounts/${accountId}`)" in reauth_source
+    assert 'data.account.password' in reauth_source
+    assert 'password: accountPassword' in reauth_source
+
+
+def test_reauthorize_from_edit_passes_password_from_dataset():
+    source = OAUTH_JS_PATH.read_text(encoding='utf-8')
+    edit_reauth_start = source.index('function showReauthorizeAccountModalFromEdit')
+    edit_reauth_end = source.index('// 复制授权 URL', edit_reauth_start)
+    edit_reauth_source = source[edit_reauth_start:edit_reauth_end]
+
+    assert "document.getElementById('editPassword')" in edit_reauth_source
+    assert 'dataset.secretValue' in edit_reauth_source
+    assert 'password: accountPassword' in edit_reauth_source

@@ -6,6 +6,19 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.8.2] - 2026-07-10
+
+### Changed
+- 账号详情接口 `GET /api/accounts/<id>` 现在直接返回明文 `password` 和 `imap_password` 字段，移除了二次验证流程，前端小眼睛按钮直接在掩码与明文间切换。
+- 移除了 `/api/accounts/<id>/secrets` 二次验证端点及其前端验证弹窗，简化密码查看流程。
+- 账号详情查看时新增 `view_account_detail` 审计日志记录，确保密码字段访问可追溯。
+- OAuth 重新授权弹窗密码字段改为掩码显示+小眼睛切换+点击复制，与编辑账号弹窗密码展示方式一致。
+- 浏览器扩展编辑账号弹窗直接回显已保存的明文密码，移除了"需在 Web 端验证后查看"占位提示。
+- `.secret-reveal-btn` 按钮样式统一为 24×24px 居中对齐，与 Outlook 上传账号密码切换按钮保持一致。
+
+### Fixed
+- 修复重新授权时密码未传入会额外请求账号详情获取密码的回退逻辑。
+
 ## [2.8.1] - 2026-07-07
 
 ### Added

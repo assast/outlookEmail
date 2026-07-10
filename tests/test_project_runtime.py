@@ -133,7 +133,7 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertTrue(payload['success'])
         return payload['data']['accounts']
 
-    def test_account_detail_hides_saved_password_fields(self):
+    def test_account_detail_returns_saved_password_fields(self):
         account_id = self._insert_account('hidden-secret@example.com')
         with self.app.app_context():
             db = web_outlook_app.get_db()
@@ -152,77 +152,42 @@ class ProjectRuntimeTests(unittest.TestCase):
         payload = response.get_json()
         self.assertTrue(payload['success'])
         account = payload['account']
-        self.assertNotIn('password', account)
-        self.assertNotIn('imap_password', account)
+        self.assertEqual(account['password'], 'saved-password')
+        self.assertEqual(account['imap_password'], 'saved-imap-password')
         self.assertTrue(account['has_password'])
         self.assertTrue(account['has_imap_password'])
 
-    def test_account_secrets_require_login_password(self):
-        account_id = self._insert_account('secret-verify@example.com')
+    def test_account_detail_logs_audit_on_view(self):
+        account_id = self._insert_account('audit-detail@example.com')
         with self.app.app_context():
             db = web_outlook_app.get_db()
             db.execute(
-                '''
-                UPDATE accounts
-                SET password = ?, imap_password = ?
-                WHERE id = ?
-                ''',
-                ('account-password', 'imap-password', account_id)
+                "UPDATE accounts SET password = ? WHERE id = ?",
+                ('secret-pw', account_id)
             )
-            web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('secret-pass'))
             db.commit()
 
-        wrong_response = self.client.post(
-            f'/api/accounts/{account_id}/secrets',
-            json={'password': 'wrong-pass'}
-        )
-        self.assertEqual(wrong_response.status_code, 200)
-        wrong_payload = wrong_response.get_json()
-        self.assertFalse(wrong_payload['success'])
-        self.assertNotIn('secrets', wrong_payload)
-
-        response = self.client.post(
-            f'/api/accounts/{account_id}/secrets',
-            json={'password': 'secret-pass'}
-        )
+        response = self.client.get(f'/api/accounts/{account_id}')
         self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        self.assertTrue(payload['success'])
-        self.assertEqual(payload['secrets']['password'], 'account-password')
-        self.assertEqual(payload['secrets']['imap_password'], 'imap-password')
+        self.assertTrue(response.get_json()['success'])
 
-    def test_account_secrets_can_reveal_single_requested_field(self):
-        account_id = self._insert_account('single-secret@example.com')
         with self.app.app_context():
             db = web_outlook_app.get_db()
-            db.execute(
-                '''
-                UPDATE accounts
-                SET password = ?, imap_password = ?
-                WHERE id = ?
-                ''',
-                ('account-password', 'imap-password', account_id)
-            )
-            web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('secret-pass'))
-            db.commit()
+            logs = db.execute(
+                "SELECT * FROM audit_logs WHERE resource_type = 'account' AND resource_id = ? ORDER BY id DESC LIMIT 1",
+                (str(account_id),)
+            ).fetchone()
+        self.assertIsNotNone(logs)
+        self.assertEqual(logs['action'], 'view_account_detail')
+        self.assertIn('audit-detail@example.com', logs['details'])
 
+    def test_account_secrets_endpoint_removed(self):
+        account_id = self._insert_account('removed-secrets@example.com')
         response = self.client.post(
             f'/api/accounts/{account_id}/secrets',
-            json={'password': 'secret-pass', 'field': 'password'}
+            json={'password': 'any'}
         )
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        self.assertTrue(payload['success'])
-        self.assertEqual(payload['secrets'], {'password': 'account-password'})
-
-        invalid_response = self.client.post(
-            f'/api/accounts/{account_id}/secrets',
-            json={'password': 'secret-pass', 'field': 'refresh_token'}
-        )
-        self.assertEqual(invalid_response.status_code, 400)
-        invalid_payload = invalid_response.get_json()
-        self.assertFalse(invalid_payload['success'])
-        self.assertNotIn('secrets', invalid_payload)
+        self.assertEqual(response.status_code, 404)
 
     def test_update_account_preserves_password_when_field_is_omitted(self):
         account_id = self._insert_account('preserve-password@example.com')

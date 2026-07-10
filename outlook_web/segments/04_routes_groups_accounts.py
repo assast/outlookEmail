@@ -1257,13 +1257,20 @@ def api_get_account(account_id):
     account = get_account_by_id(account_id)
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'})
-    
+
+    log_audit(
+        'view_account_detail',
+        'account',
+        str(account_id),
+        f"查看账号 '{account.get('email', '')}' 详情（含密码字段）"
+    )
     return jsonify({
         'success': True,
         'account': {
             'id': account['id'],
             'email': account['email'],
             'has_password': bool(account.get('password')),
+            'password': account.get('password', '') or '',
             'client_id': account['client_id'],
             'refresh_token': account['refresh_token'],
             'account_type': account.get('account_type', 'outlook'),
@@ -1271,6 +1278,7 @@ def api_get_account(account_id):
             'imap_host': account.get('imap_host', ''),
             'imap_port': account.get('imap_port', 993),
             'has_imap_password': bool(account.get('imap_password')),
+            'imap_password': account.get('imap_password', '') or '',
             'aliases': account.get('aliases', []),
             'alias_count': account.get('alias_count', 0),
             'matched_alias': account.get('matched_alias', ''),
@@ -1289,43 +1297,6 @@ def api_get_account(account_id):
             'updated_at': account.get('updated_at', ''),
             'tags': get_account_tags(account['id'])
         }
-    })
-
-
-@app.route('/api/accounts/<int:account_id>/secrets', methods=['POST'])
-@login_required
-def api_get_account_secrets(account_id):
-    """二次验证后获取账号敏感密码字段"""
-    account = get_account_by_id(account_id)
-    if not account:
-        return jsonify({'success': False, 'error': '账号不存在'}), 404
-
-    data = request.get_json(silent=True) or {}
-    password = str(data.get('password') or '')
-    requested_field = str(data.get('field') or '').strip()
-    if not password:
-        return jsonify({'success': False, 'error': '请输入登录密码'})
-    if requested_field and requested_field not in {'password', 'imap_password'}:
-        return jsonify({'success': False, 'error': '密码字段无效'}), 400
-
-    if not verify_login_password(password):
-        return jsonify({'success': False, 'error': '密码错误'})
-
-    secrets_payload = {}
-    if not requested_field or requested_field == 'password':
-        secrets_payload['password'] = account.get('password', '') or ''
-    if not requested_field or requested_field == 'imap_password':
-        secrets_payload['imap_password'] = account.get('imap_password', '') or ''
-
-    log_audit(
-        'reveal_secret',
-        'account',
-        str(account_id),
-        f"二次验证后查看账号 '{account.get('email', '')}' 的{requested_field or '密码'}字段"
-    )
-    return jsonify({
-        'success': True,
-        'secrets': secrets_payload
     })
 
 

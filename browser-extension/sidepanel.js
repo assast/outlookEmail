@@ -710,7 +710,7 @@
         <div class="card">
           <div class="item-title">编辑账号</div>
           <label><span>邮箱</span><input id="editEmail" value="${escapeHtml(account.email || '')}"></label>
-          <label><span>账号密码</span><input id="editPassword" value="" placeholder="${account.has_password ? '已保存，需在 Web 端验证后查看' : ''}"></label>
+          <label><span>账号密码</span><input id="editPassword" value="${escapeHtml(account.password || '')}" placeholder="可选"></label>
           <div class="row">
             <label><span>类型</span><select id="editProvider">${renderOptions(normalProviders, provider)}</select></label>
             <label><span>分组</span><select id="editGroup">${groupOptions(groups, account.group_id, false)}</select></label>
@@ -722,7 +722,7 @@
               <label><span>IMAP 主机</span><input id="editImapHost" value="${escapeHtml(account.imap_host || '')}"></label>
               <label><span>IMAP 端口</span><input id="editImapPort" type="number" value="${escapeHtml(account.imap_port || 993)}"></label>
             </div>
-            <label><span>IMAP 密码</span><input id="editImapPassword" value="" placeholder="${account.has_imap_password ? '已保存，需在 Web 端验证后查看' : ''}"></label>
+            <label><span>IMAP 密码</span><input id="editImapPassword" value="${escapeHtml(account.imap_password || '')}" placeholder="可选"></label>
           </div>
           <div class="row">
             <label><span>状态</span><select id="editStatus">${renderOptions([['active', 'active'], ['inactive', 'inactive']], account.status || 'active')}</select></label>

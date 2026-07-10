@@ -290,7 +290,7 @@
                                 <label class="form-label">密码</label>
                                 <div class="secret-input-row">
                                     <input type="text" class="form-input" id="editPassword" placeholder="可选">
-                                    <button type="button" class="secret-reveal-btn" id="revealEditPasswordBtn" onclick="showAccountSecretVerifyModal('password')" title="验证显示密码" aria-label="验证显示密码" style="display: none;">
+                                    <button type="button" class="secret-reveal-btn" id="revealEditPasswordBtn" onclick="toggleEditSecretVisibility('editPassword', 'revealEditPasswordBtn')" title="显示密码" aria-label="显示密码" style="display: none;">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                             <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"></path>
                                             <circle cx="12" cy="12" r="3"></circle>
@@ -315,7 +315,7 @@
                                     <label class="form-label">IMAP 密码 / 授权码</label>
                                     <div class="secret-input-row">
                                         <input type="text" class="form-input" id="editImapPassword">
-                                        <button type="button" class="secret-reveal-btn" id="revealEditImapPasswordBtn" onclick="showAccountSecretVerifyModal('imap_password')" title="验证显示 IMAP 密码" aria-label="验证显示 IMAP 密码" style="display: none;">
+                                        <button type="button" class="secret-reveal-btn" id="revealEditImapPasswordBtn" onclick="toggleEditSecretVisibility('editImapPassword', 'revealEditImapPasswordBtn')" title="显示 IMAP 密码" aria-label="显示 IMAP 密码" style="display: none;">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                                 <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"></path>
                                                 <circle cx="12" cy="12" r="3"></circle>
@@ -387,27 +387,6 @@
                 <button class="btn btn-danger" onclick="deleteCurrentAccount()" style="margin-right: auto;">删除</button>
                 <button class="btn btn-secondary" onclick="hideEditAccountModal()">取消</button>
                 <button class="btn btn-primary" onclick="updateAccount()">保存</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 账号密码查看二次验证模态框 -->
-    <div class="modal" id="accountSecretVerifyModal" onmousedown="if(event.target === this) hideAccountSecretVerifyModal()">
-        <div class="modal-content" style="width: 400px;">
-            <div class="modal-header">
-                <h3>安全验证</h3>
-                <button class="modal-close" onclick="hideAccountSecretVerifyModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">请输入登录密码以显示账号密码</label>
-                    <input type="password" class="form-input" id="accountSecretVerifyPassword" placeholder="输入登录密码">
-                    <div class="form-hint" style="color: #dc3545;">账号密码属于敏感信息，请确认当前环境安全</div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="hideAccountSecretVerifyModal()">取消</button>
-                <button class="btn btn-primary" onclick="confirmAccountSecretVerify()">确认显示</button>
             </div>
         </div>
     </div>
