@@ -77,9 +77,14 @@
                             </div>
                             <div class="settings-panel settings-panel-grid">
                                 <div class="form-group">
-                                    <label class="form-label">登录密码</label>
-                                    <input type="password" class="form-input" id="settingsPassword" placeholder="输入新密码（留空则不修改）">
-                                    <div class="form-hint">用于登录当前系统。</div>
+                                    <label class="form-label">当前登录密码</label>
+                                    <input type="password" class="form-input" id="settingsCurrentPassword" placeholder="修改密码时必填" autocomplete="current-password">
+                                    <div class="form-hint">修改登录密码时必须验证当前密码。</div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">新登录密码</label>
+                                    <input type="password" class="form-input" id="settingsPassword" placeholder="输入新密码（留空则不修改）" autocomplete="new-password">
+                                    <div class="form-hint">用于登录当前系统。修改成功后，其他已登录设备/会话需要重新登录。</div>
                                 </div>
                                 <div class="form-group settings-form-span-full">
                                     <label class="form-label">对外 API Key</label>

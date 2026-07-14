@@ -702,19 +702,26 @@ def api_update_settings():
             if cron_error:
                 return jsonify({'success': False, 'error': cron_error})
 
-    # 更新登录密码
+    # 更新登录密码：必须验证当前密码；成功后轮换会话版本，使其他已登录会话失效
     if 'login_password' in data:
-        new_password = data['login_password'].strip()
+        new_password = str(data.get('login_password') or '').strip()
         if new_password:
             if len(new_password) < 8:
-                errors.append('密码长度至少为 8 位')
-            else:
-                # 哈希新密码
-                hashed_password = hash_password(new_password)
-                if set_setting('login_password', hashed_password):
-                    updated.append('登录密码')
-                else:
-                    errors.append('更新登录密码失败')
+                return jsonify({'success': False, 'error': '密码长度至少为 8 位'})
+            current_password = str(data.get('current_login_password') or '')
+            if not current_password:
+                return jsonify({'success': False, 'error': '修改登录密码需要验证当前密码'})
+            if not verify_login_password(current_password):
+                return jsonify({'success': False, 'error': '当前登录密码错误'})
+            hashed_password = hash_password(new_password)
+            if not set_setting('login_password', hashed_password):
+                return jsonify({'success': False, 'error': '更新登录密码失败'})
+            new_session_version = rotate_login_session_version()
+            # 当前改密会话继续有效，其余旧会话在下次请求时失效
+            session['logged_in'] = True
+            session.permanent = True
+            bind_login_session_version(new_session_version)
+            updated.append('登录密码')
 
     # 更新 GPTMail API Key
     if 'gptmail_api_key' in data:

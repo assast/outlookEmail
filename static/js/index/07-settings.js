@@ -1785,6 +1785,8 @@
                     document.getElementById('settingsCloudflareAiTestResult').textContent = '未测试';
                     document.getElementById('settingsAppTimezone').value = appTimeZone;
                     document.getElementById('settingsPassword').value = '';
+                    const currentPasswordInput = document.getElementById('settingsCurrentPassword');
+                    if (currentPasswordInput) currentPasswordInput.value = '';
 
                     document.getElementById('refreshIntervalDays').value = data.settings.refresh_interval_days || '30';
                     document.getElementById('refreshDelaySeconds').value = data.settings.refresh_delay_seconds || '5';
@@ -1842,6 +1844,7 @@
         async function saveSettings() {
             ensureForwardingSettingsUI();
             const password = document.getElementById('settingsPassword').value;
+            const currentPassword = document.getElementById('settingsCurrentPassword')?.value || '';
             const apiKey = document.getElementById('settingsApiKey').value.trim();
             const externalApiKey = document.getElementById('settingsExternalApiKey').value.trim();
             const refreshDays = document.getElementById('refreshIntervalDays').value;
@@ -1858,7 +1861,16 @@
             const forwardChannels = getSelectedForwardChannels();
 
             if (password) {
+                if (!currentPassword) {
+                    showToast('修改登录密码需要输入当前密码', 'error');
+                    return;
+                }
+                if (password.length < 8) {
+                    showToast('新登录密码长度至少为 8 位', 'error');
+                    return;
+                }
                 settings.login_password = password;
+                settings.current_login_password = currentPassword;
             }
 
             settings.gptmail_api_key = apiKey;
@@ -2108,7 +2120,15 @@
                 return;
             }
 
-            showToast('时间展示已生效，定时任务重启后生效', 'success');
+            document.getElementById('settingsPassword').value = '';
+            const currentPasswordInput = document.getElementById('settingsCurrentPassword');
+            if (currentPasswordInput) currentPasswordInput.value = '';
+
+            if (password) {
+                showToast('登录密码已更新，其他已登录设备需要重新登录', 'success');
+            } else {
+                showToast('时间展示已生效，定时任务重启后生效', 'success');
+            }
             hideSettingsModal();
         }
 

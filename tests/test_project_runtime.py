@@ -28,11 +28,14 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.app.config['TESTING'] = True
         self.app.config['WTF_CSRF_ENABLED'] = False
         self.client = self.app.test_client()
-        with self.client.session_transaction() as sess:
-            sess['logged_in'] = True
 
         with self.app.app_context():
             web_outlook_app.init_db()
+            # 避免其他用例改密后的会话版本污染本用例的假登录态
+            web_outlook_app.set_setting(
+                web_outlook_app.LOGIN_SESSION_VERSION_SETTING_KEY,
+                web_outlook_app.DEFAULT_LOGIN_SESSION_VERSION,
+            )
             db = web_outlook_app.get_db()
             db.execute('DELETE FROM project_account_events')
             db.execute('DELETE FROM project_accounts')
@@ -47,6 +50,10 @@ class ProjectRuntimeTests(unittest.TestCase):
             db.execute('DELETE FROM accounts')
             db.execute("DELETE FROM groups WHERE name NOT IN ('默认分组', '临时邮箱')")
             db.commit()
+
+        with self.client.session_transaction() as sess:
+            sess['logged_in'] = True
+            sess['login_session_version'] = web_outlook_app.DEFAULT_LOGIN_SESSION_VERSION
 
     def _create_group(self, name: str) -> int:
         with self.app.app_context():
@@ -653,8 +660,11 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertEqual(launch_response.status_code, 302)
         self.assertEqual(launch_response.headers['Location'], '/#settings')
 
+        with self.app.app_context():
+            expected_version = web_outlook_app.get_login_session_version()
         with anonymous_client.session_transaction() as sess:
             self.assertTrue(sess.get('logged_in'))
+            self.assertEqual(sess.get('login_session_version'), expected_version)
 
         reused_response = anonymous_client.get(payload['launch_url'], follow_redirects=False)
         self.assertEqual(reused_response.status_code, 302)
@@ -1231,6 +1241,106 @@ class ProjectRuntimeTests(unittest.TestCase):
         with self.app.app_context():
             self.assertEqual(web_outlook_app.get_setting('webdav_backup_enabled'), 'false')
             self.assertEqual(web_outlook_app.get_setting('webdav_backup_url'), '')
+
+    def test_change_login_password_requires_current_password(self):
+        with self.app.app_context():
+            web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('current-password'))
+            web_outlook_app.set_setting(
+                web_outlook_app.LOGIN_SESSION_VERSION_SETTING_KEY,
+                web_outlook_app.DEFAULT_LOGIN_SESSION_VERSION,
+            )
+
+        missing_current = self.client.put(
+            '/api/settings',
+            json={'login_password': 'new-password-1'},
+        )
+        self.assertEqual(missing_current.status_code, 200)
+        missing_payload = missing_current.get_json()
+        self.assertFalse(missing_payload['success'])
+        self.assertIn('当前密码', missing_payload['error'])
+
+        wrong_current = self.client.put(
+            '/api/settings',
+            json={
+                'login_password': 'new-password-1',
+                'current_login_password': 'wrong-password',
+            },
+        )
+        self.assertEqual(wrong_current.status_code, 200)
+        wrong_payload = wrong_current.get_json()
+        self.assertFalse(wrong_payload['success'])
+        self.assertIn('当前登录密码错误', wrong_payload['error'])
+
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.verify_login_password('current-password'))
+            self.assertEqual(
+                web_outlook_app.get_login_session_version(),
+                web_outlook_app.DEFAULT_LOGIN_SESSION_VERSION,
+            )
+
+    def test_change_login_password_invalidates_other_sessions(self):
+        with self.app.app_context():
+            web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('current-password'))
+            web_outlook_app.set_setting(
+                web_outlook_app.LOGIN_SESSION_VERSION_SETTING_KEY,
+                web_outlook_app.DEFAULT_LOGIN_SESSION_VERSION,
+            )
+
+        other_client = self.app.test_client()
+        with other_client.session_transaction() as sess:
+            sess['logged_in'] = True
+            sess['login_session_version'] = web_outlook_app.DEFAULT_LOGIN_SESSION_VERSION
+
+        with self.client.session_transaction() as sess:
+            sess['logged_in'] = True
+            sess['login_session_version'] = web_outlook_app.DEFAULT_LOGIN_SESSION_VERSION
+
+        try:
+            response = self.client.put(
+                '/api/settings',
+                json={
+                    'login_password': 'new-password-1',
+                    'current_login_password': 'current-password',
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertTrue(payload['success'], msg=payload.get('error'))
+            self.assertIn('登录密码', payload.get('message', ''))
+
+            with self.app.app_context():
+                self.assertTrue(web_outlook_app.verify_login_password('new-password-1'))
+                self.assertFalse(web_outlook_app.verify_login_password('current-password'))
+                new_version = web_outlook_app.get_login_session_version()
+                self.assertNotEqual(new_version, web_outlook_app.DEFAULT_LOGIN_SESSION_VERSION)
+
+            with self.client.session_transaction() as sess:
+                self.assertTrue(sess.get('logged_in'))
+                self.assertEqual(sess.get('login_session_version'), new_version)
+
+            current_still_ok = self.client.get('/api/settings')
+            self.assertEqual(current_still_ok.status_code, 200)
+            self.assertTrue(current_still_ok.get_json()['success'])
+
+            other_blocked = other_client.get('/api/settings')
+            self.assertEqual(other_blocked.status_code, 401)
+            other_payload = other_blocked.get_json()
+            self.assertFalse(other_payload['success'])
+            self.assertTrue(other_payload.get('need_login'))
+
+            with other_client.session_transaction() as sess:
+                self.assertFalse(sess.get('logged_in'))
+                self.assertIsNone(sess.get('login_session_version'))
+        finally:
+            with self.app.app_context():
+                web_outlook_app.set_setting(
+                    web_outlook_app.LOGIN_SESSION_VERSION_SETTING_KEY,
+                    web_outlook_app.DEFAULT_LOGIN_SESSION_VERSION,
+                )
+                web_outlook_app.set_setting(
+                    'login_password',
+                    web_outlook_app.hash_password('current-password'),
+                )
 
     def test_webdav_backup_settings_save_with_login_password(self):
         with self.app.app_context():
@@ -2385,6 +2495,7 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         gptmail_section = settings_html.split('id="settingsAccessSection"', 1)[1].split('</section>', 1)[0]
 
         self.assertIn('GPTMail 临时邮箱设置', settings_html)
+        self.assertIn('id="settingsCurrentPassword"', general_section)
         self.assertIn('id="settingsPassword"', general_section)
         self.assertIn('id="settingsExternalApiKey"', general_section)
         self.assertIn('id="settingsShowGroupId"', general_section)
@@ -2392,6 +2503,7 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
 
         self.assertIn('id="settingsApiKey"', gptmail_section)
         self.assertNotIn('id="settingsPassword"', gptmail_section)
+        self.assertNotIn('id="settingsCurrentPassword"', gptmail_section)
         self.assertNotIn('id="settingsExternalApiKey"', gptmail_section)
 
     def test_temp_mail_settings_sections_are_placed_last(self):

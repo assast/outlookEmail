@@ -2195,7 +2195,8 @@ POST /api/cloudflare/channels
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `login_password` | string | 登录密码，至少 8 位 |
+| `login_password` | string | 新登录密码，至少 8 位；提交时必须同时提供 `current_login_password` |
+| `current_login_password` | string | 当前登录密码；修改 `login_password` 时必填，用于二次确认 |
 | `gptmail_api_key` | string | GPTMail API Key |
 | `refresh_interval_days` | int | 刷新周期，范围 `1-90` |
 | `refresh_delay_seconds` | int | 刷新间隔秒数，范围 `0-60` |
@@ -2208,6 +2209,8 @@ POST /api/cloudflare/channels
 | `active_skin_id` | string | 当前系统级外观皮肤 ID；所有登录设备共用同一设置 |
 | `external_api_key` | string | 对外 API Key，可传空字符串清空 |
 | `normal_mail_local_retention_enabled` | bool/string | 是否启用普通邮箱本地保留；通过 `/api/settings` 更新会同步刷新后端进程内读取缓存 |
+
+说明：修改 `login_password` 时必须提供正确的 `current_login_password`；改密成功后服务端会轮换登录会话版本，其他已登录的 Web Session 需要重新登录，当前改密会话保持有效。
 
 #### 临时邮箱服务相关字段
 
