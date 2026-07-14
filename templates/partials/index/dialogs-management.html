@@ -1229,9 +1229,39 @@
                                         <input type="text" id="addUploadAccountRemark" class="form-input add-form-input"
                                             placeholder="可选" autocomplete="off">
                                     </div>
+                                    <div class="add-form-field add-form-field--group">
+                                        <label class="add-form-label">分组</label>
+                                        <select id="addUploadAccountGroupSelect" class="form-input add-form-input"></select>
+                                    </div>
+                                    <div class="add-form-field add-form-field--tags">
+                                        <label class="add-form-label">标签</label>
+                                        <div class="tag-filter-dropdown" id="addUploadAccountTagDropdown">
+                                            <button class="tag-filter-trigger" type="button" onclick="toggleAddUploadAccountTagDropdown(event)">
+                                                <span class="tag-filter-trigger-text" id="addUploadAccountTagTriggerText">未选择标签</span>
+                                                <span class="tag-filter-trigger-count" id="addUploadAccountTagTriggerCount" style="display: none;"></span>
+                                                <span class="tag-filter-trigger-caret">▾</span>
+                                            </button>
+                                            <div class="tag-filter-panel">
+                                                <div class="tag-filter-panel-header">
+                                                    <input type="text" id="addUploadAccountTagSearchInput" class="tag-filter-search-input"
+                                                        placeholder="搜索标签..." oninput="filterAddUploadAccountTagOptions(this.value)">
+                                                    <button class="tag-filter-clear-btn" type="button" onclick="clearAddUploadAccountTagSelection(event)">清空</button>
+                                                </div>
+                                                <div class="tag-filter-options" id="addUploadAccountTagOptions"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="add-form-field add-form-field--proxy">
+                                        <label class="add-form-label">账号代理</label>
+                                        <input type="text" id="addUploadAccountProxyUrl" class="form-input add-form-input"
+                                            placeholder="可选，如 socks5://user:pass@host:port" autocomplete="off">
+                                    </div>
                                     <div class="add-form-field add-form-field--action">
                                         <button class="btn btn-primary add-form-submit" type="button" id="submitAddUploadAccountBtn" onclick="submitAddUploadAccount()">立即添加</button>
                                     </div>
+                                </div>
+                                <div class="form-hint" style="margin-top: 8px;">
+                                    分组 / 标签 / 账号代理会在<strong>首次授权成功并新建正式账号</strong>时写入；若正式账号已存在则仅更新授权信息，保留原分组/标签/代理。
                                 </div>
                             </div>
                         </div>
@@ -1242,10 +1272,24 @@
                             <button class="btn btn-secondary" type="button" onclick="searchUploadAccounts()">搜索</button>
                             <button class="btn btn-secondary" type="button" onclick="reloadUploadAccounts()">刷新</button>
                         </div>
+                        <div class="upload-accounts-batch-bar" id="uploadAccountsBatchBar" style="display: none;">
+                            <span class="upload-accounts-batch-bar__summary" id="uploadAccountsSelectedSummary">已选 0 项</span>
+                            <div class="upload-accounts-batch-bar__actions">
+                                <button class="btn btn-secondary btn-sm" type="button" onclick="toggleSelectVisibleUploadAccounts()">全选当前页</button>
+                                <button class="btn btn-secondary btn-sm" type="button" onclick="clearUploadAccountSelection()">清空</button>
+                                <button class="btn btn-primary btn-sm" type="button" id="batchAuthorizeUploadAccountsBtn" onclick="authorizeSelectedUploadAccounts()">批量授权</button>
+                                <button class="btn btn-danger btn-sm" type="button" id="batchDeleteUploadAccountsBtn" onclick="deleteSelectedUploadAccounts()">批量删除</button>
+                            </div>
+                        </div>
                         <div class="upload-accounts-table-wrap">
                             <table class="upload-accounts-table">
                                 <thead>
                                     <tr>
+                                        <th style="width: 42px; min-width: 42px;">
+                                            <input type="checkbox" id="uploadAccountsSelectAllVisible"
+                                                title="全选当前页" aria-label="全选当前页"
+                                                onchange="toggleSelectVisibleUploadAccounts(this.checked)">
+                                        </th>
                                         <th style="width: 200px; min-width: 160px;">邮箱</th>
                                         <th style="width: 80px; min-width: 70px;">密码</th>
                                         <th style="width: 72px; min-width: 72px;">授权</th>
@@ -1257,7 +1301,7 @@
                                 </thead>
                                 <tbody id="uploadAccountsTableBody">
                                     <tr>
-                                        <td colspan="7" class="upload-accounts-empty">正在加载...</td>
+                                        <td colspan="8" class="upload-accounts-empty">正在加载...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1668,7 +1712,7 @@
         }
         .upload-accounts-add-form {
             display: grid;
-            grid-template-columns: 1fr 140px 1fr 1fr auto;
+            grid-template-columns: 1fr 140px 1fr 1fr;
             gap: 12px;
             align-items: end;
         }
@@ -1676,6 +1720,7 @@
             display: flex;
             flex-direction: column;
             gap: 4px;
+            min-width: 0;
         }
         .add-form-label {
             font-size: 12px;
@@ -1687,46 +1732,57 @@
             padding: 0 10px;
             font-size: 13px;
         }
+        .add-form-field--tags .tag-filter-dropdown {
+            width: 100%;
+        }
+        .add-form-field--tags .tag-filter-trigger {
+            height: 36px;
+        }
         .add-form-field--action {
-            padding-top: 18px;
+            grid-column: 1 / -1;
+            padding-top: 0;
+            align-items: stretch;
         }
         .add-form-submit {
             height: 36px;
             white-space: nowrap;
             min-width: 96px;
+            width: 100%;
+            max-width: 180px;
+        }
+        .upload-accounts-batch-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding: 8px 10px;
+            border: 1px solid var(--skin-border, #dbeafe);
+            border-radius: 8px;
+            background: var(--skin-surface-muted, #f8fbff);
+            flex-wrap: wrap;
+        }
+        .upload-accounts-batch-bar__summary {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--skin-text, #111827);
+        }
+        .upload-accounts-batch-bar__actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
         }
         @media (max-width: 1100px) {
             .upload-accounts-add-form {
                 grid-template-columns: 1fr 140px 1fr;
-                grid-template-areas:
-                    "email domain password"
-                    "remark remark action";
-            }
-            .add-form-field--email { grid-area: email; }
-            .add-form-field--domain { grid-area: domain; }
-            .add-form-field--password { grid-area: password; }
-            .add-form-field--remark { grid-area: remark; }
-            .add-form-field--action {
-                grid-area: action;
-                padding-top: 0;
-                align-self: end;
             }
         }
         @media (max-width: 600px) {
             .upload-accounts-add-form {
                 grid-template-columns: 1fr;
-                grid-template-areas:
-                    "email"
-                    "domain"
-                    "password"
-                    "remark"
-                    "action";
-            }
-            .add-form-field--action {
-                padding-top: 4px;
             }
             .add-form-submit {
-                width: 100%;
+                max-width: none;
             }
         }
         .upload-accounts-row--editing {

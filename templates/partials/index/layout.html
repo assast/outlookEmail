@@ -299,9 +299,10 @@
                     </div>
                     <div class="batch-action-group batch-action-group--accent">
                         <button class="batch-btn batch-btn-primary" id="batchRefreshTokensBtn" onclick="refreshSelectedAccounts()">刷新 Token</button>
+                        <button class="batch-btn batch-btn-accent" id="batchOutlookAutoAuthBtn" onclick="queueSelectedAccountsForOutlookAutoAuth()">加入自动授权</button>
                         <button class="batch-btn batch-btn-accent" id="batchCopyEmailsBtn" onclick="copySelectedAccountsWithAliases()">复制邮箱+别名</button>
                         <button class="batch-btn batch-btn-accent" id="batchExportAccountsBtn" onclick="exportSelectedAccounts()">导出</button>
-                        
+
                         <!-- 转发和代理组 -->
                         <span class="batch-btn-divider"></span>
                         <button class="batch-btn batch-btn-info" id="batchEnableForwardingBtn" onclick="enableForwardingForSelectedAccounts()">开启转发</button>

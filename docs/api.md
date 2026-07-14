@@ -61,12 +61,14 @@
 | PUT | `/api/accounts/<account_id>` | Session + CSRF | JSON | 更新账号 |
 | POST | `/api/accounts/<account_id>/reauthorize` | Session + CSRF | JSON | 重新授权已有 Outlook 账号并自动刷新验证 |
 | GET | `/api/outlook-upload-accounts` | Session | JSON | 分页查询 Outlook 自动化授权上传账号，返回表格显示用明文密码 |
-| POST | `/api/outlook-upload-accounts` | Session + CSRF | JSON | 新增 Outlook 自动化授权上传账号 |
+| POST | `/api/outlook-upload-accounts` | Session + CSRF | JSON | 新增 Outlook 自动化授权上传账号（可带 group_id / tag_ids / proxy_url） |
 | PUT | `/api/outlook-upload-accounts/<account_id>` | Session + CSRF | JSON | 修改上传账号邮箱、密码或备注 |
 | DELETE | `/api/outlook-upload-accounts/<account_id>` | Session + CSRF | JSON | 删除上传账号 |
+| POST | `/api/outlook-upload-accounts/batch-delete` | Session + CSRF | JSON | 批量删除上传账号 |
 | DELETE | `/api/accounts/<account_id>` | Session + CSRF | JSON | 按 ID 删除账号 |
 | DELETE | `/api/accounts/email/<email_addr>` | Session + CSRF | JSON | 按邮箱删除账号 |
 | POST | `/api/accounts/batch-delete` | Session + CSRF | JSON | 批量删除账号 |
+| POST | `/api/accounts/batch-outlook-auto-auth` | Session + CSRF | JSON | 批量将正式 Outlook 账号加入自动授权队列 |
 | GET | `/api/accounts/<account_id>/aliases` | Session | JSON | 获取账号别名 |
 | PUT | `/api/accounts/<account_id>/aliases` | Session + CSRF | JSON | 整体替换账号别名 |
 | POST | `/api/accounts/batch-update-group` | Session + CSRF | JSON | 批量改分组 |
@@ -636,8 +638,11 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 | `email` | string | 是 | 邮箱地址，入库前转小写并去除首尾空格 |
 | `password` | string | 是 | 邮箱密码，加密存储 |
 | `remark` | string | 否 | 备注 |
+| `group_id` | int | 否 | 授权成功并新建正式账号时写入的目标分组；默认 `1` |
+| `tag_ids` | int[] / string | 否 | 新建正式账号时附加的标签 ID 列表 |
+| `proxy_url` | string | 否 | 新建正式账号时写入的账号代理（不含回退代理） |
 
-重复邮箱返回 HTTP 400，响应不会回显密码。
+重复邮箱返回 HTTP 400，响应不会回显密码。字段 `group_id` / `tag_ids` / `proxy_url` 会保存在暂存表；仅当 Graph 授权成功并**新建**正式账号时应用，更新已有正式账号时仍只覆盖授权字段。
 
 #### PUT `/api/outlook-upload-accounts/<account_id>`
 
@@ -654,6 +659,16 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 #### DELETE `/api/outlook-upload-accounts/<account_id>`
 
 删除上传账号。账号不存在返回 HTTP 404。
+
+#### POST `/api/outlook-upload-accounts/batch-delete`
+
+批量删除上传账号。请求体：
+
+```json
+{ "account_ids": [1, 2, 3] }
+```
+
+成功响应包含 `deleted` / `not_found` 计数。
 
 ## 内部 API
 
@@ -1024,6 +1039,30 @@ Content-Type: application/json
 - `ACCOUNT_AUTO_AUTH_INVALID` (400): 邮箱或密码无效
 
 > **安全约束**：该接口不会在响应中返回密码。密码仅从服务端保存的加密数据中读取并加密写入暂存表。
+
+加入自动授权时会同步复制正式账号的 `group_id`、标签与 `proxy_url` 到暂存表，便于后续若需新建正式账号时使用。
+
+### POST `/api/accounts/batch-outlook-auto-auth`
+
+批量将正式 Outlook 账号加入自动化授权队列。请求体：
+
+```json
+{ "account_ids": [1, 2, 3] }
+```
+
+逐个复用单账号加入逻辑：跳过 IMAP / 无密码账号并计入 `failed`。响应示例：
+
+```json
+{
+  "success": true,
+  "message": "已处理 3 个账号：新增 2，重新入队 0，失败 1",
+  "total": 3,
+  "added": 2,
+  "updated": 0,
+  "failed": 1,
+  "results": []
+}
+```
 
 ### POST `/api/accounts/batch-update-group`
 
