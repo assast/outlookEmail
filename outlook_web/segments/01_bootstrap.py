@@ -3224,6 +3224,60 @@ def verify_login_password(password: str) -> bool:
     return secrets.compare_digest(str(password or ''), str(stored_password or ''))
 
 
+LOGIN_SESSION_VERSION_SETTING_KEY = 'login_session_version'
+DEFAULT_LOGIN_SESSION_VERSION = '0'
+
+
+def get_login_session_version() -> str:
+    """获取当前登录会话版本；修改登录密码后会轮换，用于使旧会话失效。"""
+    value = str(
+        get_setting(LOGIN_SESSION_VERSION_SETTING_KEY, DEFAULT_LOGIN_SESSION_VERSION)
+        or DEFAULT_LOGIN_SESSION_VERSION
+    ).strip()
+    return value or DEFAULT_LOGIN_SESSION_VERSION
+
+
+def rotate_login_session_version() -> str:
+    """轮换登录会话版本，使所有旧 Web Session 失效。"""
+    new_version = secrets.token_urlsafe(24)
+    set_setting(LOGIN_SESSION_VERSION_SETTING_KEY, new_version)
+    return new_version
+
+
+def bind_login_session_version(version: Optional[str] = None) -> None:
+    """把当前 session 绑定到指定（或最新）登录会话版本。"""
+    session['login_session_version'] = (
+        str(version) if version is not None else get_login_session_version()
+    )
+    session.modified = True
+
+
+def establish_web_login_session() -> None:
+    """建立已登录 Web Session，并绑定当前会话版本。"""
+    session['logged_in'] = True
+    session.permanent = True
+    bind_login_session_version()
+
+
+def clear_web_login_session() -> None:
+    """清除 Web 登录状态。"""
+    session.pop('logged_in', None)
+    session.pop('login_session_version', None)
+    session.modified = True
+
+
+def is_web_login_session_valid() -> bool:
+    """校验当前 Web Session 是否仍有效（含改密后的版本轮换）。"""
+    if not session.get('logged_in'):
+        return False
+    expected = get_login_session_version()
+    actual = session.get('login_session_version')
+    # 升级前未写入 version 的旧会话：仅在尚未发生密码轮换时保留
+    if actual is None:
+        return expected == DEFAULT_LOGIN_SESSION_VERSION
+    return str(actual) == expected
+
+
 def get_gptmail_api_key() -> str:
     """获取 GPTMail API Key（优先从数据库读取）"""
     api_key = get_setting('gptmail_api_key')

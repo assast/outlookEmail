@@ -2237,7 +2237,9 @@ def login_required(f):
     """登录验证装饰器"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get('logged_in'):
+        if not is_web_login_session_valid():
+            if session.get('logged_in'):
+                clear_web_login_session()
             if request.is_json or request.path.startswith('/api/'):
                 return jsonify({'success': False, 'error': '请先登录', 'need_login': True}), 401
             return redirect(url_for('login'))

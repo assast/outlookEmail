@@ -1699,6 +1699,10 @@
             if (settingsPassword) {
                 settingsPassword.value = '';
             }
+            const settingsCurrentPassword = document.getElementById('settingsCurrentPassword');
+            if (settingsCurrentPassword) {
+                settingsCurrentPassword.value = '';
+            }
 
             const exportVerifyPassword = document.getElementById('exportVerifyPassword');
             if (exportVerifyPassword) {

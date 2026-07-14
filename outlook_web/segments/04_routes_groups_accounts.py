@@ -38,9 +38,7 @@ def login():
             if verify_password(password, stored_password):
                 # 登录成功，重置失败记录
                 reset_login_attempts(client_ip)
-                session['logged_in'] = True
-                session.permanent = True
-                session.modified = True  # 确保 Flask-Session 保存 session
+                establish_web_login_session()
                 return jsonify({'success': True, 'message': '登录成功'})
             else:
                 # 登录失败，记录失败次数
@@ -59,7 +57,7 @@ def login():
 @app.route('/logout')
 def logout():
     """退出登录"""
-    session.pop('logged_in', None)
+    clear_web_login_session()
     return redirect(url_for('login'))
 
 
@@ -115,6 +113,7 @@ def api_extension_login():
     extension_login_tokens[token] = {
         'expires_at': time.time() + EXTENSION_LOGIN_TOKEN_TTL_SECONDS,
         'next': next_path,
+        'login_session_version': get_login_session_version(),
     }
 
     return jsonify({
@@ -133,9 +132,11 @@ def extension_login(token):
     if not payload:
         return redirect(url_for('login'))
 
-    session['logged_in'] = True
-    session.permanent = True
-    session.modified = True
+    token_version = str(payload.get('login_session_version') or DEFAULT_LOGIN_SESSION_VERSION)
+    if token_version != get_login_session_version():
+        return redirect(url_for('login'))
+
+    establish_web_login_session()
     return redirect(normalize_extension_next_path(request.args.get('next') or payload.get('next') or '/'))
 
 
