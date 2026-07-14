@@ -1,4 +1,4 @@
-        /* global escapeHtml, handleApiError, hideModal, showConfirmModal, showModal, showToast */
+        /* global escapeHtml, handleApiError, hideModal, showAddAccountModal, showConfirmModal, showGetRefreshTokenModal, showModal, showToast */
 
         // ==================== Outlook 上传账号 ====================
 
@@ -276,6 +276,20 @@
             }
             graphAuthState.running = false;
             hideModal('outlookUploadAccountsModal');
+        }
+
+        function openBatchImportFromUploadGuide() {
+            hideOutlookUploadAccountsModal();
+            if (typeof showAddAccountModal === 'function') {
+                showAddAccountModal();
+            }
+        }
+
+        function openOauthSaveFromUploadGuide() {
+            hideOutlookUploadAccountsModal();
+            if (typeof showGetRefreshTokenModal === 'function') {
+                showGetRefreshTokenModal();
+            }
         }
 
         // ==================== 添加上传账号 ====================

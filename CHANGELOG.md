@@ -6,6 +6,12 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.8.3] - 2026-07-14
+
+### Added
+- Outlook 邮箱授权弹窗新增四种添加 / 授权方式说明：批量导入、🔑 授权并保存、重新授权并刷新，以及当前页自动化授权的入口位置与区别。
+- 说明区提供快捷按钮，可直接跳转到批量导入邮箱或 🔑 授权并保存弹窗。
+
 ## [2.8.2] - 2026-07-10
 
 ### Changed

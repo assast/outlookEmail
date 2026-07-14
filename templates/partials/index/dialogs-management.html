@@ -1149,6 +1149,48 @@
                 <button class="modal-close" onclick="hideOutlookUploadAccountsModal()">&times;</button>
             </div>
             <div class="modal-body">
+                <div class="upload-accounts-guide">
+                    <details class="upload-accounts-guide__details" open>
+                        <summary class="upload-accounts-guide__summary">
+                            找不到批量导入？四种添加 / 授权方式说明（入口与区别）
+                        </summary>
+                        <div class="upload-accounts-guide__body">
+                            <div class="upload-accounts-guide__items">
+                                <div class="upload-accounts-guide__item upload-accounts-guide__item--current">
+                                    <div class="upload-accounts-guide__item-title">① 当前页：Outlook邮箱授权</div>
+                                    <div class="upload-accounts-guide__item-entry">入口：顶部导航「Outlook 邮箱」图标 / 移动端「Outlook 邮箱」按钮</div>
+                                    <div class="upload-accounts-guide__item-desc">只填邮箱+密码，由系统自动化登录微软完成 Graph / IMAP 授权。适合没有现成 refresh_token、想自动授权的场景；授权成功后会写入邮箱列表。但是由于微软风控等原因，实际上很多账号导入进来就是自动授权不了的，这种情况用同一个IP先登录成功一次，后续应该就能自动授权了</div>
+                                </div>
+                                <div class="upload-accounts-guide__item">
+                                    <div class="upload-accounts-guide__item-title">② 批量导入邮箱</div>
+                                    <div class="upload-accounts-guide__item-entry">入口：邮箱列表面板顶部「+」按钮（导入邮箱账号）</div>
+                                    <div class="upload-accounts-guide__item-desc">已有 token 文本时按行批量入库。Outlook 格式：`邮箱----密码----client_id----refresh_token`（也支持后两列对调）。不负责向微软发起新授权。</div>
+                                </div>
+                                <div class="upload-accounts-guide__item">
+                                    <div class="upload-accounts-guide__item-title">③ 🔑 授权并保存 Outlook 账号</div>
+                                    <div class="upload-accounts-guide__item-entry">入口：邮箱列表面板顶部「链接」图标按钮</div>
+                                    <div class="upload-accounts-guide__item-desc">手动打开微软授权页、粘贴回调 URL，换取 Token 后保存<strong>单个新账号</strong>。适合手动给一个新号授权入库。</div>
+                                </div>
+                                <div class="upload-accounts-guide__item">
+                                    <div class="upload-accounts-guide__item-title">④ 重新授权并刷新</div>
+                                    <div class="upload-accounts-guide__item-entry">入口：编辑账号弹窗「重新授权并刷新」，或刷新失败提示中的同名按钮</div>
+                                    <div class="upload-accounts-guide__item-desc">针对<strong>已入库</strong>且 Token 失效的 Outlook 账号：重新授权并更新该账号，随后自动做一次刷新验证。不会新建账号。</div>
+                                </div>
+                            </div>
+                            <div class="upload-accounts-guide__compare">
+                                <strong>怎么选：</strong>
+                                已有 token 文本 → ②批量导入；
+                                手动给新号授权入库 → ③🔑授权并保存；
+                                已入库账号 token 挂了 → ④重新授权并刷新；
+                                只有邮箱密码、想自动化授权 → ①当前页。
+                            </div>
+                            <div class="upload-accounts-guide__actions">
+                                <button type="button" class="btn btn-secondary" onclick="openBatchImportFromUploadGuide()">打开批量导入邮箱</button>
+                                <button type="button" class="btn btn-secondary" onclick="openOauthSaveFromUploadGuide()">打开 🔑 授权并保存</button>
+                            </div>
+                        </div>
+                    </details>
+                </div>
                 <div class="upload-accounts-layout">
                     <div class="upload-accounts-main">
                         <div class="upload-accounts-add-panel">
@@ -1252,6 +1294,92 @@
     </div>
 
     <style>
+        .upload-accounts-guide {
+            margin-bottom: 14px;
+        }
+        .upload-accounts-guide__details {
+            border: 1px solid var(--skin-border, #dbeafe);
+            border-radius: 8px;
+            background: var(--skin-surface-muted, #f8fbff);
+            overflow: hidden;
+        }
+        .upload-accounts-guide__summary {
+            cursor: pointer;
+            list-style: none;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #1d4ed8;
+            user-select: none;
+        }
+        .upload-accounts-guide__summary::-webkit-details-marker {
+            display: none;
+        }
+        .upload-accounts-guide__summary::before {
+            content: '▼';
+            display: inline-block;
+            margin-right: 8px;
+            font-size: 10px;
+            transition: transform 0.15s ease;
+        }
+        .upload-accounts-guide__details:not([open]) .upload-accounts-guide__summary::before {
+            transform: rotate(-90deg);
+        }
+        .upload-accounts-guide__body {
+            padding: 0 14px 14px;
+        }
+        .upload-accounts-guide__items {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+        .upload-accounts-guide__item {
+            padding: 10px 12px;
+            border: 1px solid var(--skin-border, #e5e7eb);
+            border-radius: 8px;
+            background: var(--skin-surface, #ffffff);
+        }
+        .upload-accounts-guide__item--current {
+            border-color: #93c5fd;
+            background: #eff6ff;
+        }
+        .upload-accounts-guide__item-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--skin-text, #111827);
+            margin-bottom: 4px;
+        }
+        .upload-accounts-guide__item-entry {
+            font-size: 12px;
+            color: #1d4ed8;
+            margin-bottom: 6px;
+            line-height: 1.5;
+        }
+        .upload-accounts-guide__item-desc {
+            font-size: 12px;
+            color: var(--skin-text-muted, #4b5563);
+            line-height: 1.55;
+        }
+        .upload-accounts-guide__compare {
+            margin-top: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            background: rgba(59, 130, 246, 0.08);
+            color: var(--skin-text, #1f2937);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .upload-accounts-guide__actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        @media (max-width: 900px) {
+            .upload-accounts-guide__items {
+                grid-template-columns: 1fr;
+            }
+        }
         .upload-accounts-layout {
             display: flex;
             gap: 16px;

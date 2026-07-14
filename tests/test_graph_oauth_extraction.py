@@ -635,6 +635,32 @@ class GraphOauthFrontendContractTests(unittest.TestCase):
         self.assertIn('不含 IMAP 权限', html)
         self.assertIn('Graph-only（不含 IMAP 权限）', js)
 
+    def test_upload_accounts_modal_explains_four_auth_entry_points(self):
+        """Outlook邮箱授权弹窗提示批量导入 / 授权保存 / 重新授权入口及区别。"""
+        root = os.path.dirname(os.path.dirname(__file__))
+        with open(
+            os.path.join(root, 'templates/partials/index/dialogs-management.html'),
+            encoding='utf-8',
+        ) as handle:
+            html = handle.read()
+        with open(
+            os.path.join(root, 'static/js/index/12-outlook-upload-accounts.js'),
+            encoding='utf-8',
+        ) as handle:
+            js = handle.read()
+
+        self.assertIn('upload-accounts-guide', html)
+        self.assertIn('批量导入邮箱', html)
+        self.assertIn('授权并保存 Outlook 账号', html)
+        self.assertIn('重新授权并刷新', html)
+        self.assertIn('怎么选', html)
+        self.assertIn('openBatchImportFromUploadGuide', html)
+        self.assertIn('openOauthSaveFromUploadGuide', html)
+        self.assertIn('function openBatchImportFromUploadGuide', js)
+        self.assertIn('function openOauthSaveFromUploadGuide', js)
+        self.assertIn('showAddAccountModal', js)
+        self.assertIn('showGetRefreshTokenModal', js)
+
     def test_4_1_outlook_account_menu_has_auto_auth_imap_does_not(self):
         """Outlook 账号菜单包含"加入自动授权"，IMAP 账号不包含该入口。"""
         with open(
