@@ -1460,7 +1460,32 @@ def get_account_tags_by_email_map(emails: List[str], db=None) -> Dict[str, List[
     return tags_by_email
 
 
-def add_upload_account(email: str, password: str, remark: str = '') -> Dict[str, Any]:
+def encode_upload_tag_ids(tag_ids: Any = None) -> str:
+    """将标签 ID 列表编码为 upload 表存储字符串。"""
+    return ','.join(str(tag_id) for tag_id in normalize_tag_ids_input(tag_ids))
+
+
+def decode_upload_tag_ids(raw: Any = None) -> List[int]:
+    """解析 upload 表中的标签 ID 字符串。"""
+    return normalize_tag_ids_input(raw)
+
+
+def resolve_upload_group_id(group_id: Any = None) -> int:
+    """解析上传账号目标分组；无效时回退默认分组。"""
+    try:
+        resolved = int(group_id)
+    except (TypeError, ValueError):
+        resolved = DEFAULT_GROUP_ID
+    if resolved <= 0:
+        return DEFAULT_GROUP_ID
+    db = get_db()
+    exists = db.execute('SELECT id FROM groups WHERE id = ?', (resolved,)).fetchone()
+    return int(exists['id']) if exists else DEFAULT_GROUP_ID
+
+
+def add_upload_account(email: str, password: str, remark: str = '',
+                       group_id: Any = None, proxy_url: str = '',
+                       tag_ids: Any = None) -> Dict[str, Any]:
     """插入一条外部上传的 Outlook 账号到 outlook_upload_accounts。
 
     密码加密存储。不在本函数内 commit，由调用方统一提交。
@@ -1471,25 +1496,47 @@ def add_upload_account(email: str, password: str, remark: str = '') -> Dict[str,
     if '@' not in normalized_email or not raw_password:
         return {'email': normalized_email or (email or ''), 'status': 'invalid'}
 
+    resolved_group_id = resolve_upload_group_id(group_id)
+    encoded_tag_ids = encode_upload_tag_ids(tag_ids)
+    normalized_proxy = str(proxy_url or '').strip()
+
     db = get_db()
     cursor = db.execute(
         '''
-        INSERT OR IGNORE INTO outlook_upload_accounts (email, password, remark, source)
-        VALUES (?, ?, ?, 'external_api')
+        INSERT OR IGNORE INTO outlook_upload_accounts
+            (email, password, remark, source, group_id, proxy_url, tag_ids)
+        VALUES (?, ?, ?, 'external_api', ?, ?, ?)
         ''',
-        (normalized_email, encrypt_data(raw_password), remark or ''),
+        (
+            normalized_email,
+            encrypt_data(raw_password),
+            remark or '',
+            resolved_group_id,
+            normalized_proxy,
+            encoded_tag_ids,
+        ),
     )
     if cursor.rowcount == 1:
-        return {'email': normalized_email, 'status': 'added', 'id': cursor.lastrowid}
+        return {
+            'email': normalized_email,
+            'status': 'added',
+            'id': cursor.lastrowid,
+            'group_id': resolved_group_id,
+            'proxy_url': normalized_proxy,
+            'tag_ids': decode_upload_tag_ids(encoded_tag_ids),
+        }
     return {'email': normalized_email, 'status': 'duplicate'}
 
 
 def upsert_upload_account_for_auto_auth(email: str, password: str,
-                                        remark: str = '') -> Dict[str, Any]:
+                                        remark: str = '',
+                                        group_id: Any = None,
+                                        proxy_url: str = '',
+                                        tag_ids: Any = None) -> Dict[str, Any]:
     """显式重新入队 helper：供内部"加入自动授权"路径调用。
 
     - 邮箱不存在时新增记录（source = 'auto_auth'）。
-    - 邮箱已存在时覆盖加密密码、备注、来源，并重置 is_authorized = 0、status = 'active'。
+    - 邮箱已存在时覆盖加密密码、备注、来源、目标分组/代理/标签，并重置 is_authorized = 0、status = 'active'。
     - 不改变 ``add_upload_account()`` 的默认 duplicate 行为。
     - 不在本函数内 commit，由调用方统一提交。
     - 返回 ``{'email', 'status': 'added'|'updated', 'id'}``。
@@ -1498,6 +1545,10 @@ def upsert_upload_account_for_auto_auth(email: str, password: str,
     raw_password = password if password is not None else ''
     if '@' not in normalized_email or not raw_password:
         return {'email': normalized_email or (email or ''), 'status': 'invalid'}
+
+    resolved_group_id = resolve_upload_group_id(group_id)
+    encoded_tag_ids = encode_upload_tag_ids(tag_ids)
+    normalized_proxy = str(proxy_url or '').strip()
 
     db = get_db()
     encrypted_password = encrypt_data(raw_password)
@@ -1516,21 +1567,53 @@ def upsert_upload_account_for_auto_auth(email: str, password: str,
                 source = 'auto_auth',
                 is_authorized = 0,
                 status = 'active',
+                group_id = ?,
+                proxy_url = ?,
+                tag_ids = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             ''',
-            (encrypted_password, remark or '', upload_id),
+            (
+                encrypted_password,
+                remark or '',
+                resolved_group_id,
+                normalized_proxy,
+                encoded_tag_ids,
+                upload_id,
+            ),
         )
-        return {'email': normalized_email, 'status': 'updated', 'id': upload_id}
+        return {
+            'email': normalized_email,
+            'status': 'updated',
+            'id': upload_id,
+            'group_id': resolved_group_id,
+            'proxy_url': normalized_proxy,
+            'tag_ids': decode_upload_tag_ids(encoded_tag_ids),
+        }
 
     cursor = db.execute(
         '''
-        INSERT INTO outlook_upload_accounts (email, password, remark, source, is_authorized, status)
-        VALUES (?, ?, ?, 'auto_auth', 0, 'active')
+        INSERT INTO outlook_upload_accounts
+            (email, password, remark, source, is_authorized, status, group_id, proxy_url, tag_ids)
+        VALUES (?, ?, ?, 'auto_auth', 0, 'active', ?, ?, ?)
         ''',
-        (normalized_email, encrypted_password, remark or ''),
+        (
+            normalized_email,
+            encrypted_password,
+            remark or '',
+            resolved_group_id,
+            normalized_proxy,
+            encoded_tag_ids,
+        ),
     )
-    return {'email': normalized_email, 'status': 'added', 'id': int(cursor.lastrowid)}
+    return {
+        'email': normalized_email,
+        'status': 'added',
+        'id': int(cursor.lastrowid),
+        'group_id': resolved_group_id,
+        'proxy_url': normalized_proxy,
+        'tag_ids': decode_upload_tag_ids(encoded_tag_ids),
+    }
 
 
 def get_upload_account_plain_password(row: Any, *, tolerate_decrypt_error: bool = False) -> str:
@@ -1550,6 +1633,7 @@ def serialize_upload_account_row(row: Any, tags: Optional[List[Dict]] = None) ->
         data.get('password') or '',
         tolerate_decrypt_error=True,
     )
+    tag_ids = decode_upload_tag_ids(data.get('tag_ids'))
     return {
         'id': data.get('id'),
         'email': data.get('email') or '',
@@ -1560,6 +1644,9 @@ def serialize_upload_account_row(row: Any, tags: Optional[List[Dict]] = None) ->
         'status': data.get('status') or '',
         'remark': data.get('remark') or '',
         'source': data.get('source') or '',
+        'group_id': int(data.get('group_id') or DEFAULT_GROUP_ID),
+        'proxy_url': str(data.get('proxy_url') or '').strip(),
+        'tag_ids': tag_ids,
         'created_at': data.get('created_at'),
         'updated_at': data.get('updated_at'),
         'tags': tags or [],
@@ -1578,6 +1665,28 @@ def delete_upload_account(account_id: int) -> bool:
         (account_id,)
     )
     return cursor.rowcount > 0
+
+
+def delete_upload_accounts_bulk(account_ids: List[int]) -> Dict[str, Any]:
+    """批量删除上传账号。返回 deleted/not_found 计数与结果列表。"""
+    normalized_ids = normalize_account_ids(account_ids)
+    deleted = 0
+    not_found = 0
+    results: List[Dict[str, Any]] = []
+    for account_id in normalized_ids:
+        ok = delete_upload_account(account_id)
+        if ok:
+            deleted += 1
+            results.append({'id': account_id, 'status': 'deleted'})
+        else:
+            not_found += 1
+            results.append({'id': account_id, 'status': 'not_found'})
+    return {
+        'total': len(normalized_ids),
+        'deleted': deleted,
+        'not_found': not_found,
+        'results': results,
+    }
 
 
 def update_upload_account(account_id: int, *, email: Optional[str] = None,
@@ -1677,7 +1786,7 @@ def query_upload_accounts_page(page: int = 1, page_size: int = 20,
     rows = db.execute(
         f'''
         SELECT id, email, password, is_authorized, status, remark, source,
-               created_at, updated_at
+               group_id, proxy_url, tag_ids, created_at, updated_at
         FROM outlook_upload_accounts
         {where_sql}
         ORDER BY id DESC
@@ -1704,7 +1813,7 @@ def query_upload_accounts_page(page: int = 1, page_size: int = 20,
 
 
 def add_upload_accounts_bulk(items: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """单事务批量插入外部上传账号。items: [{'email','password','remark'?}, ...]"""
+    """单事务批量插入外部上传账号。items: [{'email','password','remark'?, ...}, ...]"""
     results: List[Dict[str, Any]] = []
     added = duplicate = invalid = 0
     db = get_db()
@@ -1713,6 +1822,9 @@ def add_upload_accounts_bulk(items: List[Dict[str, Any]]) -> Dict[str, Any]:
             item.get('email', ''),
             item.get('password', ''),
             item.get('remark', ''),
+            group_id=item.get('group_id'),
+            proxy_url=item.get('proxy_url', ''),
+            tag_ids=item.get('tag_ids'),
         )
         if outcome['status'] == 'added':
             added += 1
@@ -1729,6 +1841,28 @@ def add_upload_accounts_bulk(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         'invalid': invalid,
         'results': results,
     }
+
+
+def apply_account_tag_ids(account_id: int, tag_ids: Any = None, db=None) -> int:
+    """给正式账号附加标签（忽略不存在的标签 ID）。返回成功写入条数。"""
+    database = db or get_db()
+    normalized_tag_ids = normalize_tag_ids_input(tag_ids)
+    if not normalized_tag_ids:
+        return 0
+    placeholders = ','.join('?' * len(normalized_tag_ids))
+    existing_rows = database.execute(
+        f'SELECT id FROM tags WHERE id IN ({placeholders})',
+        normalized_tag_ids,
+    ).fetchall()
+    valid_ids = [int(row['id']) for row in existing_rows]
+    written = 0
+    for tag_id in valid_ids:
+        cursor = database.execute(
+            'INSERT OR IGNORE INTO account_tags (account_id, tag_id) VALUES (?, ?)',
+            (account_id, tag_id),
+        )
+        written += int(cursor.rowcount or 0)
+    return written
 
 
 def update_account(account_id: int, email_addr: str, password: str, client_id: str,

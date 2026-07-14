@@ -6,6 +6,18 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.8.5] - 2026-07-14
+
+### Added
+- Outlook 上传账号支持设置目标分组、标签与账号代理；Graph 授权成功并**新建**正式账号时自动写入。
+- 上传账号管理支持多选批量删除，以及按当前授权模式串行批量授权。
+- 正式账号列表支持批量「加入自动授权」；入队时同步复制分组、标签与代理到上传暂存表。
+- 新增接口：`POST /api/outlook-upload-accounts/batch-delete`、`POST /api/accounts/batch-outlook-auto-auth`。
+
+### Changed
+- Graph 授权更新已有正式账号时，仅覆盖密码与 token 等授权字段，保留原有分组、标签、代理与备注。
+- `POST /api/outlook-upload-accounts` 可接收 `group_id` / `tag_ids` / `proxy_url`；列表序列化同步返回这些字段。
+
 ## [2.8.4] - 2026-07-14
 
 ### Security

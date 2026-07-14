@@ -390,7 +390,7 @@ def get_upload_account_for_graph_auth(account_id: int):
     db = get_db()
     return db.execute(
         '''
-        SELECT id, email, password, is_authorized, remark
+        SELECT id, email, password, is_authorized, remark, group_id, proxy_url, tag_ids
         FROM outlook_upload_accounts
         WHERE id = ?
         ''',
@@ -399,7 +399,11 @@ def get_upload_account_for_graph_auth(account_id: int):
 
 
 def upsert_graph_authorized_account(email: str, password: str, client_id: str,
-                                    refresh_token: str) -> Dict[str, Any]:
+                                    refresh_token: str, *,
+                                    group_id: Any = None,
+                                    proxy_url: str = '',
+                                    tag_ids: Any = None,
+                                    remark: str = '') -> Dict[str, Any]:
     db = get_db()
     existing = db.execute(
         'SELECT id FROM accounts WHERE LOWER(email) = ? LIMIT 1',
@@ -410,6 +414,7 @@ def upsert_graph_authorized_account(email: str, password: str, client_id: str,
 
     if existing:
         account_id = int(existing['id'])
+        # 已有正式账号：仅覆盖授权相关字段，保留分组/标签/代理等业务字段
         db.execute(
             '''
             UPDATE accounts
@@ -428,13 +433,15 @@ def upsert_graph_authorized_account(email: str, password: str, client_id: str,
         )
         return {"account_id": account_id, "created": False}
 
+    resolved_group_id = resolve_upload_group_id(group_id)
+    normalized_proxy = str(proxy_url or '').strip()
     cursor = db.execute(ACCOUNT_INSERT_SQL, build_account_insert_values(
         normalize_email_address(email),
         password,
         client_id,
         refresh_token,
-        1,
-        '',
+        resolved_group_id,
+        remark or '',
         'outlook',
         'outlook',
         IMAP_SERVER_NEW,
@@ -443,8 +450,12 @@ def upsert_graph_authorized_account(email: str, password: str, client_id: str,
         False,
         None,
         'active',
+        normalized_proxy,
+        '',
+        '',
     ))
     account_id = int(cursor.lastrowid)
+    apply_account_tag_ids(account_id, tag_ids, db)
     db.execute(
         '''
         UPDATE accounts
@@ -475,7 +486,17 @@ def save_graph_authorization_result(upload_row: Any, client_id: str,
                                     refresh_token: str) -> Dict[str, Any]:
     email = str(upload_row['email'] or '').strip()
     password = get_upload_account_plain_password(upload_row)
-    save_result = upsert_graph_authorized_account(email, password, client_id, refresh_token)
+    row_data = dict(upload_row) if hasattr(upload_row, 'keys') else {}
+    save_result = upsert_graph_authorized_account(
+        email,
+        password,
+        client_id,
+        refresh_token,
+        group_id=row_data.get('group_id'),
+        proxy_url=row_data.get('proxy_url') or '',
+        tag_ids=decode_upload_tag_ids(row_data.get('tag_ids')),
+        remark=str(row_data.get('remark') or ''),
+    )
     mark_upload_account_authorized(int(upload_row['id']))
     get_db().commit()
     return save_result

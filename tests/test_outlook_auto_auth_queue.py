@@ -233,6 +233,124 @@ class OutlookAutoAuthQueueTests(unittest.TestCase):
             ).fetchone()['cnt']
         self.assertEqual(count, 0)
 
+    def test_single_auto_auth_copies_group_tags_and_proxy(self):
+        with self.app.app_context():
+            group_id = web_outlook_app.add_group('自动授权分组')
+            self.assertIsNotNone(group_id)
+            tag_id = web_outlook_app.add_tag('自动授权标签', '#456')
+            self.assertIsNotNone(tag_id)
+            self.assertTrue(web_outlook_app.add_account(
+                'copy-meta@outlook.com',
+                'meta-pwd',
+                'client-id',
+                'refresh-token',
+                group_id=group_id,
+                remark='copy meta',
+                account_type='outlook',
+                provider='outlook',
+                proxy_url='socks5://auto-auth:1080',
+            ))
+            account = web_outlook_app.get_account_by_email('copy-meta@outlook.com')
+            self.assertTrue(web_outlook_app.add_account_tag(account['id'], tag_id))
+            account_id = account['id']
+
+        response = self._post_queue(account_id)
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        with self.app.app_context():
+            row = web_outlook_app.get_db().execute(
+                'SELECT group_id, proxy_url, tag_ids FROM outlook_upload_accounts WHERE id = ?',
+                (payload['upload_account_id'],),
+            ).fetchone()
+        self.assertEqual(row['group_id'], group_id)
+        self.assertEqual(row['proxy_url'], 'socks5://auto-auth:1080')
+        self.assertEqual(row['tag_ids'], str(tag_id))
+
+    def test_batch_auto_auth_queues_multiple_accounts(self):
+        id_ok_1 = self._add_outlook_account('batch-ok-1@outlook.com', 'pwd1')
+        id_ok_2 = self._add_outlook_account('batch-ok-2@outlook.com', 'pwd2')
+
+        with self.app.app_context():
+            self.assertTrue(web_outlook_app.add_account(
+                'batch-imap@outlook.com',
+                '',
+                '',
+                '',
+                group_id=1,
+                account_type='imap',
+                provider='gmail',
+                imap_host='imap.gmail.com',
+                imap_password='imap-secret',
+            ))
+            imap_id = web_outlook_app.get_account_by_email('batch-imap@outlook.com')['id']
+            self.assertTrue(web_outlook_app.add_account(
+                'batch-nopass@outlook.com',
+                '',
+                'client-id',
+                'refresh-token',
+                group_id=1,
+                account_type='outlook',
+            ))
+            nopass_id = web_outlook_app.get_account_by_email('batch-nopass@outlook.com')['id']
+
+        # Seed one existing upload row so second queue becomes updated
+        first = self._post_queue(id_ok_1)
+        self.assertEqual(first.status_code, 200)
+
+        response = self.client.post(
+            '/api/accounts/batch-outlook-auto-auth',
+            json={'account_ids': [id_ok_1, id_ok_2, imap_id, nopass_id, 999999]},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['total'], 5)
+        self.assertEqual(payload['updated'], 1)
+        self.assertEqual(payload['added'], 1)
+        self.assertEqual(payload['failed'], 3)
+        self.assertNotIn('pwd1', response.get_data(as_text=True))
+        self.assertNotIn('pwd2', response.get_data(as_text=True))
+
+        results_by_id = {item.get('account_id'): item for item in payload['results']}
+        self.assertTrue(results_by_id[id_ok_1]['success'])
+        self.assertEqual(results_by_id[id_ok_1]['status'], 'updated')
+        self.assertTrue(results_by_id[id_ok_2]['success'])
+        self.assertEqual(results_by_id[id_ok_2]['status'], 'added')
+        self.assertFalse(results_by_id[imap_id]['success'])
+        self.assertEqual(results_by_id[imap_id]['error_code'], 'ACCOUNT_AUTO_AUTH_UNSUPPORTED')
+        self.assertFalse(results_by_id[nopass_id]['success'])
+        self.assertEqual(results_by_id[nopass_id]['error_code'], 'ACCOUNT_PASSWORD_MISSING')
+        self.assertFalse(results_by_id[999999]['success'])
+        self.assertEqual(results_by_id[999999]['error_code'], 'ACCOUNT_NOT_FOUND')
+
+        with self.app.app_context():
+            emails = {
+                row['email']
+                for row in web_outlook_app.get_db().execute(
+                    'SELECT email FROM outlook_upload_accounts'
+                ).fetchall()
+            }
+        self.assertEqual(emails, {'batch-ok-1@outlook.com', 'batch-ok-2@outlook.com'})
+
+    def test_batch_auto_auth_requires_account_ids(self):
+        response = self.client.post('/api/accounts/batch-outlook-auto-auth', json={})
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.get_json()['success'])
+
+    def test_batch_auto_auth_requires_login(self):
+        account_id = self._add_outlook_account('batch-auth@outlook.com', 'pwd')
+        with self.app.test_client() as unauth_client:
+            response = unauth_client.post(
+                '/api/accounts/batch-outlook-auto-auth',
+                json={'account_ids': [account_id]},
+            )
+        self.assertEqual(response.status_code, 401)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertTrue(payload.get('need_login'))
+
 
 if __name__ == '__main__':
     unittest.main()

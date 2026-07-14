@@ -1956,19 +1956,21 @@
 
         // 更新分组下拉选择框
         function updateGroupSelects() {
-            const selects = ['importGroupSelect', 'editGroupSelect', 'tokenSaveGroupSelect'];
+            const selects = ['importGroupSelect', 'editGroupSelect', 'tokenSaveGroupSelect', 'addUploadAccountGroupSelect'];
             selects.forEach(selectId => {
                 const select = document.getElementById(selectId);
                 if (select) {
                     const currentValue = select.value;
-                    const includeTemp = !(selectId === 'editGroupSelect' || selectId === 'tokenSaveGroupSelect');
+                    const includeTemp = !(selectId === 'editGroupSelect'
+                        || selectId === 'tokenSaveGroupSelect'
+                        || selectId === 'addUploadAccountGroupSelect');
                     const filteredGroups = includeTemp ? groups : groups.filter(g => !isSystemGroup(g));
 
                     select.innerHTML = renderGroupOptions({ includeTemp });
                     // 恢复之前的选择
                     if (currentValue && filteredGroups.find(g => g.id === parseInt(currentValue))) {
                         select.value = currentValue;
-                    } else if (selectId === 'tokenSaveGroupSelect') {
+                    } else if (selectId === 'tokenSaveGroupSelect' || selectId === 'addUploadAccountGroupSelect') {
                         const preferredGroupId = (!isTempEmailGroup && currentGroupId && filteredGroups.find(g => g.id === currentGroupId))
                             ? currentGroupId
                             : (filteredGroups[0]?.id || '');

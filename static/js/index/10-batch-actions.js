@@ -217,6 +217,7 @@
             const countSpan = document.getElementById('selectedCount');
             const selectAllBtn = document.getElementById('accountSelectAllBtn');
             const batchRefreshBtn = document.getElementById('batchRefreshTokensBtn');
+            const batchOutlookAutoAuthBtn = document.getElementById('batchOutlookAutoAuthBtn');
             const batchCopyBtn = document.getElementById('batchCopyEmailsBtn');
             const batchExportBtn = document.getElementById('batchExportAccountsBtn');
             const batchEnableForwardingBtn = document.getElementById('batchEnableForwardingBtn');
@@ -228,6 +229,7 @@
             const batchDeleteBtn = document.getElementById('batchDeleteAccountsBtn');
             const panel = document.getElementById('accountPanel');
             const refreshableChecked = checked.filter(cb => cb.dataset.refreshable === 'true');
+            const autoAuthChecked = checked.filter(cb => (cb.dataset.accountType || 'outlook') !== 'imap');
             const enableForwardingChecked = checked.filter(cb => cb.dataset.forwardEnabled !== 'true');
             const disableForwardingChecked = checked.filter(cb => cb.dataset.forwardEnabled === 'true');
             const isForwardingUpdating = batchEnableForwardingBtn?.dataset.loading === 'true'
@@ -241,6 +243,7 @@
                 : '';
 
             if (batchRefreshBtn) batchRefreshBtn.style.display = isTempContext ? 'none' : 'inline-flex';
+            if (batchOutlookAutoAuthBtn) batchOutlookAutoAuthBtn.style.display = isTempContext ? 'none' : 'inline-flex';
             if (batchExportBtn) batchExportBtn.style.display = isTempContext ? 'none' : 'inline-flex';
             if (batchEnableForwardingBtn) batchEnableForwardingBtn.style.display = isTempContext ? 'none' : 'inline-flex';
             if (batchDisableForwardingBtn) batchDisableForwardingBtn.style.display = isTempContext ? 'none' : 'inline-flex';
@@ -275,6 +278,18 @@
                         batchRefreshBtn.textContent = refreshableChecked.length > 0
                             ? `刷新 Token${refreshableChecked.length !== checked.length ? ` (${refreshableChecked.length})` : ''}`
                             : '刷新 Token';
+                    }
+                }
+                if (batchOutlookAutoAuthBtn) {
+                    const isQueueing = batchOutlookAutoAuthBtn.dataset.loading === 'true';
+                    batchOutlookAutoAuthBtn.disabled = autoAuthChecked.length === 0 || isQueueing;
+                    batchOutlookAutoAuthBtn.title = autoAuthChecked.length === 0
+                        ? '所选账号中没有可加入自动授权的 Outlook 账号'
+                        : '将所选 Outlook 账号加入自动化授权队列';
+                    if (!isQueueing) {
+                        batchOutlookAutoAuthBtn.textContent = autoAuthChecked.length > 0
+                            ? `加入自动授权${autoAuthChecked.length !== checked.length ? ` (${autoAuthChecked.length})` : ''}`
+                            : '加入自动授权';
                     }
                 }
                 if (batchCopyBtn) {
@@ -336,6 +351,12 @@
                     batchRefreshBtn.dataset.loading = 'false';
                     batchRefreshBtn.textContent = '刷新 Token';
                     batchRefreshBtn.title = '';
+                }
+                if (batchOutlookAutoAuthBtn) {
+                    batchOutlookAutoAuthBtn.disabled = false;
+                    batchOutlookAutoAuthBtn.dataset.loading = 'false';
+                    batchOutlookAutoAuthBtn.textContent = '加入自动授权';
+                    batchOutlookAutoAuthBtn.title = '';
                 }
                 if (batchCopyBtn) {
                     batchCopyBtn.disabled = false;
@@ -433,6 +454,7 @@
                     copy: document.getElementById('batchCopyEmailsBtn'),
                     export: document.getElementById('batchExportAccountsBtn'),
                     refresh: document.getElementById('batchRefreshTokensBtn'),
+                    outlookAutoAuth: document.getElementById('batchOutlookAutoAuthBtn'),
                     enableForwarding: document.getElementById('batchEnableForwardingBtn'),
                     disableForwarding: document.getElementById('batchDisableForwardingBtn'),
                     proxy: document.getElementById('batchProxyBtn'),
@@ -649,6 +671,60 @@
             }
 
             startSelectedAccountExport(accountIds);
+        }
+
+        async function queueSelectedAccountsForOutlookAutoAuth() {
+            const context = getCurrentAccountBatchSelectionContext();
+            const btn = getAccountBatchButton(context, 'outlookAutoAuth');
+            if (!btn || btn.disabled) return;
+            if (context.isTempContext) {
+                showToast('临时邮箱不支持加入自动授权', 'error');
+                return;
+            }
+
+            const eligibleAccounts = getAccountBatchSelectedAccounts(context)
+                .filter(account => String(account.account_type || 'outlook').toLowerCase() !== 'imap');
+            const accountIds = eligibleAccounts
+                .map(account => normalizeAccountBatchId(account.id))
+                .filter(Number.isFinite);
+
+            if (!accountIds.length) {
+                showToast('所选账号中没有可加入自动授权的 Outlook 账号', 'error');
+                return;
+            }
+            if (!(await showConfirmModal(
+                `确定将所选 ${accountIds.length} 个 Outlook 账号加入自动授权队列吗？`,
+                { title: '批量加入自动授权', confirmText: '确认加入', danger: false }
+            ))) {
+                return;
+            }
+
+            btn.disabled = true;
+            btn.dataset.loading = 'true';
+            btn.textContent = '入队中...';
+
+            try {
+                const response = await fetch('/api/accounts/batch-outlook-auto-auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ account_ids: accountIds }),
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    handleApiError(data, '批量加入自动授权失败');
+                    return;
+                }
+                showToast(data.message || `已处理 ${accountIds.length} 个账号`, 'success');
+                const modal = document.getElementById('outlookUploadAccountsModal');
+                if (modal && modal.classList.contains('show') && typeof loadUploadAccounts === 'function') {
+                    loadUploadAccounts();
+                }
+            } catch (error) {
+                showToast('批量加入自动授权失败: ' + error.message, 'error');
+            } finally {
+                btn.dataset.loading = 'false';
+                updateAccountBatchControls(context);
+            }
         }
 
         async function refreshSelectedAccounts() {

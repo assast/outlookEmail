@@ -1702,6 +1702,9 @@ def init_db():
             status TEXT DEFAULT 'active',
             remark TEXT DEFAULT '',
             source TEXT DEFAULT 'external_api',
+            group_id INTEGER DEFAULT 1,
+            proxy_url TEXT DEFAULT '',
+            tag_ids TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -1710,6 +1713,14 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_outlook_upload_email
         ON outlook_upload_accounts(email)
     ''')
+    cursor.execute("PRAGMA table_info(outlook_upload_accounts)")
+    upload_columns = [col[1] for col in cursor.fetchall()]
+    if 'group_id' not in upload_columns:
+        cursor.execute('ALTER TABLE outlook_upload_accounts ADD COLUMN group_id INTEGER DEFAULT 1')
+    if 'proxy_url' not in upload_columns:
+        cursor.execute("ALTER TABLE outlook_upload_accounts ADD COLUMN proxy_url TEXT DEFAULT ''")
+    if 'tag_ids' not in upload_columns:
+        cursor.execute("ALTER TABLE outlook_upload_accounts ADD COLUMN tag_ids TEXT DEFAULT ''")
 
     # 检查并添加缺失的列（数据库迁移）
     cursor.execute("PRAGMA table_info(accounts)")

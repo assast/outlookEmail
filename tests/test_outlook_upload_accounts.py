@@ -35,7 +35,8 @@ class OutlookUploadSchemaTests(unittest.TestCase):
             ).fetchall()}
 
         for name in ['id', 'email', 'password', 'is_authorized',
-                     'status', 'remark', 'source', 'created_at', 'updated_at']:
+                     'status', 'remark', 'source', 'created_at', 'updated_at',
+                     'group_id', 'proxy_url', 'tag_ids']:
             self.assertIn(name, columns)
 
     def test_is_authorized_defaults_to_zero(self):
@@ -175,6 +176,60 @@ class OutlookUploadDataLayerTests(unittest.TestCase):
 
         item = next(item for item in result['items'] if item['email'] == email)
         self.assertCountEqual([tag['name'] for tag in item['tags']], tag_names)
+
+    def test_add_upload_account_stores_group_proxy_and_tag_ids(self):
+        with self.app.app_context():
+            group_id = web_outlook_app.add_group('上传目标分组')
+            self.assertIsNotNone(group_id)
+            tag_a = web_outlook_app.add_tag('上传标签A', '#111')
+            tag_b = web_outlook_app.add_tag('上传标签B', '#222')
+            self.assertIsNotNone(tag_a)
+            self.assertIsNotNone(tag_b)
+
+            result = web_outlook_app.add_upload_account(
+                'prefs@outlook.com',
+                'secret',
+                'with prefs',
+                group_id=group_id,
+                proxy_url=' socks5://user:pass@host:1080 ',
+                tag_ids=[tag_a, tag_b, 'bad', 0],
+            )
+            web_outlook_app.get_db().commit()
+            self.assertEqual(result['status'], 'added')
+            self.assertEqual(result['group_id'], group_id)
+            self.assertEqual(result['proxy_url'], 'socks5://user:pass@host:1080')
+            self.assertEqual(result['tag_ids'], [tag_a, tag_b])
+
+            row = web_outlook_app.get_db().execute(
+                'SELECT group_id, proxy_url, tag_ids FROM outlook_upload_accounts WHERE id = ?',
+                (result['id'],),
+            ).fetchone()
+            serialized = web_outlook_app.serialize_upload_account_row(row)
+
+        self.assertEqual(row['group_id'], group_id)
+        self.assertEqual(row['proxy_url'], 'socks5://user:pass@host:1080')
+        self.assertEqual(row['tag_ids'], f'{tag_a},{tag_b}')
+        self.assertEqual(serialized['group_id'], group_id)
+        self.assertEqual(serialized['proxy_url'], 'socks5://user:pass@host:1080')
+        self.assertEqual(serialized['tag_ids'], [tag_a, tag_b])
+
+    def test_delete_upload_accounts_bulk_reports_counts(self):
+        with self.app.app_context():
+            a = web_outlook_app.add_upload_account('del-a@outlook.com', 'p1')
+            b = web_outlook_app.add_upload_account('del-b@outlook.com', 'p2')
+            web_outlook_app.get_db().commit()
+            summary = web_outlook_app.delete_upload_accounts_bulk(
+                [a['id'], b['id'], 999999]
+            )
+            web_outlook_app.get_db().commit()
+            remaining = web_outlook_app.get_db().execute(
+                'SELECT COUNT(*) AS cnt FROM outlook_upload_accounts'
+            ).fetchone()['cnt']
+
+        self.assertEqual(summary['total'], 3)
+        self.assertEqual(summary['deleted'], 2)
+        self.assertEqual(summary['not_found'], 1)
+        self.assertEqual(remaining, 0)
 
 
 class OutlookUploadRequeueTests(unittest.TestCase):
@@ -432,11 +487,11 @@ class OutlookUploadFrontendStructureTests(unittest.TestCase):
         js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
 
         self.assertNotIn('<th style="width: 42px; min-width: 42px;">ID</th>', html)
-        self.assertIn('<td colspan="7" class="upload-accounts-empty">正在加载...</td>', html)
+        self.assertIn('<td colspan="8" class="upload-accounts-empty">正在加载...</td>', html)
         self.assertIn('<tr class="upload-accounts-row--editing" data-editing-id="${escapeHtml(String(itemId))}">', js)
         self.assertNotIn('<td>${escapeHtml(String(itemId))}</td>', js)
-        self.assertIn('<tr><td colspan="7" class="upload-accounts-empty">暂无数据</td></tr>', js)
-        self.assertIn('<tr><td colspan="7" class="upload-accounts-empty">正在加载...</td></tr>', js)
+        self.assertIn('<tr><td colspan="8" class="upload-accounts-empty">暂无数据</td></tr>', js)
+        self.assertIn('<tr><td colspan="8" class="upload-accounts-empty">正在加载...</td></tr>', js)
 
     def test_upload_accounts_table_shows_tags_column(self):
         html = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'dialogs-management.html').read_text(encoding='utf-8')
@@ -485,6 +540,122 @@ class OutlookUploadFrontendStructureTests(unittest.TestCase):
         auth_button_js = js[auth_button_start:auth_button_end]
         self.assertNotIn('data-upload-account-password', auth_button_js)
         self.assertNotIn('item.password ||', auth_button_js)
+
+    def test_upload_accounts_batch_ui_and_add_form_fields(self):
+        html = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'dialogs-management.html').read_text(encoding='utf-8')
+        js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
+        batch_js = (ROOT_DIR / 'static' / 'js' / 'index' / '10-batch-actions.js').read_text(encoding='utf-8')
+        layout = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'layout.html').read_text(encoding='utf-8')
+
+        self.assertIn('id="addUploadAccountGroupSelect"', html)
+        self.assertIn('id="addUploadAccountTagDropdown"', html)
+        self.assertIn('id="addUploadAccountProxyUrl"', html)
+        self.assertIn('id="batchAuthorizeUploadAccountsBtn"', html)
+        self.assertIn('id="batchDeleteUploadAccountsBtn"', html)
+        self.assertIn('id="uploadAccountsSelectAllVisible"', html)
+        self.assertIn('onclick="authorizeSelectedUploadAccounts()"', html)
+        self.assertIn('onclick="deleteSelectedUploadAccounts()"', html)
+        self.assertIn('首次授权成功并新建正式账号', html)
+        add_form_start = html.index('id="addUploadAccountGroupSelect"')
+        add_form_end = html.index('id="submitAddUploadAccountBtn"', add_form_start)
+        add_form_html = html[add_form_start:add_form_end]
+        self.assertNotIn('回退代理', add_form_html)
+        self.assertNotIn('fallback', add_form_html.lower())
+
+        self.assertIn("group_id: groupId", js)
+        self.assertIn("proxy_url: proxyUrl", js)
+        self.assertIn("tag_ids: tagIds", js)
+        self.assertIn("authorizeSelectedUploadAccounts", js)
+        self.assertIn("deleteSelectedUploadAccounts", js)
+        self.assertIn('/api/outlook-upload-accounts/batch-delete', js)
+        self.assertIn('batchAuthQueue', js)
+
+        self.assertIn('id="batchOutlookAutoAuthBtn"', layout)
+        self.assertIn('queueSelectedAccountsForOutlookAutoAuth()', layout)
+        self.assertIn('/api/accounts/batch-outlook-auto-auth', batch_js)
+        self.assertIn('queueSelectedAccountsForOutlookAutoAuth', batch_js)
+
+
+class OutlookUploadBatchDeleteRouteTests(unittest.TestCase):
+    def setUp(self):
+        self.app = web_outlook_app.app
+        self.app.config['TESTING'] = True
+        self.app.config['WTF_CSRF_ENABLED'] = False
+        self.client = self.app.test_client()
+        with self.app.app_context():
+            web_outlook_app.init_db()
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM outlook_upload_accounts')
+            db.commit()
+        with self.client.session_transaction() as session:
+            session['logged_in'] = True
+
+    def test_batch_delete_requires_account_ids(self):
+        response = self.client.post(
+            '/api/outlook-upload-accounts/batch-delete',
+            json={},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.get_json()['success'])
+
+    def test_batch_delete_removes_selected_accounts(self):
+        with self.app.app_context():
+            a = web_outlook_app.add_upload_account('batch-del-a@outlook.com', 'p1')
+            b = web_outlook_app.add_upload_account('batch-del-b@outlook.com', 'p2')
+            keep = web_outlook_app.add_upload_account('batch-del-keep@outlook.com', 'p3')
+            web_outlook_app.get_db().commit()
+
+        response = self.client.post(
+            '/api/outlook-upload-accounts/batch-delete',
+            json={'account_ids': [a['id'], b['id'], 999999]},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['deleted'], 2)
+        self.assertEqual(payload['not_found'], 1)
+
+        with self.app.app_context():
+            rows = web_outlook_app.get_db().execute(
+                'SELECT email FROM outlook_upload_accounts ORDER BY email'
+            ).fetchall()
+        self.assertEqual([row['email'] for row in rows], ['batch-del-keep@outlook.com'])
+        self.assertEqual(keep['email'], 'batch-del-keep@outlook.com')
+
+    def test_add_upload_account_route_accepts_group_tags_proxy(self):
+        with self.app.app_context():
+            group_id = web_outlook_app.add_group('路由目标分组')
+            tag_id = web_outlook_app.add_tag('路由标签', '#333')
+            self.assertIsNotNone(group_id)
+            self.assertIsNotNone(tag_id)
+
+        response = self.client.post(
+            '/api/outlook-upload-accounts',
+            json={
+                'email': 'route-prefs@outlook.com',
+                'password': 'route-secret',
+                'remark': 'via route',
+                'group_id': group_id,
+                'proxy_url': 'http://proxy.example:8080',
+                'tag_ids': [tag_id],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        account = payload['account']
+        self.assertEqual(account['group_id'], group_id)
+        self.assertEqual(account['proxy_url'], 'http://proxy.example:8080')
+        self.assertEqual(account['tag_ids'], [tag_id])
+
+        with self.app.app_context():
+            row = web_outlook_app.get_db().execute(
+                'SELECT group_id, proxy_url, tag_ids FROM outlook_upload_accounts WHERE email = ?',
+                ('route-prefs@outlook.com',),
+            ).fetchone()
+        self.assertEqual(row['group_id'], group_id)
+        self.assertEqual(row['proxy_url'], 'http://proxy.example:8080')
+        self.assertEqual(row['tag_ids'], str(tag_id))
 
 
 class OutlookUploadUpdateRouteTests(unittest.TestCase):
