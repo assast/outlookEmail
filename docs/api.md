@@ -2224,6 +2224,7 @@ POST /api/cloudflare/channels
 | `smtp_use_ssl` | 是否启用 SSL |
 | `telegram_bot_token` | Telegram Bot Token |
 | `telegram_chat_id` | Telegram Chat ID |
+| `telegram_topic_id` | Telegram Topic ID（可选，话题群组的 message_thread_id） |
 | `normal_mail_local_retention_enabled` | 是否启用普通邮箱本地保留 |
 
 ### PUT `/api/settings`
@@ -2290,6 +2291,7 @@ POST /api/cloudflare/channels
 | `smtp_use_ssl` | bool | 是否启用 SSL |
 | `telegram_bot_token` | string | Telegram Bot Token |
 | `telegram_chat_id` | string | Telegram Chat ID |
+| `telegram_topic_id` | string | Telegram Topic ID（可选，话题群组的 message_thread_id，纯数字） |
 
 #### 请求示例
 
@@ -2562,7 +2564,8 @@ Telegram 测试：
   "config": {
     "telegram": {
       "bot_token": "123:abc",
-      "chat_id": "123456"
+      "chat_id": "123456",
+      "topic_id": "789"
     }
   }
 }

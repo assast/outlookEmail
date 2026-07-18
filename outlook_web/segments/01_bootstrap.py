@@ -2167,6 +2167,10 @@ def init_db():
     ''')
     cursor.execute('''
         INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('telegram_topic_id', '')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
         VALUES ('telegram_proxy_url', '')
     ''')
     cursor.execute('''

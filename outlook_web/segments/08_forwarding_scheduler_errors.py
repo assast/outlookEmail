@@ -287,42 +287,46 @@ def send_forward_email_with_config(config: Dict[str, Any], subject: str, body_te
     return True
 
 
-def send_forward_telegram(text: str) -> bool:
-    bot_token = get_setting_decrypted('telegram_bot_token', '').strip()
-    chat_id = get_setting('telegram_chat_id', '').strip()
-    proxy_url = get_setting('telegram_proxy_url', '').strip()
+def _send_telegram_message(bot_token: str, chat_id: str, topic_id: str, proxy_url: str, text: str) -> bool:
     if not bot_token or not chat_id:
         return False
+    payload = {
+        'chat_id': chat_id,
+        'text': text[:4000],
+        'disable_web_page_preview': True,
+    }
+    if topic_id:
+        try:
+            payload['message_thread_id'] = int(topic_id)
+        except ValueError:
+            return False
     response = post_with_proxy_fallback(
         f'https://api.telegram.org/bot{bot_token}/sendMessage',
-        json={
-            'chat_id': chat_id,
-            'text': text[:4000],
-            'disable_web_page_preview': True,
-        },
+        json=payload,
         timeout=15,
         proxy_url=proxy_url,
     )
     return response.ok
+
+
+def send_forward_telegram(text: str) -> bool:
+    return _send_telegram_message(
+        get_setting_decrypted('telegram_bot_token', '').strip(),
+        get_setting('telegram_chat_id', '').strip(),
+        get_setting('telegram_topic_id', '').strip(),
+        get_setting('telegram_proxy_url', '').strip(),
+        text,
+    )
 
 
 def send_forward_telegram_with_config(config: Dict[str, Any], text: str) -> bool:
-    bot_token = str(config.get('bot_token', '') or '').strip()
-    chat_id = str(config.get('chat_id', '') or '').strip()
-    proxy_url = str(config.get('proxy_url', '') or '').strip()
-    if not bot_token or not chat_id:
-        return False
-    response = post_with_proxy_fallback(
-        f'https://api.telegram.org/bot{bot_token}/sendMessage',
-        json={
-            'chat_id': chat_id,
-            'text': text[:4000],
-            'disable_web_page_preview': True,
-        },
-        timeout=15,
-        proxy_url=proxy_url,
+    return _send_telegram_message(
+        str(config.get('bot_token', '') or '').strip(),
+        str(config.get('chat_id', '') or '').strip(),
+        str(config.get('topic_id', '') or '').strip(),
+        str(config.get('proxy_url', '') or '').strip(),
+        text,
     )
-    return response.ok
 
 
 def send_forward_wecom(text: str) -> bool:

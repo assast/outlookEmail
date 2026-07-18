@@ -1816,6 +1816,7 @@
                     document.getElementById('settingsSmtpUseSsl').checked = String(data.settings.smtp_use_ssl) !== 'false';
                     document.getElementById('settingsTelegramBotToken').value = data.settings.telegram_bot_token || '';
                     document.getElementById('settingsTelegramChatId').value = data.settings.telegram_chat_id || '';
+                    document.getElementById('settingsTelegramTopicId').value = data.settings.telegram_topic_id || '';
                     document.getElementById('settingsTelegramProxyUrl').value = data.settings.telegram_proxy_url || '';
                     document.getElementById('settingsWecomWebhookUrl').value = data.settings.wecom_webhook_url || '';
                     document.getElementById('webdavBackupEnabled').checked = String(data.settings.webdav_backup_enabled) === 'true';
@@ -1908,6 +1909,7 @@
             const smtpUsername = document.getElementById('settingsSmtpUsername').value.trim();
             const telegramBotToken = document.getElementById('settingsTelegramBotToken').value.trim();
             const telegramChatId = document.getElementById('settingsTelegramChatId').value.trim();
+            const telegramTopicId = document.getElementById('settingsTelegramTopicId').value.trim();
             const telegramProxyUrl = document.getElementById('settingsTelegramProxyUrl').value.trim();
             const wecomWebhookUrl = document.getElementById('settingsWecomWebhookUrl').value.trim();
             const webdavBackupSettings = getWebdavBackupFormSettings();
@@ -1970,6 +1972,10 @@
                 showToast('启用 TG 转发时必须填写 Telegram Chat ID', 'error');
                 return;
             }
+            if (telegramTopicId && !/^\d+$/.test(telegramTopicId)) {
+                showToast('Telegram Topic ID 必须是纯数字', 'error');
+                return;
+            }
             if (forwardChannels.includes('wecom') && !wecomWebhookUrl) {
                 showToast('启用企业微信转发时必须填写 Webhook 地址', 'error');
                 return;
@@ -2029,6 +2035,7 @@
             settings.smtp_use_ssl = document.getElementById('settingsSmtpUseSsl').checked;
             settings.telegram_bot_token = telegramBotToken;
             settings.telegram_chat_id = telegramChatId;
+            settings.telegram_topic_id = telegramTopicId;
             settings.telegram_proxy_url = telegramProxyUrl;
             settings.wecom_webhook_url = wecomWebhookUrl;
 
@@ -2150,6 +2157,7 @@
                 telegram: {
                     bot_token: document.getElementById('settingsTelegramBotToken').value.trim(),
                     chat_id: document.getElementById('settingsTelegramChatId').value.trim(),
+                    topic_id: document.getElementById('settingsTelegramTopicId').value.trim(),
                     proxy_url: document.getElementById('settingsTelegramProxyUrl').value.trim(),
                 },
                 wecom: {
@@ -2191,6 +2199,10 @@
                 }
                 if (!draft.telegram.chat_id) {
                     showToast('请先填写 Telegram Chat ID', 'error');
+                    return;
+                }
+                if (draft.telegram.topic_id && !/^\d+$/.test(draft.telegram.topic_id)) {
+                    showToast('Telegram Topic ID 必须是纯数字', 'error');
                     return;
                 }
             } else if (channel === 'wecom') {
