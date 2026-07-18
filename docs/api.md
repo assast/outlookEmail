@@ -254,15 +254,19 @@ Cookie: session=<session-cookie>
 ```json
 {
   "code": "IMAP_CONNECT_FAILED",
-  "message": "IMAP 连接失败",
+  "reason_code": "MAIL_NETWORK_FAILED",
+  "message": "网络连接失败：无法连接邮件服务，请检查 DNS、防火墙、代理和服务地址",
   "type": "IMAPConnectError",
   "status": 502,
   "details": "",
-  "trace_id": "..."
+  "trace_id": "...",
+  "category": "network",
+  "proxy_configured": false,
+  "retryable": true
 }
 ```
 
-AI 客户端应优先判断 `success`，再兼容 `error` 既可能是字符串，也可能是对象。
+其中 `code` 保持原有接口错误码，`reason_code` 提供更细的代理、超时、TLS 或网络失败原因。AI 客户端应优先判断 `success`，再兼容 `error` 既可能是字符串，也可能是对象。
 
 ### GET `/api/csrf-token`
 

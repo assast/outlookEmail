@@ -3285,6 +3285,8 @@ def format_email_items(items: List[Dict[str, Any]], folder: str) -> List[Dict[st
 def is_transport_error_payload(error_payload: Any) -> bool:
     if not isinstance(error_payload, dict):
         return False
+    if error_payload.get('category') == 'proxy':
+        return True
     error_type = str(error_payload.get('type') or '').strip()
     return error_type in {
         'ProxyError',
@@ -3412,9 +3414,9 @@ def fetch_account_folder_emails(account: Dict[str, Any], folder: str, skip: int,
     all_errors['graph'] = graph_error
     if is_transport_error_payload(graph_error):
         connection_error_message = (
-            '代理连接失败或请求超时，请检查账号代理或分组代理设置'
-            if proxy_url
-            else '连接 Microsoft 服务失败或超时，请检查服务器网络、DNS 或上游访问能力'
+            graph_error.get('message')
+            if isinstance(graph_error, dict) and graph_error.get('message')
+            else '网络连接失败：无法连接 Microsoft 服务，请检查服务器网络、DNS 和代理设置'
         )
         return {
             'success': False,

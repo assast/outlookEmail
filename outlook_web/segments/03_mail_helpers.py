@@ -79,6 +79,89 @@ def should_retry_next_proxy(exc: Exception, proxy_candidate: str) -> bool:
     return is_proxy_connection_error(exc)
 
 
+def build_mail_fetch_error(exc: Exception, proxy_url: str = '', operation: str = '获取邮件',
+                           legacy_code: str = '', legacy_message: str = '',
+                           legacy_type: str = '', legacy_status: Optional[int] = None) -> Dict[str, Any]:
+    """把代理、网络和超时异常转换成前端可直接展示的错误。"""
+    error_type = type(exc).__name__
+    raw_details = sanitize_error_details(str(exc)).strip()
+    details_lower = raw_details.lower()
+    proxy_configured = bool(str(proxy_url or '').strip())
+    proxy_failures = getattr(exc, 'proxy_failures', None) or []
+    last_proxy_attempt = proxy_failures[-1] if proxy_failures else {}
+    proxy_route_available = proxy_configured and last_proxy_attempt.get('proxy', True) is not False
+    proxy_related = (
+        isinstance(exc, requests.exceptions.ProxyError)
+        or any(marker in details_lower for marker in ('proxy', 'socks', 'tunnel connection failed'))
+        or (proxy_route_available and is_proxy_connection_error(exc))
+    )
+    timeout_related = (
+        isinstance(exc, (requests.exceptions.Timeout, TimeoutError, socket.timeout))
+        or any(marker in details_lower for marker in ('timed out', 'timeout', '超时'))
+    )
+    tls_related = isinstance(exc, requests.exceptions.SSLError) or any(
+        marker in details_lower for marker in ('ssl', 'tls', 'certificate verify failed')
+    )
+    connection_related = (
+        isinstance(exc, (requests.exceptions.ConnectionError, socket.gaierror, ConnectionError))
+        or any(marker in details_lower for marker in (
+            'connection refused',
+            'connection reset',
+            'host unreachable',
+            'name or service not known',
+            'temporary failure in name resolution',
+            'network is unreachable',
+        ))
+    )
+
+    if proxy_related:
+        reason_code = 'MAIL_PROXY_FAILED'
+        category = 'proxy'
+        status = 502
+        message = '代理连接失败：无法通过当前代理访问邮件服务，请检查代理地址、端口、认证信息和回退代理设置'
+    elif timeout_related:
+        reason_code = 'MAIL_NETWORK_TIMEOUT'
+        category = 'network'
+        status = 504
+        message = '网络连接超时：邮件服务未在规定时间内响应，请检查网络、代理和服务地址'
+    elif tls_related:
+        reason_code = 'MAIL_TLS_FAILED'
+        category = 'network'
+        status = 502
+        message = 'TLS/SSL 连接失败：请检查邮件服务地址、端口和系统证书'
+    elif connection_related:
+        reason_code = 'MAIL_NETWORK_FAILED'
+        category = 'network'
+        status = 502
+        message = '网络连接失败：无法连接邮件服务，请检查 DNS、防火墙、代理和服务地址'
+    else:
+        reason_code = 'MAIL_FETCH_EXCEPTION'
+        category = 'mail'
+        status = 500
+        message = legacy_message or f'{operation}失败，请查看详细错误信息'
+
+    if proxy_failures:
+        error_details: Any = {
+            'exception': raw_details,
+            'proxy_attempts': proxy_failures,
+        }
+    else:
+        error_details = raw_details
+
+    payload = build_error_payload(
+        legacy_code or reason_code,
+        message,
+        legacy_type or error_type,
+        legacy_status if legacy_status is not None else status,
+        error_details,
+    )
+    payload['reason_code'] = reason_code
+    payload['category'] = category
+    payload['proxy_configured'] = proxy_configured
+    payload['retryable'] = category in {'proxy', 'network'}
+    return payload
+
+
 def build_request_kwargs_for_proxy(kwargs: Dict[str, Any], proxy_candidate: str) -> Dict[str, Any]:
     request_kwargs = dict(kwargs)
     if proxy_candidate == DIRECT_PROXY_SENTINEL:
@@ -98,6 +181,7 @@ def request_with_proxy_failover(method: str, url: str, *, proxy_url: str = None,
         return requests.request(method, url, **kwargs)
 
     last_exc = None
+    proxy_failures = []
     for index, (label, candidate) in enumerate(candidates):
         request_kwargs = build_request_kwargs_for_proxy(kwargs, candidate)
         try:
@@ -112,6 +196,16 @@ def request_with_proxy_failover(method: str, url: str, *, proxy_url: str = None,
             return response
         except Exception as exc:
             last_exc = exc
+            proxy_failures.append({
+                'candidate': label,
+                'proxy': candidate != DIRECT_PROXY_SENTINEL,
+                'type': type(exc).__name__,
+                'details': sanitize_error_details(str(exc)),
+            })
+            try:
+                exc.proxy_failures = list(proxy_failures)
+            except Exception:
+                pass
             if index == len(candidates) - 1 or not should_retry_next_proxy(exc, candidate):
                 raise
             app.logger.warning(
@@ -325,12 +419,13 @@ def get_access_token_graph_result(client_id: str, refresh_token: str, proxy_url:
     except Exception as exc:
         return {
             "success": False,
-            "error": build_error_payload(
-                "GRAPH_TOKEN_EXCEPTION",
-                "获取访问令牌失败",
-                type(exc).__name__,
-                500,
-                str(exc)
+            "error": build_mail_fetch_error(
+                exc,
+                proxy_url,
+                '获取访问令牌',
+                legacy_code='GRAPH_TOKEN_EXCEPTION',
+                legacy_message='获取访问令牌失败',
+                legacy_status=500,
             )
         }
 
@@ -403,12 +498,13 @@ def get_emails_graph(client_id: str, refresh_token: str, folder: str = 'inbox', 
     except Exception as exc:
         return {
             "success": False,
-            "error": build_error_payload(
-                "EMAIL_FETCH_FAILED",
-                "获取邮件失败，请检查账号配置",
-                type(exc).__name__,
-                500,
-                str(exc)
+            "error": build_mail_fetch_error(
+                exc,
+                proxy_url,
+                '获取邮件',
+                legacy_code='EMAIL_FETCH_FAILED',
+                legacy_message='获取邮件失败，请检查账号配置',
+                legacy_status=500,
             )
         }
 
@@ -783,12 +879,13 @@ def get_access_token_imap_result(client_id: str, refresh_token: str, proxy_url: 
     except Exception as exc:
         return {
             "success": False,
-            "error": build_error_payload(
-                "IMAP_TOKEN_EXCEPTION",
-                "获取访问令牌失败",
-                type(exc).__name__,
-                500,
-                str(exc)
+            "error": build_mail_fetch_error(
+                exc,
+                proxy_url,
+                '获取 IMAP 访问令牌',
+                legacy_code='IMAP_TOKEN_EXCEPTION',
+                legacy_message='获取访问令牌失败',
+                legacy_status=500,
             )
         }
 
@@ -903,12 +1000,13 @@ def get_emails_imap_with_server(account: str, client_id: str, refresh_token: str
     except Exception as exc:
         return {
             "success": False,
-            "error": build_error_payload(
-                "EMAIL_FETCH_FAILED",
-                "获取邮件失败，请检查账号配置",
-                type(exc).__name__,
-                500,
-                str(exc)
+            "error": build_mail_fetch_error(
+                exc,
+                proxy_url,
+                '获取邮件',
+                legacy_code='EMAIL_FETCH_FAILED',
+                legacy_message='获取邮件失败，请检查账号配置',
+                legacy_status=500,
             )
         }
     finally:
@@ -1863,12 +1961,14 @@ def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
     except Exception as exc:
         return {
             'success': False,
-            'error': build_error_payload(
-                'IMAP_CONNECT_FAILED',
-                sanitize_error_details(str(exc)) or 'IMAP 连接失败',
-                'IMAPConnectError',
-                502,
-                ''
+            'error': build_mail_fetch_error(
+                exc,
+                proxy_url,
+                '获取邮件',
+                legacy_code='IMAP_CONNECT_FAILED',
+                legacy_message=sanitize_error_details(str(exc)) or 'IMAP 连接失败',
+                legacy_type='IMAPConnectError',
+                legacy_status=502,
             ),
             'error_code': 'IMAP_CONNECT_FAILED'
         }

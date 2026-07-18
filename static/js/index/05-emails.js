@@ -1,4 +1,4 @@
-        /* global EMAIL_DETAIL_REQUEST_TIMEOUT_MS, EMAIL_LIST_REQUEST_TIMEOUT_MS, adjustIframeHeight, applyEmailListCache, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, currentSkip, emailListCache, escapeHtml, fetchWithTimeout, formatDate, getEmailListCacheEntry, getFolderDisplayName, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, invalidateEmailListCache, isNormalMailLocalRetentionEnabled, isTempEmailGroup, isTimeoutAbortError, loadCloudflareGlobalMessages, mergeFolderSummaries, normalizeFolderSummaries, renderCloudflareGlobalFilterBar, renderEmptyStateMarkup, scheduleEmailListLoadCheck, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
+        /* global EMAIL_DETAIL_REQUEST_TIMEOUT_MS, EMAIL_LIST_REQUEST_TIMEOUT_MS, adjustIframeHeight, applyEmailListCache, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, currentSkip, emailListCache, escapeHtml, fetchWithTimeout, formatDate, getEmailListCacheEntry, getFolderDisplayName, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, invalidateEmailListCache, isNormalMailLocalRetentionEnabled, isTempEmailGroup, isTimeoutAbortError, loadCloudflareGlobalMessages, mergeFolderSummaries, normalizeFolderSummaries, renderCloudflareGlobalFilterBar, renderEmptyStateMarkup, scheduleEmailListLoadCheck, showEmailFetchErrorModal, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
 
         // ==================== 邮件相关 ====================
 
@@ -8,6 +8,8 @@
 
         const backgroundMailboxSyncs = new Map();
         const pendingNewMailSyncs = new Map();
+        const BACKGROUND_MAIL_ERROR_MODAL_COOLDOWN_MS = 5 * 60 * 1000;
+        let lastBackgroundMailErrorModal = { key: '', shownAt: 0 };
         const normalDetailIframeResizeResources = { timers: [], observer: null };
         const fullscreenIframeResizeResources = { timers: [], observer: null };
         const NEW_EMAIL_HIGHLIGHT_CLEAR_DELAY_MS = 3500;
@@ -352,6 +354,46 @@
             }
         }
 
+        function buildBrowserMailFetchError(error) {
+            const isTimeout = isTimeoutAbortError(error);
+            const message = isTimeout
+                ? '网络连接超时：邮件服务未在规定时间内响应，请检查网络、代理和服务地址'
+                : '网络连接失败：浏览器无法连接邮件接口，请检查当前网络、代理和服务是否正常';
+            return {
+                code: isTimeout ? 'MAIL_NETWORK_TIMEOUT' : 'MAIL_NETWORK_FAILED',
+                message,
+                type: error?.name || 'NetworkError',
+                status: isTimeout ? 504 : 0,
+                category: 'network',
+                details: error?.message || String(error || ''),
+                trace_id: '-'
+            };
+        }
+
+        function getFetchErrorMessage(error) {
+            return buildBrowserMailFetchError(error).message;
+        }
+
+        function showBackgroundMailFetchErrorModal(context, details) {
+            const errorFingerprint = Object.entries(details || {}).map(([method, error]) => {
+                const value = error && typeof error === 'object'
+                    ? (error.reason_code || error.code || error.type || error.message || 'unknown')
+                    : String(error || 'unknown');
+                return `${method}:${value}`;
+            }).sort().join('|');
+            const key = `${context?.account || ''}_${context?.folder || ''}:${errorFingerprint}`;
+            const now = Date.now();
+            if (
+                key === lastBackgroundMailErrorModal.key
+                && now - lastBackgroundMailErrorModal.shownAt < BACKGROUND_MAIL_ERROR_MODAL_COOLDOWN_MS
+            ) {
+                return;
+            }
+
+            lastBackgroundMailErrorModal = { key, shownAt: now };
+            showEmailFetchErrorModal(details);
+        }
+
         async function fetchRemoteEmails(email, cacheKey, options = {}) {
             const requestFolder = options.folder || currentFolder;
             const requestMethod = options.method || getRemoteMailboxMethodFallback();
@@ -385,8 +427,12 @@
             if (options.preserveCurrentListOnError === true) {
                 window._lastFetchErrorDetails = fetchErrorDetails;
                 if (!options.context || isCurrentMailboxContext(options.context)) {
-                    setMailSyncStatus('后台同步失败，当前显示的是本地保留邮件');
-                    showToast('后台同步失败，已保留本地邮件列表', 'error');
+                    const errorMessage = data.error?.message
+                        || (typeof data.error === 'string' ? data.error : '')
+                        || '后台同步失败，已保留本地邮件列表';
+                    setMailSyncStatus(`后台同步失败：${errorMessage}`);
+                    showToast(errorMessage, 'error');
+                    showBackgroundMailFetchErrorModal(options.context, fetchErrorDetails);
                 }
                 return false;
             }
@@ -429,8 +475,11 @@
                 preserveCurrentListOnError: true
             }).catch(error => {
                 if (isCurrentMailboxContext(context)) {
-                    setMailSyncStatus('后台同步失败，当前显示的是本地保留邮件');
-                    showToast(isTimeoutAbortError(error) ? '后台同步超时' : '后台同步失败', 'error');
+                    const browserError = buildBrowserMailFetchError(error);
+                    const errorMessage = getFetchErrorMessage(error);
+                    setMailSyncStatus(`后台同步失败：${errorMessage}`);
+                    showToast(errorMessage, 'error');
+                    showBackgroundMailFetchErrorModal(context, { browser: browserError });
                 }
             }).finally(() => {
                 backgroundMailboxSyncs.delete(syncKey);
@@ -473,10 +522,10 @@
                 }
                 await fetchRemoteEmails(email, cacheKey);
             } catch (error) {
-                const errorMessage = isTimeoutAbortError(error)
-                    ? '获取邮件超时，请重试'
-                    : '网络错误，请重试';
+                const browserError = buildBrowserMailFetchError(error);
+                const errorMessage = getFetchErrorMessage(error);
                 setMailSyncStatus('');
+                showEmailFetchErrorModal({ browser: browserError });
                 container.innerHTML = renderEmptyStateMarkup('⚠️', errorMessage, {
                     onAction: 'refreshEmails()',
                     actionTitle: '刷新邮件列表'

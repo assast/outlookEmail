@@ -2689,6 +2689,30 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertNotIn('.refresh-progress-banner', modal_css)
 
 
+class FrontendMailFetchErrorTests(unittest.TestCase):
+    def test_remote_mail_failures_keep_details_for_background_and_browser_errors(self):
+        emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+        self.assertIn('showBackgroundMailFetchErrorModal(options.context, fetchErrorDetails);', emails_js)
+        self.assertIn('showBackgroundMailFetchErrorModal(context, { browser: browserError });', emails_js)
+        self.assertIn('errorMessage = getFetchErrorMessage(error)', emails_js)
+
+    def test_background_mail_error_modal_is_deduplicated_with_a_cooldown(self):
+        emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
+
+        self.assertIn('const BACKGROUND_MAIL_ERROR_MODAL_COOLDOWN_MS = 5 * 60 * 1000;', emails_js)
+        self.assertIn('function showBackgroundMailFetchErrorModal(context, details)', emails_js)
+        self.assertIn('now - lastBackgroundMailErrorModal.shownAt < BACKGROUND_MAIL_ERROR_MODAL_COOLDOWN_MS', emails_js)
+
+    def test_mail_error_modal_translates_proxy_and_network_scenarios(self):
+        core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
+
+        self.assertIn('const reasonCode = err.reason_code || code;', core_js)
+        self.assertIn("reasonCode === 'MAIL_PROXY_FAILED'", core_js)
+        self.assertIn("reasonCode === 'MAIL_NETWORK_TIMEOUT'", core_js)
+        self.assertIn("reasonCode === 'MAIL_NETWORK_FAILED'", core_js)
+
+
 class DesktopPackagedRuntimeTests(unittest.TestCase):
     def test_frozen_macos_main_uses_desktop_app_runner(self):
         runner_calls = []

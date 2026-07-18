@@ -2143,6 +2143,7 @@
                 'imap_new': 'IMAP（新服务器）',
                 'imap_old': 'IMAP（旧服务器）',
                 'imap_generic': '标准 IMAP',
+                'browser': '浏览器到服务端',
                 'inbox': '收件箱',
                 'junkemail': '垃圾邮件',
                 'deleteditems': '已删除邮件',
@@ -2155,10 +2156,23 @@
                 if (typeof err === 'string') return err;
 
                 const code = err.code || '';
+                const reasonCode = err.reason_code || code;
                 const details = formatFetchErrorDetails(err.details);
                 const msg = err.message || '';
 
                 // 翻译常见错误
+                if (reasonCode === 'MAIL_PROXY_FAILED') {
+                    return msg || '代理连接失败：请检查代理地址、端口、认证信息和回退代理设置';
+                }
+                if (reasonCode === 'MAIL_NETWORK_TIMEOUT' || code === 'EMAIL_FETCH_TIMEOUT') {
+                    return msg || '网络连接超时：请检查网络、代理和邮件服务地址';
+                }
+                if (reasonCode === 'MAIL_NETWORK_FAILED') {
+                    return msg || '网络连接失败：请检查 DNS、防火墙、代理和邮件服务地址';
+                }
+                if (reasonCode === 'MAIL_TLS_FAILED') {
+                    return msg || 'TLS/SSL 连接失败：请检查邮件服务地址、端口和系统证书';
+                }
                 if (code === 'GRAPH_TOKEN_EXCEPTION' && details.includes('ProxyError')) {
                     return '代理连接失败：无法连接到代理服务器，请检查代理地址是否正确以及代理是否在运行';
                 }
@@ -2195,7 +2209,7 @@
             const detailEntries = (typeof details === 'object' && !Array.isArray(details) && !(details.message && details.code))
                 ? details
                 : { error: details };
-            const preferredOrder = ['graph', 'imap_new', 'imap_old', 'imap_generic', 'inbox', 'junkemail', 'deleteditems', 'all', 'error'];
+            const preferredOrder = ['browser', 'graph', 'imap_new', 'imap_old', 'imap_generic', 'inbox', 'junkemail', 'deleteditems', 'all', 'error'];
             const methods = [
                 ...preferredOrder.filter(method => detailEntries[method] !== undefined),
                 ...Object.keys(detailEntries).filter(method => !preferredOrder.includes(method))
