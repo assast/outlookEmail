@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.8.7] - 2026-07-19
+
+### Changed
+- 分组代理、账号代理、批量代理与上传账号代理界面补充 SOCKS5 建议提示：IMAP 令牌请求仅支持 HTTPS CONNECT / SOCKS5 代理，普通 HTTP 代理不可用；placeholder 优先展示 `socks5://` 示例。
+
 ## [2.8.6] - 2026-07-19
 
 ### Added
