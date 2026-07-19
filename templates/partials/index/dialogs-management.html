@@ -1274,6 +1274,12 @@
                             <input type="text" id="uploadAccountsSearch" class="form-input upload-accounts-search"
                                 placeholder="搜索邮箱 / 备注" autocomplete="off"
                                 onkeydown="if(event.key==='Enter'){event.preventDefault();searchUploadAccounts();}">
+                            <select id="uploadAccountsAuthStatusFilter" class="form-input upload-accounts-toolbar__select"
+                                aria-label="授权状态" onchange="handleUploadAccountsAuthStatusChange(this.value)">
+                                <option value="all">全部</option>
+                                <option value="unauthorized">未授权</option>
+                                <option value="authorized">已授权</option>
+                            </select>
                             <button class="btn btn-secondary" type="button" onclick="searchUploadAccounts()">搜索</button>
                             <button class="btn btn-secondary" type="button" onclick="reloadUploadAccounts()">刷新</button>
                         </div>
@@ -1299,6 +1305,7 @@
                                         <th style="width: 80px; min-width: 70px;">密码</th>
                                         <th style="width: 72px; min-width: 72px;">授权</th>
                                         <th style="width: 120px; min-width: 100px;">标签</th>
+                                        <th style="width: 180px; min-width: 160px;">账号代理</th>
                                         <th style="width: 100px; min-width: 80px;">备注</th>
                                         <th style="width: 130px; min-width: 120px;">创建时间</th>
                                         <th style="width: 210px; min-width: 210px;">操作</th>
@@ -1306,7 +1313,7 @@
                                 </thead>
                                 <tbody id="uploadAccountsTableBody">
                                     <tr>
-                                        <td colspan="8" class="upload-accounts-empty">正在加载...</td>
+                                        <td colspan="9" class="upload-accounts-empty">正在加载...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1314,6 +1321,13 @@
                         <div class="upload-accounts-pagination">
                             <span class="upload-accounts-pagination__info" id="uploadAccountsPageInfo">共 0 条</span>
                             <div class="upload-accounts-pagination__controls">
+                                <select id="uploadAccountsPageSizeSelect" class="form-input upload-accounts-pagination__select"
+                                    aria-label="每页数量" onchange="handleUploadAccountsPageSizeChange(this.value)">
+                                    <option value="100">每页 100</option>
+                                    <option value="200" selected>每页 200</option>
+                                    <option value="500">每页 500</option>
+                                    <option value="1000">每页 1000</option>
+                                </select>
                                 <button class="btn btn-secondary" type="button" id="uploadAccountsPrevBtn"
                                     onclick="changeUploadAccountsPage(-1)">上一页</button>
                                 <span class="upload-accounts-pagination__page" id="uploadAccountsPageText">第 1 / 1 页</span>
@@ -1560,6 +1574,10 @@
             flex: 1;
             min-width: 180px;
         }
+        .upload-accounts-toolbar__select {
+            width: auto;
+            min-width: 112px;
+        }
         .upload-accounts-table-wrap {
             min-height: 410px;
             overflow-x: auto;
@@ -1568,7 +1586,7 @@
         }
         .upload-accounts-table {
             width: 100%;
-            min-width: 912px;
+            min-width: 1092px;
             border-collapse: collapse;
             table-layout: fixed;
             font-size: 13px;
@@ -1646,6 +1664,13 @@
         }
         .upload-accounts-tag-pill.account-status-pill.tag:hover {
             padding-right: 10px;
+        }
+        .upload-accounts-proxy {
+            display: inline-block;
+            max-width: 156px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: middle;
         }
         .upload-accounts-pagination {
             display: flex;

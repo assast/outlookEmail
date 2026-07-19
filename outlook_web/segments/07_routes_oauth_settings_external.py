@@ -1408,9 +1408,19 @@ def api_external_upload_outlook():
 def api_list_outlook_upload_accounts():
     """分页查询外部上传的 Outlook 账号，供前端弹框表格展示。"""
     page = parse_non_negative_int(request.args.get('page', 1), 1) or 1
-    page_size = parse_non_negative_int(request.args.get('page_size', 20), 20, 200)
+    page_size = parse_non_negative_int(
+        request.args.get('page_size', UPLOAD_ACCOUNTS_API_DEFAULT_PAGE_SIZE),
+        UPLOAD_ACCOUNTS_API_DEFAULT_PAGE_SIZE,
+        UPLOAD_ACCOUNTS_MAX_PAGE_SIZE,
+    )
     keyword = str(request.args.get('keyword', '') or '').strip()
-    result = query_upload_accounts_page(page=page, page_size=page_size, keyword=keyword)
+    auth_status = str(request.args.get('auth_status', 'all') or 'all').strip().lower()
+    result = query_upload_accounts_page(
+        page=page,
+        page_size=page_size,
+        keyword=keyword,
+        auth_status=auth_status,
+    )
     return jsonify({'success': True, **result})
 
 

@@ -1626,6 +1626,26 @@ def get_upload_account_plain_password(row: Any, *, tolerate_decrypt_error: bool 
         raise
 
 
+def get_upload_account_proxy_display(proxy_url: Any) -> str:
+    """返回不含认证信息、路径和查询参数的账号代理地址。"""
+    normalized_proxy = str(proxy_url or '').strip()
+    if not normalized_proxy:
+        return ''
+    parsed_proxy = urlparse(normalized_proxy)
+    if not parsed_proxy.scheme or not parsed_proxy.hostname:
+        return '已配置代理'
+    host = parsed_proxy.hostname
+    if ':' in host and not host.startswith('['):
+        host = f'[{host}]'
+    try:
+        port = parsed_proxy.port
+    except ValueError:
+        return '已配置代理'
+    if port is not None:
+        host = f'{host}:{port}'
+    return f'{parsed_proxy.scheme}://{host}'
+
+
 def serialize_upload_account_row(row: Any, tags: Optional[List[Dict]] = None) -> Dict[str, Any]:
     """将 outlook_upload_accounts 行转为前端展示用字典。"""
     data = dict(row)
@@ -1645,7 +1665,7 @@ def serialize_upload_account_row(row: Any, tags: Optional[List[Dict]] = None) ->
         'remark': data.get('remark') or '',
         'source': data.get('source') or '',
         'group_id': int(data.get('group_id') or DEFAULT_GROUP_ID),
-        'proxy_url': str(data.get('proxy_url') or '').strip(),
+        'proxy_url': get_upload_account_proxy_display(data.get('proxy_url')),
         'tag_ids': tag_ids,
         'created_at': data.get('created_at'),
         'updated_at': data.get('updated_at'),
@@ -1753,23 +1773,51 @@ def update_upload_account(account_id: int, *, email: Optional[str] = None,
     return {'status': 'updated', 'id': account_id, 'email': new_email or row['email']}
 
 
-def query_upload_accounts_page(page: int = 1, page_size: int = 20,
-                               keyword: str = '') -> Dict[str, Any]:
+UPLOAD_ACCOUNTS_API_DEFAULT_PAGE_SIZE = 20
+UPLOAD_ACCOUNTS_MAX_PAGE_SIZE = 1000
+
+
+def query_upload_accounts_page(page: int = 1,
+                               page_size: int = UPLOAD_ACCOUNTS_API_DEFAULT_PAGE_SIZE,
+                               keyword: str = '', auth_status: str = 'all') -> Dict[str, Any]:
     """分页查询外部上传的 Outlook 账号。
 
     返回 {'items', 'total', 'page', 'page_size', 'total_pages'}。
-    keyword 命中 email/remark（模糊匹配）。
+    keyword 命中 email/remark（模糊匹配）；auth_status 支持
+    all/authorized/unauthorized。
     """
-    safe_page = max(1, int(page or 1))
-    safe_page_size = min(max(1, int(page_size or 20)), 200)
-    normalized_keyword = (keyword or '').strip()
+    try:
+        safe_page = int(1 if page in (None, '') else page)
+    except (TypeError, ValueError):
+        safe_page = 1
+    safe_page = max(1, safe_page)
 
-    where_sql = ''
+    try:
+        safe_page_size = int(
+            UPLOAD_ACCOUNTS_API_DEFAULT_PAGE_SIZE
+            if page_size in (None, '') else page_size
+        )
+    except (TypeError, ValueError):
+        safe_page_size = UPLOAD_ACCOUNTS_API_DEFAULT_PAGE_SIZE
+    safe_page_size = min(max(1, safe_page_size), UPLOAD_ACCOUNTS_MAX_PAGE_SIZE)
+
+    normalized_keyword = (keyword or '').strip()
+    normalized_auth_status = str(auth_status or 'all').strip().lower()
+    if normalized_auth_status not in {'authorized', 'unauthorized'}:
+        normalized_auth_status = 'all'
+
+    clauses: List[str] = []
     params: List[Any] = []
     if normalized_keyword:
-        where_sql = 'WHERE email LIKE ? OR remark LIKE ?'
+        clauses.append('(email LIKE ? OR remark LIKE ?)')
         like = f'%{normalized_keyword}%'
         params.extend([like, like])
+    if normalized_auth_status == 'authorized':
+        clauses.append('is_authorized = 1')
+    elif normalized_auth_status == 'unauthorized':
+        clauses.append('COALESCE(is_authorized, 0) = 0')
+
+    where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ''
 
     db = get_db()
     total = db.execute(

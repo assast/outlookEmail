@@ -2,13 +2,20 @@
 
         // ==================== Outlook 上传账号 ====================
 
+        const UPLOAD_ACCOUNTS_PAGE_SIZE_DEFAULT = 200;
+        const UPLOAD_ACCOUNTS_PAGE_SIZE_OPTIONS = [100, 200, 500, 1000];
+        const UPLOAD_ACCOUNTS_PAGE_SIZE_STORAGE_KEY = 'outlook_upload_account_page_size';
+        const UPLOAD_ACCOUNTS_AUTH_STATUS_OPTIONS = ['all', 'authorized', 'unauthorized'];
+
         const uploadAccountsState = {
             page: 1,
-            pageSize: 10,
+            pageSize: UPLOAD_ACCOUNTS_PAGE_SIZE_DEFAULT,
             keyword: '',
+            authStatus: 'all',
             total: 0,
             totalPages: 1,
             loading: false,
+            requestSequence: 0,
             editingRowId: null,
             currentData: [],
             selectedIds: new Set(),
@@ -23,6 +30,50 @@
             eventSource: null,
             running: false,
         };
+
+        function normalizeUploadAccountsPageSize(value) {
+            const parsed = parseInt(value, 10);
+            if (UPLOAD_ACCOUNTS_PAGE_SIZE_OPTIONS.includes(parsed)) {
+                return parsed;
+            }
+            return UPLOAD_ACCOUNTS_PAGE_SIZE_DEFAULT;
+        }
+
+        function syncUploadAccountsPageSizeSelect() {
+            const select = document.getElementById('uploadAccountsPageSizeSelect');
+            if (select) {
+                select.value = String(normalizeUploadAccountsPageSize(uploadAccountsState.pageSize));
+            }
+        }
+
+        function initializeUploadAccountsPageSize() {
+            const storedValue = localStorage.getItem(UPLOAD_ACCOUNTS_PAGE_SIZE_STORAGE_KEY);
+            const normalizedValue = normalizeUploadAccountsPageSize(
+                storedValue === null ? UPLOAD_ACCOUNTS_PAGE_SIZE_DEFAULT : storedValue
+            );
+            uploadAccountsState.pageSize = normalizedValue;
+            if (storedValue !== null && String(normalizedValue) !== storedValue) {
+                localStorage.setItem(
+                    UPLOAD_ACCOUNTS_PAGE_SIZE_STORAGE_KEY,
+                    String(normalizedValue),
+                );
+            }
+            syncUploadAccountsPageSizeSelect();
+        }
+
+        function normalizeUploadAccountsAuthStatus(value) {
+            const normalized = String(value || '').trim().toLowerCase();
+            return UPLOAD_ACCOUNTS_AUTH_STATUS_OPTIONS.includes(normalized)
+                ? normalized
+                : 'all';
+        }
+
+        function syncUploadAccountsAuthStatusFilter() {
+            const select = document.getElementById('uploadAccountsAuthStatusFilter');
+            if (select) {
+                select.value = normalizeUploadAccountsAuthStatus(uploadAccountsState.authStatus);
+            }
+        }
 
         function normalizeUploadAccountId(value) {
             const id = Number(value);
@@ -267,12 +318,33 @@
             `;
         }
 
+        function getUploadAccountProxyDisplay(proxyUrl) {
+            const normalizedProxy = String(proxyUrl || '').trim();
+            if (!normalizedProxy) return '';
+            try {
+                const parsedProxy = new URL(normalizedProxy);
+                if (!parsedProxy.host) return '已配置代理';
+                parsedProxy.username = '';
+                parsedProxy.password = '';
+                return `${parsedProxy.protocol}//${parsedProxy.host}`;
+            } catch (error) {
+                return '已配置代理';
+            }
+        }
+
+        function formatUploadAccountProxy(proxyUrl) {
+            const displayProxy = getUploadAccountProxyDisplay(proxyUrl);
+            if (!displayProxy) return '-';
+            const escapedProxy = escapeHtml(displayProxy);
+            return `<span class="upload-accounts-proxy" title="${escapedProxy}">${escapedProxy}</span>`;
+        }
+
         function renderUploadAccountsRows(items) {
             const tbody = document.getElementById('uploadAccountsTableBody');
             if (!tbody) return;
 
             if (!Array.isArray(items) || items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="upload-accounts-empty">暂无数据</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="upload-accounts-empty">暂无数据</td></tr>';
                 syncUploadAccountSelectionUi();
                 return;
             }
@@ -315,6 +387,7 @@
                             </td>
                             <td class="upload-accounts-edit-disabled">-</td>
                             <td class="upload-accounts-edit-disabled">-</td>
+                            <td class="upload-accounts-cell-mono">${formatUploadAccountProxy(item.proxy_url)}</td>
                             <td>
                                 <input type="text" class="upload-accounts-edit-input"
                                     id="edit-remark-${escapeHtml(String(itemId))}"
@@ -344,6 +417,7 @@
                             <td class="upload-accounts-cell-mono upload-accounts-cell-right">${formatUploadAccountPassword(item)}</td>
                             <td>${formatUploadAccountAuthorized(item.is_authorized)}</td>
                             <td>${formatUploadAccountTags(item.tags)}</td>
+                            <td class="upload-accounts-cell-mono">${formatUploadAccountProxy(item.proxy_url)}</td>
                             <td>${escapeHtml(itemRemark)}</td>
                             <td>${escapeHtml(itemCreatedAt)}</td>
                             <td>${authBtn}${editBtn}${deleteBtn}</td>
@@ -372,6 +446,7 @@
                 nextBtn.disabled = uploadAccountsState.loading
                     || uploadAccountsState.page >= uploadAccountsState.totalPages;
             }
+            syncUploadAccountsPageSizeSelect();
         }
 
         function toggleUploadAccountPasswordVisibility(button) {
@@ -398,9 +473,10 @@
         });
 
         async function loadUploadAccounts() {
+            const requestSequence = ++uploadAccountsState.requestSequence;
             const tbody = document.getElementById('uploadAccountsTableBody');
             if (tbody) {
-                tbody.innerHTML = '<tr><td colspan="8" class="upload-accounts-empty">正在加载...</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="upload-accounts-empty">正在加载...</td></tr>';
             }
             uploadAccountsState.loading = true;
             syncUploadAccountsPagination();
@@ -409,17 +485,21 @@
                 const params = new URLSearchParams({
                     page: String(uploadAccountsState.page),
                     page_size: String(uploadAccountsState.pageSize),
+                    auth_status: uploadAccountsState.authStatus,
                 });
                 if (uploadAccountsState.keyword) {
                     params.set('keyword', uploadAccountsState.keyword);
                 }
                 const response = await fetch(`/api/outlook-upload-accounts?${params.toString()}`);
                 const data = await response.json();
+                if (requestSequence !== uploadAccountsState.requestSequence) return;
                 if (data.success) {
                     uploadAccountsState.total = Number(data.total) || 0;
                     uploadAccountsState.totalPages = Math.max(1, Number(data.total_pages) || 1);
                     uploadAccountsState.page = Math.max(1, Number(data.page) || 1);
-                    uploadAccountsState.pageSize = Number(data.page_size) || uploadAccountsState.pageSize;
+                    uploadAccountsState.pageSize = normalizeUploadAccountsPageSize(
+                        data.page_size || uploadAccountsState.pageSize
+                    );
                     uploadAccountsState.currentData = data.items || [];
                     renderUploadAccountsRows(uploadAccountsState.currentData);
                 } else {
@@ -428,12 +508,15 @@
                     handleApiError(data, '加载 Outlook 上传账号失败');
                 }
             } catch (error) {
+                if (requestSequence !== uploadAccountsState.requestSequence) return;
                 uploadAccountsState.currentData = [];
                 renderUploadAccountsRows([]);
                 showToast('加载 Outlook 上传账号失败: ' + error.message, 'error');
             } finally {
-                uploadAccountsState.loading = false;
-                syncUploadAccountsPagination();
+                if (requestSequence === uploadAccountsState.requestSequence) {
+                    uploadAccountsState.loading = false;
+                    syncUploadAccountsPagination();
+                }
             }
         }
 
@@ -445,10 +528,50 @@
             loadUploadAccounts();
         }
 
+        function handleUploadAccountsAuthStatusChange(value) {
+            const nextStatus = normalizeUploadAccountsAuthStatus(value);
+            if (nextStatus === uploadAccountsState.authStatus) {
+                syncUploadAccountsAuthStatusFilter();
+                return;
+            }
+            uploadAccountsState.authStatus = nextStatus;
+            uploadAccountsState.page = 1;
+            // 筛选条件变化后清空选择，避免对旧筛选结果做批量操作
+            clearUploadAccountSelection();
+            syncUploadAccountsAuthStatusFilter();
+            loadUploadAccounts();
+        }
+
+        function handleUploadAccountsPageSizeChange(value) {
+            const nextPageSize = normalizeUploadAccountsPageSize(value);
+            if (nextPageSize === uploadAccountsState.pageSize) {
+                syncUploadAccountsPageSizeSelect();
+                return;
+            }
+            uploadAccountsState.pageSize = nextPageSize;
+            uploadAccountsState.page = 1;
+            // 分页粒度变化会改变可见结果集，清空选择避免误操作
+            clearUploadAccountSelection();
+            localStorage.setItem(
+                UPLOAD_ACCOUNTS_PAGE_SIZE_STORAGE_KEY,
+                String(nextPageSize),
+            );
+            syncUploadAccountsPageSizeSelect();
+            loadUploadAccounts();
+        }
+
         function searchUploadAccounts() {
             const input = document.getElementById('uploadAccountsSearch');
-            uploadAccountsState.keyword = input ? input.value.trim() : '';
+            const nextKeyword = input ? input.value.trim() : '';
+            if (nextKeyword === uploadAccountsState.keyword) {
+                uploadAccountsState.page = 1;
+                loadUploadAccounts();
+                return;
+            }
+            uploadAccountsState.keyword = nextKeyword;
             uploadAccountsState.page = 1;
+            // 搜索条件变化后清空选择，批量操作仅针对当前筛选结果
+            clearUploadAccountSelection();
             loadUploadAccounts();
         }
 
@@ -459,11 +582,14 @@
         function showOutlookUploadAccountsModal() {
             uploadAccountsState.page = 1;
             uploadAccountsState.keyword = '';
+            uploadAccountsState.authStatus = 'all';
             uploadAccountsState.selectedIds.clear();
             uploadAccountsState.batchAuthQueue = [];
             uploadAccountsState.batchAuthRunning = false;
             const input = document.getElementById('uploadAccountsSearch');
             if (input) input.value = '';
+            initializeUploadAccountsPageSize();
+            syncUploadAccountsAuthStatusFilter();
             resetGraphAuthPanel();
             clearAddAccountForm();
             prepareAddUploadAccountFormOptions();
@@ -472,6 +598,8 @@
         }
 
         function hideOutlookUploadAccountsModal() {
+            uploadAccountsState.requestSequence += 1;
+            uploadAccountsState.loading = false;
             if (graphAuthState.eventSource) {
                 graphAuthState.eventSource.close();
                 graphAuthState.eventSource = null;
