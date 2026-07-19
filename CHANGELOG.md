@@ -6,7 +6,24 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.8.6] - 2026-07-19
+
+### Added
+- Telegram 转发支持可选 Topic ID（`telegram_topic_id` / `message_thread_id`），可将消息发到话题群组指定话题；不填写时行为与原来一致。
+- Outlook 上传账号列表支持按授权状态筛选（全部 / 未授权 / 已授权），并与关键词搜索组合过滤。
+- 上传账号管理表格新增「账号代理」列，展示脱敏后的代理地址（去除凭据、路径与查询参数）。
+- 上传账号分页提供 `100` / `200` / `500` / `1000` 档位，管理端默认 `200` 并本地记忆偏好。
+
+### Changed
+- `GET /api/outlook-upload-accounts` 支持 `auth_status`；`page_size` 最大提升至 `1000`；列表序列化返回脱敏后的 `proxy_url`。
+- 邮件获取错误响应补充 `reason_code`、`category`、`proxy_configured`、`retryable` 等字段，前端可更清晰展示网络 / 代理 / TLS 等原因。
+
+### Fixed
+- 完善 IMAP / 邮件获取错误分类与用户提示，避免笼统失败信息。
+- 上传账号列表并发请求仅应用最新响应，避免旧分页结果覆盖当前筛选结果。
+
 ## [2.8.5] - 2026-07-14
+
 
 ### Added
 - Outlook 上传账号支持设置目标分组、标签与账号代理；Graph 授权成功并**新建**正式账号时自动写入。
