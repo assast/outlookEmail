@@ -963,8 +963,8 @@
                 <div class="form-group">
                     <label class="form-label">账号代理</label>
                     <input type="text" class="form-input" id="batchProxyUrl"
-                        placeholder="http://host:port、socks5://host:port 或 direct">
-                    <div class="form-hint">应用到已勾选账号；留空并提交会清空账号级代理，改为继承分组代理。</div>
+                        placeholder="socks5://host:port、http://host:port 或 direct">
+                    <div class="form-hint">应用到已勾选账号；留空并提交会清空账号级代理，改为继承分组代理。建议优先使用 <code>socks5://</code>：IMAP 令牌请求仅支持 HTTPS CONNECT / SOCKS5 代理，普通 HTTP 代理不可用。</div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">回退代理 1</label>
@@ -1266,7 +1266,7 @@
                                     </div>
                                 </div>
                                 <div class="form-hint" style="margin-top: 8px;">
-                                    分组 / 标签 / 账号代理会在<strong>首次授权成功并新建正式账号</strong>时写入；若正式账号已存在则仅更新授权信息，保留原分组/标签/代理。
+                                    分组 / 标签 / 账号代理会在<strong>首次授权成功并新建正式账号</strong>时写入；若正式账号已存在则仅更新授权信息，保留原分组/标签/代理。建议优先使用 <code>socks5://</code>：IMAP 令牌请求仅支持 HTTPS CONNECT / SOCKS5 代理，普通 HTTP 代理不可用。
                                 </div>
                             </div>
                         </div>

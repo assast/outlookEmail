@@ -54,8 +54,8 @@
                 <div class="form-group">
                     <label class="form-label">代理设置</label>
                     <input type="text" class="form-input" id="groupProxyUrl"
-                        placeholder="http://host:port 或 socks5://user:pass@host:port">
-                    <div class="form-hint">主代理，可选。该分组下 Outlook 的 Graph/Token 请求优先走这里。</div>
+                        placeholder="socks5://user:pass@host:port 或 http://host:port">
+                    <div class="form-hint">主代理，可选。该分组下 Outlook 的 Graph/Token 请求优先走这里。建议优先使用 <code>socks5://</code>：IMAP 令牌请求仅支持 HTTPS CONNECT / SOCKS5 代理，普通 HTTP 代理不可用。</div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">回退代理 1</label>
@@ -346,8 +346,8 @@
                             <div class="form-group edit-account-span-2">
                                 <label class="form-label">账号代理</label>
                                 <input type="text" class="form-input" id="editProxyUrl"
-                                    placeholder="http://host:port、socks5://host:port 或 direct">
-                                <div class="form-hint">留空继承分组代理；填写 <code>direct</code> 或 <code>直连</code> 表示该账号直连。</div>
+                                    placeholder="socks5://host:port、http://host:port 或 direct">
+                                <div class="form-hint">留空继承分组代理；填写 <code>direct</code> 或 <code>直连</code> 表示该账号直连。建议优先使用 <code>socks5://</code>：IMAP 令牌请求仅支持 HTTPS CONNECT / SOCKS5 代理，普通 HTTP 代理不可用。</div>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">账号回退代理 1</label>
