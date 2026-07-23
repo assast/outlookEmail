@@ -6,6 +6,12 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.8.8] - 2026-07-23
+
+### Fixed
+- 修复「全部邮件」拉取失败时错误细节丢失：`merge_folder_results` 现在会透传 Graph / IMAP 各协议的结构化错误（code / type / status / trace_id / details），避免弹窗只显示「无法获取邮件，所有方式均失败」且字段全为 `-`。
+- 邮件获取失败详情弹窗支持按文件夹展开协议级错误（如「收件箱 / Graph API」「收件箱 / IMAP（新服务器）」），便于排查 token 刷新成功但读信失败等问题。
+
 ## [2.8.7] - 2026-07-19
 
 ### Changed

@@ -3297,10 +3297,93 @@ def is_transport_error_payload(error_payload: Any) -> bool:
     }
 
 
+_PROTOCOL_ERROR_DETAIL_KEYS = (
+    'graph',
+    'imap_new',
+    'imap_old',
+    'imap_generic',
+    'browser',
+)
+
+
+def build_folder_failure_detail(result: Any) -> Any:
+    """把单文件夹失败结果整理成前端可展示的结构化错误。
+
+    folder=all 合并时若只透传 result['error'] 字符串，会丢掉 graph/imap 细节，
+    导致弹窗只剩「无法获取邮件，所有方式均失败」且 code/type/status 全为 -。
+    """
+    if not isinstance(result, dict):
+        return result
+
+    top_error = result.get('error')
+    protocol_details = result.get('details')
+    if not isinstance(protocol_details, dict) or not protocol_details:
+        return top_error
+
+    primary = None
+    for key in _PROTOCOL_ERROR_DETAIL_KEYS:
+        if protocol_details.get(key) is not None:
+            primary = protocol_details[key]
+            break
+    if primary is None:
+        primary = next(iter(protocol_details.values()), None)
+
+    if isinstance(top_error, dict):
+        payload = dict(top_error)
+        existing_details = payload.get('details')
+        if not existing_details:
+            payload['details'] = protocol_details
+        elif isinstance(existing_details, str):
+            text = existing_details.strip()
+            parsed = None
+            if text.startswith('{') or text.startswith('['):
+                try:
+                    parsed = json.loads(text)
+                except Exception:
+                    parsed = None
+            if not isinstance(parsed, dict) or not parsed:
+                payload['details'] = {
+                    'summary': existing_details,
+                    'methods': protocol_details,
+                }
+        return payload
+
+    if isinstance(primary, dict):
+        primary_message = str(primary.get('message') or '').strip()
+        fallback_message = top_error if isinstance(top_error, str) and top_error.strip() else ''
+        message = primary_message or fallback_message or '无法获取邮件，所有方式均失败'
+        payload = {
+            'code': primary.get('code') or 'EMAIL_FETCH_FAILED',
+            'message': message,
+            'type': primary.get('type') or 'EmailFetchError',
+            'status': primary.get('status') if primary.get('status') is not None else 500,
+            'details': protocol_details,
+            'trace_id': primary.get('trace_id') or '-',
+            'category': primary.get('category') or 'mail',
+        }
+        if primary.get('reason_code'):
+            payload['reason_code'] = primary.get('reason_code')
+        return payload
+
+    message = top_error if isinstance(top_error, str) and top_error.strip() else '无法获取邮件，所有方式均失败'
+    return {
+        'code': 'EMAIL_FETCH_FAILED',
+        'message': message,
+        'type': 'EmailFetchError',
+        'status': 500,
+        'details': protocol_details,
+        'trace_id': '-',
+        'category': 'mail',
+    }
+
+
 def merge_folder_results(results: Dict[str, Dict[str, Any]], skip: int, top: int) -> Dict[str, Any]:
     successful = {folder: result for folder, result in results.items() if result.get('success')}
     if not successful:
-        details = {folder: result.get('error') for folder, result in results.items()}
+        details = {
+            folder: build_folder_failure_detail(result)
+            for folder, result in results.items()
+        }
         return {
             'success': False,
             'error': '无法获取邮件，所有方式均失败',
@@ -3324,7 +3407,7 @@ def merge_folder_results(results: Dict[str, Dict[str, Any]], skip: int, top: int
         if result.get('method'):
             folder_summary['method'] = result['method']
         if not result.get('success') and result.get('error') is not None:
-            folder_summary['error'] = result.get('error')
+            folder_summary['error'] = build_folder_failure_detail(result)
         folder_summaries[folder] = folder_summary
 
         if result.get('success'):
@@ -3333,7 +3416,7 @@ def merge_folder_results(results: Dict[str, Dict[str, Any]], skip: int, top: int
                 methods.append(result['method'])
             has_more = has_more or bool(result.get('has_more'))
         else:
-            partial_errors[folder] = result.get('error')
+            partial_errors[folder] = build_folder_failure_detail(result)
 
     merged.sort(key=lambda item: parse_email_datetime(item.get('date')) or datetime.min, reverse=True)
     sliced = merged[skip:skip + top]
