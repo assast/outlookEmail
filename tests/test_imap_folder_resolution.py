@@ -678,6 +678,131 @@ class ImapFolderResolutionTests(unittest.TestCase):
         self.assertFalse(merged['folder_summaries']['junkemail']['has_more'])
         self.assertEqual(merged['folder_summaries']['junkemail']['error'], {'message': 'junk failed'})
 
+    def test_merge_folder_results_all_failed_preserves_protocol_details(self):
+        graph_error = {
+            'code': 'EMAIL_FETCH_FAILED',
+            'message': 'Graph mailbox not enabled',
+            'type': 'GraphError',
+            'status': 403,
+            'details': 'MailboxNotEnabledForRESTAPI',
+            'trace_id': 'trace-graph-1',
+            'reason_code': 'MAIL_FETCH_EXCEPTION',
+            'category': 'mail',
+        }
+        imap_new_error = {
+            'code': 'IMAP_AUTH_FAILED',
+            'message': 'IMAP AUTHENTICATE failed',
+            'type': 'IMAPAuthError',
+            'status': 401,
+            'details': 'AUTHENTICATE failed.',
+            'trace_id': 'trace-imap-1',
+        }
+        results = {
+            'inbox': {
+                'success': False,
+                'error': '无法获取邮件，所有方式均失败',
+                'details': {
+                    'graph': graph_error,
+                    'imap_new': imap_new_error,
+                    'imap_old': {'code': 'IMAP_CONNECT_FAILED', 'message': 'old imap down'},
+                },
+            },
+            'junkemail': {
+                'success': False,
+                'error': '无法获取邮件，所有方式均失败',
+                'details': {
+                    'graph': graph_error,
+                    'imap_new': imap_new_error,
+                },
+            },
+        }
+
+        merged = web_outlook_app.merge_folder_results(results, 0, 40)
+
+        self.assertFalse(merged['success'])
+        self.assertEqual(merged['error'], '无法获取邮件，所有方式均失败')
+
+        inbox_detail = merged['details']['inbox']
+        self.assertIsInstance(inbox_detail, dict)
+        self.assertEqual(inbox_detail['code'], 'EMAIL_FETCH_FAILED')
+        self.assertEqual(inbox_detail['message'], 'Graph mailbox not enabled')
+        self.assertEqual(inbox_detail['type'], 'GraphError')
+        self.assertEqual(inbox_detail['status'], 403)
+        self.assertEqual(inbox_detail['trace_id'], 'trace-graph-1')
+        self.assertEqual(inbox_detail['details']['graph'], graph_error)
+        self.assertEqual(inbox_detail['details']['imap_new'], imap_new_error)
+        self.assertIn('imap_old', inbox_detail['details'])
+
+        junk_detail = merged['details']['junkemail']
+        self.assertEqual(junk_detail['message'], 'Graph mailbox not enabled')
+        self.assertEqual(junk_detail['details']['graph']['code'], 'EMAIL_FETCH_FAILED')
+
+    def test_merge_folder_results_partial_failure_preserves_protocol_details(self):
+        results = {
+            'inbox': {
+                'success': True,
+                'emails': [{'id': 'inbox-1', 'folder': 'inbox', 'date': '2026-01-01T00:00:00Z'}],
+                'method': 'Graph API',
+                'has_more': False,
+                'request_method': 'graph',
+            },
+            'junkemail': {
+                'success': False,
+                'error': '无法获取邮件，所有方式均失败',
+                'details': {
+                    'graph': {
+                        'code': 'EMAIL_FETCH_FAILED',
+                        'message': 'junk graph failed',
+                        'type': 'GraphError',
+                        'status': 403,
+                        'trace_id': 'trace-junk',
+                    },
+                    'imap_new': {
+                        'code': 'IMAP_AUTH_FAILED',
+                        'message': 'junk imap failed',
+                    },
+                },
+            },
+        }
+
+        merged = web_outlook_app.merge_folder_results(results, 0, 40)
+
+        self.assertTrue(merged['success'])
+        self.assertTrue(merged['partial'])
+        junk_error = merged['details']['junkemail']
+        self.assertEqual(junk_error['message'], 'junk graph failed')
+        self.assertEqual(junk_error['code'], 'EMAIL_FETCH_FAILED')
+        self.assertEqual(junk_error['status'], 403)
+        self.assertEqual(junk_error['details']['imap_new']['message'], 'junk imap failed')
+        self.assertEqual(
+            merged['folder_summaries']['junkemail']['error']['details']['graph']['message'],
+            'junk graph failed',
+        )
+
+    def test_build_folder_failure_detail_keeps_structured_top_error(self):
+        top_error = {
+            'code': 'EMAIL_FETCH_TIMEOUT',
+            'message': '获取邮件超时，请稍后重试',
+            'type': 'TimeoutError',
+            'status': 504,
+            'details': '',
+            'trace_id': 'timeout-1',
+        }
+        result = {
+            'success': False,
+            'error': top_error,
+            'details': {
+                'graph': {'code': 'EMAIL_FETCH_FAILED', 'message': 'should not override'},
+            },
+        }
+
+        detail = web_outlook_app.build_folder_failure_detail(result)
+
+        self.assertEqual(detail['code'], 'EMAIL_FETCH_TIMEOUT')
+        self.assertEqual(detail['message'], '获取邮件超时，请稍后重试')
+        self.assertEqual(detail['status'], 504)
+        self.assertEqual(detail['details']['graph']['message'], 'should not override')
+
     def test_get_email_detail_imap_defaults_to_uid_fetch(self):
         message = EmailMessage()
         message['Subject'] = 'Default UID detail'
