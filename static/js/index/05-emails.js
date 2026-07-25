@@ -1387,15 +1387,31 @@
                     }
                 } else {
                     handleApiError(data, '加载邮件详情失败');
+                    const detailErrorMessage = data.error?.message
+                        || (typeof data.error === 'string' ? data.error : '')
+                        || '加载失败';
+                    const hasProtocolDetails = data.details
+                        && typeof data.details === 'object'
+                        && Object.keys(data.details).length > 0;
+                    if (hasProtocolDetails) {
+                        window._lastFetchErrorDetails = data.details;
+                    }
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon">⚠️</div>
                             <div class="empty-state-text"></div>
+                            ${hasProtocolDetails ? '<div class="empty-state-actions" style="margin-top:12px;"><a href="javascript:void(0)" class="email-detail-error-link" style="color:#409eff;text-decoration:underline;">点击查看详情</a></div>' : ''}
                         </div>
                     `;
                     const errorText = container.querySelector('.empty-state-text');
                     if (errorText) {
-                        errorText.textContent = data.error && data.error.message ? data.error.message : '加载失败';
+                        errorText.textContent = detailErrorMessage;
+                    }
+                    const detailLink = container.querySelector('.email-detail-error-link');
+                    if (detailLink) {
+                        detailLink.addEventListener('click', () => {
+                            showEmailFetchErrorModal(window._lastFetchErrorDetails);
+                        });
                     }
                 }
             } catch (error) {

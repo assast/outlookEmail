@@ -834,8 +834,11 @@ class ImapFolderResolutionTests(unittest.TestCase):
                 return 'BYE', [b'logout']
 
         mail = DetailMail()
-        with patch.object(web_outlook_app, 'get_access_token_imap', return_value='access-token'), \
-             patch.object(web_outlook_app.imaplib, 'IMAP4_SSL', return_value=mail):
+        with patch.object(
+            web_outlook_app,
+            'get_access_token_imap_result',
+            return_value={'success': True, 'access_token': 'access-token'},
+        ), patch.object(web_outlook_app.imaplib, 'IMAP4_SSL', return_value=mail):
             detail = web_outlook_app.get_email_detail_imap(
                 'reader@example.com',
                 'client-id',

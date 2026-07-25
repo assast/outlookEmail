@@ -6,6 +6,15 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.8.9] - 2026-07-25
+
+### Fixed
+- 修复 Outlook 邮件详情失败时错误细节丢失：Graph / OAuth IMAP 详情改为返回结构化错误（code / type / status / details / trace_id），Graph 失败回退 IMAP 时透传各协议尝试结果，避免接口 HTTP 200 但页面只显示「加载失败」。
+- 邮件详情前端兼容 `error` 为字符串或对象，并在存在协议级 `details` 时提供「点击查看详情」入口，复用列表侧失败弹窗。
+
+### Changed
+- Outlook OAuth IMAP 详情对代理 / 超时 / 连接等传输类错误自动有限重试 1 次（认证失败、文件夹不存在、token 失效等不重试），降低间歇性读信失败概率。
+
 ## [2.8.8] - 2026-07-23
 
 ### Fixed

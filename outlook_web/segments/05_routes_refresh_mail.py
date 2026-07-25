@@ -2825,13 +2825,25 @@ def fetch_imap_account_detail_response(account: Dict[str, Any], folder: str,
 
 def fetch_graph_detail_response(account: Dict[str, Any], folder: str,
                                 message_id: str, method: str, id_mode: str,
-                                proxy_url: str, fallback_proxy_urls: List[str]) -> Optional[Dict[str, Any]]:
-    detail = get_email_detail_graph(
+                                proxy_url: str, fallback_proxy_urls: List[str]) -> Dict[str, Any]:
+    detail_result = get_email_detail_graph_result(
         account['client_id'], account['refresh_token'], message_id, proxy_url, fallback_proxy_urls
     )
-    if not detail:
-        return None
+    if not detail_result.get('success'):
+        return {
+            'success': False,
+            'error': detail_result.get('error') or build_error_payload(
+                'EMAIL_DETAIL_FETCH_FAILED',
+                '获取邮件详情失败',
+                'GraphAPIError',
+                502,
+                '',
+            ),
+            'method': 'Graph API',
+            'attempted': ['graph'],
+        }
 
+    detail = detail_result.get('detail') or {}
     attachments = []
     if detail.get('hasAttachments'):
         attachments = get_email_attachments_graph(
@@ -2845,10 +2857,10 @@ def fetch_graph_detail_response(account: Dict[str, Any], folder: str,
 
 def fetch_oauth_imap_detail_response(account: Dict[str, Any], folder: str,
                                      message_id: str, method: str, id_mode: str,
-                                     proxy_url: str, fallback_proxy_urls: List[str]) -> Optional[Dict[str, Any]]:
+                                     proxy_url: str, fallback_proxy_urls: List[str]) -> Dict[str, Any]:
     requested_mode = str(id_mode or '').strip().lower()
     preferred_id_mode = requested_mode if requested_mode in {'uid', 'sequence'} else 'uid'
-    detail = get_email_detail_imap(
+    detail_result = get_email_detail_imap_result(
         account['email'],
         account['client_id'],
         account['refresh_token'],
@@ -2858,10 +2870,21 @@ def fetch_oauth_imap_detail_response(account: Dict[str, Any], folder: str,
         fallback_proxy_urls,
         preferred_id_mode,
     )
-    if not detail:
-        return None
+    if not detail_result.get('success'):
+        return {
+            'success': False,
+            'error': detail_result.get('error') or build_error_payload(
+                'EMAIL_DETAIL_FETCH_FAILED',
+                '获取邮件详情失败',
+                'IMAPFetchError',
+                502,
+                '',
+            ),
+            'method': 'IMAP (New)',
+            'attempted': ['imap'],
+        }
     return build_retained_detail_success_response(
-        account, folder, message_id, detail, method, 'imap', id_mode
+        account, folder, message_id, detail_result.get('email') or {}, method, 'imap', id_mode
     )
 
 
@@ -3066,14 +3089,12 @@ def fetch_retained_body_response(account: Dict[str, Any], item: Dict[str, str],
     if account.get('account_type') == 'imap':
         return fetch_imap_account_detail_response(account, folder, message_id, method, id_mode, proxy_url)
     if method == 'graph':
-        result = fetch_graph_detail_response(
+        return fetch_graph_detail_response(
             account, folder, message_id, method, id_mode, proxy_url, fallback_proxy_urls
         )
-    else:
-        result = fetch_oauth_imap_detail_response(
-            account, folder, message_id, method, id_mode, proxy_url, fallback_proxy_urls
-        )
-    return result or {'success': False, 'error': '获取邮件详情失败'}
+    return fetch_oauth_imap_detail_response(
+        account, folder, message_id, method, id_mode, proxy_url, fallback_proxy_urls
+    )
 
 
 def retain_normal_mail_bodies(account: Dict[str, Any], items: List[Dict[str, str]]) -> Dict[str, Any]:
@@ -3106,7 +3127,11 @@ def retain_normal_mail_bodies(account: Dict[str, Any], items: List[Dict[str, str
             results.append({'id': item['id'], 'status': 'cached'})
             continue
         failed_count += 1
-        error = str(response.get('error') or '获取邮件详情失败')
+        error_obj = response.get('error')
+        if isinstance(error_obj, dict):
+            error = str(error_obj.get('message') or '获取邮件详情失败')
+        else:
+            error = str(error_obj or '获取邮件详情失败')
         errors.append({'id': item['id'], 'error': error})
         results.append({'id': item['id'], 'status': 'failed', 'error': error})
 
@@ -3857,6 +3882,22 @@ def api_get_raw_email(email_addr, message_id):
     })
 
 
+def normalize_email_detail_error(error: Any, fallback_message: str = '获取邮件详情失败') -> Dict[str, Any]:
+    if isinstance(error, dict) and error.get('message'):
+        return error
+    if isinstance(error, str) and error.strip():
+        message = error.strip()
+    else:
+        message = fallback_message
+    return build_error_payload(
+        'EMAIL_DETAIL_FETCH_FAILED',
+        message,
+        'EmailDetailError',
+        502,
+        '',
+    )
+
+
 def fetch_email_detail_for_account(account, message_id, method='graph', folder='inbox',
                                    id_mode='', prefer_local=False):
     proxy_url = get_account_proxy_url(account)
@@ -3871,21 +3912,43 @@ def fetch_email_detail_for_account(account, message_id, method='graph', folder='
         result = fetch_imap_account_detail_response(
             account, folder, message_id, method, id_mode, proxy_url
         )
-        return result
+        if result.get('success'):
+            return result
+        return {
+            'success': False,
+            'error': normalize_email_detail_error(result.get('error')),
+            'method': result.get('method') or 'IMAP (Generic)',
+            'details': {'imap_generic': result.get('error')} if result.get('error') else {},
+        }
 
+    attempts: Dict[str, Any] = {}
     if method == 'graph':
-        result = fetch_graph_detail_response(
+        graph_result = fetch_graph_detail_response(
             account, folder, message_id, method, id_mode, proxy_url, fallback_proxy_urls
         )
-        if result:
-            return result
+        if graph_result.get('success'):
+            return graph_result
+        if graph_result.get('error') is not None:
+            attempts['graph'] = graph_result.get('error')
 
-    result = fetch_oauth_imap_detail_response(
+    imap_result = fetch_oauth_imap_detail_response(
         account, folder, message_id, method, id_mode, proxy_url, fallback_proxy_urls
     )
-    if result:
-        return result
-    return {'success': False, 'error': '获取邮件详情失败'}
+    if imap_result.get('success'):
+        return imap_result
+    if imap_result.get('error') is not None:
+        attempts['imap_new'] = imap_result.get('error')
+
+    primary_error = attempts.get('imap_new') or attempts.get('graph')
+    return {
+        'success': False,
+        'error': normalize_email_detail_error(primary_error),
+        'method': imap_result.get('method') if attempts.get('imap_new') is not None else (
+            'Graph API' if attempts.get('graph') is not None else ''
+        ),
+        'details': attempts,
+        'attempted': list(attempts.keys()),
+    }
 
 
 @app.route('/api/email/<email_addr>/<path:message_id>')

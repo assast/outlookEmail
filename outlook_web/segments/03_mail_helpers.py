@@ -535,13 +535,14 @@ def get_raw_email_graph(client_id: str, refresh_token: str, message_id: str, pro
         return None
 
 
-def get_email_detail_graph(client_id: str, refresh_token: str, message_id: str, proxy_url: str = None,
-                           fallback_proxy_urls: Optional[List[str]] = None) -> Optional[Dict]:
-    """使用 Graph API 获取邮件详情"""
-    access_token = get_access_token_graph(client_id, refresh_token, proxy_url, fallback_proxy_urls)
-    if not access_token:
-        return None
-    
+def get_email_detail_graph_result(client_id: str, refresh_token: str, message_id: str, proxy_url: str = None,
+                                  fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+    """使用 Graph API 获取邮件详情（包含结构化错误）"""
+    token_result = get_access_token_graph_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    if not token_result.get('success'):
+        return {'success': False, 'error': token_result.get('error')}
+
+    access_token = token_result.get('access_token')
     try:
         url = f"https://graph.microsoft.com/v1.0/me/messages/{message_id}"
         params = {
@@ -551,7 +552,7 @@ def get_email_detail_graph(client_id: str, refresh_token: str, message_id: str, 
             "Authorization": f"Bearer {access_token}",
             "Prefer": "outlook.body-content-type='html'"
         }
-        
+
         res = get_with_proxy_fallback(
             url,
             headers=headers,
@@ -560,13 +561,44 @@ def get_email_detail_graph(client_id: str, refresh_token: str, message_id: str, 
             proxy_url=proxy_url,
             fallback_proxy_urls=fallback_proxy_urls,
         )
-        
+
         if res.status_code != 200:
-            return None
-        
-        return res.json()
-    except Exception:
-        return None
+            details = get_response_details(res)
+            return {
+                'success': False,
+                'error': build_error_payload(
+                    'EMAIL_DETAIL_FETCH_FAILED',
+                    '获取邮件详情失败',
+                    'GraphAPIError',
+                    res.status_code,
+                    details,
+                ),
+            }
+
+        return {'success': True, 'detail': res.json()}
+    except Exception as exc:
+        return {
+            'success': False,
+            'error': build_mail_fetch_error(
+                exc,
+                proxy_url,
+                '获取邮件详情',
+                legacy_code='EMAIL_DETAIL_FETCH_FAILED',
+                legacy_message='获取邮件详情失败',
+                legacy_status=500,
+            ),
+        }
+
+
+def get_email_detail_graph(client_id: str, refresh_token: str, message_id: str, proxy_url: str = None,
+                           fallback_proxy_urls: Optional[List[str]] = None) -> Optional[Dict]:
+    """使用 Graph API 获取邮件详情"""
+    result = get_email_detail_graph_result(
+        client_id, refresh_token, message_id, proxy_url, fallback_proxy_urls
+    )
+    if result.get('success'):
+        return result.get('detail')
+    return None
 
 
 def mark_emails_read_graph_result(client_id: str, refresh_token: str, message_ids: List[str],
@@ -1050,25 +1082,99 @@ def get_raw_email_imap(account: str, client_id: str, refresh_token: str, message
                 pass
 
 
-def get_email_detail_imap(account: str, client_id: str, refresh_token: str, message_id: str,
-                          folder: str = 'inbox', proxy_url: str = None,
-                          fallback_proxy_urls: Optional[List[str]] = None,
-                          preferred_id_mode: str = 'uid') -> Optional[Dict]:
-    """使用 IMAP 获取邮件详情"""
-    access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
-    if not access_token:
-        return None
+EMAIL_DETAIL_IMAP_MAX_ATTEMPTS = 2
+EMAIL_DETAIL_IMAP_RETRY_DELAY_SECONDS = 0.4
 
+
+def is_retryable_email_detail_error(error_payload: Any) -> bool:
+    """仅对代理/网络/超时等传输类错误允许详情重试。"""
+    if not isinstance(error_payload, dict):
+        return False
+    if error_payload.get('retryable') is True:
+        return True
+    if str(error_payload.get('category') or '').strip().lower() in {'proxy', 'network'}:
+        return True
+
+    reason_code = str(error_payload.get('reason_code') or '').strip()
+    if reason_code in {
+        'MAIL_PROXY_FAILED',
+        'MAIL_NETWORK_TIMEOUT',
+        'MAIL_TLS_FAILED',
+        'MAIL_NETWORK_FAILED',
+    }:
+        return True
+
+    code = str(error_payload.get('code') or '').strip()
+    if code in {'IMAP_CONNECT_FAILED', 'EMAIL_DETAIL_CONNECT_FAILED'}:
+        return True
+
+    error_type = str(error_payload.get('type') or '').strip()
+    return error_type in {
+        'ProxyError',
+        'ConnectionError',
+        'ConnectTimeout',
+        'ReadTimeout',
+        'Timeout',
+        'TimeoutError',
+        'SSLError',
+        'OSError',
+        'socket.timeout',
+        'gaierror',
+    }
+
+
+def annotate_email_detail_retry(error_payload: Any, attempts: int, retried: bool) -> Any:
+    if not isinstance(error_payload, dict):
+        return error_payload
+    annotated = dict(error_payload)
+    annotated['attempts'] = attempts
+    annotated['retried'] = bool(retried)
+    return annotated
+
+
+def _get_email_detail_imap_result_once(account: str, client_id: str, refresh_token: str, message_id: str,
+                                       folder: str = 'inbox', proxy_url: str = None,
+                                       fallback_proxy_urls: Optional[List[str]] = None,
+                                       preferred_id_mode: str = 'uid') -> Dict[str, Any]:
+    """单次 IMAP 详情获取（不含重试）。"""
+    token_result = get_access_token_imap_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    if not token_result.get('success'):
+        return {'success': False, 'error': token_result.get('error')}
+
+    access_token = token_result.get('access_token')
     connection = None
     try:
         with proxy_socket_context(proxy_url):
             connection = imaplib.IMAP4_SSL(IMAP_SERVER_NEW, IMAP_PORT, timeout=IMAP_TIMEOUT)
         auth_string = f"user={account}\1auth=Bearer {access_token}\1\1".encode('utf-8')
-        connection.authenticate('XOAUTH2', lambda x: auth_string)
+        try:
+            connection.authenticate('XOAUTH2', lambda x: auth_string)
+        except imaplib.IMAP4.error as exc:
+            return {
+                'success': False,
+                'error': build_error_payload(
+                    'IMAP_AUTH_FAILED',
+                    sanitize_error_details(str(exc)) or 'IMAP 认证失败',
+                    'IMAPAuthError',
+                    401,
+                    '',
+                ),
+            }
 
-        selected_folder, _ = resolve_imap_folder(connection, 'outlook', folder, readonly=True)
+        selected_folder, folder_diagnostics = resolve_imap_folder(
+            connection, 'outlook', folder, readonly=True
+        )
         if not selected_folder:
-            return None
+            return {
+                'success': False,
+                'error': build_error_payload(
+                    'IMAP_FOLDER_NOT_FOUND',
+                    'IMAP 文件夹不存在或无权访问',
+                    'IMAPSelectError',
+                    400,
+                    folder_diagnostics,
+                ),
+            }
 
         preferred_mode = str(preferred_id_mode or 'uid').strip().lower()
         if preferred_mode not in {'uid', 'sequence'}:
@@ -1080,25 +1186,132 @@ def get_email_detail_imap(account: str, client_id: str, refresh_token: str, mess
             preferred_mode=preferred_mode
         )
         if status != 'OK' or not msg_data:
-            return None
+            return {
+                'success': False,
+                'error': build_error_payload(
+                    'EMAIL_DETAIL_FETCH_FAILED',
+                    '获取邮件详情失败',
+                    'IMAPFetchError',
+                    502,
+                    {
+                        'status': status,
+                        'folder': selected_folder,
+                        'message_id': str(message_id),
+                        'preferred_id_mode': preferred_mode,
+                        'fetch_attempts': (_fetch_attempts or [])[:10],
+                    },
+                ),
+            }
 
         raw_email, fetch_response_text = parse_imap_fetch_response(msg_data)
         if not raw_email:
-            return None
+            return {
+                'success': False,
+                'error': build_error_payload(
+                    'EMAIL_DETAIL_FETCH_FAILED',
+                    '获取邮件详情失败',
+                    'IMAPFetchError',
+                    502,
+                    {
+                        'folder': selected_folder,
+                        'message_id': str(message_id),
+                        'preferred_id_mode': preferred_mode,
+                        'fetch_attempts': (_fetch_attempts or [])[:10],
+                    },
+                ),
+            }
         msg = email.message_from_bytes(raw_email)
-        return build_email_detail_from_message(
-            msg,
-            str(message_id),
-            extract_imap_internaldate(fetch_response_text)
-        )
-    except Exception:
-        return None
+        return {
+            'success': True,
+            'email': build_email_detail_from_message(
+                msg,
+                str(message_id),
+                extract_imap_internaldate(fetch_response_text)
+            ),
+        }
+    except Exception as exc:
+        return {
+            'success': False,
+            'error': build_mail_fetch_error(
+                exc,
+                proxy_url,
+                '获取邮件详情',
+                legacy_code='EMAIL_DETAIL_FETCH_FAILED',
+                legacy_message='获取邮件详情失败',
+                legacy_status=500,
+            ),
+        }
     finally:
         if connection:
             try:
                 connection.logout()
             except Exception:
                 pass
+
+
+def get_email_detail_imap_result(account: str, client_id: str, refresh_token: str, message_id: str,
+                                 folder: str = 'inbox', proxy_url: str = None,
+                                 fallback_proxy_urls: Optional[List[str]] = None,
+                                 preferred_id_mode: str = 'uid') -> Dict[str, Any]:
+    """使用 IMAP 获取邮件详情（包含结构化错误；传输类失败会有限重试一次）。"""
+    max_attempts = max(1, int(EMAIL_DETAIL_IMAP_MAX_ATTEMPTS or 1))
+    last_result: Dict[str, Any] = {'success': False, 'error': '获取邮件详情失败'}
+    attempt = 0
+
+    for attempt in range(1, max_attempts + 1):
+        result = _get_email_detail_imap_result_once(
+            account,
+            client_id,
+            refresh_token,
+            message_id,
+            folder,
+            proxy_url,
+            fallback_proxy_urls,
+            preferred_id_mode,
+        )
+        if result.get('success'):
+            if attempt > 1:
+                result = dict(result)
+                result['retried'] = True
+                result['attempts'] = attempt
+            return result
+
+        last_result = result
+        error_payload = result.get('error')
+        if attempt >= max_attempts or not is_retryable_email_detail_error(error_payload):
+            break
+        time.sleep(EMAIL_DETAIL_IMAP_RETRY_DELAY_SECONDS)
+
+    if isinstance(last_result, dict) and last_result.get('error') is not None:
+        annotated = dict(last_result)
+        # attempt 记录实际执行次数；不可重试失败为 1，重试后仍失败为 max_attempts
+        annotated['error'] = annotate_email_detail_retry(
+            last_result.get('error'),
+            max(1, attempt),
+            bool(attempt > 1),
+        )
+        return annotated
+    return last_result
+
+
+def get_email_detail_imap(account: str, client_id: str, refresh_token: str, message_id: str,
+                          folder: str = 'inbox', proxy_url: str = None,
+                          fallback_proxy_urls: Optional[List[str]] = None,
+                          preferred_id_mode: str = 'uid') -> Optional[Dict]:
+    """使用 IMAP 获取邮件详情"""
+    result = get_email_detail_imap_result(
+        account,
+        client_id,
+        refresh_token,
+        message_id,
+        folder,
+        proxy_url,
+        fallback_proxy_urls,
+        preferred_id_mode,
+    )
+    if result.get('success'):
+        return result.get('email')
+    return None
 
 
 # ==================== 登录验证 ====================
