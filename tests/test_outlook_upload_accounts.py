@@ -707,7 +707,7 @@ class OutlookUploadFrontendStructureTests(unittest.TestCase):
         html = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'dialogs-management.html').read_text(encoding='utf-8')
         js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
 
-        self.assertIn('<th style="width: 120px; min-width: 100px;">标签</th>', html)
+        self.assertIn('<th style="width: 160px; min-width: 100px;">标签</th>', html)
         self.assertIn('function formatUploadAccountTags(tags)', js)
         self.assertIn('<td>${formatUploadAccountTags(item.tags)}</td>', js)
 
@@ -715,7 +715,7 @@ class OutlookUploadFrontendStructureTests(unittest.TestCase):
         html = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'dialogs-management.html').read_text(encoding='utf-8')
         js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
 
-        self.assertIn('<th style="width: 180px; min-width: 160px;">账号代理</th>', html)
+        self.assertIn('<th style="width: 160px; min-width: 160px;">账号代理</th>', html)
         self.assertIn('function getUploadAccountProxyDisplay(proxyUrl)', js)
         self.assertIn('function formatUploadAccountProxy(proxyUrl)', js)
         self.assertIn("parsedProxy.username = '';", js)
@@ -770,12 +770,13 @@ class OutlookUploadFrontendStructureTests(unittest.TestCase):
         js = (ROOT_DIR / 'static' / 'js' / 'index' / '12-outlook-upload-accounts.js').read_text(encoding='utf-8')
 
         self.assertIn('id="uploadAccountsPageSizeSelect"', html)
-        for page_size in (100, 200, 500, 1000):
+        for page_size in (10, 20, 50, 100):
             self.assertIn(f'<option value="{page_size}"', html)
-        for page_size in (2000, 5000, 10000):
+        for page_size in (200, 500, 1000, 2000, 5000, 10000):
             self.assertNotIn(f'<option value="{page_size}"', html)
-        self.assertIn('<option value="200" selected>每页 200</option>', html)
-        self.assertIn('const UPLOAD_ACCOUNTS_PAGE_SIZE_DEFAULT = 200;', js)
+        self.assertIn('<option value="20" selected>每页 20</option>', html)
+        self.assertIn('const UPLOAD_ACCOUNTS_PAGE_SIZE_DEFAULT = 20;', js)
+        self.assertIn('const UPLOAD_ACCOUNTS_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];', js)
         self.assertIn('pageSize: UPLOAD_ACCOUNTS_PAGE_SIZE_DEFAULT', js)
 
     def test_upload_accounts_only_applies_the_latest_list_response(self):

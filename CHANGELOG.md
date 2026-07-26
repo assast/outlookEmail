@@ -6,6 +6,16 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.8.10] - 2026-07-26
+
+### Changed
+- Outlook 上传账号管理端分页档位调整为 `10` / `20` / `50` / `100`，默认 `20`（与 API 默认对齐）；本地记忆的非法旧档位会回落到默认值。
+- 「添加新账号」表单改为单行布局，授权弹窗加宽并微调表格列宽；使用说明默认折叠。
+- 标签筛选弹窗宽度从 `320px` 调整为 `250px`。
+
+### Fixed
+- 修复添加账号面板中标签下拉弹窗被父级 `overflow: hidden` 裁切的问题。
+
 ## [2.8.9] - 2026-07-25
 
 ### Fixed

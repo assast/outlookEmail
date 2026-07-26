@@ -595,7 +595,7 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `page` | integer | 否 | 页码，默认 `1` |
-| `page_size` | integer | 否 | 每页数量，API 默认 `20`，最大 `1000`；管理端显式默认 `200`，提供 `100`、`200`、`500`、`1000` 档位 |
+| `page_size` | integer | 否 | 每页数量，API 默认 `20`，最大 `1000`；管理端默认 `20`，提供 `10`、`20`、`50`、`100` 档位 |
 | `keyword` | string | 否 | 按邮箱或备注模糊搜索 |
 | `auth_status` | string | 否 | 授权状态：`all`（默认）、`authorized`、`unauthorized`；未知值按 `all` 处理 |
 
