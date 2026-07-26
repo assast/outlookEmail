@@ -1153,14 +1153,14 @@
 
     <!-- Outlook 上传账号模态框 -->
     <div class="modal" id="outlookUploadAccountsModal" onmousedown="if(event.target === this) hideOutlookUploadAccountsModal()">
-        <div class="modal-content" style="width: min(1500px, 96vw);">
+        <div class="modal-content" style="width: min(1740px, 96vw);">
             <div class="modal-header">
                 <h3>Outlook邮箱授权</h3>
                 <button class="modal-close" onclick="hideOutlookUploadAccountsModal()">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="upload-accounts-guide">
-                    <details class="upload-accounts-guide__details" open>
+                    <details class="upload-accounts-guide__details">
                         <summary class="upload-accounts-guide__summary">
                             找不到批量导入？四种添加 / 授权方式说明（入口与区别）
                         </summary>
@@ -1302,11 +1302,11 @@
                                                 onchange="toggleSelectVisibleUploadAccounts(this.checked)">
                                         </th>
                                         <th style="width: 200px; min-width: 160px;">邮箱</th>
-                                        <th style="width: 80px; min-width: 70px;">密码</th>
+                                        <th style="width: 160px; min-width: 100px;">密码</th>
                                         <th style="width: 72px; min-width: 72px;">授权</th>
-                                        <th style="width: 120px; min-width: 100px;">标签</th>
-                                        <th style="width: 180px; min-width: 160px;">账号代理</th>
-                                        <th style="width: 100px; min-width: 80px;">备注</th>
+                                        <th style="width: 160px; min-width: 100px;">标签</th>
+                                        <th style="width: 160px; min-width: 160px;">账号代理</th>
+                                        <th style="width: 80px; min-width: 80px;">备注</th>
                                         <th style="width: 130px; min-width: 120px;">创建时间</th>
                                         <th style="width: 210px; min-width: 210px;">操作</th>
                                     </tr>
@@ -1323,10 +1323,10 @@
                             <div class="upload-accounts-pagination__controls">
                                 <select id="uploadAccountsPageSizeSelect" class="form-input upload-accounts-pagination__select"
                                     aria-label="每页数量" onchange="handleUploadAccountsPageSizeChange(this.value)">
+                                    <option value="10">每页 10</option>
+                                    <option value="20" selected>每页 20</option>
+                                    <option value="50">每页 50</option>
                                     <option value="100">每页 100</option>
-                                    <option value="200" selected>每页 200</option>
-                                    <option value="500">每页 500</option>
-                                    <option value="1000">每页 1000</option>
                                 </select>
                                 <button class="btn btn-secondary" type="button" id="uploadAccountsPrevBtn"
                                     onclick="changeUploadAccountsPage(-1)">上一页</button>
@@ -1704,7 +1704,7 @@
             border: 1px solid var(--skin-border, #e5e7eb);
             border-radius: 8px;
             background: var(--skin-surface, #ffffff);
-            overflow: hidden;
+            overflow: visible;
         }
         .upload-accounts-add-panel__header {
             display: flex;
@@ -1742,7 +1742,7 @@
         }
         .upload-accounts-add-form {
             display: grid;
-            grid-template-columns: 1fr 140px 1fr 1fr;
+            grid-template-columns: 180px 120px 180px 150px 120px 120px 250px auto;
             gap: 12px;
             align-items: end;
         }
@@ -1769,8 +1769,6 @@
             height: 36px;
         }
         .add-form-field--action {
-            grid-column: 1 / -1;
-            padding-top: 0;
             align-items: stretch;
         }
         .add-form-submit {

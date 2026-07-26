@@ -2,8 +2,8 @@
 
         // ==================== Outlook 上传账号 ====================
 
-        const UPLOAD_ACCOUNTS_PAGE_SIZE_DEFAULT = 200;
-        const UPLOAD_ACCOUNTS_PAGE_SIZE_OPTIONS = [100, 200, 500, 1000];
+        const UPLOAD_ACCOUNTS_PAGE_SIZE_DEFAULT = 20;
+        const UPLOAD_ACCOUNTS_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
         const UPLOAD_ACCOUNTS_PAGE_SIZE_STORAGE_KEY = 'outlook_upload_account_page_size';
         const UPLOAD_ACCOUNTS_AUTH_STATUS_OPTIONS = ['all', 'authorized', 'unauthorized'];
 
