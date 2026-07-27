@@ -1571,7 +1571,7 @@ def api_export_selected_upload_accounts():
     for row in rows:
         email = str(row['email'] or '')
         password = get_upload_account_plain_password(row, tolerate_decrypt_error=True)
-        lines.append(f"{email}----{password}")
+        lines.append(f"{email}----{password}--------")
 
     content = '\n'.join(lines)
 

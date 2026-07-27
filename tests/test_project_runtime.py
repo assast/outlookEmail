@@ -1508,8 +1508,8 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertIn('text/plain', response.content_type)
         self.assertIn('upload_accounts_', response.headers.get('Content-Disposition', ''))
         lines = response.get_data(as_text=True).splitlines()
-        self.assertIn('upload-a@example.com----pass-aaa', lines)
-        self.assertIn('upload-b@example.com----pass-bbb', lines)
+        self.assertIn('upload-a@example.com----pass-aaa--------', lines)
+        self.assertIn('upload-b@example.com----pass-bbb--------', lines)
         self.assertNotIn('upload-c@example.com----pass-ccc', '\n'.join(lines))
 
     def test_export_selected_upload_accounts_empty_ids_returns_400(self):
