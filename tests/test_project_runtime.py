@@ -2136,13 +2136,20 @@ class FrontendEmailListSecurityTests(unittest.TestCase):
     def test_detail_load_error_message_is_rendered_as_text(self):
         self.assertNotIn("${data.error && data.error.message ? data.error.message : '加载失败'}", self.emails_js)
         self.assertIn("const errorText = container.querySelector('.empty-state-text');", self.emails_js)
-        self.assertIn("errorText.textContent = data.error && data.error.message ? data.error.message : '加载失败';", self.emails_js)
+        self.assertIn('const detailErrorMessage = data.error?.message', self.emails_js)
+        self.assertIn("|| '加载失败';", self.emails_js)
+        self.assertIn('errorText.textContent = detailErrorMessage;', self.emails_js)
 
     def test_delete_emails_removes_matching_cached_rows_and_preserves_unrelated_detail(self):
         self.assertIn('function removeDeletedEmailsFromCachedLists(deletedIds, account = currentAccount)', self.emails_js)
         self.assertIn('cacheValue.emails = cacheValue.emails.filter(email => !normalizedIds.has(String(email.id)));', self.emails_js)
         self.assertIn('removeDeletedEmailsFromCachedLists(deletedIds);', self.emails_js)
         self.assertIn('if (currentEmailDetail && deletedIds.has(String(currentEmailDetail.id)))', self.emails_js)
+        self.assertIn('function buildEmailDeleteItems(sourceItems)', self.emails_js)
+        self.assertIn('items', self.emails_js)
+        self.assertIn('method: getRemoteMailboxMethodFallback()', self.emails_js)
+        self.assertIn('await deleteEmails(getSelectedEmailItems());', self.emails_js)
+        self.assertIn('await deleteEmails([currentEmailDetail]);', self.emails_js)
 
 
 class FrontendEmailBodyRetentionAndIframeTests(unittest.TestCase):

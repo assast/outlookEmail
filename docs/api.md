@@ -1921,9 +1921,26 @@ ZIP 内文件名使用附件原始文件名；如果多个附件同名，会自�
 
 ### POST `/api/emails/delete`
 
-批量删除邮件。
+批量删除邮件（永久删除）。
 
 #### 请求体
+
+```json
+{
+  "email": "user@outlook.com",
+  "method": "graph",
+  "folder": "inbox",
+  "items": [
+    {
+      "id": "AAMk...",
+      "folder": "inbox",
+      "id_mode": "graph"
+    }
+  ]
+}
+```
+
+兼容旧格式：
 
 ```json
 {
@@ -1934,8 +1951,10 @@ ZIP 内文件名使用附件原始文件名；如果多个附件同名，会自�
 
 说明：
 
-- Outlook 账号会优先走 Graph API，失败后按逻辑回退 IMAP
-- IMAP 账号当前不支持批量删除
+- 推荐传 `items`（含 `id` / `folder` / `id_mode`）与 `method`，与 `/api/emails/mark-read` 一致
+- Outlook 账号按 `id_mode`/`method` 分流：`graph` 走 Graph API，`uid`/`sequence` 走 OAuth IMAP
+- 标准 IMAP 账号通过 IMAP `STORE \\Deleted` + `EXPUNGE` 永久删除
+- 仍接受仅传 `ids` 的旧客户端；此时默认按 Graph 处理
 
 ## 临时邮箱
 
@@ -2591,8 +2610,8 @@ Telegram 测试：
 - Graph 邮件列表
 - Graph 邮件详情
 - Outlook OAuth IMAP token 获取
-- Outlook OAuth IMAP 列表 / 详情 / 删除回退
-- 密码型 IMAP 列表 / 详情
+- Outlook OAuth IMAP 列表 / 详情 / 删除
+- 密码型 IMAP 列表 / 详情 / 删除
 - 转发轮询抓信 / 详情抓取
 
 ### 别名冲突规则

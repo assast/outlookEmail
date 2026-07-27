@@ -294,6 +294,9 @@ class AccountReauthorizationTests(unittest.TestCase):
                 self.app.config['WTF_CSRF_CHECK_DEFAULT'] = original_csrf_check_default
 
         self.assertEqual(response.status_code, 400)
+        payload = response.get_json()
+        self.assertTrue(payload.get('csrf_error'))
+        self.assertIn('CSRF', payload.get('error', ''))
         exchange_mock.assert_not_called()
 
     def test_auth_url_route_uses_graph_only_manual_scope(self):

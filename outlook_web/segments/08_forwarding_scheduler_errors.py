@@ -1831,10 +1831,32 @@ assert_endpoint_protection('api_get_emails', '_requires_login', 'login_required'
 assert_endpoint_protection('api_external_get_emails', '_requires_api_key', 'api_key_required')
 
 
+def is_csrf_bad_request(error) -> bool:
+    """识别 CSRF 触发的 400，避免被通用文案吞掉导致前端无法自动重试。"""
+    if CSRF_AVAILABLE:
+        try:
+            from flask_wtf.csrf import CSRFError
+        except Exception:
+            CSRFError = None  # type: ignore[misc, assignment]
+        if CSRFError is not None and isinstance(error, CSRFError):
+            return True
+
+    description = str(getattr(error, 'description', '') or error or '')
+    return 'csrf' in description.lower()
+
+
 @app.errorhandler(400)
 def bad_request(error):
     """处理400错误"""
     safe_console_print(f"400 Bad Request: {error}")
+    description = str(getattr(error, 'description', '') or error or '').strip()
+    if is_csrf_bad_request(error):
+        return jsonify({
+            'success': False,
+            'error': 'CSRF 校验失败，请刷新页面后重试',
+            'csrf_error': True,
+            'details': description or 'CSRF validation failed',
+        }), 400
     return jsonify({'success': False, 'error': '请求格式错误'}), 400
 
 

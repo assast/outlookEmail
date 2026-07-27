@@ -1236,6 +1236,36 @@
             }
         }
 
+        function buildEmailDeleteItems(sourceItems) {
+            return (sourceItems || [])
+                .map(item => {
+                    if (!item) {
+                        return null;
+                    }
+                    if (typeof item !== 'object') {
+                        const messageId = String(item || '').trim();
+                        if (!messageId) {
+                            return null;
+                        }
+                        return {
+                            id: messageId,
+                            folder: currentFolder || 'inbox',
+                            id_mode: ''
+                        };
+                    }
+                    const messageId = String(item.id || item.message_id || '').trim();
+                    if (!messageId) {
+                        return null;
+                    }
+                    return {
+                        id: messageId,
+                        folder: String(item.folder || currentFolder || 'inbox'),
+                        id_mode: String(item.id_mode || item.idMode || '').trim()
+                    };
+                })
+                .filter(Boolean);
+        }
+
         async function confirmBatchDeleteEmails() {
             if (selectedEmailIds.size === 0) return;
 
@@ -1243,7 +1273,7 @@
                 return;
             }
 
-            await deleteEmails(Array.from(selectedEmailIds));
+            await deleteEmails(getSelectedEmailItems());
         }
 
         async function confirmDeleteCurrentEmail() {
@@ -1254,7 +1284,7 @@
                 return;
             }
 
-            await deleteEmails([currentEmailDetail.id]);
+            await deleteEmails([currentEmailDetail]);
         }
 
         function removeDeletedEmailsFromCachedLists(deletedIds, account = currentAccount) {
@@ -1276,7 +1306,12 @@
             });
         }
 
-        async function deleteEmails(ids) {
+        async function deleteEmails(sourceItems) {
+            const items = buildEmailDeleteItems(sourceItems);
+            if (!items.length) {
+                return;
+            }
+
             showToast('正在删除...', 'info');
 
             try {
@@ -1285,16 +1320,28 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         email: currentAccount,
-                        ids: ids
+                        method: getRemoteMailboxMethodFallback(),
+                        folder: currentFolder,
+                        items
                     })
                 });
 
                 const result = await response.json();
+                const deletedIdList = Array.isArray(result.deleted_ids) && result.deleted_ids.length
+                    ? result.deleted_ids
+                    : (Array.isArray(result.updated_ids) ? result.updated_ids : []);
+                const deletedIds = new Set(
+                    (deletedIdList.length ? deletedIdList : (result.success ? items.map(item => item.id) : []))
+                        .map(id => String(id))
+                );
 
-                if (result.success) {
-                    showToast(`成功删除 ${result.success_count} 封邮件`);
+                if (result.success || deletedIds.size > 0) {
+                    if (result.success && result.failed_count === 0) {
+                        showToast(`成功删除 ${result.success_count || deletedIds.size} 封邮件`);
+                    } else if (deletedIds.size > 0) {
+                        showToast(`已删除 ${deletedIds.size} 封，失败 ${result.failed_count || 0} 封`, 'warning');
+                    }
 
-                    const deletedIds = new Set(ids.map(id => String(id)));
                     currentEmails = currentEmails.filter(e => !deletedIds.has(String(e.id)));
                     removeDeletedEmailsFromCachedLists(deletedIds);
                     selectedEmailIds.clear();
@@ -1320,10 +1367,12 @@
                     // If errors
                     if (result.failed_count > 0) {
                         console.warn('Deletion errors:', result.errors);
-                        showToast(`部分删除失败 (${result.failed_count} 封)`, 'warning');
                     }
                 } else {
-                    showToast('删除失败: ' + (result.error || '未知错误'), 'error');
+                    const errorMessage = result.error && result.error.message
+                        ? result.error.message
+                        : (result.error || '未知错误');
+                    showToast('删除失败: ' + errorMessage, 'error');
                 }
             } catch (e) {
                 showToast('网络错误', 'error');

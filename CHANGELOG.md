@@ -6,6 +6,19 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.9.1] - 2026-07-27
+
+### Added
+- 邮件删除支持标准 IMAP 账号与 Outlook OAuth IMAP 回退：按文件夹标记 `\\Deleted` 后 `EXPUNGE` 永久删除。
+- `POST /api/emails/delete` 推荐使用与标已读一致的 `items` / `method` / `folder` 请求体；浏览器扩展与 Web 前端同步传 `id_mode`。
+
+### Fixed
+- 修复 CSRF 校验失败被全局 400 处理器吞成「请求格式错误」的问题（Docker 下导入账号 / 手动 OAuth 换 token 常见）。现返回 `csrf_error: true` 与明确文案，前端可自动刷新 CSRF 并重试一次。
+- 修复 Graph 删除结果未返回 `deleted_ids`，以及 IMAP 删除此前直接提示「暂不支持」的问题；部分成功时前端按实际删除 ID 更新列表。
+
+### Changed
+- README / API 文档同步说明：邮件删除在 Graph 与 IMAP 路径均可用；兼容仅传 `ids` 的旧客户端。
+
 ## [2.9.0] - 2026-07-27
 
 ### Changed

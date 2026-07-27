@@ -2045,6 +2045,201 @@ def mark_emails_read_imap_generic_result(email_addr: str, imap_password: str, im
                 pass
 
 
+def delete_email_items_imap(mail, items: List[Dict[str, Any]], provider: str,
+                            default_mode: str = 'uid') -> Dict[str, Any]:
+    """通过 IMAP 永久删除邮件：标记 \\Deleted 后 EXPUNGE。"""
+    success_count = 0
+    deleted_ids: List[str] = []
+    errors: List[Any] = []
+    grouped_items: Dict[str, List[Dict[str, Any]]] = {}
+
+    for item in items or []:
+        message_id = str(item.get('id', '') or '').strip()
+        folder = str(item.get('folder', 'inbox') or 'inbox').strip().lower()
+        if not message_id:
+            errors.append({
+                'id': '',
+                'error': build_error_payload(
+                    'EMAIL_DELETE_INVALID',
+                    'message_id 不能为空',
+                    'ValidationError',
+                    400,
+                    item
+                )
+            })
+            continue
+        grouped_items.setdefault(folder, []).append({
+            'id': message_id,
+            'folder': folder,
+            'id_mode': str(item.get('id_mode', '') or '').strip().lower(),
+        })
+
+    for folder, folder_items in grouped_items.items():
+        selected_folder, folder_diagnostics = resolve_imap_folder(mail, provider, folder, readonly=False)
+        if not selected_folder:
+            folder_error = build_error_payload(
+                'IMAP_FOLDER_NOT_FOUND',
+                'IMAP 文件夹不存在或无权访问',
+                'IMAPFolderError',
+                400,
+                {
+                    'provider': provider,
+                    'folder': folder,
+                    **folder_diagnostics,
+                }
+            )
+            errors.extend({'id': item['id'], 'error': folder_error} for item in folder_items)
+            continue
+
+        folder_deleted_ids: List[str] = []
+        for item in folder_items:
+            preferred_mode = item.get('id_mode') or default_mode
+            success, used_mode, attempts = store_imap_message_flags(
+                mail,
+                item['id'],
+                action='+FLAGS.SILENT',
+                flags=r'(\Deleted)',
+                preferred_mode=preferred_mode,
+            )
+            if success:
+                folder_deleted_ids.append(item['id'])
+                item['id_mode'] = used_mode
+                continue
+
+            errors.append({
+                'id': item['id'],
+                'error': build_error_payload(
+                    'EMAIL_DELETE_FAILED',
+                    '删除邮件失败',
+                    'IMAPStoreError',
+                    502,
+                    {
+                        'provider': provider,
+                        'folder': selected_folder,
+                        'message_id': item['id'],
+                        'store_attempts': attempts[:10],
+                    }
+                )
+            })
+
+        if not folder_deleted_ids:
+            continue
+
+        try:
+            expunge_status, expunge_data = mail.expunge()
+            if expunge_status != 'OK':
+                raise imaplib.IMAP4.error(str(expunge_data or expunge_status))
+            success_count += len(folder_deleted_ids)
+            deleted_ids.extend(folder_deleted_ids)
+        except Exception as exc:
+            expunge_error = build_error_payload(
+                'EMAIL_DELETE_EXPUNGE_FAILED',
+                '邮件已标记删除，但永久清除失败',
+                type(exc).__name__,
+                502,
+                {
+                    'provider': provider,
+                    'folder': selected_folder,
+                    'message_ids': folder_deleted_ids[:20],
+                    'details': sanitize_error_details(str(exc))[:200],
+                }
+            )
+            errors.extend({'id': message_id, 'error': expunge_error} for message_id in folder_deleted_ids)
+
+    total_count = sum(len(group) for group in grouped_items.values())
+    failed_count = total_count - success_count + sum(1 for item in errors if not item.get('id'))
+    return {
+        'success': failed_count == 0,
+        'success_count': success_count,
+        'failed_count': failed_count,
+        'deleted_ids': deleted_ids,
+        'updated_ids': deleted_ids,
+        'errors': errors,
+    }
+
+
+def delete_emails_imap_batch(email_addr: str, client_id: str, refresh_token: str,
+                             items: List[Dict[str, Any]], server: str = IMAP_SERVER_NEW,
+                             proxy_url: str = None,
+                             fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+    access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    if not access_token:
+        return {
+            'success': False,
+            'success_count': 0,
+            'failed_count': len(items or []),
+            'deleted_ids': [],
+            'updated_ids': [],
+            'errors': [build_error_payload('IMAP_TOKEN_FAILED', '获取访问令牌失败', 'IMAPError', 401, '')],
+        }
+
+    connection = None
+    try:
+        with proxy_socket_context(proxy_url):
+            connection = imaplib.IMAP4_SSL(server, IMAP_PORT, timeout=IMAP_TIMEOUT)
+        auth_string = f"user={email_addr}\1auth=Bearer {access_token}\1\1".encode('utf-8')
+        connection.authenticate('XOAUTH2', lambda x: auth_string)
+        return delete_email_items_imap(connection, items, 'outlook', default_mode='sequence')
+    except Exception as exc:
+        return {
+            'success': False,
+            'success_count': 0,
+            'failed_count': len(items or []),
+            'deleted_ids': [],
+            'updated_ids': [],
+            'errors': [build_error_payload('IMAP_CONNECT_FAILED', 'IMAP 连接失败', type(exc).__name__, 502, str(exc))],
+        }
+    finally:
+        if connection:
+            try:
+                connection.logout()
+            except Exception:
+                pass
+
+
+def delete_emails_imap_generic_result(email_addr: str, imap_password: str, imap_host: str,
+                                      items: List[Dict[str, Any]], imap_port: int = 993,
+                                      provider: str = 'custom', proxy_url: str = '') -> Dict[str, Any]:
+    mail = None
+    try:
+        mail = create_imap_connection(imap_host, imap_port, proxy_url)
+        try:
+            mail.login(email_addr, imap_password)
+        except imaplib.IMAP4.error as exc:
+            return {
+                'success': False,
+                'success_count': 0,
+                'failed_count': len(items or []),
+                'deleted_ids': [],
+                'updated_ids': [],
+                'errors': [build_error_payload(
+                    'IMAP_AUTH_FAILED',
+                    normalize_imap_auth_error(provider, imap_host, str(exc)),
+                    'IMAPAuthError',
+                    401,
+                    ''
+                )],
+            }
+
+        send_imap_id(mail, provider, imap_host)
+        return delete_email_items_imap(mail, items, provider, default_mode='uid')
+    except Exception as exc:
+        return {
+            'success': False,
+            'success_count': 0,
+            'failed_count': len(items or []),
+            'deleted_ids': [],
+            'updated_ids': [],
+            'errors': [build_error_payload('IMAP_CONNECT_FAILED', sanitize_error_details(str(exc)) or 'IMAP 连接失败', 'IMAPConnectError', 502, '')],
+        }
+    finally:
+        if mail:
+            try:
+                mail.logout()
+            except Exception:
+                pass
+
+
 def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
                             imap_port: int = 993, folder: str = 'inbox',
                             provider: str = 'custom', skip: int = 0, top: int = 20,
