@@ -37,6 +37,7 @@ class FakeSession:
         self.post_responses = list(post_responses or [])
         self.headers = {}
         self.trust_env = False
+        self.proxies = {}
         self.get_calls = []
         self.post_calls = []
 
@@ -233,6 +234,11 @@ class GraphOauthRouteTests(unittest.TestCase):
             db.execute('DELETE FROM accounts')
             db.execute('DELETE FROM outlook_upload_accounts')
             db.execute("DELETE FROM groups WHERE name NOT IN ('默认分组', '临时邮箱')")
+            db.execute(
+                "UPDATE groups SET parent_id = NULL, level = 1, "
+                "proxy_url = '', fallback_proxy_url_1 = '', fallback_proxy_url_2 = '' "
+                "WHERE name IN ('默认分组', '临时邮箱')"
+            )
             db.commit()
 
     def _add_upload_account(self, email='upload@example.com', password='mail-password'):
@@ -281,6 +287,29 @@ class GraphOauthRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertFalse(response.get_json()['success'])
 
+    def test_stream_passes_expanded_upload_proxy_to_extract_and_token_test(self):
+        with self.app.app_context():
+            result = web_outlook_app.add_upload_account(
+                'Alice.Bob@example.com',
+                'mail-password',
+                proxy_url='socks5h://outlook.{mail}:tok@127.0.0.1:2260',
+            )
+            web_outlook_app.get_db().commit()
+            account_id = result['id']
+
+        with patch.object(web_outlook_app, 'extract_graph_refresh_token', return_value={
+            'success': True,
+            'refresh_token': 'fresh-refresh-token',
+            'client_id': 'graph-client-id',
+        }) as extract_mock, \
+             patch.object(web_outlook_app, 'test_refresh_token', return_value=(True, None, '')) as token_mock:
+            _, events = self._consume_stream(self._start_graph_task(account_id))
+
+        self.assertTrue(any(event.get('type') == 'success' for event in events))
+        expected_proxy = 'socks5h://outlook.alicebob:tok@127.0.0.1:2260'
+        self.assertEqual(extract_mock.call_args.kwargs.get('proxy_url'), expected_proxy)
+        self.assertEqual(token_mock.call_args.kwargs.get('proxy_url'), expected_proxy)
+
     def test_stream_success_creates_formal_account_and_marks_upload_authorized(self):
         account_id = self._add_upload_account()
 
@@ -294,6 +323,7 @@ class GraphOauthRouteTests(unittest.TestCase):
 
         extract_mock.assert_called_once()
         self.assertEqual(extract_mock.call_args.args[1], 'mail-password')
+        self.assertEqual(extract_mock.call_args.kwargs.get('proxy_url'), '')
         self.assertTrue(any(event['type'] == 'success' for event in events))
         self.assertTrue(events[-1]['success'])
         self.assertNotIn('mail-password', body)

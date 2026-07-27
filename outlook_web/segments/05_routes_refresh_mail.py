@@ -728,20 +728,26 @@ def refresh_outlook_account_token(account: sqlite3.Row, refresh_type: str = 'man
     client_id = account['client_id']
     encrypted_refresh_token = account['refresh_token']
 
-    group_id = account['group_id']
-    group_row = None
-    if db_conn is not None and group_id:
-        group_row = db_conn.execute(
-            'SELECT proxy_url, fallback_proxy_url_1, fallback_proxy_url_2 FROM groups WHERE id = ?',
-            (group_id,)
-        ).fetchone()
-    if group_row:
-        proxy_url = get_group_proxy_url(dict(group_row))
-        fallback_proxy_urls = get_group_proxy_failover_urls(dict(group_row))
-    else:
-        proxy_config = get_account_proxy_config(dict(account))
-        proxy_url = proxy_config.get('proxy_url', '') or ''
-        fallback_proxy_urls = get_account_proxy_failover_urls(dict(account))
+    # 与邮件拉取一致：账号 override → 分组继承 → {mail} 展开
+    # 定时刷新可能无 Flask app context，必须把 db_conn 传给代理解析
+    proxy_config = get_account_resolved_proxy_config(dict(account), db=db_conn)
+    proxy_url = proxy_config.get('proxy_url', '') or ''
+    fallback_proxy_urls = [
+        proxy_config.get('fallback_proxy_url_1', '') or '',
+        proxy_config.get('fallback_proxy_url_2', '') or '',
+    ]
+    log_outbound_proxy_usage(
+        f'Token刷新 {account_email}',
+        proxy_url or '',
+        label='primary',
+    )
+    for index, fallback in enumerate(fallback_proxy_urls, start=1):
+        if str(fallback or '').strip():
+            log_outbound_proxy_usage(
+                f'Token刷新 {account_email}',
+                fallback,
+                label=f'fallback{index}',
+            )
 
     # 解密 refresh_token
     try:
@@ -803,7 +809,12 @@ def refresh_outlook_account_token(account: sqlite3.Row, refresh_type: str = 'man
 def api_refresh_account(account_id):
     """刷新单个账号的 token"""
     db = get_db()
-    cursor = db.execute('SELECT id, email, client_id, refresh_token, group_id, account_type, provider FROM accounts WHERE id = ?', (account_id,))
+    cursor = db.execute(
+        'SELECT id, email, client_id, refresh_token, group_id, account_type, provider, '
+        'proxy_url, fallback_proxy_url_1, fallback_proxy_url_2 '
+        'FROM accounts WHERE id = ?',
+        (account_id,),
+    )
     account = cursor.fetchone()
 
     if not account:
@@ -855,7 +866,8 @@ def api_refresh_selected_accounts():
     db = get_db()
     placeholders = ','.join('?' * len(account_ids))
     cursor = db.execute(f'''
-        SELECT id, email, client_id, refresh_token, group_id, account_type, provider
+        SELECT id, email, client_id, refresh_token, group_id, account_type, provider,
+               proxy_url, fallback_proxy_url_1, fallback_proxy_url_2
         FROM accounts
         WHERE id IN ({placeholders})
         ORDER BY email COLLATE NOCASE ASC
@@ -924,7 +936,8 @@ def api_refresh_selected_accounts():
 def load_active_outlook_accounts_for_refresh(db_conn) -> List[sqlite3.Row]:
     cursor = db_conn.execute(
         '''
-        SELECT id, email, client_id, refresh_token, group_id, status, account_type, provider
+        SELECT id, email, client_id, refresh_token, group_id, status, account_type, provider,
+               proxy_url, fallback_proxy_url_1, fallback_proxy_url_2
         FROM accounts
         WHERE status = 'active'
           AND COALESCE(account_type, 'outlook') = 'outlook'
@@ -941,7 +954,8 @@ def load_selected_outlook_accounts_for_refresh(db_conn, account_ids: List[int]) 
     placeholders = ','.join('?' * len(account_ids))
     rows = db_conn.execute(
         f'''
-        SELECT id, email, client_id, refresh_token, group_id, status, account_type, provider
+        SELECT id, email, client_id, refresh_token, group_id, status, account_type, provider,
+               proxy_url, fallback_proxy_url_1, fallback_proxy_url_2
         FROM accounts
         WHERE id IN ({placeholders})
         ''',
@@ -957,7 +971,8 @@ def load_selected_outlook_accounts_for_refresh(db_conn, account_ids: List[int]) 
 def load_failed_outlook_accounts_for_refresh(db_conn) -> List[sqlite3.Row]:
     cursor = db_conn.execute(
         '''
-        SELECT id, email, client_id, refresh_token, group_id, status, account_type, provider
+        SELECT id, email, client_id, refresh_token, group_id, status, account_type, provider,
+               proxy_url, fallback_proxy_url_1, fallback_proxy_url_2
         FROM accounts
         WHERE status = 'active'
           AND COALESCE(account_type, 'outlook') = 'outlook'

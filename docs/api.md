@@ -1120,12 +1120,14 @@ Content-Type: application/json
 
 批量设置或清空账号级代理。账号级代理三项全空时，该账号会继续继承所属分组代理；任一项非空时，账号级配置优先于分组配置。
 
+代理 URL 可包含字面量 `{mail}`：出站时按账号邮箱 local-part（仅保留字母数字并小写）展开；存储与 API 回显保持原始模板字符串。推荐 `socks5h://outlook.{mail}:TOKEN@host:2260` 等形式对接 Resin 等粘性代理。
+
 #### 请求体
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `account_ids` | array<int> | 是 | 账号 ID 列表 |
-| `proxy_url` | string | 否 | 账号级主代理，支持 `direct` / `直连` |
+| `proxy_url` | string | 否 | 账号级主代理，支持 `direct` / `直连` 与 `{mail}` 模板 |
 | `fallback_proxy_url_1` | string | 否 | 回退代理 1 |
 | `fallback_proxy_url_2` | string | 否 | 回退代理 2 |
 

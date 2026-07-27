@@ -6,6 +6,31 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-07-27
+
+### Added
+- 分组 / 账号代理 URL 支持 `{mail}` 占位符：出站时按邮箱 local-part（仅保留字母数字并小写）展开，配置原样存库、API/编辑回显不展开；可对接 [Resin](https://github.com/Resinat/Resin) 等粘性代理池。
+- 上传账号自动授权：优先使用上传记录自身 `proxy_url`，否则继承分组代理模板，OAuth 全程固定主代理（不做中途 failover）。
+- 环境变量 `LOG_LEVEL`（`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`，默认 `INFO`）控制全局日志级别；默认 INFO 输出出站 `[代理]` 详情（密码打码，含 Resin Platform/Account）。
+- 出站代理使用日志覆盖拉信、Token 刷新、IMAP socket、Outlook 自动授权等路径。
+
+### Fixed
+- 修复 Token 刷新未尊重账号级代理 override、仅读取分组代理的问题；现与邮件拉取一致：账号 override → 分组继承 → `{mail}` 展开；定时刷新无 Flask context 时正确传入 `db`。
+- 修复 SOCKS 代理「有用户名、密码为空」时 PySocks 退化为 NO AUTH、Resin 收不到 Platform.Account 的问题：传输层补占位密码强制 UserPass。
+- 修复编辑默认分组（前端提交 `parent_id=null` 且父级未变）被误判为「不可移动」的问题。
+- Token / 批量刷新相关查询补选账号 `proxy_url` / fallback 列，避免 resolved 配置丢失账号 override。
+
+### Changed
+- `get_account_proxy_url` / `get_account_proxy_failover_urls` 改为返回运行时展开后的出站代理；存储与展示仍走不展开的 config 路径。
+- Graph 自动授权：配置了应用代理时 `trust_env=False`，避免与环境代理叠加。
+- 界面与文档提示优先 `socks5h://`，并说明 `{mail}`、Resin 示例与 `LOG_LEVEL=WARNING` 降噪。
+
+### Important
+- **行为变化：** 配置了账号级代理的邮箱，Token 刷新现在也会走该代理（此前可能仍走分组/直连）。
+- **行为变化：** SOCKS URL 形如 `user:@host` / `user@host` 会发送 UserPass（空密码用占位符）；非 Resin、且依赖「有用户名但 NO AUTH」的代理可能不兼容。
+- 批量拉信 / 刷新在默认 `LOG_LEVEL=INFO` 下日志较多；生产可设 `LOG_LEVEL=WARNING` 关闭 `[代理]` 等 INFO 输出。
+- `{mail}` 净化后不同前缀可能碰撞（如 `a.b` 与 `ab`）；纯非字母数字 local-part 可能展开为空账号段。
+
 ## [2.9.1] - 2026-07-27
 
 ### Added

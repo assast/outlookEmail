@@ -42,7 +42,11 @@ class HierarchicalGroupTests(unittest.TestCase):
             db.execute('DELETE FROM temp_email_messages')
             db.execute('DELETE FROM temp_emails')
             db.execute("DELETE FROM groups WHERE name NOT IN ('默认分组', '临时邮箱')")
-            db.execute("UPDATE groups SET parent_id = NULL, level = 1 WHERE name IN ('默认分组', '临时邮箱')")
+            db.execute(
+                "UPDATE groups SET parent_id = NULL, level = 1, "
+                "proxy_url = '', fallback_proxy_url_1 = '', fallback_proxy_url_2 = '' "
+                "WHERE name IN ('默认分组', '临时邮箱')"
+            )
             db.commit()
 
     def _insert_account(self, email_addr, group_id):
@@ -178,6 +182,52 @@ class HierarchicalGroupTests(unittest.TestCase):
             self.assertIn('默认分组', delete_result['error'])
             self.assertIsNotNone(web_outlook_app.get_group_by_id(1))
             self.assertIsNotNone(web_outlook_app.get_group_by_id(parent_id))
+
+    def test_default_group_edit_without_parent_change_succeeds(self):
+        """编辑默认分组时前端会提交 parent_id=null，不应误报「不可移动」。"""
+        with self.app.app_context():
+            ok, err = web_outlook_app.validate_group_move(1, None)
+            self.assertTrue(ok, err)
+
+            updated = web_outlook_app.update_group(
+                1,
+                '默认分组',
+                '未分组的邮箱-已更新',
+                '#666666',
+                proxy_url='socks5h://outlook.{mail}:tok@127.0.0.1:2260',
+                parent_id=None,
+            )
+            self.assertTrue(updated)
+            group = web_outlook_app.get_group_by_id(1)
+            self.assertEqual(group['description'], '未分组的邮箱-已更新')
+            self.assertEqual(group['proxy_url'], 'socks5h://outlook.{mail}:tok@127.0.0.1:2260')
+            self.assertIsNone(group['parent_id'])
+
+        response = self.client.put(
+            '/api/groups/1',
+            json={
+                'name': '默认分组',
+                'description': 'API 编辑描述',
+                'color': '#666666',
+                'proxy_url': 'socks5h://host:1080',
+                'parent_id': None,
+            },
+        )
+        payload = response.get_json()
+        self.assertTrue(payload['success'], payload)
+        self.assertNotIn('不可移动', payload.get('error') or '')
+
+        with self.app.app_context():
+            group = web_outlook_app.get_group_by_id(1)
+            self.assertEqual(group['description'], 'API 编辑描述')
+            self.assertEqual(group['proxy_url'], 'socks5h://host:1080')
+
+        # 真正改父级仍应拒绝
+        with self.app.app_context():
+            parent_id = web_outlook_app.add_group('尝试挂载默认分组')
+            ok, err = web_outlook_app.validate_group_move(1, parent_id)
+            self.assertFalse(ok)
+            self.assertEqual(err, '默认分组不可移动')
 
     def test_project_group_scope_includes_descendant_groups(self):
         with self.app.app_context():
