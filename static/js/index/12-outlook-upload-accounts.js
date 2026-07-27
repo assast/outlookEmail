@@ -771,12 +771,12 @@
             }
         }
 
-        // ==================== Outlook IMAP OAuth 授权 ====================
+        // ==================== Outlook 自动 OAuth 授权（GraphAPI / IMAP） ====================
 
         const GRAPH_AUTH_LOG_PLACEHOLDER = '点击账号「授权 / 重新授权」后，授权日志会显示在这里。';
         const GRAPH_AUTH_MODE_LABELS = {
-            imap: 'Outlook IMAP',
-            graph: 'Graph-only（不含 IMAP 权限）',
+            imap: 'IMAP授权',
+            graph: 'GraphAPI',
         };
 
         function setGraphAuthStatus(state, text) {
@@ -842,11 +842,12 @@
 
         function getGraphAuthMode() {
             const checked = document.querySelector('input[name="graphAuthMode"]:checked');
-            return checked && checked.value === 'graph' ? 'graph' : 'imap';
+            // 默认 GraphAPI；仅显式选中 IMAP 时走 IMAP
+            return checked && checked.value === 'imap' ? 'imap' : 'graph';
         }
 
         function getGraphAuthModeLabel(mode) {
-            return GRAPH_AUTH_MODE_LABELS[mode] || GRAPH_AUTH_MODE_LABELS.imap;
+            return GRAPH_AUTH_MODE_LABELS[mode] || GRAPH_AUTH_MODE_LABELS.graph;
         }
 
         async function startGraphAuthForAccount(accountId, email, passwordLength, options = {}) {

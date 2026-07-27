@@ -24,9 +24,10 @@ GRAPH_EXTRACT_SCOPE = os.getenv(
     "GRAPH_EXTRACT_SCOPE",
     "offline_access https://outlook.office.com/IMAP.AccessAsUser.All",
 )
+# GraphAPI：与 OAUTH_GRAPH_SCOPES 对齐，含读信 / 标已读写权限 / User.Read
 GRAPH_EXTRACT_GRAPH_SCOPE = os.getenv(
     "GRAPH_EXTRACT_GRAPH_SCOPE",
-    "offline_access https://graph.microsoft.com/Mail.Read",
+    " ".join(["offline_access", *OAUTH_GRAPH_SCOPES]),
 )
 GRAPH_EXTRACT_AUTHORITY = os.getenv("GRAPH_EXTRACT_AUTHORITY", "consumers")
 GRAPH_EXTRACT_SCOPE_BY_MODE = {
@@ -44,12 +45,12 @@ GRAPH_OAUTH_DONE = object()
 
 
 def normalize_graph_oauth_mode(mode: Any) -> str:
-    normalized = str(mode or "imap").strip().lower()
-    return normalized if normalized in GRAPH_EXTRACT_SCOPE_BY_MODE else "imap"
+    normalized = str(mode or "graph").strip().lower()
+    return normalized if normalized in GRAPH_EXTRACT_SCOPE_BY_MODE else "graph"
 
 
 def graph_oauth_mode_label(mode: str) -> str:
-    return "Graph-only（不含 IMAP 权限）" if mode == "graph" else "Outlook IMAP"
+    return "GraphAPI" if mode == "graph" else "IMAP授权"
 
 
 def graph_oauth_sse(payload: Dict[str, Any]) -> str:
@@ -503,7 +504,7 @@ def save_graph_authorization_result(upload_row: Any, client_id: str,
 
 
 def run_graph_oauth_task(account_id: int, output_queue: "queue.Queue[Dict[str, Any] | object]",
-                         mode: str = "imap") -> None:
+                         mode: str = "graph") -> None:
     def emit(payload: Dict[str, Any]) -> None:
         output_queue.put(payload)
 

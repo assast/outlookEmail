@@ -1169,7 +1169,7 @@
                                 <div class="upload-accounts-guide__item upload-accounts-guide__item--current">
                                     <div class="upload-accounts-guide__item-title">① 当前页：Outlook邮箱授权</div>
                                     <div class="upload-accounts-guide__item-entry">入口：顶部导航「Outlook 邮箱」图标 / 移动端「Outlook 邮箱」按钮</div>
-                                    <div class="upload-accounts-guide__item-desc">只填邮箱+密码，由系统自动化登录微软完成 Graph / IMAP 授权。适合没有现成 refresh_token、想自动授权的场景；授权成功后会写入邮箱列表。但是由于微软风控等原因，实际上很多账号导入进来就是自动授权不了的，这种情况用同一个IP先登录成功一次，后续应该就能自动授权了</div>
+                                    <div class="upload-accounts-guide__item-desc">只填邮箱+密码，由系统自动化登录微软完成授权（默认 GraphAPI，也可选手动切到 IMAP 授权）。适合没有现成 refresh_token、想自动授权的场景；授权成功后会写入邮箱列表。但是由于微软风控等原因，实际上很多账号导入进来就是自动授权不了的，这种情况用同一个IP先登录成功一次，后续应该就能自动授权了</div>
                                 </div>
                                 <div class="upload-accounts-guide__item">
                                     <div class="upload-accounts-guide__item-title">② 批量导入邮箱</div>
@@ -1348,7 +1348,7 @@
                             </label>
                             <label class="upload-accounts-auth__mode-option">
                                 <input type="radio" name="graphAuthMode" value="graph" checked>
-                                <span>Graph-only（不含 IMAP 权限）</span>
+                                <span>GraphAPI</span>
                             </label>
                         </div>
                         <div id="graphAuthLog" class="upload-accounts-auth__log">点击账号「授权 / 重新授权」后，授权日志会显示在这里。</div>

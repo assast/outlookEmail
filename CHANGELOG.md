@@ -6,6 +6,21 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-07-27
+
+### Changed
+- 手动 OAuth 助手默认改为 **GraphAPI** 单资源权限：`offline_access` + `Mail.Read` + `Mail.ReadWrite` + `User.Read`（不再默认申请 IMAP）。
+- Outlook 邮箱自动授权默认模式改为 **GraphAPI**；授权面板与日志文案由 `Graph-only（不含 IMAP 权限）` 调整为 `GraphAPI`，IMAP 选项统一为 `IMAP授权`。
+- 自动授权 GraphAPI 模式 scope 与 `OAUTH_GRAPH_SCOPES` 对齐，在原有 `Mail.Read` 基础上增加 `Mail.ReadWrite`、`User.Read`。
+- README 同步说明：手动授权默认 GraphAPI；需要 IMAP 时请在「Outlook邮箱授权」面板显式选择 `IMAP授权`。
+
+### Fixed
+- 修复 GraphAPI 授权账号可读信但标记已读失败的问题（Graph 返回 `403 ErrorAccessDenied` / `EMAIL_MARK_READ_FAILED`），根因是授权时未申请 `Mail.ReadWrite`。
+
+### Important
+- **已用旧 Graph-only（仅 `Mail.Read`）授权的账号需重新授权**，才能获得写权限（标已读等）。
+- 手动 OAuth / 默认 GraphAPI 拿到的 token **不能用于 IMAP**；IMAP 请走自动授权的 `IMAP授权` 模式。
+
 ## [2.8.10] - 2026-07-26
 
 ### Changed

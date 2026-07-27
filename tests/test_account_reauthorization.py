@@ -296,7 +296,7 @@ class AccountReauthorizationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         exchange_mock.assert_not_called()
 
-    def test_auth_url_route_uses_imap_only_manual_scope(self):
+    def test_auth_url_route_uses_graph_only_manual_scope(self):
         response = self.client.get('/api/oauth/auth-url')
 
         self.assertEqual(response.status_code, 200)
@@ -311,8 +311,10 @@ class AccountReauthorizationTests(unittest.TestCase):
         scope = auth_query['scope'][0]
         self.assertEqual(scope, ' '.join(web_outlook_app.OAUTH_SCOPES))
         self.assertIn('offline_access', scope)
-        self.assertIn('https://outlook.office.com/IMAP.AccessAsUser.All', scope)
-        self.assertNotIn('https://graph.microsoft.com/', scope)
+        self.assertIn('https://graph.microsoft.com/Mail.Read', scope)
+        self.assertIn('https://graph.microsoft.com/Mail.ReadWrite', scope)
+        self.assertIn('https://graph.microsoft.com/User.Read', scope)
+        self.assertNotIn('https://outlook.office.com/', scope)
 
     def test_exchange_token_route_keeps_existing_preview_response_shape(self):
         class FakeResponse:
@@ -341,9 +343,12 @@ class AccountReauthorizationTests(unittest.TestCase):
         self.assertEqual(payload['client_id'], web_outlook_app.OAUTH_CLIENT_ID)
         self.assertEqual(payload['token_type'], 'Bearer')
         self.assertEqual(post_mock.call_args.kwargs['data']['code'], 'preview-code')
-        self.assertEqual(post_mock.call_args.kwargs['data']['scope'], ' '.join(web_outlook_app.OAUTH_SCOPES))
-        self.assertIn('https://outlook.office.com/IMAP.AccessAsUser.All', post_mock.call_args.kwargs['data']['scope'])
-        self.assertNotIn('https://graph.microsoft.com/', post_mock.call_args.kwargs['data']['scope'])
+        scope = post_mock.call_args.kwargs['data']['scope']
+        self.assertEqual(scope, ' '.join(web_outlook_app.OAUTH_SCOPES))
+        self.assertIn('https://graph.microsoft.com/Mail.Read', scope)
+        self.assertIn('https://graph.microsoft.com/Mail.ReadWrite', scope)
+        self.assertIn('https://graph.microsoft.com/User.Read', scope)
+        self.assertNotIn('https://outlook.office.com/', scope)
 
 
 if __name__ == '__main__':

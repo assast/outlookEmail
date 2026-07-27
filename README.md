@@ -335,11 +335,11 @@ Web 应用采用四栏式布局设计：
 
 #### 步骤 4：配置 API 权限  这一步应该可以省略，目前内置的客户端id就没有设置这一步也能正常使用
 
-手动 OAuth 助手默认只请求 Outlook IMAP 单资源权限，避免 Microsoft OAuth v2 在同一次授权中混用 Graph 和 Outlook 资源时报 `AADSTS70011`：
+手动 OAuth 助手默认走 GraphAPI 单资源权限，避免 Microsoft OAuth v2 在同一次授权中混用 Graph 和 Outlook 资源时报 `AADSTS70011`：
 - `offline_access` - 获取刷新令牌
-- `IMAP.AccessAsUser.All` - IMAP 访问
+- `Mail.Read` / `Mail.ReadWrite` / `User.Read` - Graph 读信、标已读与基本用户信息
 
-如果需要单独测试 Graph 授权，再为 Graph 流程配置 `Mail.Read` / `Mail.ReadWrite` / `User.Read`，不要和 `IMAP.AccessAsUser.All` 放在同一次手动授权链接里。
+如需 IMAP 访问，请在「Outlook邮箱授权」面板选择 `IMAP授权`（自动授权默认是 GraphAPI），不要和 Graph 权限放在同一次手动授权链接里。
 
 #### 步骤 5：获取 Refresh Token
 

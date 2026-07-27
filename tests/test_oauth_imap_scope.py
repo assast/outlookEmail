@@ -1,4 +1,4 @@
-"""测试手动 OAuth 配置只请求 IMAP 单资源权限（不依赖完整应用导入）"""
+"""测试手动 OAuth 默认走 GraphAPI 单资源权限（不依赖完整应用导入）"""
 import ast
 import pathlib
 
@@ -47,13 +47,18 @@ def scope_resource(scope):
     return scope.rsplit('/', 1)[0] if '/' in scope else scope
 
 
-def test_manual_oauth_scopes_are_imap_only():
-    """手动授权不能混用 Graph 和 Outlook IMAP 两个资源，否则会触发 AADSTS70011。"""
+def test_manual_oauth_scopes_are_graph_api():
+    """手动授权默认 GraphAPI，不能混用 Outlook IMAP 资源，否则会触发 AADSTS70011。"""
     scopes = extract_oauth_scopes_from_source()
-    imap_scope = "https://outlook.office.com/IMAP.AccessAsUser.All"
+    expected = [
+        "offline_access",
+        "https://graph.microsoft.com/Mail.Read",
+        "https://graph.microsoft.com/Mail.ReadWrite",
+        "https://graph.microsoft.com/User.Read",
+    ]
 
-    assert scopes == ["offline_access", imap_scope], \
-        f"手动 OAuth 只应请求 Outlook IMAP 单资源权限，当前配置: {scopes}"
+    assert scopes == expected, \
+        f"手动 OAuth 默认应请求 GraphAPI 权限，当前配置: {scopes}"
 
 
 def test_oauth_scopes_contains_offline_access():
@@ -66,7 +71,7 @@ def test_oauth_scopes_contains_offline_access():
 def test_oauth_scopes_count():
     """验证 OAUTH_SCOPES 包含预期数量的权限"""
     scopes = extract_oauth_scopes_from_source()
-    expected_count = 2  # offline_access + IMAP 权限
+    expected_count = 4  # offline_access + Mail.Read + Mail.ReadWrite + User.Read
     assert len(scopes) == expected_count, \
         f"OAUTH_SCOPES 应该包含 {expected_count} 个权限，实际: {len(scopes)}\n当前配置: {scopes}"
 
@@ -90,44 +95,50 @@ def test_manual_oauth_scopes_do_not_mix_resource_hosts():
     scopes = extract_oauth_scopes_from_source()
     resource_hosts = {scope_resource(scope) for scope in scopes if scope_resource(scope)}
 
-    assert resource_hosts == {'https://outlook.office.com'}, \
+    assert resource_hosts == {'https://graph.microsoft.com'}, \
         f"手动 OAuth scope 不能混用多个资源: {scopes}"
 
 
-def test_manual_oauth_scopes_match_imap_token_scope():
-    """授权码换 token 和 refresh token 请求使用相同 IMAP 权限集合。"""
+def test_manual_oauth_scopes_align_with_graph_oauth_scopes():
+    """手动 OAuth 的 Graph 权限应与 OAUTH_GRAPH_SCOPES 一致。"""
     scopes = extract_oauth_scopes_from_source()
-    imap_token_scope = extract_assignment_value(HELPERS_PATH, 'IMAP_TOKEN_SCOPE')
-
-    assert set(scopes) == set(str(imap_token_scope).split()), \
-        f"手动 OAuth scope 应与 IMAP_TOKEN_SCOPE 一致: {scopes} vs {imap_token_scope}"
-
-
-def test_graph_scopes_are_kept_separate_from_manual_oauth_scopes():
-    """Graph 权限仍保留给 Graph token fallback，但不进入手动授权链接。"""
     graph_scopes = extract_graph_oauth_scopes_from_source()
-    manual_scopes = extract_oauth_scopes_from_source()
+
+    assert set(scopes) - {'offline_access'} == set(graph_scopes), \
+        f"手动 OAuth Graph 权限应与 OAUTH_GRAPH_SCOPES 一致: {scopes} vs {graph_scopes}"
+
+
+def test_graph_oauth_scopes_include_read_write_and_user():
+    """Graph 专用 scope 需同时包含读、写与 User.Read。"""
+    graph_scopes = extract_graph_oauth_scopes_from_source()
 
     assert "https://graph.microsoft.com/Mail.Read" in graph_scopes
     assert "https://graph.microsoft.com/Mail.ReadWrite" in graph_scopes
     assert "https://graph.microsoft.com/User.Read" in graph_scopes
-    assert all(scope not in manual_scopes for scope in graph_scopes)
+
+
+def test_imap_token_scope_remains_imap_only():
+    """IMAP 换 token 路径仍只使用 IMAP 单资源，与手动 Graph 授权分离。"""
+    imap_token_scope = extract_assignment_value(HELPERS_PATH, 'IMAP_TOKEN_SCOPE')
+    assert imap_token_scope == "https://outlook.office.com/IMAP.AccessAsUser.All offline_access", \
+        f"IMAP_TOKEN_SCOPE 应保持 IMAP 单资源: {imap_token_scope}"
 
 
 if __name__ == '__main__':
     print("\n" + "="*60)
-    print("开始测试 OAuth IMAP Scope 配置")
+    print("开始测试 OAuth GraphAPI Scope 配置")
     print("="*60 + "\n")
 
     tests = [
-        test_manual_oauth_scopes_are_imap_only,
+        test_manual_oauth_scopes_are_graph_api,
         test_oauth_scopes_contains_offline_access,
         test_oauth_scopes_count,
         test_oauth_scopes_has_no_duplicates,
         test_oauth_scopes_all_valid,
         test_manual_oauth_scopes_do_not_mix_resource_hosts,
-        test_manual_oauth_scopes_match_imap_token_scope,
-        test_graph_scopes_are_kept_separate_from_manual_oauth_scopes,
+        test_manual_oauth_scopes_align_with_graph_oauth_scopes,
+        test_graph_oauth_scopes_include_read_write_and_user,
+        test_imap_token_scope_remains_imap_only,
     ]
 
     failed = 0
@@ -142,7 +153,6 @@ if __name__ == '__main__':
     if failed == 0:
         print("[SUCCESS] 所有测试通过！")
 
-        # 打印当前配置
         scopes = extract_oauth_scopes_from_source()
         print("\n当前 OAUTH_SCOPES 配置:")
         for i, scope in enumerate(scopes, 1):

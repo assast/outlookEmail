@@ -730,11 +730,15 @@ export_verify_tokens = {}
 # OAuth 配置
 OAUTH_CLIENT_ID = os.getenv("OAUTH_CLIENT_ID", "6daa9f56-5e67-4cb6-ae52-ef89ef912d36")
 OAUTH_REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI", "http://localhost:8080")
+# Graph 委托权限（读信 / 标已读等写操作 / 基本用户信息）
+OAUTH_GRAPH_SCOPES = [
+    "https://graph.microsoft.com/Mail.Read",
+    "https://graph.microsoft.com/Mail.ReadWrite",
+    "https://graph.microsoft.com/User.Read",
+]
+# 手动 OAuth 助手默认走 GraphAPI（单资源，避免与 IMAP 混用触发 AADSTS70011）
 OAUTH_SCOPES = [
     "offline_access",
-    "https://outlook.office.com/IMAP.AccessAsUser.All"
-]
-OAUTH_GRAPH_SCOPES = [
     "https://graph.microsoft.com/Mail.Read",
     "https://graph.microsoft.com/Mail.ReadWrite",
     "https://graph.microsoft.com/User.Read",

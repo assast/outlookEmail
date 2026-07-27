@@ -257,7 +257,7 @@ class GraphOauthRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertTrue(payload['success'], payload)
-        self.assertEqual(payload['mode'], mode if mode in ('imap', 'graph') else 'imap')
+        self.assertEqual(payload['mode'], mode if mode in ('imap', 'graph') else 'graph')
         self.assertIn('stream_url', payload)
         return payload['stream_url']
 
@@ -379,9 +379,30 @@ class GraphOauthRouteTests(unittest.TestCase):
 
         self.assertTrue(events[-1]['success'])
         self.assertEqual(extract_mock.call_args.kwargs['scope'], web_outlook_app.GRAPH_EXTRACT_GRAPH_SCOPE)
-        self.assertIn('https://graph.microsoft.com/Mail.Read', extract_mock.call_args.kwargs['scope'])
+        scope = extract_mock.call_args.kwargs['scope']
+        self.assertIn('https://graph.microsoft.com/Mail.Read', scope)
+        self.assertIn('https://graph.microsoft.com/Mail.ReadWrite', scope)
+        self.assertIn('https://graph.microsoft.com/User.Read', scope)
 
-    def test_stream_default_mode_uses_imap_scope(self):
+    def test_stream_default_mode_uses_graph_scope(self):
+        account_id = self._add_upload_account(email='default-graph-mode@example.com')
+
+        with patch.object(web_outlook_app, 'extract_graph_refresh_token', return_value={
+            'success': True,
+            'refresh_token': 'graph-refresh-token',
+            'client_id': 'graph-client-id',
+        }) as extract_mock, \
+             patch.object(web_outlook_app, 'test_refresh_token', return_value=(True, None, '')):
+            _, events = self._consume_stream(self._start_graph_task(account_id))
+
+        self.assertTrue(events[-1]['success'])
+        self.assertEqual(extract_mock.call_args.kwargs['scope'], web_outlook_app.GRAPH_EXTRACT_GRAPH_SCOPE)
+        scope = extract_mock.call_args.kwargs['scope']
+        self.assertIn('https://graph.microsoft.com/Mail.Read', scope)
+        self.assertIn('https://graph.microsoft.com/Mail.ReadWrite', scope)
+        self.assertIn('https://graph.microsoft.com/User.Read', scope)
+
+    def test_stream_imap_mode_uses_imap_scope(self):
         account_id = self._add_upload_account(email='imap-mode@example.com')
 
         with patch.object(web_outlook_app, 'extract_graph_refresh_token', return_value={
@@ -390,7 +411,7 @@ class GraphOauthRouteTests(unittest.TestCase):
             'client_id': 'imap-client-id',
         }) as extract_mock, \
              patch.object(web_outlook_app, 'test_refresh_token', return_value=(True, None, '')):
-            _, events = self._consume_stream(self._start_graph_task(account_id))
+            _, events = self._consume_stream(self._start_graph_task_with_mode(account_id, 'imap'))
 
         self.assertTrue(events[-1]['success'])
         self.assertEqual(extract_mock.call_args.kwargs['scope'], web_outlook_app.GRAPH_EXTRACT_SCOPE)
@@ -704,7 +725,7 @@ class GraphOauthFrontendContractTests(unittest.TestCase):
         self.assertNotIn('id="graphAuthPasswordMasked"', html)
         self.assertIn('id="graphAuthLog"', html)
 
-    def test_graph_only_mode_text_makes_imap_limitation_explicit(self):
+    def test_graph_api_mode_text_and_default_selection(self):
         root = os.path.dirname(os.path.dirname(__file__))
         with open(
             os.path.join(root, 'templates/partials/index/dialogs-management.html'),
@@ -717,9 +738,12 @@ class GraphOauthFrontendContractTests(unittest.TestCase):
         ) as handle:
             js = handle.read()
 
-        self.assertIn('Graph-only', html)
-        self.assertIn('不含 IMAP 权限', html)
-        self.assertIn('Graph-only（不含 IMAP 权限）', js)
+        self.assertIn('GraphAPI', html)
+        self.assertIn('value="graph" checked', html)
+        self.assertIn("graph: 'GraphAPI'", js)
+        self.assertIn("GRAPH_AUTH_MODE_LABELS.graph", js)
+        self.assertNotIn('Graph-only', html)
+        self.assertNotIn('Graph-only', js)
 
     def test_upload_accounts_modal_explains_four_auth_entry_points(self):
         """Outlook邮箱授权弹窗提示批量导入 / 授权保存 / 重新授权入口及区别。"""
