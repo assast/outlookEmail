@@ -1559,7 +1559,12 @@ def api_export_selected_upload_accounts():
     db = get_db()
     placeholders = ','.join('?' * len(account_ids))
     rows = db.execute(
-        f'SELECT id, email, password FROM outlook_upload_accounts WHERE id IN ({placeholders})',
+        f'''SELECT u.id, u.email, u.password,
+                   COALESCE(a.client_id, '') AS client_id,
+                   COALESCE(a.refresh_token, '') AS refresh_token
+            FROM outlook_upload_accounts u
+            LEFT JOIN accounts a ON a.email = u.email AND a.account_type = 'outlook'
+            WHERE u.id IN ({placeholders})''',
         account_ids
     ).fetchall()
 
@@ -1571,7 +1576,9 @@ def api_export_selected_upload_accounts():
     for row in rows:
         email = str(row['email'] or '')
         password = get_upload_account_plain_password(row, tolerate_decrypt_error=True)
-        lines.append(f"{email}----{password}--------")
+        client_id = str(row['client_id'] or '')
+        refresh_token = str(row['refresh_token'] or '')
+        lines.append(f"{email}----{password}----{client_id}----{refresh_token}")
 
     content = '\n'.join(lines)
 
