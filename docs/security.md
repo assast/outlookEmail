@@ -2,7 +2,7 @@
 
 ## 1. 修改默认密码
 
-**方式一：通过环境变量**
+**方式一：首次部署时通过环境变量（仅初始化）**
 
 在 `docker-compose.yml` 中：
 ```yaml
@@ -11,9 +11,25 @@ environment:
   - SECRET_KEY=your-random-secret-key-here
 ```
 
-**方式二：通过 Web 界面**
+`LOGIN_PASSWORD` 只在数据库**尚无** `settings.login_password` 时用于写入初始哈希。实例已经启动并写过库之后，仅修改该环境变量**不会**改变当前登录密码。
+
+**方式二：通过 Web 界面修改（须知道当前密码）**
 
 登录后点击「⚙️ 设置」按钮，在线修改登录密码。修改时必须填写当前密码；成功后当前会话保持登录，其他已登录设备/会话需要重新登录。
+
+**方式三：忘记密码时通过官方 CLI 重置（不需要旧密码）**
+
+具备主机或数据目录访问权限时，可运行：
+
+```bash
+python scripts/reset_login_password.py
+# Docker: docker exec -it <container> python scripts/reset_login_password.py
+```
+
+- 仅支持交互式终端输入新密码（无 `--password` / 管道传密）
+- 写入 bcrypt 哈希并轮换登录会话版本，使既有会话失效
+- 属于 **host 信任边界** 上的运维操作，与「已登录改密须验证当前密码」互补
+- 详细步骤见 [troubleshooting.md](./troubleshooting.md)「忘记 Web 登录密码」
 
 ## 2. 启用 CSRF 防护（推荐）
 

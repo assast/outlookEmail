@@ -163,7 +163,7 @@ python -c 'import secrets; print(secrets.token_hex(32))'
 ```
 
 - `SECRET_KEY`：填入上面生成的随机串（务必修改，勿用占位值；首尾空白会被忽略）
-- `LOGIN_PASSWORD`：登录密码，默认 `admin123`，建议改为强密码
+- `LOGIN_PASSWORD`：首次初始化时的登录密码，默认 `admin123`，建议改为强密码；**已写入数据库后**再改此变量不会覆盖当前密码。忘记密码请用 `scripts/reset_login_password.py`（见 [故障排除](docs/troubleshooting.md) / [安全配置](docs/security.md)）
 
 可选：如需调整 Gunicorn 线程数 / 超时，在 `.env.local` 中追加 `GUNICORN_THREADS`、`GUNICORN_TIMEOUT`（不填则使用默认值 4 / 300）。
 
@@ -224,7 +224,7 @@ Outlook/Hotmail OAuth 的 IMAP 回退链路默认按 UID 读取详情和附件�
 ### Web 应用功能
 
 #### 核心功能
-- 🔐 **登录验证** - 密码保护的 Web 界面，支持在线修改密码
+- 🔐 **登录验证** - 密码保护的 Web 界面，支持在线修改密码；忘记密码可用官方脚本 `scripts/reset_login_password.py` 重置（见 [故障排除](docs/troubleshooting.md)）
 - 📁 **分组管理** - 支持最多三级树形邮箱分组，创建、编辑、折叠展开、同级排序、跨层级拖拽移动和级联删除
 - 🌐 **账号/分组代理** - 每个分组可配置 HTTP/SOCKS5 代理，子分组可继承父级代理，单个账号也可设置代理并优先覆盖分组代理；代理 URL 支持 `{mail}` 占位符（对接 [Resin](https://github.com/Resinat/Resin) 等粘性代理池）
 - 📧 **多邮箱管理** - 批量导入和管理 Outlook/Hotmail OAuth / IMAP 邮箱账号

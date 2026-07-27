@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Added
+- 新增官方运维脚本 `scripts/reset_login_password.py`：忘记 Web 登录密码时可在主机或容器内交互式重置（不需要旧密码）；写入 bcrypt 哈希、轮换 `login_session_version` 使既有会话失效，并记录审计日志。
+- 补充 `tests/test_reset_login_password.py` 覆盖密码校验、写库、会话轮换与交互约束。
+
+### Changed
+- 文档明确 `LOGIN_PASSWORD` **仅在首次初始化**（库中尚无 `settings.login_password`）时写入默认值；实例已写库后改环境变量不会覆盖当前登录密码。
+- README / `docs/security.md` / `docs/troubleshooting.md` 补充忘记密码重置步骤与 Docker `docker exec -it` 示例，并说明脚本仅支持交互式 TTY（无 `--password` / 管道传密）。
+
 ## [3.0.0] - 2026-07-27
 
 ### Added
