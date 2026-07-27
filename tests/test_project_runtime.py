@@ -1473,6 +1473,59 @@ class ProjectRuntimeTests(unittest.TestCase):
         )
         self.assertNotIn('third-selected-export@example.com', response.get_data(as_text=True))
 
+    def test_export_selected_upload_accounts(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM outlook_upload_accounts')
+            cursor1 = db.execute(
+                "INSERT INTO outlook_upload_accounts (email, password) VALUES (?, ?)",
+                ('upload-a@example.com', web_outlook_app.encrypt_data('pass-aaa'))
+            )
+            upload_id_a = cursor1.lastrowid
+            cursor2 = db.execute(
+                "INSERT INTO outlook_upload_accounts (email, password) VALUES (?, ?)",
+                ('upload-b@example.com', web_outlook_app.encrypt_data('pass-bbb'))
+            )
+            upload_id_b = cursor2.lastrowid
+            db.execute(
+                "INSERT INTO outlook_upload_accounts (email, password) VALUES (?, ?)",
+                ('upload-c@example.com', web_outlook_app.encrypt_data('pass-ccc'))
+            )
+            web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('export-pass2'))
+            db.commit()
+
+        verify_response = self.client.post('/api/export/verify', json={'password': 'export-pass2'})
+        self.assertEqual(verify_response.status_code, 200)
+        verify_payload = verify_response.get_json()
+        self.assertTrue(verify_payload['success'])
+
+        response = self.client.post('/api/outlook-upload-accounts/export-selected', json={
+            'account_ids': [upload_id_a, upload_id_b, 999999],
+            'verify_token': verify_payload['verify_token'],
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/plain', response.content_type)
+        self.assertIn('upload_accounts_', response.headers.get('Content-Disposition', ''))
+        lines = response.get_data(as_text=True).splitlines()
+        self.assertIn('upload-a@example.com----pass-aaa', lines)
+        self.assertIn('upload-b@example.com----pass-bbb', lines)
+        self.assertNotIn('upload-c@example.com----pass-ccc', '\n'.join(lines))
+
+    def test_export_selected_upload_accounts_empty_ids_returns_400(self):
+        with self.app.app_context():
+            web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('export-pass3'))
+
+        verify_response = self.client.post('/api/export/verify', json={'password': 'export-pass3'})
+        verify_payload = verify_response.get_json()
+
+        response = self.client.post('/api/outlook-upload-accounts/export-selected', json={
+            'account_ids': [],
+            'verify_token': verify_payload['verify_token'],
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.get_json()['success'])
+
     def test_run_webdav_backup_uploads_all_group_export_file(self):
         self._insert_account('backup-upload@example.com', group_id=1)
         with self.app.app_context():

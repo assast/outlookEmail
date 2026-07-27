@@ -1117,7 +1117,7 @@
                 showToast('请先选择要导出的账号', 'error');
                 return;
             }
-            startSelectedAccountExport(accountIds);
+            startUploadAccountExport(accountIds);
         }
 
         document.addEventListener('click', (event) => {

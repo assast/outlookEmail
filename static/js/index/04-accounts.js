@@ -323,6 +323,7 @@
         // 存储待导出的分组或账号 ID
         let pendingExportGroupIds = [];
         let pendingExportAccountIds = [];
+        let pendingExportUploadAccountIds = [];
 
         // 导出选中的分组
         async function exportSelectedGroups() {
@@ -366,6 +367,23 @@
 
             pendingExportGroupIds = [];
             pendingExportAccountIds = normalizedIds;
+            pendingExportUploadAccountIds = [];
+            showExportVerifyModal();
+        }
+
+        function startUploadAccountExport(accountIds) {
+            const normalizedIds = Array.from(new Set((accountIds || [])
+                .map(id => parseInt(id, 10))
+                .filter(Number.isFinite)));
+
+            if (!normalizedIds.length) {
+                showToast('请先选择要导出的账号', 'error');
+                return;
+            }
+
+            pendingExportGroupIds = [];
+            pendingExportAccountIds = [];
+            pendingExportUploadAccountIds = normalizedIds;
             showExportVerifyModal();
         }
 
@@ -417,14 +435,18 @@
                 const exportPayload = {
                     verify_token: verifyToken
                 };
-                if (pendingExportAccountIds.length > 0) {
+                let exportUrl = '/api/accounts/export-selected';
+                if (pendingExportUploadAccountIds.length > 0) {
+                    exportPayload.account_ids = pendingExportUploadAccountIds;
+                    exportUrl = '/api/outlook-upload-accounts/export-selected';
+                } else if (pendingExportAccountIds.length > 0) {
                     exportPayload.account_ids = pendingExportAccountIds;
                 } else {
                     exportPayload.group_ids = pendingExportGroupIds;
                 }
 
                 // 执行导出
-                const response = await fetch('/api/accounts/export-selected', {
+                const response = await fetch(exportUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(exportPayload)
