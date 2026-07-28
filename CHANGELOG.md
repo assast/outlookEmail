@@ -6,13 +6,24 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-07-28
+
 ### Added
+- Outlook 授权弹窗批量操作栏新增「批量导出」：选中上传账号后经二次验证导出 TXT。
+- 新增 `POST /api/outlook-upload-accounts/export-selected`：查询 `outlook_upload_accounts`，解密密码，并 `LEFT JOIN accounts` 附带已授权账号的 `client_id` / `refresh_token`；导出格式与主页一致：`email----password----client_id----refresh_token`（未授权账号后两字段为空）。
 - 新增官方运维脚本 `scripts/reset_login_password.py`：忘记 Web 登录密码时可在主机或容器内交互式重置（不需要旧密码）；写入 bcrypt 哈希、轮换 `login_session_version` 使既有会话失效，并记录审计日志。
-- 补充 `tests/test_reset_login_password.py` 覆盖密码校验、写库、会话轮换与交互约束。
+- 补充 `tests/test_reset_login_password.py` 与上传账号导出相关单元测试。
+
+### Fixed
+- 修复 Outlook 授权弹窗批量导出误走主账号导出接口、提示「选中的账号不存在或没有可导出的邮箱账号」的问题；前端按上传账号 ID 路由到新接口。
 
 ### Changed
+- 未设置环境变量时，内置默认 `OAUTH_CLIENT_ID` 更新为 `9e5f94bc-e8a4-4e73-b8be-63364c29d753`（仍可通过 `OAUTH_CLIENT_ID` 覆盖）。
 - 文档明确 `LOGIN_PASSWORD` **仅在首次初始化**（库中尚无 `settings.login_password`）时写入默认值；实例已写库后改环境变量不会覆盖当前登录密码。
 - README / `docs/security.md` / `docs/troubleshooting.md` 补充忘记密码重置步骤与 Docker `docker exec -it` 示例，并说明脚本仅支持交互式 TTY（无 `--password` / 管道传密）。
+
+### Important
+- 依赖默认 Client ID 做新 OAuth 授权的部署，升级后默认应用 ID 已变更；已导入账号的 `client_id` / refresh token 不受影响。自定义 `OAUTH_CLIENT_ID` 的部署无感。
 
 ## [3.0.0] - 2026-07-27
 
