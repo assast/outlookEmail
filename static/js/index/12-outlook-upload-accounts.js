@@ -1111,6 +1111,15 @@
             }
         }
 
+        function exportSelectedUploadAccounts() {
+            const accountIds = getSelectedUploadAccountIds();
+            if (!accountIds.length) {
+                showToast('请先选择要导出的账号', 'error');
+                return;
+            }
+            startUploadAccountExport(accountIds);
+        }
+
         document.addEventListener('click', (event) => {
             const button = event.target.closest('[data-delete-account-id]');
             if (!button) return;
@@ -1156,6 +1165,7 @@
         window.clearUploadAccountSelection = clearUploadAccountSelection;
         window.authorizeSelectedUploadAccounts = authorizeSelectedUploadAccounts;
         window.deleteSelectedUploadAccounts = deleteSelectedUploadAccounts;
+        window.exportSelectedUploadAccounts = exportSelectedUploadAccounts;
         window.toggleAddUploadAccountTagDropdown = toggleAddUploadAccountTagDropdown;
         window.filterAddUploadAccountTagOptions = filterAddUploadAccountTagOptions;
         window.clearAddUploadAccountTagSelection = clearAddUploadAccountTagSelection;
