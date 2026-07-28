@@ -124,6 +124,7 @@ docker-compose down
 | `SECRET_KEY` | Session 密钥（服务器部署强烈建议固定设置） | Windows `exe` 首次启动会自动生成并持久化；Docker / Python / 生产环境请显式设置固定值，不要随意修改，否则会导致已存储敏感数据无法解密 |
 | `LOGIN_PASSWORD` | 登录密码 | `admin123` |
 | `FLASK_ENV` | 运行环境 | `production` |
+| `LOG_LEVEL` | 全局日志级别（`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`）。默认 `INFO` 会输出出站 `[代理]` 详情（含 Resin Platform/Account，密码已打码）。批量拉信或 Token 刷新时日志较多，生产环境若只需告警可设 `LOG_LEVEL=WARNING` 降噪 | `INFO` |
 | `PORT` | 应用端口 | `5000` |
 | `HOST` | 监听地址 | `0.0.0.0` |
 | `DATABASE_PATH` | 数据库路径 | `data/outlook_accounts.db` |

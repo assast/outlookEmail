@@ -1120,12 +1120,14 @@ Content-Type: application/json
 
 批量设置或清空账号级代理。账号级代理三项全空时，该账号会继续继承所属分组代理；任一项非空时，账号级配置优先于分组配置。
 
+代理 URL 可包含字面量 `{mail}`：出站时按账号邮箱 local-part（仅保留字母数字并小写）展开；存储与 API 回显保持原始模板字符串。推荐 `socks5h://outlook.{mail}:TOKEN@host:2260` 等形式对接 Resin 等粘性代理。
+
 #### 请求体
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `account_ids` | array<int> | 是 | 账号 ID 列表 |
-| `proxy_url` | string | 否 | 账号级主代理，支持 `direct` / `直连` |
+| `proxy_url` | string | 否 | 账号级主代理，支持 `direct` / `直连` 与 `{mail}` 模板 |
 | `fallback_proxy_url_1` | string | 否 | 回退代理 1 |
 | `fallback_proxy_url_2` | string | 否 | 回退代理 2 |
 
@@ -1921,9 +1923,26 @@ ZIP 内文件名使用附件原始文件名；如果多个附件同名，会自�
 
 ### POST `/api/emails/delete`
 
-批量删除邮件。
+批量删除邮件（永久删除）。
 
 #### 请求体
+
+```json
+{
+  "email": "user@outlook.com",
+  "method": "graph",
+  "folder": "inbox",
+  "items": [
+    {
+      "id": "AAMk...",
+      "folder": "inbox",
+      "id_mode": "graph"
+    }
+  ]
+}
+```
+
+兼容旧格式：
 
 ```json
 {
@@ -1934,8 +1953,10 @@ ZIP 内文件名使用附件原始文件名；如果多个附件同名，会自�
 
 说明：
 
-- Outlook 账号会优先走 Graph API，失败后按逻辑回退 IMAP
-- IMAP 账号当前不支持批量删除
+- 推荐传 `items`（含 `id` / `folder` / `id_mode`）与 `method`，与 `/api/emails/mark-read` 一致
+- Outlook 账号按 `id_mode`/`method` 分流：`graph` 走 Graph API，`uid`/`sequence` 走 OAuth IMAP
+- 标准 IMAP 账号通过 IMAP `STORE \\Deleted` + `EXPUNGE` 永久删除
+- 仍接受仅传 `ids` 的旧客户端；此时默认按 Graph 处理
 
 ## 临时邮箱
 
@@ -2591,8 +2612,8 @@ Telegram 测试：
 - Graph 邮件列表
 - Graph 邮件详情
 - Outlook OAuth IMAP token 获取
-- Outlook OAuth IMAP 列表 / 详情 / 删除回退
-- 密码型 IMAP 列表 / 详情
+- Outlook OAuth IMAP 列表 / 详情 / 删除
+- 密码型 IMAP 列表 / 详情 / 删除
 - 转发轮询抓信 / 详情抓取
 
 ### 别名冲突规则

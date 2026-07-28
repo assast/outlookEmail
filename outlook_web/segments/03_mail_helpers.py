@@ -13,19 +13,79 @@ if TYPE_CHECKING:
     from web_outlook_app import *  # noqa: F403
 
 
+DIRECT_PROXY_SENTINEL = "__DIRECT__"
+# PySocks 仅在 username 与 password 均为真值时启用 SOCKS5 UserPass。
+# 密码为空时会退化为 NO AUTH，Resin 收不到 Platform.Account，粘性租约不会创建。
+# 用非空占位密码强制走 UserPass；Resin 在 RESIN_PROXY_TOKEN="" 时接受任意密码。
+SOCKS_EMPTY_PASSWORD_PLACEHOLDER = "\x00"
+
+
+def resolve_socks_proxy_auth(
+    username: Optional[str],
+    password: Optional[str],
+) -> tuple[Optional[str], Optional[str]]:
+    """为 PySocks 规范化认证：有用户名但密码为空时补占位密码，确保发送 UserPass。"""
+    if not username:
+        return None, None
+    if password:
+        return username, password
+    return username, SOCKS_EMPTY_PASSWORD_PLACEHOLDER
+
+
+def prepare_proxy_url_for_transport(proxy_url: str) -> str:
+    """把代理 URL 转成底层客户端可用的形式（修复 SOCKS 空密码不发认证）。"""
+    value = str(proxy_url or "").strip()
+    if not value or value == DIRECT_PROXY_SENTINEL:
+        return value
+
+    parsed = urlparse(value)
+    scheme = (parsed.scheme or "").lower()
+    if not scheme.startswith("socks"):
+        return value
+
+    username = unquote(parsed.username) if parsed.username else None
+    if not username:
+        return value
+
+    raw_password = unquote(parsed.password) if parsed.password is not None else None
+    auth_user, auth_pass = resolve_socks_proxy_auth(username, raw_password)
+    if not auth_user or auth_pass is None:
+        return value
+    # 已有非空密码且无需改写
+    if raw_password:
+        return value
+
+    host = parsed.hostname or ""
+    if not host:
+        return value
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    userinfo = f"{quote(auth_user, safe='')}:{quote(auth_pass, safe='')}"
+    if parsed.port is not None:
+        netloc = f"{userinfo}@{host}:{parsed.port}"
+    else:
+        netloc = f"{userinfo}@{host}"
+    rebuilt = f"{parsed.scheme}://{netloc}"
+    if parsed.path:
+        rebuilt += parsed.path
+    if parsed.query:
+        rebuilt += f"?{parsed.query}"
+    if parsed.fragment:
+        rebuilt += f"#{parsed.fragment}"
+    return rebuilt
+
+
 def build_proxies(proxy_url: str) -> Optional[Dict[str, str]]:
     """构建 requests 的 proxies 参数"""
     if not proxy_url:
         return None
-    return {"http": proxy_url, "https": proxy_url}
+    transport_url = prepare_proxy_url_for_transport(proxy_url)
+    return {"http": transport_url, "https": transport_url}
 
 
 def build_direct_proxies() -> Dict[str, None]:
     """显式禁用 requests 的环境代理，确保走直连"""
     return {"http": None, "https": None, "all": None}
-
-
-DIRECT_PROXY_SENTINEL = "__DIRECT__"
 
 
 def normalize_proxy_candidate(proxy_value: Any) -> str:
@@ -162,6 +222,64 @@ def build_mail_fetch_error(exc: Exception, proxy_url: str = '', operation: str =
     return payload
 
 
+def format_proxy_for_log(proxy_value: Any) -> str:
+    """控制台/日志用代理展示：保留用户名（Resin Platform.Account），隐藏密码。"""
+    value = str(proxy_value or '').strip()
+    if not value:
+        return '直连(未配置应用代理)'
+    if value == DIRECT_PROXY_SENTINEL or value.lower() in ('direct', '直连'):
+        return 'direct'
+    parsed = urlparse(value)
+    if not parsed.scheme or not parsed.hostname:
+        return sanitize_error_details(value)
+    host = parsed.hostname
+    if ':' in host and not host.startswith('['):
+        host = f'[{host}]'
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+    if port is not None:
+        host = f'{host}:{port}'
+    username = unquote(parsed.username) if parsed.username else None
+    if username is not None:
+        if parsed.password is not None:
+            host = f'{username}:***@{host}'
+        else:
+            host = f'{username}@{host}'
+    return f'{parsed.scheme}://{host}'
+
+
+def parse_resin_proxy_identity(proxy_value: Any) -> tuple[str, str]:
+    """按 Resin V1 规则从代理 URL 用户名解析 Platform / Account（第一个 '.' 分割）。"""
+    value = str(proxy_value or '').strip()
+    if not value or value == DIRECT_PROXY_SENTINEL:
+        return '', ''
+    parsed = urlparse(value)
+    username = unquote(parsed.username) if parsed.username else ''
+    if not username:
+        return '', ''
+    if '.' in username:
+        platform, account = username.split('.', 1)
+        return platform, account
+    return username, ''
+
+
+def log_outbound_proxy_usage(context: str, proxy_value: Any = '', *, label: str = '') -> None:
+    """记录本次实际使用的代理（受 LOG_LEVEL 控制，默认 INFO 可见）。"""
+    display = format_proxy_for_log(proxy_value)
+    suffix = f' ({label})' if label else ''
+    platform, account = parse_resin_proxy_identity(proxy_value)
+    identity = ''
+    if platform or account:
+        identity = f' | Resin身份 Platform={platform or "(空)"} Account={account or "(空-无粘性租约)"}'
+    message = f'[代理] {context}{suffix}: {display}{identity}'
+    try:
+        app.logger.info(message)
+    except Exception:
+        pass
+
+
 def build_request_kwargs_for_proxy(kwargs: Dict[str, Any], proxy_candidate: str) -> Dict[str, Any]:
     request_kwargs = dict(kwargs)
     if proxy_candidate == DIRECT_PROXY_SENTINEL:
@@ -178,11 +296,13 @@ def request_with_proxy_failover(method: str, url: str, *, proxy_url: str = None,
                                 fallback_proxy_urls: Optional[List[str]] = None, **kwargs):
     candidates = get_proxy_failover_candidates(proxy_url or '', fallback_proxy_urls)
     if not candidates:
+        log_outbound_proxy_usage(f'{method.upper()} {url}', '')
         return requests.request(method, url, **kwargs)
 
     last_exc = None
     proxy_failures = []
     for index, (label, candidate) in enumerate(candidates):
+        log_outbound_proxy_usage(f'{method.upper()} {url}', candidate, label=label)
         request_kwargs = build_request_kwargs_for_proxy(kwargs, candidate)
         try:
             response = requests.request(method, url, **request_kwargs)
@@ -338,6 +458,7 @@ def get_with_proxy_fallback(url: str, *, proxy_url: str = None,
 @contextmanager
 def proxy_socket_context(proxy_url: str):
     if not proxy_url or not socks:
+        log_outbound_proxy_usage('IMAP socket', proxy_url or '')
         yield
         return
 
@@ -352,12 +473,16 @@ def proxy_socket_context(proxy_url: str):
     }
     proxy_type = proxy_type_map.get(scheme)
     if not proxy_type or not parsed.hostname or not parsed.port:
+        log_outbound_proxy_usage('IMAP socket(无效代理,回退直连)', proxy_url)
         yield
         return
 
     username = unquote(parsed.username) if parsed.username else None
-    password = unquote(parsed.password) if parsed.password else None
+    # 区分「无密码字段」与「空密码」：password 可能是 ''
+    password = unquote(parsed.password) if parsed.password is not None else None
+    username, password = resolve_socks_proxy_auth(username, password)
     rdns = scheme == 'socks5h'
+    log_outbound_proxy_usage('IMAP socket', proxy_url)
 
     with proxy_socket_lock:
         original_socket = socket.socket
@@ -2034,6 +2159,201 @@ def mark_emails_read_imap_generic_result(email_addr: str, imap_password: str, im
             'success': False,
             'success_count': 0,
             'failed_count': len(items or []),
+            'updated_ids': [],
+            'errors': [build_error_payload('IMAP_CONNECT_FAILED', sanitize_error_details(str(exc)) or 'IMAP 连接失败', 'IMAPConnectError', 502, '')],
+        }
+    finally:
+        if mail:
+            try:
+                mail.logout()
+            except Exception:
+                pass
+
+
+def delete_email_items_imap(mail, items: List[Dict[str, Any]], provider: str,
+                            default_mode: str = 'uid') -> Dict[str, Any]:
+    """通过 IMAP 永久删除邮件：标记 \\Deleted 后 EXPUNGE。"""
+    success_count = 0
+    deleted_ids: List[str] = []
+    errors: List[Any] = []
+    grouped_items: Dict[str, List[Dict[str, Any]]] = {}
+
+    for item in items or []:
+        message_id = str(item.get('id', '') or '').strip()
+        folder = str(item.get('folder', 'inbox') or 'inbox').strip().lower()
+        if not message_id:
+            errors.append({
+                'id': '',
+                'error': build_error_payload(
+                    'EMAIL_DELETE_INVALID',
+                    'message_id 不能为空',
+                    'ValidationError',
+                    400,
+                    item
+                )
+            })
+            continue
+        grouped_items.setdefault(folder, []).append({
+            'id': message_id,
+            'folder': folder,
+            'id_mode': str(item.get('id_mode', '') or '').strip().lower(),
+        })
+
+    for folder, folder_items in grouped_items.items():
+        selected_folder, folder_diagnostics = resolve_imap_folder(mail, provider, folder, readonly=False)
+        if not selected_folder:
+            folder_error = build_error_payload(
+                'IMAP_FOLDER_NOT_FOUND',
+                'IMAP 文件夹不存在或无权访问',
+                'IMAPFolderError',
+                400,
+                {
+                    'provider': provider,
+                    'folder': folder,
+                    **folder_diagnostics,
+                }
+            )
+            errors.extend({'id': item['id'], 'error': folder_error} for item in folder_items)
+            continue
+
+        folder_deleted_ids: List[str] = []
+        for item in folder_items:
+            preferred_mode = item.get('id_mode') or default_mode
+            success, used_mode, attempts = store_imap_message_flags(
+                mail,
+                item['id'],
+                action='+FLAGS.SILENT',
+                flags=r'(\Deleted)',
+                preferred_mode=preferred_mode,
+            )
+            if success:
+                folder_deleted_ids.append(item['id'])
+                item['id_mode'] = used_mode
+                continue
+
+            errors.append({
+                'id': item['id'],
+                'error': build_error_payload(
+                    'EMAIL_DELETE_FAILED',
+                    '删除邮件失败',
+                    'IMAPStoreError',
+                    502,
+                    {
+                        'provider': provider,
+                        'folder': selected_folder,
+                        'message_id': item['id'],
+                        'store_attempts': attempts[:10],
+                    }
+                )
+            })
+
+        if not folder_deleted_ids:
+            continue
+
+        try:
+            expunge_status, expunge_data = mail.expunge()
+            if expunge_status != 'OK':
+                raise imaplib.IMAP4.error(str(expunge_data or expunge_status))
+            success_count += len(folder_deleted_ids)
+            deleted_ids.extend(folder_deleted_ids)
+        except Exception as exc:
+            expunge_error = build_error_payload(
+                'EMAIL_DELETE_EXPUNGE_FAILED',
+                '邮件已标记删除，但永久清除失败',
+                type(exc).__name__,
+                502,
+                {
+                    'provider': provider,
+                    'folder': selected_folder,
+                    'message_ids': folder_deleted_ids[:20],
+                    'details': sanitize_error_details(str(exc))[:200],
+                }
+            )
+            errors.extend({'id': message_id, 'error': expunge_error} for message_id in folder_deleted_ids)
+
+    total_count = sum(len(group) for group in grouped_items.values())
+    failed_count = total_count - success_count + sum(1 for item in errors if not item.get('id'))
+    return {
+        'success': failed_count == 0,
+        'success_count': success_count,
+        'failed_count': failed_count,
+        'deleted_ids': deleted_ids,
+        'updated_ids': deleted_ids,
+        'errors': errors,
+    }
+
+
+def delete_emails_imap_batch(email_addr: str, client_id: str, refresh_token: str,
+                             items: List[Dict[str, Any]], server: str = IMAP_SERVER_NEW,
+                             proxy_url: str = None,
+                             fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+    access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    if not access_token:
+        return {
+            'success': False,
+            'success_count': 0,
+            'failed_count': len(items or []),
+            'deleted_ids': [],
+            'updated_ids': [],
+            'errors': [build_error_payload('IMAP_TOKEN_FAILED', '获取访问令牌失败', 'IMAPError', 401, '')],
+        }
+
+    connection = None
+    try:
+        with proxy_socket_context(proxy_url):
+            connection = imaplib.IMAP4_SSL(server, IMAP_PORT, timeout=IMAP_TIMEOUT)
+        auth_string = f"user={email_addr}\1auth=Bearer {access_token}\1\1".encode('utf-8')
+        connection.authenticate('XOAUTH2', lambda x: auth_string)
+        return delete_email_items_imap(connection, items, 'outlook', default_mode='sequence')
+    except Exception as exc:
+        return {
+            'success': False,
+            'success_count': 0,
+            'failed_count': len(items or []),
+            'deleted_ids': [],
+            'updated_ids': [],
+            'errors': [build_error_payload('IMAP_CONNECT_FAILED', 'IMAP 连接失败', type(exc).__name__, 502, str(exc))],
+        }
+    finally:
+        if connection:
+            try:
+                connection.logout()
+            except Exception:
+                pass
+
+
+def delete_emails_imap_generic_result(email_addr: str, imap_password: str, imap_host: str,
+                                      items: List[Dict[str, Any]], imap_port: int = 993,
+                                      provider: str = 'custom', proxy_url: str = '') -> Dict[str, Any]:
+    mail = None
+    try:
+        mail = create_imap_connection(imap_host, imap_port, proxy_url)
+        try:
+            mail.login(email_addr, imap_password)
+        except imaplib.IMAP4.error as exc:
+            return {
+                'success': False,
+                'success_count': 0,
+                'failed_count': len(items or []),
+                'deleted_ids': [],
+                'updated_ids': [],
+                'errors': [build_error_payload(
+                    'IMAP_AUTH_FAILED',
+                    normalize_imap_auth_error(provider, imap_host, str(exc)),
+                    'IMAPAuthError',
+                    401,
+                    ''
+                )],
+            }
+
+        send_imap_id(mail, provider, imap_host)
+        return delete_email_items_imap(mail, items, provider, default_mode='uid')
+    except Exception as exc:
+        return {
+            'success': False,
+            'success_count': 0,
+            'failed_count': len(items or []),
+            'deleted_ids': [],
             'updated_ids': [],
             'errors': [build_error_payload('IMAP_CONNECT_FAILED', sanitize_error_details(str(exc)) or 'IMAP 连接失败', 'IMAPConnectError', 502, '')],
         }

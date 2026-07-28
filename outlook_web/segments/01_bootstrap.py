@@ -9,6 +9,7 @@ Outlook 邮件 Web 应用
 
 import email
 import imaplib
+import logging
 import sqlite3
 import os
 import hashlib
@@ -76,6 +77,40 @@ app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 24 * 7  # 7 天
 # Session Cookie 配置（适用于 HTTPS 代理环境）
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+
+def resolve_log_level(raw: Optional[str] = None) -> int:
+    """解析 LOG_LEVEL 环境变量，非法值回退 INFO。"""
+    name = (raw if raw is not None else os.getenv('LOG_LEVEL', 'INFO') or 'INFO').strip().upper()
+    level = getattr(logging, name, None)
+    if not isinstance(level, int):
+        return logging.INFO
+    return level
+
+
+def configure_app_logging(target_app=None, level: Optional[int] = None) -> int:
+    """按 LOG_LEVEL 配置应用与相关 logger 的全局日志级别。"""
+    flask_app = target_app or app
+    resolved_level = resolve_log_level() if level is None else level
+    root_logger = logging.getLogger()
+    root_logger.setLevel(resolved_level)
+    if not root_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setLevel(resolved_level)
+        handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s [%(name)s] %(message)s'
+        ))
+        root_logger.addHandler(handler)
+    else:
+        for handler in root_logger.handlers:
+            handler.setLevel(resolved_level)
+
+    flask_app.logger.setLevel(resolved_level)
+    logging.getLogger('werkzeug').setLevel(resolved_level)
+    return resolved_level
+
+
+LOG_LEVEL = configure_app_logging(app)
 
 # 信任代理头（适用于反向代理环境）
 # 这确保 Flask 正确识别 HTTPS 请求

@@ -69,10 +69,10 @@ def load_groups() -> List[Dict]:
     return groups
 
 
-def get_group_by_id(group_id: int) -> Optional[Dict]:
+def get_group_by_id(group_id: int, db=None) -> Optional[Dict]:
     """根据 ID 获取分组"""
-    db = get_db()
-    cursor = db.execute('SELECT * FROM groups WHERE id = ?', (group_id,))
+    database = db or get_db()
+    cursor = database.execute('SELECT * FROM groups WHERE id = ?', (group_id,))
     row = cursor.fetchone()
     return dict(row) if row else None
 
@@ -159,6 +159,13 @@ def validate_group_move(group_id: int, target_parent_id: Optional[int], db=None)
     if not group:
         return False, '分组不存在'
     group_dict = dict(group)
+    try:
+        current_parent_id = normalize_group_parent_id(group_dict.get('parent_id'))
+    except ValueError:
+        current_parent_id = None
+    # 父级未变视为未移动：允许编辑名称/代理等字段（编辑弹窗总会提交 parent_id）
+    if current_parent_id == target_parent_id:
+        return True, ''
     if is_default_group_row(group_dict):
         return False, '默认分组不可移动'
     if is_temp_group_row(group_dict):
@@ -1083,8 +1090,41 @@ def resolve_account_for_email_api(email_addr: str) -> Optional[Dict]:
     return None
 
 
-def get_account_proxy_url(account: Optional[Dict[str, Any]]) -> str:
-    proxy_config = get_account_proxy_config(account)
+PROXY_MAIL_PLACEHOLDER = '{mail}'
+
+
+def build_proxy_mail_placeholder_value(email: Any) -> str:
+    """从邮箱生成 {mail} 替换值：local-part 仅保留字母数字并小写。"""
+    raw = str(email or '').strip()
+    if not raw:
+        return ''
+    local_part = raw.split('@', 1)[0]
+    return re.sub(r'[^A-Za-z0-9]', '', local_part).lower()
+
+
+def expand_proxy_url_template(url: Any, email: Any = None) -> str:
+    """运行时展开代理 URL 中的 {mail}；无占位符或无邮箱时原样透传。"""
+    value = str(url or '').strip()
+    if not value or PROXY_MAIL_PLACEHOLDER not in value:
+        return value
+    email_str = str(email or '').strip()
+    if not email_str:
+        return value
+    return value.replace(PROXY_MAIL_PLACEHOLDER, build_proxy_mail_placeholder_value(email_str))
+
+
+def expand_proxy_config(proxy_config: Optional[Dict[str, str]], email: Any = None) -> Dict[str, str]:
+    config = proxy_config or get_empty_proxy_config()
+    return {
+        'proxy_url': expand_proxy_url_template(config.get('proxy_url', ''), email),
+        'fallback_proxy_url_1': expand_proxy_url_template(config.get('fallback_proxy_url_1', ''), email),
+        'fallback_proxy_url_2': expand_proxy_url_template(config.get('fallback_proxy_url_2', ''), email),
+    }
+
+
+def get_account_proxy_url(account: Optional[Dict[str, Any]], db=None) -> str:
+    """出站用主代理（含分组继承与 {mail} 展开）。"""
+    proxy_config = get_account_resolved_proxy_config(account, db=db)
     return proxy_config.get('proxy_url', '') or ''
 
 
@@ -1111,18 +1151,49 @@ def account_has_proxy_override(account: Optional[Dict[str, Any]]) -> bool:
     return any(account_proxy_config.values())
 
 
-def get_account_proxy_config(account: Optional[Dict[str, Any]]) -> Dict[str, str]:
+def get_account_proxy_config(account: Optional[Dict[str, Any]], db=None) -> Dict[str, str]:
+    """存储/编辑用代理配置（不展开 {mail}）。"""
     if account_has_proxy_override(account):
         return get_account_override_proxy_config(account)
     if not account or not account.get('group_id'):
         return get_empty_proxy_config()
-    group = get_group_by_id(account['group_id'])
+    group = get_group_by_id(account['group_id'], db=db)
     if not group:
         return get_empty_proxy_config()
-    return get_group_inherited_proxy_config(group)
+    return get_group_inherited_proxy_config(group, db=db)
 
 
-def get_group_inherited_proxy_config(group_row: Optional[Dict[str, Any]]) -> Dict[str, str]:
+def get_account_resolved_proxy_config(account: Optional[Dict[str, Any]], db=None) -> Dict[str, str]:
+    """出站网络用代理：继承解析后再展开 {mail}。"""
+    email = account.get('email') if account else None
+    return expand_proxy_config(get_account_proxy_config(account, db=db), email)
+
+
+def get_upload_account_resolved_proxy_config(upload_row: Any, db=None) -> Dict[str, str]:
+    """上传账号自动授权用代理：自身 proxy_url 优先，否则分组继承，再展开 {mail}。"""
+    if not upload_row:
+        return get_empty_proxy_config()
+    row = dict(upload_row) if hasattr(upload_row, 'keys') else dict(upload_row or {})
+    email = row.get('email')
+    own_proxy = str(row.get('proxy_url') or '').strip()
+    if own_proxy:
+        return expand_proxy_config(
+            {
+                'proxy_url': own_proxy,
+                'fallback_proxy_url_1': '',
+                'fallback_proxy_url_2': '',
+            },
+            email,
+        )
+    group_id = row.get('group_id')
+    if group_id:
+        group = get_group_by_id(group_id, db=db)
+        if group:
+            return expand_proxy_config(get_group_inherited_proxy_config(group, db=db), email)
+    return get_empty_proxy_config()
+
+
+def get_group_inherited_proxy_config(group_row: Optional[Dict[str, Any]], db=None) -> Dict[str, str]:
     current_group = group_row
     visited_group_ids = set()
     while current_group:
@@ -1139,7 +1210,7 @@ def get_group_inherited_proxy_config(group_row: Optional[Dict[str, Any]]) -> Dic
         parent_id = current_group.get('parent_id')
         if not parent_id:
             break
-        current_group = get_group_by_id(parent_id)
+        current_group = get_group_by_id(parent_id, db=db)
     return get_empty_proxy_config()
 
 
@@ -1153,8 +1224,9 @@ def get_group_direct_proxy_config(group_row: Optional[Dict[str, Any]]) -> Dict[s
     }
 
 
-def get_account_proxy_failover_urls(account: Optional[Dict[str, Any]]) -> List[str]:
-    proxy_config = get_account_proxy_config(account)
+def get_account_proxy_failover_urls(account: Optional[Dict[str, Any]], db=None) -> List[str]:
+    """出站用回退代理列表（含 {mail} 展开）。"""
+    proxy_config = get_account_resolved_proxy_config(account, db=db)
     return [
         proxy_config.get('fallback_proxy_url_1', '') or '',
         proxy_config.get('fallback_proxy_url_2', '') or '',

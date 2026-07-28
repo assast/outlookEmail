@@ -163,7 +163,7 @@ python -c 'import secrets; print(secrets.token_hex(32))'
 ```
 
 - `SECRET_KEY`：填入上面生成的随机串（务必修改，勿用占位值；首尾空白会被忽略）
-- `LOGIN_PASSWORD`：登录密码，默认 `admin123`，建议改为强密码
+- `LOGIN_PASSWORD`：首次初始化时的登录密码，默认 `admin123`，建议改为强密码；**已写入数据库后**再改此变量不会覆盖当前密码。忘记密码请用 `scripts/reset_login_password.py`（见 [故障排除](docs/troubleshooting.md) / [安全配置](docs/security.md)）
 
 可选：如需调整 Gunicorn 线程数 / 超时，在 `.env.local` 中追加 `GUNICORN_THREADS`、`GUNICORN_TIMEOUT`（不填则使用默认值 4 / 300）。
 
@@ -224,9 +224,9 @@ Outlook/Hotmail OAuth 的 IMAP 回退链路默认按 UID 读取详情和附件�
 ### Web 应用功能
 
 #### 核心功能
-- 🔐 **登录验证** - 密码保护的 Web 界面，支持在线修改密码
+- 🔐 **登录验证** - 密码保护的 Web 界面，支持在线修改密码；忘记密码可用官方脚本 `scripts/reset_login_password.py` 重置（见 [故障排除](docs/troubleshooting.md)）
 - 📁 **分组管理** - 支持最多三级树形邮箱分组，创建、编辑、折叠展开、同级排序、跨层级拖拽移动和级联删除
-- 🌐 **账号/分组代理** - 每个分组可配置 HTTP/SOCKS5 代理，子分组可继承父级代理，单个账号也可设置代理并优先覆盖分组代理
+- 🌐 **账号/分组代理** - 每个分组可配置 HTTP/SOCKS5 代理，子分组可继承父级代理，单个账号也可设置代理并优先覆盖分组代理；代理 URL 支持 `{mail}` 占位符（对接 [Resin](https://github.com/Resinat/Resin) 等粘性代理池）
 - 📧 **多邮箱管理** - 批量导入和管理 Outlook/Hotmail OAuth / IMAP 邮箱账号
 - 🪪 **别名管理** - 支持给单个邮箱配置多个别名邮箱，主邮箱和别名都可用于检索邮件和调用对外 API
 - 🔀 **别名高级用法** - 可将外部邮箱自动转发到本项目管理的邮箱 A，再把外部邮箱配置为 A 的别名，从而通过本项目统一读取邮件
@@ -246,7 +246,7 @@ Outlook/Hotmail OAuth 的 IMAP 回退链路默认按 UID 读取详情和附件�
 - 🏷️ **标签管理** - 支持给邮箱打标签、批量操作、按标签筛选
 - 📦 **批量移动分组** - 批量选择邮箱移动到任意普通分组层级
 - ✅ **批量选择** - 邮箱列表、邮件列表均支持全选当前列表与清空选择
-- 🗑️ **邮件删除** - 单封/批量永久删除邮件
+- 🗑️ **邮件删除** - 单封/批量永久删除；Graph 与 IMAP（含标准 IMAP 账号、OAuth IMAP 回退）均支持
 - 🔄 **API 优先级回退** - Graph API → IMAP(新) → IMAP(旧) 自动回退
 - 🔑 **对外 API** - 通过 API Key 直接获取邮件，无需登录，支持别名邮箱、聚合文件夹和多条件筛选 带+号的附加电子邮箱自动识别，自动回退主邮箱/别名邮箱查询；如果要求的功能比较完善，建议直接对接完整API，文档已经改成了适合AI读取的形状，直接喂给AI让AI按照完整API使用登录密码而不是API Key对接即可
 
@@ -408,6 +408,31 @@ user@example.com----app-password----imap.example.com----993
 支持批量导入，每行一个账号。导入文件格式保持不变；导入弹窗可为本次新增账号统一设置备注、标签、状态，并可选择是否立即开启邮件转发。普通邮箱导入时不能选择临时邮箱分组。
 
 分组支持最多三级层级。选中父分组时，邮箱账号列表会同时展示该分组和所有子分组下的账号；子分组未配置代理时会向上继承父级分组代理。删除含子分组的分组会级联删除子分组，并把相关账号移回默认分组。
+
+#### 代理与 Resin `{mail}` 模板
+
+分组或账号代理 URL 可包含字面量 `{mail}`。出站请求（拉信、Token 刷新、Outlook 自动授权等）会在运行时替换为邮箱 `@` 前 local-part：去掉非字母数字字符并转小写。配置原样存库，编辑回显不展开。
+
+推荐示例（Resin 默认端口 2260，V1 粘性身份 `Platform.Account:TOKEN`）：
+
+```text
+socks5h://outlook.{mail}:你的Token@127.0.0.1:2260
+```
+
+Token 为空时以下两种均可：
+
+```text
+socks5h://outlook.{mail}:@127.0.0.1:2260
+socks5h://outlook.{mail}@127.0.0.1:2260
+```
+
+说明：
+
+- 建议优先 `socks5h://` / `socks5://`；普通 HTTP 代理对 IMAP 令牌请求可能不可用
+- 不同邮箱前缀净化后可能碰撞（如 `a.b` 与 `ab`），本项目接受该行为
+- 上传账号自动授权：优先用上传记录自己的 `proxy_url`，否则继承分组代理模板
+- 默认 `LOG_LEVEL=INFO` 会在拉信 / Token 刷新 / 自动授权时打印 `[代理]` 详情（密码打码）。批量场景日志较多时，设 `LOG_LEVEL=WARNING` 即可降噪关闭这类 INFO
+- 友情项目：[Resin](https://github.com/Resinat/Resin)
 
 ### 3. 查看邮件
 
@@ -690,6 +715,7 @@ MIT License - 详见 [LICENSE](LICENSE)
 - [Microsoft Graph API](https://docs.microsoft.com/graph/)
 - [GPTMail](https://mail.chatgpt.org.uk)
 - [Flask](https://flask.palletsprojects.com/)
+- [Resin](https://github.com/Resinat/Resin) — 高性能粘性代理池网关
 
 ## ⭐ Star History
 

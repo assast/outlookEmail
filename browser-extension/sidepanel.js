@@ -1037,7 +1037,7 @@
       return markNormalMailRead(config, email, item, folder);
     }
     if (action === 'delete') {
-      return deleteNormalMail(config, email, item);
+      return deleteNormalMail(config, email, item, folder);
     }
     return null;
   }
@@ -1062,12 +1062,22 @@
     }, '正在标记已读...');
   }
 
-  async function deleteNormalMail(config, email, item) {
+  async function deleteNormalMail(config, email, item, folder) {
     if (!window.confirm('确定删除这封邮件吗？')) return;
+    const targetFolder = folder || item.folder || 'inbox';
     await runAction(config, async () => {
       const payload = await Api.apiRequest(config, '/api/emails/delete', {
         method: 'POST',
-        body: { email, ids: [item.id] },
+        body: {
+          email,
+          method: getMailItemMethod(item),
+          folder: targetFolder,
+          items: [{
+            id: item.id,
+            folder: targetFolder,
+            id_mode: item.id_mode || (getMailItemMethod(item) === 'imap' ? 'uid' : 'graph'),
+          }],
+        },
         timeoutMs: 70000,
       });
       getEl('mailDetail').innerHTML = renderResult(payload);

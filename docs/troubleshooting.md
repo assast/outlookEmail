@@ -126,7 +126,28 @@ A: 使用内置 OAuth2 助手：点击「获取 Token」→「生成授权链接
 A: 点击「临时邮箱」分组 → 「生成临时邮箱」→ 选择邮箱 →「获取邮件」
 
 ### Q: 如何修改登录密码？
-A: (1) Web 界面：「⚙️ 设置」中修改 (2) 环境变量：`LOGIN_PASSWORD`
+A: **还记得当前密码时**，在 Web 界面「⚙️ 设置」中修改（须填写当前密码）。环境变量 `LOGIN_PASSWORD` **仅在首次初始化**（数据库尚无 `login_password`）时写入默认值；应用已运行并写过库之后，只改 env **不会**覆盖当前登录密码。
+
+### Q: 忘记 Web 登录密码怎么办？
+A: 使用官方重置脚本（**不需要**旧密码，需要能访问数据库/容器的主机权限）：
+
+```bash
+# 建议先停止服务（非强制），并确认 DATABASE_PATH（默认 data/outlook_accounts.db）
+python scripts/reset_login_password.py
+
+# Docker 示例（容器名按实际修改；必须 -it 以进入交互终端）
+docker exec -it outlook-mail-reader python scripts/reset_login_password.py
+# 若 compose 服务名为 outlook-mail：
+# docker exec -it outlook-mail python scripts/reset_login_password.py
+```
+
+按提示输入并确认新密码（至少 8 位）。成功后：
+
+- 用**新密码**登录；既有 Web / 扩展会话会失效
+- 密码保存在数据库 `settings.login_password`（bcrypt），**不是**靠改 `LOGIN_PASSWORD` 环境变量恢复
+- 脚本不支持 `--password` 或管道传入密码，须在交互 TTY 中运行
+
+更完整的安全边界说明见 [security.md](./security.md)。
 
 ### Q: 数据存储在哪里？
 A: SQLite 数据库 `data/outlook_accounts.db`，建议定期备份

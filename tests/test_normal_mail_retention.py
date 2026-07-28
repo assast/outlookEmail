@@ -689,14 +689,20 @@ class NormalMailRetentionTests(unittest.TestCase):
                 self.assertFalse(payload['success'])
                 self.assertEqual(payload['error'], '参数不完整')
 
-    def test_delete_emails_imap_uses_imap_oauth_token_and_remains_unsupported(self):
+    def test_delete_emails_imap_uses_imap_oauth_token_and_expunges(self):
         with patch.object(web_outlook_app, 'get_access_token_graph') as graph_token_mock, \
              patch.object(web_outlook_app, 'get_access_token_imap', return_value='imap-token') as imap_token_mock, \
-             patch.object(web_outlook_app.imaplib, 'IMAP4_SSL') as imap_mock:
+             patch.object(web_outlook_app.imaplib, 'IMAP4_SSL') as imap_mock, \
+             patch.object(web_outlook_app, 'resolve_imap_folder', return_value=('INBOX', {})) as resolve_folder_mock, \
+             patch.object(
+                 web_outlook_app,
+                 'store_imap_message_flags',
+                 return_value=(True, 'uid', [{'mode': 'uid', 'status': 'OK'}]),
+             ) as store_flags_mock:
             graph_token_mock.side_effect = AssertionError('Graph token helper should not be used for IMAP delete')
             connection = imap_mock.return_value
             connection.authenticate.return_value = ('OK', [b'Authenticated'])
-            connection.select.return_value = ('OK', [b'1'])
+            connection.expunge.return_value = ('OK', [None])
 
             result = web_outlook_app.delete_emails_imap(
                 'retained@example.com',
@@ -706,10 +712,12 @@ class NormalMailRetentionTests(unittest.TestCase):
                 'imap.example.com',
                 'socks5://proxy.example:1080',
                 ['socks5://fallback.example:1080'],
+                items=[{'id': 'uid-1', 'folder': 'inbox', 'id_mode': 'uid'}],
             )
 
-        self.assertFalse(result['success'])
-        self.assertEqual(result['error'], 'IMAP 删除暂不支持 (ID 格式不兼容)')
+        self.assertTrue(result['success'])
+        self.assertEqual(result['success_count'], 1)
+        self.assertEqual(result['deleted_ids'], ['uid-1'])
         graph_token_mock.assert_not_called()
         imap_token_mock.assert_called_once_with(
             'client-id',
@@ -723,7 +731,61 @@ class NormalMailRetentionTests(unittest.TestCase):
             timeout=web_outlook_app.IMAP_TIMEOUT,
         )
         connection.authenticate.assert_called_once()
-        connection.select.assert_called_once_with('INBOX')
+        resolve_folder_mock.assert_called_once()
+        store_flags_mock.assert_called_once()
+        self.assertEqual(store_flags_mock.call_args.kwargs.get('flags'), r'(\Deleted)')
+        connection.expunge.assert_called_once_with()
+
+    def test_delete_emails_imap_account_uses_generic_imap_delete(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM accounts')
+            db.commit()
+            added = web_outlook_app.add_account(
+                'imap-user@example.com',
+                'password',
+                '',
+                '',
+                group_id=1,
+                account_type='imap',
+                provider='custom',
+                imap_host='imap.example.com',
+                imap_port=993,
+                imap_password='imap-pass',
+            )
+            self.assertTrue(added)
+
+        remote_result = {
+            'success': True,
+            'success_count': 1,
+            'failed_count': 0,
+            'deleted_ids': ['uid-42'],
+            'updated_ids': ['uid-42'],
+            'errors': [],
+        }
+        with patch.object(web_outlook_app, 'delete_emails_graph') as graph_delete_mock, \
+             patch.object(
+                 web_outlook_app,
+                 'delete_emails_imap_generic_result',
+                 return_value=remote_result,
+             ) as generic_delete_mock:
+            graph_delete_mock.side_effect = AssertionError('Graph delete should not be used for IMAP accounts')
+            response = self.client.post(
+                '/api/emails/delete',
+                json={
+                    'email': 'imap-user@example.com',
+                    'method': 'imap',
+                    'folder': 'inbox',
+                    'items': [{'id': 'uid-42', 'folder': 'inbox', 'id_mode': 'uid'}],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['deleted_ids'], ['uid-42'])
+        generic_delete_mock.assert_called_once()
+        graph_delete_mock.assert_not_called()
 
     def test_retained_action_row_counts_are_cumulative(self):
         with self.app.app_context():
