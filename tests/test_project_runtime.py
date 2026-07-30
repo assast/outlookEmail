@@ -1512,6 +1512,52 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertIn('upload-b@example.com----pass-bbb--------', lines)
         self.assertNotIn('upload-c@example.com----pass-ccc', '\n'.join(lines))
 
+    def test_export_selected_upload_accounts_decrypts_refresh_token(self):
+        # Regression: the export must emit the plaintext refresh_token, never the
+        # stored 'enc:' ciphertext, or external consumers (e.g. the registration
+        # tool) send garbage to Microsoft and get AADSTS9002313 / invalid_grant.
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute('DELETE FROM outlook_upload_accounts')
+            db.execute(
+                '''
+                INSERT INTO accounts (
+                    email, password, client_id, refresh_token,
+                    group_id, remark, status, account_type, provider,
+                    imap_host, imap_port, imap_password, forward_enabled
+                )
+                VALUES (?, '', ?, ?, 1, '', 'active', 'outlook', 'outlook', '', 993, '', 0)
+                ''',
+                (
+                    'upload-enc@example.com',
+                    'client-guid',
+                    web_outlook_app.encrypt_data('plain-refresh-token'),
+                ),
+            )
+            cursor = db.execute(
+                "INSERT INTO outlook_upload_accounts (email, password) VALUES (?, ?)",
+                ('upload-enc@example.com', web_outlook_app.encrypt_data('pass-enc')),
+            )
+            upload_id = cursor.lastrowid
+            web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('export-pass4'))
+            db.commit()
+
+        verify_response = self.client.post('/api/export/verify', json={'password': 'export-pass4'})
+        verify_payload = verify_response.get_json()
+
+        response = self.client.post('/api/outlook-upload-accounts/export-selected', json={
+            'account_ids': [upload_id],
+            'verify_token': verify_payload['verify_token'],
+        })
+
+        self.assertEqual(response.status_code, 200)
+        content = response.get_data(as_text=True)
+        self.assertIn(
+            'upload-enc@example.com----pass-enc----client-guid----plain-refresh-token',
+            content,
+        )
+        self.assertNotIn('enc:', content)
+
     def test_export_selected_upload_accounts_empty_ids_returns_400(self):
         with self.app.app_context():
             web_outlook_app.set_setting('login_password', web_outlook_app.hash_password('export-pass3'))
