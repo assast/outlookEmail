@@ -1579,7 +1579,13 @@ def api_export_selected_upload_accounts():
         email = str(row['email'] or '')
         password = get_upload_account_plain_password(row, tolerate_decrypt_error=True)
         client_id = str(row['client_id'] or '')
-        refresh_token = str(row['refresh_token'] or '')
+        # refresh_token 在库中以 'enc:' 密文存储；导出必须解密成明文，否则外部
+        # 消费方拿到的是无法使用的密文。与 password 一致：解密失败时留空而不是
+        # 把密文泄漏到导出文件里。
+        try:
+            refresh_token = decrypt_data(str(row['refresh_token'] or ''))
+        except RuntimeError:
+            refresh_token = ''
         lines.append(f"{email}----{password}----{client_id}----{refresh_token}")
 
     content = '\n'.join(lines)
