@@ -6,6 +6,12 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-08-01
+
+### Fixed
+- 导出上传账号时解密 `refresh_token`（PR #73）：导出 TXT 文件时不再泄露加密的 `refresh_token`（会触发 Microsoft `AADSTS9002313 / invalid_grant`）。导出逻辑与 `password` 一致，先解密、失败留空。
+- 补充对应单元测试。
+
 ## [3.0.1] - 2026-07-28
 
 ### Added
