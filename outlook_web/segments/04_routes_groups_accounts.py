@@ -28,17 +28,25 @@ def login():
                     'error': f'登录失败次数过多，请在 {remaining_time} 秒后重试'
                 }), 429
 
-            data = request.json if request.is_json else request.form
+            data = request.get_json(silent=True) if request.is_json else request.form
+            data = data or {}
             password = data.get('password', '')
+            duration_provided = 'session_duration_days' in data
+            duration_days = normalize_login_session_duration(
+                data.get('session_duration_days'),
+                allow_default=not duration_provided,
+            )
 
             # 从数据库获取密码哈希
             stored_password = get_login_password()
 
             # 验证密码
             if verify_password(password, stored_password):
+                if duration_days is None:
+                    return jsonify({'success': False, 'error': '登录有效期无效'}), 400
                 # 登录成功，重置失败记录
                 reset_login_attempts(client_ip)
-                establish_web_login_session()
+                establish_web_login_session(duration_days)
                 return jsonify({'success': True, 'message': '登录成功'})
             else:
                 # 登录失败，记录失败次数

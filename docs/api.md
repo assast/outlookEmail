@@ -26,6 +26,7 @@
 
 | 方法 | 路径 | 鉴权 | 返回类型 | 说明 |
 | --- | --- | --- | --- | --- |
+| POST | `/login` | 无 | JSON | 使用密码建立 Web Session，可选择登录有效期 |
 | GET | `/api/version-status` | Session | JSON | 当前版本与仓库版本状态 |
 | GET | `/api/csrf-token` | Session | JSON | 获取当前登录会话对应的 CSRF Token |
 | POST | `/api/extension/login` | Web 登录密码 | JSON | 浏览器扩展获取一次性登录跳转地址 |
@@ -171,6 +172,19 @@
 
 完整 API 需要先登录 Web 界面并携带 Session Cookie。
 
+### Web 登录与会话有效期
+
+调用 `POST /login` 使用 Web 登录密码建立 Session。`session_duration_days` 为可选字段，只允许 `7`、`30`、`90`、`180`，省略时默认使用 `30`：
+
+```json
+{
+  "password": "web-login-password",
+  "session_duration_days": 30
+}
+```
+
+登录成功后，Session 从成功时刻起按所选天数固定失效；后续访问不会续期。显式提交其他值时返回 `400`，不会建立或覆盖登录 Session。Web 登录页会在当前浏览器本地记忆上次选择的期限，但不会保存密码、Session Cookie 或绝对过期时间。
+
 ### 浏览器扩展密码登录
 
 浏览器扩展不使用对外 API Key。扩展先调用 `POST /api/extension/login`，用 Web 登录密码换取 60 秒有效的一次性 `launch_url`；随后在浏览器标签页打开该 URL，服务端会在自身域名下写入正常 Web Session 并跳转到 Web 控制台。
@@ -198,6 +212,7 @@
 
 - `next` 可选，必须是站内路径；非法值会回退到 `/`
 - `launch_url` 只能消费一次，过期或重复打开会跳回登录页
+- 扩展登录未提供期限选择，消费票据建立的 Web Session 默认有效 30 天，且从建立 Session 时起固定计算
 - 扩展打开控制台后，后续 Web 页面仍按完整管理 API 的 Session + CSRF 规则工作
 
 ### CSRF

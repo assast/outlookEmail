@@ -146,11 +146,51 @@
                 <label class="form-label" for="password">登录密码</label>
                 <input type="password" class="form-input" id="password" placeholder="请输入密码" autofocus required>
             </div>
+            <div class="form-group">
+                <label class="form-label" for="sessionDuration">登录有效期</label>
+                <select class="form-input" id="sessionDuration">
+                    <option value="7">7 天</option>
+                    <option value="30" selected>30 天</option>
+                    <option value="90">90 天</option>
+                    <option value="180">180 天</option>
+                </select>
+            </div>
             <button type="submit" class="login-btn" id="loginBtn">登 录</button>
         </form>
     </div>
     
     <script>
+        const LOGIN_DURATION_STORAGE_KEY = 'outlook_login_duration_days';
+        const LOGIN_DURATION_OPTIONS = ['7', '30', '90', '180'];
+        const DEFAULT_LOGIN_DURATION = '30';
+
+        function loadLoginDurationPreference() {
+            let storedValue = '';
+            try {
+                storedValue = window.localStorage.getItem(LOGIN_DURATION_STORAGE_KEY) || '';
+            } catch (error) {
+                storedValue = '';
+            }
+            return LOGIN_DURATION_OPTIONS.includes(storedValue) ? storedValue : DEFAULT_LOGIN_DURATION;
+        }
+
+        function saveLoginDurationPreference(value) {
+            if (!LOGIN_DURATION_OPTIONS.includes(value)) {
+                return;
+            }
+            try {
+                window.localStorage.setItem(LOGIN_DURATION_STORAGE_KEY, value);
+            } catch (error) {
+                // 本地存储不可用时不阻断登录。
+            }
+        }
+
+        const sessionDuration = document.getElementById('sessionDuration');
+        sessionDuration.value = loadLoginDurationPreference();
+        sessionDuration.addEventListener('change', function() {
+            saveLoginDurationPreference(sessionDuration.value);
+        });
+
         async function handleLogin(event) {
             event.preventDefault();
             
@@ -172,7 +212,10 @@
                 const response = await fetch('/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password })
+                    body: JSON.stringify({
+                        password,
+                        session_duration_days: sessionDuration.value,
+                    })
                 });
                 
                 const data = await response.json();

@@ -71,8 +71,8 @@ if not secret_key:
         "Generate one with: python -c 'import secrets; print(secrets.token_hex(32))'"
     )
 app.secret_key = secret_key
-# 设置 session 过期时间（默认 7 天）
-app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 24 * 7  # 7 天
+# 设置 session Cookie 传输层上限；实际登录有效期由每个 Session 的绝对过期时间控制。
+app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 24 * 180  # 180 天
 
 # Session Cookie 配置（适用于 HTTPS 代理环境）
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -3281,6 +3281,14 @@ def verify_login_password(password: str) -> bool:
 
 LOGIN_SESSION_VERSION_SETTING_KEY = 'login_session_version'
 DEFAULT_LOGIN_SESSION_VERSION = '0'
+LOGIN_SESSION_DURATION_OPTIONS = (7, 30, 90, 180)
+DEFAULT_LOGIN_SESSION_DURATION_DAYS = 30
+LOGIN_SESSION_EXPIRATION_KEY = 'login_expires_at'
+
+
+def get_login_session_now() -> float:
+    """获取登录 Session 使用的当前时间，便于统一校验和测试。"""
+    return time.time()
 
 
 def get_login_session_version() -> str:
@@ -3307,10 +3315,37 @@ def bind_login_session_version(version: Optional[str] = None) -> None:
     session.modified = True
 
 
-def establish_web_login_session() -> None:
-    """建立已登录 Web Session，并绑定当前会话版本。"""
+def normalize_login_session_duration(value: Any, allow_default: bool = False) -> Optional[int]:
+    """规范化登录有效期，只允许固定选项。"""
+    if value is None:
+        return DEFAULT_LOGIN_SESSION_DURATION_DAYS if allow_default else None
+    if isinstance(value, bool) or isinstance(value, float):
+        return None
+
+    try:
+        duration_days = int(value)
+    except (TypeError, ValueError):
+        return None
+
+    if duration_days not in LOGIN_SESSION_DURATION_OPTIONS:
+        return None
+    return duration_days
+
+
+def establish_web_login_session(duration_days: Optional[int] = None) -> None:
+    """建立已登录 Web Session，并绑定固定的绝对过期时间。"""
+    normalized_duration = normalize_login_session_duration(
+        duration_days,
+        allow_default=duration_days is None,
+    )
+    if normalized_duration is None:
+        raise ValueError('登录有效期无效')
+
     session['logged_in'] = True
     session.permanent = True
+    session[LOGIN_SESSION_EXPIRATION_KEY] = (
+        get_login_session_now() + normalized_duration * 24 * 60 * 60
+    )
     bind_login_session_version()
 
 
@@ -3318,19 +3353,36 @@ def clear_web_login_session() -> None:
     """清除 Web 登录状态。"""
     session.pop('logged_in', None)
     session.pop('login_session_version', None)
+    session.pop(LOGIN_SESSION_EXPIRATION_KEY, None)
     session.modified = True
 
 
 def is_web_login_session_valid() -> bool:
-    """校验当前 Web Session 是否仍有效（含改密后的版本轮换）。"""
+    """校验当前 Web Session 是否仍有效（含版本轮换和绝对过期时间）。"""
     if not session.get('logged_in'):
         return False
     expected = get_login_session_version()
     actual = session.get('login_session_version')
     # 升级前未写入 version 的旧会话：仅在尚未发生密码轮换时保留
     if actual is None:
-        return expected == DEFAULT_LOGIN_SESSION_VERSION
-    return str(actual) == expected
+        if expected != DEFAULT_LOGIN_SESSION_VERSION:
+            return False
+    elif str(actual) != expected:
+        return False
+
+    expires_at = session.get(LOGIN_SESSION_EXPIRATION_KEY)
+    if expires_at is None:
+        # 兼容升级前已存在的 Session：从首次通过新校验时开始计默认 30 天。
+        session[LOGIN_SESSION_EXPIRATION_KEY] = (
+            get_login_session_now() + DEFAULT_LOGIN_SESSION_DURATION_DAYS * 24 * 60 * 60
+        )
+        session.modified = True
+        return True
+
+    try:
+        return get_login_session_now() < float(expires_at)
+    except (TypeError, ValueError):
+        return False
 
 
 def get_gptmail_api_key() -> str:

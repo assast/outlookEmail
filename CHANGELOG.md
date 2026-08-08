@@ -6,6 +6,12 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.3] - 2026-08-08
+
+### Added
+- 登录页支持选择固定的登录有效期：7 天、30 天、90 天或 180 天，默认 30 天；有效期从登录成功起计算，后续访问不会续期。
+- 登录页会在当前浏览器本地记忆上次选择的登录有效期，浏览器扩展登录默认使用 30 天。
+
 ## [3.0.2] - 2026-08-01
 
 ### Fixed
