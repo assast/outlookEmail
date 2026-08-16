@@ -98,7 +98,7 @@ sudo systemctl reload nginx
 
    如果使用 Windows `exe`，程序会在首次启动时自动生成并保存固定 `SECRET_KEY`，不要删除对应数据目录下的密钥文件。
 
-2. 默认 Session 有效期为 7 天，重启应用不会导致 Session 失效（使用固定 SECRET_KEY）
+2. Web 登录默认有效期为 30 天，也可以在登录页选择 7 天、90 天、180 天或永久有效；重启应用不会导致 Session 失效（使用固定 SECRET_KEY）
 
 ### 数据库锁定错误
 

@@ -174,16 +174,16 @@
 
 ### Web 登录与会话有效期
 
-调用 `POST /login` 使用 Web 登录密码建立 Session。`session_duration_days` 为可选字段，只允许 `7`、`30`、`90`、`180`，省略时默认使用 `30`：
+调用 `POST /login` 使用 Web 登录密码建立 Session。`session_duration_days` 为可选字段，只允许 `7`、`30`、`90`、`180` 或 `permanent`，省略时默认使用 `30`：
 
 ```json
 {
   "password": "web-login-password",
-  "session_duration_days": 30
+  "session_duration_days": "permanent"
 }
 ```
 
-登录成功后，Session 从成功时刻起按所选天数固定失效；后续访问不会续期。显式提交其他值时返回 `400`，不会建立或覆盖登录 Session。Web 登录页会在当前浏览器本地记忆上次选择的期限，但不会保存密码、Session Cookie 或绝对过期时间。
+登录成功后，有限期限 Session 从成功时刻起按所选天数固定失效；后续访问不会续期。`permanent` 不设置绝对过期时间，但仍会在主动退出、登录密码修改导致会话版本轮换、SECRET_KEY 改变或浏览器清理 Cookie 后失效。显式提交其他值时返回 `400`，不会建立或覆盖登录 Session。Web 登录页会在当前浏览器本地记忆上次选择的期限，但不会保存密码、Session Cookie 或绝对过期时间。
 
 ### 浏览器扩展密码登录
 

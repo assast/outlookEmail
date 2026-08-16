@@ -103,6 +103,39 @@ class LoginSessionExpirationTests(unittest.TestCase):
                 now + web_outlook_app.DEFAULT_LOGIN_SESSION_DURATION_DAYS * expected_lifetime,
             )
 
+    def test_permanent_login_does_not_expire(self):
+        now = 1_700_000_000
+        client = self.app.test_client()
+        response = self._login(
+            client,
+            now,
+            web_outlook_app.LOGIN_SESSION_PERMANENT_OPTION,
+        )
+        self.assertEqual(response.status_code, 200)
+        with client.session_transaction() as session:
+            self.assertEqual(
+                session[web_outlook_app.LOGIN_SESSION_EXPIRATION_KEY],
+                web_outlook_app.LOGIN_SESSION_PERMANENT_OPTION,
+            )
+            cookie_expiration = self.app.session_interface.get_expiration_time(
+                self.app,
+                session,
+            )
+        self.assertEqual(cookie_expiration.year, 9999)
+
+        with patch.object(
+            web_outlook_app,
+            'get_login_session_now',
+            return_value=now + 100 * 365 * 24 * 60 * 60,
+        ):
+            response = client.get('/api/settings')
+        self.assertEqual(response.status_code, 200)
+
+        with self.app.app_context():
+            web_outlook_app.rotate_login_session_version()
+        response = client.get('/api/settings')
+        self.assertEqual(response.status_code, 401)
+
     def test_invalid_duration_does_not_create_or_overwrite_session(self):
         now = 1_700_000_000
         response = self._login(self.client, now, 30)
@@ -225,6 +258,7 @@ class LoginSessionExpirationTests(unittest.TestCase):
         self.assertIn('<option value="30" selected>30 天</option>', source)
         self.assertIn('<option value="90">90 天</option>', source)
         self.assertIn('<option value="180">180 天</option>', source)
+        self.assertIn('<option value="permanent">永久有效</option>', source)
         self.assertIn("const LOGIN_DURATION_STORAGE_KEY = 'outlook_login_duration_days';", source)
         self.assertIn('localStorage.getItem(LOGIN_DURATION_STORAGE_KEY)', source)
         self.assertIn('localStorage.setItem(LOGIN_DURATION_STORAGE_KEY, value)', source)

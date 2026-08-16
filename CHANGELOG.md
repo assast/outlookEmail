@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.4] - 2026-08-16
+
+### Added
+- 登录页新增“永久有效”选项；该会话不按登录时间自动过期，但仍受主动退出、登录密码修改、SECRET_KEY 变化和浏览器清理 Cookie 影响。
+
 ## [3.0.3] - 2026-08-08
 
 ### Added

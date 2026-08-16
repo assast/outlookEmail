@@ -33,10 +33,11 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.header import decode_header
 from pathlib import Path, PurePosixPath
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from urllib.parse import quote, urlparse, unquote
 from zoneinfo import ZoneInfo
 from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for, Response, make_response
+from flask.sessions import SecureCookieSessionInterface
 from functools import wraps
 import requests
 from cryptography.fernet import Fernet
@@ -71,7 +72,7 @@ if not secret_key:
         "Generate one with: python -c 'import secrets; print(secrets.token_hex(32))'"
     )
 app.secret_key = secret_key
-# 设置 session Cookie 传输层上限；实际登录有效期由每个 Session 的绝对过期时间控制。
+# 设置有限期限 Session Cookie 的传输层上限；实际登录有效期由每个 Session 控制，永久会话使用独立的最长 Cookie 期限。
 app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 24 * 180  # 180 天
 
 # Session Cookie 配置（适用于 HTTPS 代理环境）
@@ -3282,8 +3283,21 @@ def verify_login_password(password: str) -> bool:
 LOGIN_SESSION_VERSION_SETTING_KEY = 'login_session_version'
 DEFAULT_LOGIN_SESSION_VERSION = '0'
 LOGIN_SESSION_DURATION_OPTIONS = (7, 30, 90, 180)
+LOGIN_SESSION_PERMANENT_OPTION = 'permanent'
 DEFAULT_LOGIN_SESSION_DURATION_DAYS = 30
 LOGIN_SESSION_EXPIRATION_KEY = 'login_expires_at'
+
+
+class WebLoginSessionInterface(SecureCookieSessionInterface):
+    """为永久登录会话生成不会因应用默认期限提前失效的 Cookie。"""
+
+    def get_expiration_time(self, app, session):
+        if session.get(LOGIN_SESSION_EXPIRATION_KEY) == LOGIN_SESSION_PERMANENT_OPTION:
+            return datetime.max.replace(tzinfo=timezone.utc)
+        return super().get_expiration_time(app, session)
+
+
+app.session_interface = WebLoginSessionInterface()
 
 
 def get_login_session_now() -> float:
@@ -3315,10 +3329,15 @@ def bind_login_session_version(version: Optional[str] = None) -> None:
     session.modified = True
 
 
-def normalize_login_session_duration(value: Any, allow_default: bool = False) -> Optional[int]:
-    """规范化登录有效期，只允许固定选项。"""
+def normalize_login_session_duration(
+    value: Any,
+    allow_default: bool = False,
+) -> Optional[Union[int, str]]:
+    """规范化登录有效期，只允许固定选项或永久有效。"""
     if value is None:
         return DEFAULT_LOGIN_SESSION_DURATION_DAYS if allow_default else None
+    if isinstance(value, str) and value.strip().lower() == LOGIN_SESSION_PERMANENT_OPTION:
+        return LOGIN_SESSION_PERMANENT_OPTION
     if isinstance(value, bool) or isinstance(value, float):
         return None
 
@@ -3332,8 +3351,8 @@ def normalize_login_session_duration(value: Any, allow_default: bool = False) ->
     return duration_days
 
 
-def establish_web_login_session(duration_days: Optional[int] = None) -> None:
-    """建立已登录 Web Session，并绑定固定的绝对过期时间。"""
+def establish_web_login_session(duration_days: Optional[Union[int, str]] = None) -> None:
+    """建立已登录 Web Session，并绑定固定或永久的登录期限。"""
     normalized_duration = normalize_login_session_duration(
         duration_days,
         allow_default=duration_days is None,
@@ -3343,9 +3362,12 @@ def establish_web_login_session(duration_days: Optional[int] = None) -> None:
 
     session['logged_in'] = True
     session.permanent = True
-    session[LOGIN_SESSION_EXPIRATION_KEY] = (
-        get_login_session_now() + normalized_duration * 24 * 60 * 60
-    )
+    if normalized_duration == LOGIN_SESSION_PERMANENT_OPTION:
+        session[LOGIN_SESSION_EXPIRATION_KEY] = LOGIN_SESSION_PERMANENT_OPTION
+    else:
+        session[LOGIN_SESSION_EXPIRATION_KEY] = (
+            get_login_session_now() + normalized_duration * 24 * 60 * 60
+        )
     bind_login_session_version()
 
 
@@ -3371,6 +3393,8 @@ def is_web_login_session_valid() -> bool:
         return False
 
     expires_at = session.get(LOGIN_SESSION_EXPIRATION_KEY)
+    if expires_at == LOGIN_SESSION_PERMANENT_OPTION:
+        return True
     if expires_at is None:
         # 兼容升级前已存在的 Session：从首次通过新校验时开始计默认 30 天。
         session[LOGIN_SESSION_EXPIRATION_KEY] = (
