@@ -719,7 +719,7 @@ MIT License - 详见 [LICENSE](LICENSE)
 
 ## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=assast/outlookEmail&type=Date)](https://star-history.com/#assast/outlookEmail&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=assast/outlookEmail&type=Date)](https://star-history.dera.page/#assast/outlookEmail&type=Date)
 
 ---
 
