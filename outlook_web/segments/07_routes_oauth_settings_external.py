@@ -156,7 +156,7 @@ def api_reauthorize_account(account_id):
     db = get_db()
     account = db.execute(
         '''
-        SELECT id, email, client_id, refresh_token, group_id, account_type, provider,
+        SELECT id, email, client_id, refresh_token, group_id, account_type, provider, authorization_type,
                proxy_url, fallback_proxy_url_1, fallback_proxy_url_2
         FROM accounts
         WHERE id = ?
@@ -224,7 +224,7 @@ def api_reauthorize_account(account_id):
 
     refreshed_account = db.execute(
         '''
-        SELECT id, email, client_id, refresh_token, group_id, account_type, provider,
+        SELECT id, email, client_id, refresh_token, group_id, account_type, provider, authorization_type,
                proxy_url, fallback_proxy_url_1, fallback_proxy_url_2
         FROM accounts
         WHERE id = ?
@@ -242,7 +242,8 @@ def api_reauthorize_account(account_id):
             'validation': {
                 'success': True,
                 'status': 'success',
-                'message': validation_result.get('message') or 'Token 刷新成功'
+                'message': validation_result.get('message') or 'Token 刷新成功',
+                'authorization_type': validation_result.get('authorization_type') or '',
             }
         })
 

@@ -780,6 +780,21 @@ OAUTH_SCOPES = [
     "https://graph.microsoft.com/User.Read",
 ]
 
+OUTLOOK_AUTHORIZATION_TYPES = frozenset({'graph', 'imap'})
+_OUTLOOK_AUTHORIZATION_UNSET_ALIASES = frozenset({'unset', 'unknown', 'none', 'empty', '未设置', '未知'})
+
+
+def normalize_outlook_authorization_type(value: Any, *, strict: bool = False) -> str:
+    """规范化 Outlook OAuth 邮件授权通道；空字符串表示未设置。"""
+    text = str(value or '').strip().lower()
+    if not text or text in _OUTLOOK_AUTHORIZATION_UNSET_ALIASES:
+        return ''
+    if text in OUTLOOK_AUTHORIZATION_TYPES:
+        return text
+    if strict:
+        raise ValueError(f'非法 Outlook 授权类型: {value}')
+    return ''
+
 
 def infer_provider_from_email(email_addr: str) -> str:
     if not email_addr or '@' not in email_addr:
@@ -1330,6 +1345,7 @@ def init_db():
             status TEXT DEFAULT 'active',
             account_type TEXT DEFAULT 'outlook',
             provider TEXT DEFAULT 'outlook',
+            authorization_type TEXT NOT NULL DEFAULT '',
             imap_host TEXT,
             imap_port INTEGER DEFAULT 993,
             imap_password TEXT,
@@ -1789,6 +1805,8 @@ def init_db():
         cursor.execute("ALTER TABLE accounts ADD COLUMN account_type TEXT DEFAULT 'outlook'")
     if 'provider' not in columns:
         cursor.execute("ALTER TABLE accounts ADD COLUMN provider TEXT DEFAULT 'outlook'")
+    if 'authorization_type' not in columns:
+        cursor.execute("ALTER TABLE accounts ADD COLUMN authorization_type TEXT NOT NULL DEFAULT ''")
     if 'imap_host' not in columns:
         cursor.execute('ALTER TABLE accounts ADD COLUMN imap_host TEXT')
     if 'imap_port' not in columns:

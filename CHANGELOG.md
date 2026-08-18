@@ -6,6 +6,17 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.5] - 2026-08-18
+
+### Added
+- Outlook OAuth 账号新增 `authorization_type`（`graph` / `imap`，空值表示未设置）：记录首选或最近成功的邮件授权通道。
+- 编辑账号弹窗可查看和修改授权类型；未设置时取信与 Token 刷新默认 Graph 优先。
+- 拉信、邮件详情和 Token 刷新按记录通道优先尝试，失败后自动回退到另一通道，并写回实际成功通道。
+
+### Changed
+- 将账号改为普通 IMAP 时会清空 `authorization_type`。
+- 启动时自动为 `accounts` 表补列 `authorization_type`（默认空字符串）；已有账号不会根据旧凭证回填。
+
 ## [3.0.4] - 2026-08-16
 
 ### Added

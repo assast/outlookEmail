@@ -2165,6 +2165,8 @@
             const passwordGroup = document.getElementById('editPassword')?.closest('.form-group');
             const clientIdGroup = document.getElementById('editClientId')?.closest('.form-group');
             const refreshTokenGroup = document.getElementById('editRefreshToken')?.closest('.form-group');
+            const authorizationTypeGroup = document.getElementById('editAuthorizationType')?.closest('.form-group');
+            const authorizationTypeSelect = document.getElementById('editAuthorizationType');
             const imapFields = document.getElementById('editImapFields');
             const customImapFields = document.getElementById('editCustomImapFields');
             const reauthorizeGroup = document.getElementById('editReauthorizeGroup');
@@ -2172,6 +2174,8 @@
             if (passwordGroup) passwordGroup.style.display = isOutlook ? '' : 'none';
             if (clientIdGroup) clientIdGroup.style.display = isOutlook ? '' : 'none';
             if (refreshTokenGroup) refreshTokenGroup.style.display = isOutlook ? '' : 'none';
+            if (authorizationTypeGroup) authorizationTypeGroup.style.display = isOutlook ? '' : 'none';
+            if (authorizationTypeSelect) authorizationTypeSelect.disabled = !isOutlook;
             if (imapFields) imapFields.style.display = isOutlook ? 'none' : '';
             if (customImapFields) customImapFields.style.display = provider === 'custom' ? '' : 'none';
             if (reauthorizeGroup) reauthorizeGroup.style.display = isOutlook ? '' : 'none';

@@ -1007,6 +1007,54 @@ def resolve_account_record(row: sqlite3.Row, matched_alias: str = '',
     return account
 
 
+def get_account_authorization_type(account: Any) -> str:
+    """读取并归一化 Outlook OAuth 账号首选通道。"""
+    if account is None:
+        return ''
+    if isinstance(account, dict):
+        value = account.get('authorization_type')
+    else:
+        try:
+            value = account['authorization_type']
+        except (KeyError, IndexError, TypeError, AttributeError):
+            value = ''
+    return normalize_outlook_authorization_type(value)
+
+
+def update_account_authorization_type(account_id: int, authorization_type: Any, db=None) -> bool:
+    """按账号 ID 更新授权通道；普通 IMAP 账号始终保持空值。"""
+    normalized = normalize_outlook_authorization_type(authorization_type, strict=True)
+    database = db or get_db()
+    row = database.execute(
+        'SELECT account_type FROM accounts WHERE id = ? LIMIT 1',
+        (account_id,),
+    ).fetchone()
+    if not row:
+        return False
+    if str(row['account_type'] or '').strip().lower() == 'imap':
+        normalized = ''
+    cursor = database.execute(
+        'UPDATE accounts SET authorization_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        (normalized, account_id),
+    )
+    if db is None:
+        database.commit()
+    return int(cursor.rowcount or 0) > 0
+
+
+def record_account_authorization_type(account: Dict[str, Any], authorization_type: Any,
+                                       db=None) -> bool:
+    """持久化并同步内存账号的实际成功通道。"""
+    account_id = int(account.get('id') or 0)
+    if not account_id:
+        return False
+    normalized = normalize_outlook_authorization_type(authorization_type, strict=True)
+    if not update_account_authorization_type(account_id, normalized, db=db):
+        return False
+    account['authorization_type'] = normalized
+    return True
+
+
 def resolve_account_by_address(email_addr: str) -> Optional[Dict]:
     normalized = normalize_email_address(email_addr)
     if not normalized:
@@ -1334,6 +1382,7 @@ def serialize_account_summary(account: Dict[str, Any], last_refresh_log: Optiona
         'status': account.get('status', 'active'),
         'account_type': account.get('account_type', 'outlook'),
         'provider': account.get('provider', 'outlook'),
+        'authorization_type': get_account_authorization_type(account),
         'forward_enabled': bool(account.get('forward_enabled')),
         'proxy_override_enabled': account_has_proxy_override(account),
         'last_refresh_at': refresh_state['last_refresh_at'],
@@ -1990,7 +2039,8 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
                    account_type: str = 'outlook', provider: str = 'outlook',
                    imap_host: str = '', imap_port: int = 993, imap_password: str = '',
                    forward_enabled: bool = False, proxy_url: str = '',
-                   fallback_proxy_url_1: str = '', fallback_proxy_url_2: str = '') -> bool:
+                   fallback_proxy_url_1: str = '', fallback_proxy_url_2: str = '',
+                   authorization_type: Optional[str] = None) -> bool:
     """更新邮箱账号"""
     db = get_db()
     try:
@@ -2004,9 +2054,16 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
         normalized_fallback_proxy_url_2 = str(fallback_proxy_url_2 or '').strip()
 
         current_account = db.execute(
-            'SELECT forward_enabled, forward_last_checked_at FROM accounts WHERE id = ?',
+            'SELECT forward_enabled, forward_last_checked_at, account_type, authorization_type FROM accounts WHERE id = ?',
             (account_id,)
         ).fetchone()
+        effective_authorization_type = (
+            get_account_authorization_type(current_account)
+            if authorization_type is None and current_account
+            else normalize_outlook_authorization_type(authorization_type, strict=True)
+        )
+        if str(account_type or '').strip().lower() == 'imap':
+            effective_authorization_type = ''
         should_init_forward_cursor = bool(
             forward_enabled and current_account and not current_account['forward_enabled']
         )
@@ -2016,6 +2073,7 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
                 UPDATE accounts
                 SET email = ?, password = ?, client_id = ?, refresh_token = ?,
                     group_id = ?, sort_order = ?, remark = ?, status = ?, account_type = ?, provider = ?,
+                    authorization_type = ?,
                     imap_host = ?, imap_port = ?, imap_password = ?, forward_enabled = ?,
                     forward_last_checked_at = ?, proxy_url = ?, fallback_proxy_url_1 = ?,
                     fallback_proxy_url_2 = ?, updated_at = CURRENT_TIMESTAMP
@@ -2023,7 +2081,7 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
             ''', (
                 email_addr, encrypted_password, client_id, encrypted_refresh_token, group_id, normalized_sort_order,
                 remark, status,
-                account_type, provider, imap_host, imap_port, encrypted_imap_password, 1,
+                account_type, provider, effective_authorization_type, imap_host, imap_port, encrypted_imap_password, 1,
                 datetime.now(timezone.utc).isoformat(), normalized_proxy_url,
                 normalized_fallback_proxy_url_1, normalized_fallback_proxy_url_2, account_id
             ))
@@ -2032,6 +2090,7 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
                 UPDATE accounts
                 SET email = ?, password = ?, client_id = ?, refresh_token = ?,
                     group_id = ?, sort_order = ?, remark = ?, status = ?, account_type = ?, provider = ?,
+                    authorization_type = ?,
                     imap_host = ?, imap_port = ?, imap_password = ?, forward_enabled = ?,
                     proxy_url = ?, fallback_proxy_url_1 = ?, fallback_proxy_url_2 = ?,
                     updated_at = CURRENT_TIMESTAMP
@@ -2039,7 +2098,7 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
             ''', (
                 email_addr, encrypted_password, client_id, encrypted_refresh_token, group_id, normalized_sort_order,
                 remark, status,
-                account_type, provider, imap_host, imap_port, encrypted_imap_password, 1 if forward_enabled else 0,
+                account_type, provider, effective_authorization_type, imap_host, imap_port, encrypted_imap_password, 1 if forward_enabled else 0,
                 normalized_proxy_url, normalized_fallback_proxy_url_1, normalized_fallback_proxy_url_2, account_id
             ))
         db.commit()

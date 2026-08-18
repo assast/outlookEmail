@@ -1369,6 +1369,7 @@
                     document.getElementById('editEmail').value = acc.email || '';
                     resetEditSecretInput('editPassword', 'revealEditPasswordBtn', !!acc.has_password, acc.password || '', '可选');
                     document.getElementById('editClientId').value = acc.client_id || '';
+                    document.getElementById('editAuthorizationType').value = acc.authorization_type || '';
                     document.getElementById('editRefreshToken').value = acc.refresh_token || '';
                     resetEditSecretInput('editImapPassword', 'revealEditImapPasswordBtn', !!acc.has_imap_password, acc.imap_password || '', '');
                     document.getElementById('editImapHost').value = acc.imap_host || '';
@@ -1417,6 +1418,7 @@
                 email: document.getElementById('editEmail').value.trim(),
                 client_id: document.getElementById('editClientId').value.trim(),
                 refresh_token: document.getElementById('editRefreshToken').value.trim(),
+                authorization_type: document.getElementById('editAuthorizationType')?.value || '',
                 account_type: isOutlook ? 'outlook' : 'imap',
                 provider,
                 imap_host: document.getElementById('editImapHost')?.value.trim() || '',

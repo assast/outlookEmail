@@ -302,6 +302,15 @@
                                 <label class="form-label">Client ID</label>
                                 <input type="text" class="form-input" id="editClientId">
                             </div>
+                            <div class="form-group">
+                                <label class="form-label">授权类型</label>
+                                <select class="form-select" id="editAuthorizationType">
+                                    <option value="">未设置（Graph 优先）</option>
+                                    <option value="graph">Graph</option>
+                                    <option value="imap">IMAP</option>
+                                </select>
+                                <div class="form-hint">首选通道失败时会自动回退到另一通道，并记录实际成功通道。</div>
+                            </div>
                             <div class="form-group edit-account-span-2">
                                 <label class="form-label">Refresh Token</label>
                                 <textarea class="form-textarea edit-account-token" id="editRefreshToken"></textarea>

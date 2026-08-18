@@ -415,6 +415,7 @@ curl -H "X-API-Key: your-api-key" \
       "status": "active",
       "account_type": "outlook",
       "provider": "outlook",
+      "authorization_type": "graph",
       "forward_enabled": true,
       "last_refresh_at": "2026-04-09 14:20:00",
       "last_refresh_status": "success",
@@ -780,6 +781,7 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 | `has_more` | 是否还有下一页 |
 | `aliases` | 账号别名列表 |
 | `alias_count` | 别名数量 |
+| `authorization_type` | Outlook OAuth 首选/最近成功通道：`graph`、`imap` 或空字符串（未设置，默认 Graph 优先） |
 | `forward_enabled` | 是否开启转发 |
 | `last_refresh_at` | 最近刷新时间 |
 | `last_refresh_status` | 最近刷新结果 |
@@ -876,6 +878,7 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
     "has_password": true,
     "has_imap_password": false,
     "client_id": "xxx",
+    "authorization_type": "graph",
     "refresh_token": "xxx",
     "aliases": ["alias@example.com", "login@example.com"],
     "alias_count": 2,
@@ -922,6 +925,7 @@ Content-Type: application/json
 - 支持 Outlook 账号和 IMAP 账号
 - 现在支持直接在更新账号时一起保存别名
 - `proxy_url`、`fallback_proxy_url_1`、`fallback_proxy_url_2` 未传时保留账号现有代理配置；显式传空字符串可清空账号覆盖
+- `authorization_type` 未传时保留现有通道；显式传空字符串可清空为首选 Graph。合法值为 `graph`、`imap` 或空字符串；非法值返回错误。普通 IMAP 账号始终保存为空
 
 #### 请求体常用字段
 
@@ -932,6 +936,7 @@ Content-Type: application/json
 | `client_id` | string | Outlook 必填 | Outlook Client ID |
 | `refresh_token` | string | Outlook 必填 | Outlook Refresh Token |
 | `account_type` | string | 否 | `outlook` 或 `imap` |
+| `authorization_type` | string | 否 | Outlook OAuth 首选通道：`graph`、`imap` 或空字符串；未传则保留现有值 |
 | `provider` | string | 否 | `outlook`、`auto`、`qq`、`163`、`126`、`yahoo`、`aliyun`、`custom` |
 | `imap_host` | string | 自定义 IMAP 必填 | 自定义 IMAP 服务器 |
 | `imap_port` | int | 否 | IMAP 端口 |
@@ -952,6 +957,7 @@ Content-Type: application/json
   "email": "user@outlook.com",
   "client_id": "xxx",
   "refresh_token": "xxx",
+  "authorization_type": "graph",
   "group_id": 1,
   "remark": "主账号",
   "status": "active",
@@ -998,7 +1004,8 @@ Content-Type: application/json
   "validation": {
     "success": true,
     "status": "success",
-    "message": "Token 刷新成功"
+    "message": "Token 刷新成功",
+    "authorization_type": "graph"
   }
 }
 ```
@@ -1786,7 +1793,7 @@ Content-Type: application/json
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `folder` | string | 否 | 当前邮件所在文件夹，默认 `inbox` |
-| `method` | string | 否 | 优先取详情的方式，常见为 `graph`；传 `imap` 可走 Outlook OAuth IMAP 回退 |
+| `method` | string | 否 | 优先取详情的方式。若账号已记录 `authorization_type`，按该通道优先并自动回退；未记录时 `graph` 优先、传 `imap` 只走 OAuth IMAP |
 | `id_mode` | string | 否 | OAuth IMAP 消息 ID 模式，支持 `uid`、`sequence`；缺省或非法值按 `uid` 处理 |
 | `source` | string | 否 | 传 `local` 时优先返回已缓存的本地保留详情正文 |
 | `prefer_local` | bool | 否 | `1` / `true` / `yes` / `on` 等价于 `source=local` |

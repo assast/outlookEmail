@@ -416,14 +416,24 @@ def upsert_graph_authorized_account(email: str, password: str, client_id: str,
                                     group_id: Any = None,
                                     proxy_url: str = '',
                                     tag_ids: Any = None,
-                                    remark: str = '') -> Dict[str, Any]:
+                                    remark: str = '',
+                                    authorization_type: Optional[str] = None) -> Dict[str, Any]:
     db = get_db()
     existing = db.execute(
-        'SELECT id FROM accounts WHERE LOWER(email) = ? LIMIT 1',
+        'SELECT id, authorization_type FROM accounts WHERE LOWER(email) = ? LIMIT 1',
         (normalize_email_address(email),),
     ).fetchone()
     encrypted_password = encrypt_data(password) if password else password
     encrypted_refresh_token = encrypt_data(refresh_token) if refresh_token else refresh_token
+    if authorization_type is None:
+        normalized_authorization_type = normalize_outlook_authorization_type(
+            existing['authorization_type'] if existing else ''
+        )
+    else:
+        normalized_authorization_type = normalize_outlook_authorization_type(
+            authorization_type,
+            strict=True,
+        )
 
     if existing:
         account_id = int(existing['id'])
@@ -436,13 +446,14 @@ def upsert_graph_authorized_account(email: str, password: str, client_id: str,
                 refresh_token = ?,
                 account_type = 'outlook',
                 provider = 'outlook',
+                authorization_type = ?,
                 refresh_token_updated_at = CURRENT_TIMESTAMP,
                 last_refresh_status = 'never',
                 last_refresh_error = NULL,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             ''',
-            (encrypted_password, client_id, encrypted_refresh_token, account_id),
+            (encrypted_password, client_id, encrypted_refresh_token, normalized_authorization_type, account_id),
         )
         return {"account_id": account_id, "created": False}
 
@@ -472,13 +483,14 @@ def upsert_graph_authorized_account(email: str, password: str, client_id: str,
     db.execute(
         '''
         UPDATE accounts
-        SET refresh_token_updated_at = CURRENT_TIMESTAMP,
+        SET authorization_type = ?,
+            refresh_token_updated_at = CURRENT_TIMESTAMP,
             last_refresh_status = 'never',
             last_refresh_error = NULL,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         ''',
-        (account_id,),
+        (normalized_authorization_type, account_id),
     )
     return {"account_id": account_id, "created": True}
 
@@ -496,7 +508,8 @@ def mark_upload_account_authorized(account_id: int) -> None:
 
 
 def save_graph_authorization_result(upload_row: Any, client_id: str,
-                                    refresh_token: str) -> Dict[str, Any]:
+                                    refresh_token: str,
+                                    authorization_type: Optional[str] = None) -> Dict[str, Any]:
     email = str(upload_row['email'] or '').strip()
     password = get_upload_account_plain_password(upload_row)
     row_data = dict(upload_row) if hasattr(upload_row, 'keys') else {}
@@ -509,6 +522,7 @@ def save_graph_authorization_result(upload_row: Any, client_id: str,
         proxy_url=row_data.get('proxy_url') or '',
         tag_ids=decode_upload_tag_ids(row_data.get('tag_ids')),
         remark=str(row_data.get('remark') or ''),
+        authorization_type=authorization_type,
     )
     mark_upload_account_authorized(int(upload_row['id']))
     get_db().commit()
@@ -575,11 +589,18 @@ def run_graph_oauth_task(account_id: int, output_queue: "queue.Queue[Dict[str, A
             client_id = str(result.get("client_id") or "").strip()
             refresh_token = str(result.get("refresh_token") or "").strip()
             log(f"验证 {mode_label} refresh_token")
-            ok, error_msg, rotated_refresh_token = test_refresh_token(
+            refresh_result = test_refresh_token(
                 client_id,
                 refresh_token,
                 proxy_url=auth_proxy_url,
+                authorization_type=mode,
             )
+            try:
+                ok, error_msg, rotated_refresh_token, actual_channel = refresh_result
+            except (TypeError, ValueError):
+                ok, error_msg, rotated_refresh_token = refresh_result
+                actual_channel = mode
+            actual_channel = normalize_outlook_authorization_type(actual_channel)
             if not ok:
                 emit({
                     "type": "error",
@@ -592,11 +613,17 @@ def run_graph_oauth_task(account_id: int, output_queue: "queue.Queue[Dict[str, A
                 return
 
             token_to_save = rotated_refresh_token or refresh_token
-            save_result = save_graph_authorization_result(upload_row, client_id, token_to_save)
+            save_result = save_graph_authorization_result(
+                upload_row,
+                client_id,
+                token_to_save,
+                authorization_type=actual_channel or mode,
+            )
             emit({
                 "type": "success",
                 "success": True,
                 "mode": mode,
+                "authorization_type": actual_channel or mode,
                 "email": email,
                 "account_id": save_result["account_id"],
                 "created": save_result["created"],
