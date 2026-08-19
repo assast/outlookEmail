@@ -36,7 +36,7 @@ from pathlib import Path, PurePosixPath
 from typing import Optional, List, Dict, Any, Union
 from urllib.parse import quote, urlparse, unquote
 from zoneinfo import ZoneInfo
-from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for, Response, make_response
+from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for, Response, make_response, has_app_context
 from flask.sessions import SecureCookieSessionInterface
 from functools import wraps
 import requests
@@ -173,11 +173,22 @@ IMAP_SERVER_NEW = "outlook.live.com"
 IMAP_PORT = 993
 HTTP_REQUEST_TIMEOUT = int(os.getenv("HTTP_REQUEST_TIMEOUT", "30"))
 IMAP_TIMEOUT = int(os.getenv("IMAP_TIMEOUT", "45"))
+MAIL_FETCH_TIMEOUT_SETTING_KEY = 'mail_fetch_timeout_seconds'
+MAIL_FETCH_TIMEOUT_DEFAULT_SECONDS = 120
+MAIL_FETCH_TIMEOUT_MIN_SECONDS = 30
+MAIL_FETCH_TIMEOUT_MAX_SECONDS = 300
 DEFAULT_APP_TIMEZONE = (os.getenv("APP_TIMEZONE", "Asia/Shanghai") or "Asia/Shanghai").strip()
 FALLBACK_APP_TIMEZONE = "UTC"
-MAIL_FETCH_OVERALL_TIMEOUT = int(
-    os.getenv("MAIL_FETCH_OVERALL_TIMEOUT", str(max(HTTP_REQUEST_TIMEOUT, IMAP_TIMEOUT) + 5))
-)
+try:
+    MAIL_FETCH_OVERALL_TIMEOUT = max(
+        MAIL_FETCH_TIMEOUT_MIN_SECONDS,
+        min(
+            MAIL_FETCH_TIMEOUT_MAX_SECONDS,
+            int(os.getenv("MAIL_FETCH_OVERALL_TIMEOUT", str(MAIL_FETCH_TIMEOUT_DEFAULT_SECONDS))),
+        )
+    )
+except (TypeError, ValueError):
+    MAIL_FETCH_OVERALL_TIMEOUT = MAIL_FETCH_TIMEOUT_DEFAULT_SECONDS
 
 try:
     with resource_path('VERSION').open('r', encoding='utf-8') as version_file:
@@ -2645,6 +2656,38 @@ def get_all_settings() -> Dict[str, str]:
     cursor = db.execute('SELECT key, value FROM settings')
     rows = cursor.fetchall()
     return {row['key']: row['value'] for row in rows}
+
+
+def parse_mail_fetch_timeout_seconds(value: Any) -> Optional[int]:
+    """解析用户配置的邮件获取超时秒数。"""
+    try:
+        seconds = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    if seconds < MAIL_FETCH_TIMEOUT_MIN_SECONDS or seconds > MAIL_FETCH_TIMEOUT_MAX_SECONDS:
+        return None
+    return seconds
+
+
+def normalize_mail_fetch_timeout_seconds(value: Any, default: int = MAIL_FETCH_TIMEOUT_DEFAULT_SECONDS) -> int:
+    """将邮件获取超时秒数限制在安全范围内。"""
+    try:
+        seconds = int(str(value).strip())
+    except (TypeError, ValueError):
+        seconds = default
+    return max(MAIL_FETCH_TIMEOUT_MIN_SECONDS, min(MAIL_FETCH_TIMEOUT_MAX_SECONDS, seconds))
+
+
+def get_mail_fetch_timeout_seconds() -> int:
+    """读取当前邮件获取整体超时秒数，优先使用系统设置，兼容环境变量。"""
+    configured_value = ''
+    if has_app_context():
+        configured_value = str(get_setting(MAIL_FETCH_TIMEOUT_SETTING_KEY, '') or '').strip()
+    if configured_value:
+        return normalize_mail_fetch_timeout_seconds(configured_value)
+    return normalize_mail_fetch_timeout_seconds(
+        os.getenv('MAIL_FETCH_OVERALL_TIMEOUT', MAIL_FETCH_TIMEOUT_DEFAULT_SECONDS)
+    )
 
 
 # ==================== 皮肤管理 ====================

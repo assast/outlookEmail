@@ -611,6 +611,7 @@ def api_get_settings():
     settings['show_account_created_at'] = get_setting('show_account_created_at', 'true')
     settings['show_account_sort_order'] = get_setting('show_account_sort_order', 'false')
     settings['show_group_id'] = get_setting('show_group_id', 'true')
+    settings['mail_fetch_timeout_seconds'] = str(get_mail_fetch_timeout_seconds())
     settings['normal_mail_local_retention_enabled'] = get_setting(
         'normal_mail_local_retention_enabled',
         'false',
@@ -1045,6 +1046,17 @@ def api_update_settings():
                 errors.append('保存转发垃圾箱邮件失败')
         else:
             errors.append('转发垃圾箱邮件必须是 true 或 false')
+
+    if MAIL_FETCH_TIMEOUT_SETTING_KEY in data:
+        mail_fetch_timeout_seconds = parse_mail_fetch_timeout_seconds(data[MAIL_FETCH_TIMEOUT_SETTING_KEY])
+        if mail_fetch_timeout_seconds is None:
+            errors.append(
+                f'邮件获取超时必须在 {MAIL_FETCH_TIMEOUT_MIN_SECONDS}-{MAIL_FETCH_TIMEOUT_MAX_SECONDS} 秒之间'
+            )
+        elif set_setting(MAIL_FETCH_TIMEOUT_SETTING_KEY, str(mail_fetch_timeout_seconds)):
+            updated.append('邮件获取超时')
+        else:
+            errors.append('保存邮件获取超时失败')
 
     if 'forward_channels' in data:
         forward_channels = normalize_forward_channel_settings(data['forward_channels'])

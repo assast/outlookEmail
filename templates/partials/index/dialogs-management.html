@@ -102,6 +102,14 @@
                                     <div class="form-hint">影响时间展示与 Cron 调度。</div>
                                 </div>
                                 <div class="form-group">
+                                    <label class="form-label">邮件获取超时</label>
+                                    <div class="input-inline">
+                                        <input type="number" class="form-input" id="mailFetchTimeoutSeconds" min="30" max="300" value="120" placeholder="120">
+                                        <span>秒</span>
+                                    </div>
+                                    <div class="form-hint">用于普通 Outlook/IMAP 邮箱读取邮件列表；邮箱较大或 Gmail 响应较慢时可适当调大。</div>
+                                </div>
+                                <div class="form-group">
                                     <label class="settings-toggle settings-toggle--card">
                                         <input type="checkbox" id="settingsShowAccountCreatedAt" checked>
                                         <span class="form-label">展示创建时间</span>

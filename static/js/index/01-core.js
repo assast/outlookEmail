@@ -43,7 +43,27 @@
         let selectedTagFilters = new Set();
         let tagFilterKeyword = '';
         let responsiveUiResizeTimer = null;
-        const EMAIL_LIST_REQUEST_TIMEOUT_MS = 70000;
+        const DEFAULT_MAIL_FETCH_TIMEOUT_SECONDS = 120;
+        const MAIL_FETCH_TIMEOUT_MIN_SECONDS = 30;
+        const MAIL_FETCH_TIMEOUT_MAX_SECONDS = 300;
+        const EMAIL_LIST_REQUEST_TIMEOUT_BUFFER_MS = 10000;
+        function normalizeMailFetchTimeoutSeconds(value) {
+            const seconds = Number.parseInt(String(value ?? '').trim(), 10);
+            if (!Number.isFinite(seconds)) return DEFAULT_MAIL_FETCH_TIMEOUT_SECONDS;
+            return Math.max(MAIL_FETCH_TIMEOUT_MIN_SECONDS, Math.min(MAIL_FETCH_TIMEOUT_MAX_SECONDS, seconds));
+        }
+        function buildEmailListRequestTimeoutMs(value) {
+            return normalizeMailFetchTimeoutSeconds(value) * 1000 + EMAIL_LIST_REQUEST_TIMEOUT_BUFFER_MS;
+        }
+        let mailFetchTimeoutSeconds = normalizeMailFetchTimeoutSeconds(window.OUTLOOK_EMAIL_CONFIG?.mailFetchTimeoutSeconds);
+        let EMAIL_LIST_REQUEST_TIMEOUT_MS = buildEmailListRequestTimeoutMs(mailFetchTimeoutSeconds);
+        function setMailFetchTimeoutSeconds(value) {
+            mailFetchTimeoutSeconds = normalizeMailFetchTimeoutSeconds(value);
+            EMAIL_LIST_REQUEST_TIMEOUT_MS = buildEmailListRequestTimeoutMs(mailFetchTimeoutSeconds);
+        }
+        function getMailFetchTimeoutSeconds() {
+            return mailFetchTimeoutSeconds;
+        }
         const EMAIL_DETAIL_REQUEST_TIMEOUT_MS = 45000;
         const EMAIL_LIST_LOAD_MORE_THRESHOLD_PX = 96;
         const TOKEN_REFRESH_REQUEST_TIMEOUT_MS = 70000;

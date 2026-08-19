@@ -21,6 +21,11 @@
     <!-- 消息提示 -->
     <div class="toast" id="toast"></div>
 
+    <script>
+        window.OUTLOOK_EMAIL_CONFIG = {
+            mailFetchTimeoutSeconds: {{ mail_fetch_timeout_seconds | tojson }}
+        };
+    </script>
     <script src="{{ url_for('static', filename='js/index/01-core.js', v=frontend_asset_hash) }}"></script>
     <script src="{{ url_for('static', filename='js/index/02-groups.js', v=frontend_asset_hash) }}"></script>
     <script src="{{ url_for('static', filename='js/index/03-temp-emails.js', v=frontend_asset_hash) }}"></script>
