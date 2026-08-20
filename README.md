@@ -167,6 +167,8 @@ python -c 'import secrets; print(secrets.token_hex(32))'
 
 可选：如需调整 Gunicorn 线程数 / 超时，在 `.env.local` 中追加 `GUNICORN_THREADS`、`GUNICORN_TIMEOUT`（不填则使用默认值 4 / 300）。
 
+可选：普通 Outlook/IMAP 邮箱读取邮件列表的整体超时默认为 120 秒，可在「系统设置 -> 常规设置 -> 邮件获取超时」中调整；也可在首次启动前通过 `.env.local` 的 `MAIL_FETCH_OVERALL_TIMEOUT` 设置初始值。
+
 #### 步骤 2：构建并启动
 
 ```bash

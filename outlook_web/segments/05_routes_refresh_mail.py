@@ -3753,7 +3753,8 @@ def fetch_account_emails(account: Dict[str, Any], folder: str, skip: int, top: i
             for folder_job in folder_jobs
         }
         try:
-            done, not_done = wait(future_map.values(), timeout=MAIL_FETCH_OVERALL_TIMEOUT)
+            mail_fetch_timeout_seconds = get_mail_fetch_timeout_seconds()
+            done, not_done = wait(future_map.values(), timeout=mail_fetch_timeout_seconds)
             for folder_job, future in future_map.items():
                 if future in done:
                     try:
@@ -3779,7 +3780,7 @@ def fetch_account_emails(account: Dict[str, Any], folder: str, skip: int, top: i
                         '获取邮件超时，请稍后重试',
                         'TimeoutError',
                         504,
-                        f'folder={folder_job}, timeout={MAIL_FETCH_OVERALL_TIMEOUT}s'
+                        f'folder={folder_job}, timeout={mail_fetch_timeout_seconds}s'
                     )
                 }
         finally:

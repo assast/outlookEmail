@@ -1,4 +1,4 @@
-        /* global accountsCache, allTags, closeAllModals, closeMobilePanels, closeNavbarActionsMenu, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, escapeHtml, formatAbsoluteDateTime, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, invalidateNormalMailRetentionCaches, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadCloudflareChannelsForTempEmails, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, refreshVisibleAccountList, setAppTimeZone, setModalVisible, setSelectedForwardChannels, setShowAccountCreatedAt, setShowAccountSortOrder, setShowGroupId, setNormalMailLocalRetentionEnabled, showConfirmModal, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
+        /* global accountsCache, allTags, closeAllModals, closeMobilePanels, closeNavbarActionsMenu, currentGroupId, currentGroupName, deleteCurrentAccount, ensureForwardingSettingsUI, escapeHtml, formatAbsoluteDateTime, getSelectedForwardChannels, groups, handleApiError, hideEditAccountModal, hideModal, hideSettingsModal, invalidateNormalMailRetentionCaches, isTempEmailGroup, isTempImportGroup, loadAccountsByGroup, loadCloudflareChannelsForTempEmails, loadGroups, loadTempEmails, normalizeSmtpForwardProvider, refreshVisibleAccountList, setAppTimeZone, setMailFetchTimeoutSeconds, setModalVisible, setSelectedForwardChannels, setShowAccountCreatedAt, setShowAccountSortOrder, setShowGroupId, setNormalMailLocalRetentionEnabled, showConfirmModal, showModal, showToast, syncSmtpProviderUI, toggleRefreshStrategy, updateEditAccountFields, updateImportHint */
 
         // ==================== 设置相关 ====================
         let settingsScrollSyncBound = false;
@@ -1794,6 +1794,9 @@
                     document.getElementById('refreshDelaySeconds').value = data.settings.refresh_delay_seconds || '5';
                     document.getElementById('refreshCron').value = data.settings.refresh_cron || '0 2 * * *';
                     document.getElementById('enableScheduledRefresh').checked = data.settings.enable_scheduled_refresh !== 'false';
+                    const mailFetchTimeoutSeconds = data.settings.mail_fetch_timeout_seconds || '120';
+                    document.getElementById('mailFetchTimeoutSeconds').value = mailFetchTimeoutSeconds;
+                    setMailFetchTimeoutSeconds(mailFetchTimeoutSeconds);
                     document.getElementById('settingsShowAccountCreatedAt').checked = String(data.settings.show_account_created_at) !== 'false';
                     document.getElementById('settingsShowAccountSortOrder').checked = String(data.settings.show_account_sort_order) === 'true';
                     document.getElementById('settingsShowGroupId').checked = String(data.settings.show_group_id) !== 'false';
@@ -1856,6 +1859,7 @@
             const appTimeZone = document.getElementById('settingsAppTimezone').value.trim();
             const strategy = document.querySelector('input[name="refreshStrategy"]:checked').value;
             const enableScheduled = document.getElementById('enableScheduledRefresh').checked;
+            const mailFetchTimeoutSeconds = parseInt(document.getElementById('mailFetchTimeoutSeconds').value || '120', 10);
             const showAccountCreatedAt = !!document.getElementById('settingsShowAccountCreatedAt')?.checked;
             const showAccountSortOrder = !!document.getElementById('settingsShowAccountSortOrder')?.checked;
             const showGroupId = !!document.getElementById('settingsShowGroupId')?.checked;
@@ -1928,6 +1932,10 @@
             }
             if (!isValidAppTimeZone(appTimeZone)) {
                 showToast('Invalid time zone', 'error');
+                return;
+            }
+            if (Number.isNaN(mailFetchTimeoutSeconds) || mailFetchTimeoutSeconds < 30 || mailFetchTimeoutSeconds > 300) {
+                showToast('邮件获取超时必须在 30-300 秒之间', 'error');
                 return;
             }
             if (Number.isNaN(forwardSeconds) || forwardSeconds < 20 || forwardSeconds > 3600) {
@@ -2014,6 +2022,7 @@
             settings.use_cron_schedule = strategy === 'cron';
             settings.enable_scheduled_refresh = enableScheduled;
             settings.app_timezone = appTimeZone;
+            settings.mail_fetch_timeout_seconds = mailFetchTimeoutSeconds;
             settings.show_account_created_at = showAccountCreatedAt;
             settings.show_account_sort_order = showAccountSortOrder;
             settings.show_group_id = showGroupId;
@@ -2093,6 +2102,7 @@
             setShowAccountCreatedAt(showAccountCreatedAt);
             setShowAccountSortOrder(showAccountSortOrder);
             setShowGroupId(showGroupId);
+            setMailFetchTimeoutSeconds(mailFetchTimeoutSeconds);
             setNormalMailLocalRetentionEnabled(normalMailLocalRetentionEnabled);
             if (wasRetentionEnabled && !normalMailLocalRetentionEnabled
                 && typeof invalidateNormalMailRetentionCaches === 'function') {

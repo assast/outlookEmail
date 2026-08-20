@@ -199,6 +199,7 @@ def index():
         changelog_url=CHANGELOG_URL,
         frontend_asset_hash=get_frontend_asset_hash(),
         skin_asset_hash=get_active_skin_asset_hash(),
+        mail_fetch_timeout_seconds=get_mail_fetch_timeout_seconds(),
     ))
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
