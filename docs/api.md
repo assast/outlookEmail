@@ -2252,6 +2252,7 @@ POST /api/cloudflare/channels
 | `cloudflare_ai_username_api_key_configured` | 是否已保存 Cloudflare AI API Key |
 | `cloudflare_ai_username_api_key_masked` | Cloudflare AI API Key 掩码，不返回明文 |
 | `app_timezone` | 当前系统时区，IANA 时区名，例如 `Asia/Shanghai` |
+| `mail_fetch_timeout_seconds` | 普通 Outlook/IMAP 读取邮件列表的整体超时秒数，范围 `30-300`，默认 `120` |
 | `show_account_created_at` | 是否在邮箱列表展示创建时间 |
 | `show_account_sort_order` | 是否在邮箱列表展示自定义排序值 |
 | `active_skin_id` | 当前实际生效皮肤 ID；配置不可用时会返回 `classic` |
@@ -2297,6 +2298,7 @@ POST /api/cloudflare/channels
 | `use_cron_schedule` | bool | 是否使用 Cron 调度 |
 | `enable_scheduled_refresh` | bool | 是否开启定时刷新 |
 | `app_timezone` | string | 系统时区，使用 IANA 时区名，例如 `Asia/Shanghai` |
+| `mail_fetch_timeout_seconds` | int | 普通 Outlook/IMAP 邮件列表整体获取超时，范围 `30-300`；未传则保留现有值。尚未保存该设置时回退环境变量 `MAIL_FETCH_OVERALL_TIMEOUT`，再回退 `120` |
 | `show_account_created_at` | bool | 是否在邮箱列表展示创建时间 |
 | `show_account_sort_order` | bool | 是否在邮箱列表展示自定义排序值 |
 | `active_skin_id` | string | 当前系统级外观皮肤 ID；所有登录设备共用同一设置 |

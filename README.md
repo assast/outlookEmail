@@ -167,7 +167,7 @@ python -c 'import secrets; print(secrets.token_hex(32))'
 
 可选：如需调整 Gunicorn 线程数 / 超时，在 `.env.local` 中追加 `GUNICORN_THREADS`、`GUNICORN_TIMEOUT`（不填则使用默认值 4 / 300）。
 
-可选：普通 Outlook/IMAP 邮箱读取邮件列表的整体超时默认为 120 秒，可在「系统设置 -> 常规设置 -> 邮件获取超时」中调整；也可在首次启动前通过 `.env.local` 的 `MAIL_FETCH_OVERALL_TIMEOUT` 设置初始值。
+可选：普通 Outlook/IMAP 邮箱读取邮件列表的整体超时默认为 120 秒，可在「系统设置 -> 常规设置 -> 邮件获取超时」中调整（30-300 秒）；也可在首次启动前通过 `.env.local` 的 `MAIL_FETCH_OVERALL_TIMEOUT` 设置初始值。该值应小于 `GUNICORN_TIMEOUT`（默认 300 秒）。
 
 #### 步骤 2：构建并启动
 
@@ -242,7 +242,7 @@ Outlook/Hotmail OAuth 的 IMAP 回退链路默认按 UID 读取详情和附件�
 - ⚡ **性能优化** - 邮件列表与账号列表缓存，分组切换和账号切换更快
 - 📄 **分页加载** - 滚动到底部自动加载下一页（每页20封）
 - 🔥 **临时邮箱** - 集成 GPTMail + DuckMail + Cloudflare Temp Email，多提供商生成、导入、读取、查看详情；Cloudflare 支持多渠道配置，每个 Worker/管理员密码/邮件池独立管理，并按渠道查看全部邮件
-- ⚙️ **系统设置** - 在线修改密码、API Key 等
+- ⚙️ **系统设置** - 在线修改密码、API Key、邮件获取超时等
 - 🔄 **OAuth2 助手** - 内置授权流程，快速获取 Refresh Token
 - 💾 **邮件缓存** - 智能缓存邮件列表，切换即时展示；普通邮箱本地保留默认关闭，可在设置页开启、查看统计并清理本地保留缓存
 - 🏷️ **标签管理** - 支持给邮箱打标签、批量操作、按标签筛选

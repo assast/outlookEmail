@@ -6,6 +6,17 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.6] - 2026-08-20
+
+### Added
+- 普通 Outlook/IMAP 邮箱读取邮件列表的整体超时改为系统可配置：设置页「常规设置 -> 邮件获取超时」，范围 30-300 秒，默认 120 秒（PR #79）。
+- 兼容环境变量 `MAIL_FETCH_OVERALL_TIMEOUT` 作为首次启动前的初始/兜底值；保存系统设置后以数据库配置为准。
+- 前端邮件列表请求超时按后端配置自动增加 10 秒缓冲。
+
+### Changed
+- `folder=all` 并行拉取收件箱与垃圾箱时，整体等待超时改为读取当前系统配置，超时详情会展示实际使用的秒数。
+- 未配置系统设置时的默认整体超时由约 50 秒（`max(HTTP_REQUEST_TIMEOUT, IMAP_TIMEOUT) + 5`）调整为 120 秒。
+
 ## [3.0.5] - 2026-08-18
 
 ### Added
