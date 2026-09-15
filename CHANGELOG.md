@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.7] - 2026-09-15
+
+### Added
+- 分组面板新增“显示分组描述”开关：默认保持紧凑列表，开启后展示非空分组描述，并按浏览器记忆展示偏好；长描述最多显示两行，悬浮可查看全文（#82）。
+
 ## [3.0.6] - 2026-08-20
 
 ### Added

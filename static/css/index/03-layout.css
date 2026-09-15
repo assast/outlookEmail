@@ -296,6 +296,19 @@
             gap: 8px;
         }
 
+        .group-description {
+            flex: 1;
+            min-width: 0;
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            overflow-wrap: anywhere;
+        }
+
         .group-meta {
             display: flex;
             align-items: center;

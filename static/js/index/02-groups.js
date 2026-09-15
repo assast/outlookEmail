@@ -7,7 +7,29 @@
         const ACCOUNT_SORT_STORAGE_KEY = 'outlook_account_sort';
         const ACCOUNT_TAG_FILTER_STORAGE_KEY = 'outlook_account_tag_filters';
         const GROUP_COLLAPSED_STORAGE_PREFIX = 'outlook_group_collapsed_';
+        const GROUP_DESCRIPTION_VISIBILITY_STORAGE_KEY = 'outlook_group_descriptions_visible';
         let groupTree = [];
+
+        function shouldShowGroupDescriptions() {
+            return localStorage.getItem(GROUP_DESCRIPTION_VISIBILITY_STORAGE_KEY) === 'true';
+        }
+
+        function syncGroupDescriptionVisibilityButton() {
+            const button = document.getElementById('groupDescriptionVisibilityBtn');
+            if (!button) return;
+
+            const visible = shouldShowGroupDescriptions();
+            button.classList.toggle('active', visible);
+            button.setAttribute('aria-pressed', visible ? 'true' : 'false');
+            button.title = visible ? '隐藏分组描述' : '显示分组描述';
+        }
+
+        function toggleGroupDescriptionVisibility() {
+            const visible = !shouldShowGroupDescriptions();
+            localStorage.setItem(GROUP_DESCRIPTION_VISIBILITY_STORAGE_KEY, String(visible));
+            syncGroupDescriptionVisibilityButton();
+            renderGroupList(groups);
+        }
 
         function normalizeGroupLevel(group) {
             const level = Number(group?.level || 1);
@@ -226,6 +248,7 @@
         // 加载分组列表
         async function loadGroups() {
             const container = document.getElementById('groupList');
+            syncGroupDescriptionVisibilityButton();
             container.innerHTML = '<div class="loading loading-small"><div class="loading-spinner"></div></div>';
 
             try {
@@ -311,10 +334,11 @@
                 return;
             }
 
-            container.innerHTML = renderGroupTree(groupTree);
+            const showGroupDescriptions = shouldShowGroupDescriptions();
+            container.innerHTML = renderGroupTree(groupTree, showGroupDescriptions);
         }
 
-        function renderGroupTree(nodes) {
+        function renderGroupTree(nodes, showGroupDescriptions = shouldShowGroupDescriptions()) {
             return nodes.map(group => {
                 const isSystem = isSystemGroup(group);
                 const isTempGroup = group.name === '临时邮箱';
@@ -327,6 +351,7 @@
                 const groupName = normalizeGroupName(group.name);
                 const groupIdBadgeText = formatGroupIdBadgeText(group.id);
                 const count = group.descendant_account_count ?? group.account_count ?? 0;
+                const groupDescription = String(group.description || '').trim();
 
                 return `
                     <div class="group-item level-${level} ${currentGroupId === group.id ? 'active' : ''} ${isTempGroup ? 'temp-email-group' : ''} ${isMovable ? 'draggable' : ''} ${isDragging ? 'dragging' : ''}"
@@ -345,8 +370,13 @@
                                 ${!isDefault && !isSystem ? `<button class="group-action-btn" onclick="event.stopPropagation(); deleteGroup(${group.id})" title="删除">🗑️</button>` : ''}
                             </div>
                         </div>
+                        ${showGroupDescriptions && groupDescription ? `
+                        <div class="group-row-2">
+                            <span class="group-description" title="${escapeHtml(groupDescription)}">${escapeHtml(groupDescription)}</span>
+                        </div>
+                        ` : ''}
                     </div>
-                    ${hasChildren && !collapsed ? renderGroupTree(group.children) : ''}
+                    ${hasChildren && !collapsed ? renderGroupTree(group.children, showGroupDescriptions) : ''}
                 `;
             }).join('');
         }

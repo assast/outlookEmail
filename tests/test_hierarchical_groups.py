@@ -146,7 +146,10 @@ class HierarchicalGroupTests(unittest.TestCase):
         self.assertFalse(blocked['success'])
         self.assertIn('临时邮箱', blocked['error'])
 
-        created_root = self.client.post('/api/groups', json={'name': '接口根组'}).get_json()
+        created_root = self.client.post(
+            '/api/groups',
+            json={'name': '接口根组', 'description': '接口根组描述'},
+        ).get_json()
         self.assertTrue(created_root['success'])
         root_id = created_root['group_id']
 
@@ -155,7 +158,9 @@ class HierarchicalGroupTests(unittest.TestCase):
         child_id = created_child['group_id']
 
         groups_payload = self.client.get('/api/groups').get_json()
+        root_group = next(group for group in groups_payload['groups'] if group['id'] == root_id)
         child_group = next(group for group in groups_payload['groups'] if group['id'] == child_id)
+        self.assertEqual(root_group['description'], '接口根组描述')
         self.assertEqual(child_group['parent_id'], root_id)
         self.assertEqual(child_group['level'], 2)
         self.assertIn('descendant_account_count', child_group)
@@ -287,14 +292,20 @@ class HierarchicalGroupTests(unittest.TestCase):
         groups_js = (ROOT_DIR / 'static' / 'js' / 'index' / '02-groups.js').read_text(encoding='utf-8')
         accounts_js = (ROOT_DIR / 'static' / 'js' / 'index' / '04-accounts.js').read_text(encoding='utf-8')
         dialogs_html = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'dialogs-primary.html').read_text(encoding='utf-8')
+        layout_html = (ROOT_DIR / 'templates' / 'partials' / 'index' / 'layout.html').read_text(encoding='utf-8')
         layout_css = (ROOT_DIR / 'static' / 'css' / 'index' / '03-layout.css').read_text(encoding='utf-8')
 
         self.assertIn('function buildGroupTree', groups_js)
         self.assertIn('function renderGroupTree', groups_js)
         self.assertIn('GROUP_COLLAPSED_STORAGE_PREFIX', groups_js)
+        self.assertIn('GROUP_DESCRIPTION_VISIBILITY_STORAGE_KEY', groups_js)
+        self.assertIn('function toggleGroupDescriptionVisibility', groups_js)
+        self.assertIn('showGroupDescriptions && groupDescription', groups_js)
         self.assertIn('parent_id: parentId', groups_js)
         self.assertIn('id="groupParentSelect"', dialogs_html)
+        self.assertIn('id="groupDescriptionVisibilityBtn"', layout_html)
         self.assertIn('.group-item.level-3', layout_css)
+        self.assertIn('.group-description', layout_css)
         self.assertIn('const isMovable = !isSystem && !isDefault', groups_js)
         self.assertIn('group.descendant_account_count ?? group.account_count ?? 0', groups_js)
         self.assertIn('syncExportGroupCheckboxStates', accounts_js)
