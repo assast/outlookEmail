@@ -1,31 +1,21 @@
-        /* global UNTAGGED_TAG_FILTER_KEY, accountsCache, currentAccountListSource, currentGroupId, handleApiError, hideModal, invalidateAccountCaches, isTempEmailGroup, isUntaggedTagFilterValue, loadAccountTagFilterPreference, loadAccountsByGroup, loadTempEmails, normalizeTagFilterSelectionValue, refreshVisibleAccountList, renderFilteredAccountList, renderImportTagOptions, renderTempEmailList, saveAccountTagFilterPreference, selectedTagFilters, showModal, showToast, updateBatchTagTagOptions, updateCurrentGroupHeader */
+        /* global accountsCache, currentAccountListSource, currentGroupId, excludedTagFilters, handleApiError, handleTagFilterChange, hideModal, invalidateAccountCaches, isTempEmailGroup, loadAccountTagExcludeFilterPreference, loadAccountTagFilterPreference, loadAccountsByGroup, loadTempEmails, normalizeTagFilterSelectionValue, refreshVisibleAccountList, renderFilteredAccountList, renderImportTagOptions, renderTempEmailList, saveAccountTagExcludeFilterPreference, saveAccountTagFilterPreference, selectedTagFilters, setAccountTagFilterSelection, showModal, showToast, updateBatchTagTagOptions, updateCurrentGroupHeader */
 
         // ==================== 标签管理 ====================
 
         let allTags = [];
-        const UNTAGGED_TAG_FILTER_ITEM = {
-            id: UNTAGGED_TAG_FILTER_KEY,
-            name: '无标签',
-            color: '#9ca3af',
-        };
-
-        function getTagFilterOptionItems() {
-            return [UNTAGGED_TAG_FILTER_ITEM, ...allTags];
-        }
 
         // ==================== 通用标签下拉组件函数 ====================
-        // 供邮箱列表筛选条件、导入模态框、编辑模态框共用
+        // 供导入模态框、编辑模态框共用
 
         /**
          * 生成 tag-filter-option checkbox 列表 HTML
          * @param {Array} tags - 标签列表 [{id, name, color}, ...]
          * @param {Array|Set} selectedIds - 已选中的标签 ID 集合
          * @param {string} onchangeFn - onchange 调用的函数名（不含括号）
-         * @param {boolean} includeUntagged - 是否包含"无标签"选项（仅筛选条件用）
          */
-        function buildTagFilterOptionsHtml(tags, selectedIds, onchangeFn, includeUntagged) {
+        function buildTagFilterOptionsHtml(tags, selectedIds, onchangeFn) {
             const selectedSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds);
-            let items = includeUntagged ? [UNTAGGED_TAG_FILTER_ITEM, ...tags] : (tags || []);
+            const items = tags || [];
             if (!items.length) {
                 return '<div class="tag-filter-empty" style="display: block;">暂无标签</div>';
             }
@@ -137,6 +127,26 @@
             hideModal('tagManagementModal');
         }
 
+        function pruneAccountTagFilterSelections() {
+            const availableTagIds = new Set(
+                allTags
+                    .map(tag => normalizeTagFilterSelectionValue(tag.id))
+                    .filter(tagId => Number.isFinite(tagId) && tagId > 0)
+            );
+            const includedTagFilters = new Set(
+                Array.from(selectedTagFilters)
+                    .map(tagId => normalizeTagFilterSelectionValue(tagId))
+                    .filter(tagId => availableTagIds.has(tagId))
+            );
+            const prunedExcludedTagFilters = new Set(
+                Array.from(excludedTagFilters)
+                    .map(tagId => normalizeTagFilterSelectionValue(tagId))
+                    .filter(tagId => availableTagIds.has(tagId) && !includedTagFilters.has(tagId))
+            );
+            selectedTagFilters = includedTagFilters;
+            excludedTagFilters = prunedExcludedTagFilters;
+        }
+
         // 加载标签列表
         async function loadTags() {
             try {
@@ -144,32 +154,20 @@
                 const data = await response.json();
                 if (data.success) {
                     allTags = data.tags;
-                    const selectedBeforePrune = Array.from(selectedTagFilters)
-                        .map(tagId => normalizeTagFilterSelectionValue(tagId))
-                        .filter(tagId => tagId !== null)
-                        .join(',');
-                    const savedTagFilters = typeof loadAccountTagFilterPreference === 'function'
-                        ? loadAccountTagFilterPreference()
-                        : selectedTagFilters;
-                    selectedTagFilters = new Set(
-                        Array.from(savedTagFilters).filter(tagId => {
-                            if (isUntaggedTagFilterValue(tagId)) {
-                                return true;
-                            }
-                            return allTags.some(tag => tag.id === normalizeTagFilterSelectionValue(tagId));
-                        })
-                    );
+                    const selectedBeforePrune = Array.from(selectedTagFilters).join(',');
+                    const excludedBeforePrune = Array.from(excludedTagFilters).join(',');
+                    pruneAccountTagFilterSelections();
                     saveAccountTagFilterPreference();
-                    const selectedAfterPrune = Array.from(selectedTagFilters)
-                        .map(tagId => normalizeTagFilterSelectionValue(tagId))
-                        .filter(tagId => tagId !== null)
-                        .join(',');
+                    saveAccountTagExcludeFilterPreference();
+                    const selectedAfterPrune = Array.from(selectedTagFilters).join(',');
+                    const excludedAfterPrune = Array.from(excludedTagFilters).join(',');
                     renderTagList();
                     updateTagFilter();
                     if (typeof renderImportTagOptions === 'function') {
                         renderImportTagOptions();
                     }
-                    if (selectedBeforePrune !== selectedAfterPrune && currentGroupId) {
+                    if ((selectedBeforePrune !== selectedAfterPrune
+                        || excludedBeforePrune !== excludedAfterPrune) && currentGroupId) {
                         refreshVisibleAccountList(true);
                     }
                 }
@@ -178,23 +176,26 @@
             }
         }
 
-        function getSelectedTagFilterItems() {
-            return getTagFilterOptionItems().filter(tag => selectedTagFilters.has(tag.id));
-        }
-
         function getTagFilterSummaryText() {
-            const selected = getSelectedTagFilterItems();
-            if (!selected.length) return '全部标签';
-            if (selected.length <= 2) {
-                return selected.map(tag => tag.name).join('、');
+            const parts = [];
+            if (selectedTagFilters.size) {
+                parts.push(`有 ${selectedTagFilters.size}`);
             }
-            return `已选 ${selected.length} 个标签`;
+            if (excludedTagFilters.size) {
+                parts.push(`无 ${excludedTagFilters.size}`);
+            }
+            return parts.length ? parts.join(' / ') : '全部标签';
         }
 
         function updateTagFilterSummary() {
             const triggerText = document.getElementById('tagFilterTriggerText');
             const countBadge = document.getElementById('tagFilterTriggerCount');
-            updateTagFilterSummaryText(triggerText, countBadge, getSelectedTagFilterItems(), '全部标签');
+            if (!triggerText || !countBadge) return;
+
+            const activeCount = selectedTagFilters.size + excludedTagFilters.size;
+            triggerText.textContent = getTagFilterSummaryText();
+            countBadge.style.display = activeCount ? 'inline-flex' : 'none';
+            countBadge.textContent = activeCount ? String(activeCount) : '';
         }
 
         function filterTagOptions(keyword = '') {
@@ -214,19 +215,53 @@
         function clearTagFilterSelection(event) {
             event?.stopPropagation();
             selectedTagFilters = new Set();
-            saveAccountTagFilterPreference();
-            const dropdown = document.getElementById('tagFilterDropdown');
-            clearTagFilterCheckboxes(dropdown);
-            updateTagFilterSummary();
-            if (isTempEmailGroup) {
-                if (currentAccountListSource.length) {
-                    renderTempEmailList(currentAccountListSource);
-                }
-                return;
-            }
+            excludedTagFilters = new Set();
+            handleTagFilterChange();
+        }
 
-            invalidateAccountCaches();
-            refreshVisibleAccountList(true);
+        function buildAccountTagFilterOptionsHtml() {
+            return allTags.map(tag => {
+                const tagId = normalizeTagFilterSelectionValue(tag.id);
+                if (tagId === null) {
+                    return '';
+                }
+                const included = selectedTagFilters.has(tagId);
+                const excluded = excludedTagFilters.has(tagId);
+                return `
+                    <div class="tag-filter-option account-tag-filter-option ${included || excluded ? 'is-checked' : ''}"
+                         data-tag-id="${tagId}" data-tag-name="${escapeHtml(tag.name)}">
+                        <span class="tag-filter-dot" style="background-color: ${tag.color};"></span>
+                        <span class="tag-filter-name">${escapeHtml(tag.name)}</span>
+                        <div class="tag-filter-state-actions">
+                            <button class="tag-filter-state-btn ${included ? 'is-active' : ''}"
+                                    type="button" data-tag-filter-state="include" aria-pressed="${included}"
+                                    onclick="setAccountTagFilterSelection(${tagId}, 'include', event)">有</button>
+                            <button class="tag-filter-state-btn ${excluded ? 'is-active' : ''}"
+                                    type="button" data-tag-filter-state="exclude" aria-pressed="${excluded}"
+                                    onclick="setAccountTagFilterSelection(${tagId}, 'exclude', event)">无</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function syncAccountTagFilterOptions() {
+            const dropdown = document.getElementById('tagFilterDropdown');
+            const optionsContainer = dropdown?.querySelector('.tag-filter-options');
+            if (optionsContainer) {
+                optionsContainer.querySelectorAll('.account-tag-filter-option').forEach(option => {
+                    const tagId = normalizeTagFilterSelectionValue(option.dataset.tagId);
+                    const included = selectedTagFilters.has(tagId);
+                    const excluded = excludedTagFilters.has(tagId);
+                    option.classList.toggle('is-checked', included || excluded);
+                    option.querySelectorAll('[data-tag-filter-state]').forEach(button => {
+                        const active = button.dataset.tagFilterState === 'include' ? included : excluded;
+                        button.classList.toggle('is-active', active);
+                        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+                    });
+                });
+            }
+            updateTagFilterSummary();
         }
 
         // 更新标签筛选下拉框
@@ -236,9 +271,7 @@
 
             container.style.display = 'flex';
 
-            const optionsHtml = buildTagFilterOptionsHtml(
-                allTags, selectedTagFilters, 'handleTagFilterChange', true
-            );
+            const optionsHtml = buildAccountTagFilterOptionsHtml();
 
             container.innerHTML = `
                 <span class="toolbar-label">标签</span>
@@ -259,6 +292,7 @@
                             >
                             <button class="tag-filter-clear-btn" type="button" onclick="clearTagFilterSelection(event)">清空</button>
                         </div>
+                        <p class="tag-filter-hint">样例：<br>有：A、B → 拥有 A 或 B 任一标签<br>无：C、D → 同时不拥有 C，也不拥有 D<br>有：A、B + 无：C、D → (A OR B) AND !C AND !D</p>
                         <div class="tag-filter-options" id="tagFilterOptions">
                             ${optionsHtml}
                             <div class="tag-filter-empty" id="tagFilterEmptyState" style="display: none;">没有匹配的标签</div>
@@ -267,7 +301,7 @@
                 </div>
             `;
 
-            updateTagFilterSummary();
+            syncAccountTagFilterOptions();
             filterTagOptions(tagFilterKeyword);
         }
 

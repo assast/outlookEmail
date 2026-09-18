@@ -505,14 +505,17 @@ def normalize_tag_filter_values(tag_ids: Any = None) -> List[int]:
     return normalized
 
 
-def build_account_tag_filter_clause(tag_ids: Any = None, include_untagged: bool = False) -> tuple[str, List[Any]]:
+def build_account_tag_filter_clause(tag_ids: Any = None, include_untagged: bool = False,
+                                    exclude_tag_ids: Any = None) -> tuple[str, List[Any]]:
     normalized_tag_ids = normalize_tag_filter_values(tag_ids)
+    normalized_exclude_tag_ids = normalize_tag_filter_values(exclude_tag_ids)
+    include_clauses = []
     clauses = []
     params: List[Any] = []
 
     if normalized_tag_ids:
         placeholders = ','.join('?' * len(normalized_tag_ids))
-        clauses.append(f'''
+        include_clauses.append(f'''
             EXISTS (
                 SELECT 1
                 FROM account_tags at_filter
@@ -523,7 +526,7 @@ def build_account_tag_filter_clause(tag_ids: Any = None, include_untagged: bool 
         params.extend(normalized_tag_ids)
 
     if include_untagged:
-        clauses.append('''
+        include_clauses.append('''
             NOT EXISTS (
                 SELECT 1
                 FROM account_tags at_filter
@@ -531,10 +534,25 @@ def build_account_tag_filter_clause(tag_ids: Any = None, include_untagged: bool 
             )
         ''')
 
+    if include_clauses:
+        clauses.append('(' + ' OR '.join(include_clauses) + ')')
+
+    if normalized_exclude_tag_ids:
+        placeholders = ','.join('?' * len(normalized_exclude_tag_ids))
+        clauses.append(f'''
+            NOT EXISTS (
+                SELECT 1
+                FROM account_tags at_exclude
+                WHERE at_exclude.account_id = a.id
+                  AND at_exclude.tag_id IN ({placeholders})
+            )
+        ''')
+        params.extend(normalized_exclude_tag_ids)
+
     if not clauses:
         return '', []
 
-    return '(' + ' OR '.join(clauses) + ')', params
+    return '(' + ' AND '.join(clauses) + ')', params
 
 
 ACCOUNT_SEARCH_MAX_TERMS = 200
@@ -559,7 +577,8 @@ def normalize_account_search_terms(query: Any) -> List[str]:
 
 def build_account_where_clause(group_id: int = None, query: str = '',
                                tag_ids: Any = None, include_untagged: bool = False,
-                               include_descendants: bool = True) -> tuple[str, List[Any]]:
+                               include_descendants: bool = True,
+                               exclude_tag_ids: Any = None) -> tuple[str, List[Any]]:
     clauses = []
     params: List[Any] = []
 
@@ -586,7 +605,11 @@ def build_account_where_clause(group_id: int = None, query: str = '',
         if search_term_clauses:
             clauses.append('(' + ' OR '.join(search_term_clauses) + ')')
 
-    tag_clause, tag_params = build_account_tag_filter_clause(tag_ids, include_untagged)
+    tag_clause, tag_params = build_account_tag_filter_clause(
+        tag_ids,
+        include_untagged,
+        exclude_tag_ids,
+    )
     if tag_clause:
         clauses.append(tag_clause)
         params.extend(tag_params)
@@ -663,7 +686,8 @@ def serialize_account_rows(rows: List[sqlite3.Row], db=None) -> List[Dict]:
 def load_accounts(group_id: int = None, limit: Any = None, offset: Any = 0,
                   sort_by: Any = 'created_at', sort_order: Any = 'desc',
                   tag_ids: Any = None, include_untagged: bool = False,
-                  include_descendants: bool = True) -> List[Dict]:
+                  include_descendants: bool = True,
+                  exclude_tag_ids: Any = None) -> List[Dict]:
     """从数据库加载邮箱账号"""
     db = get_db()
     normalized_limit, normalized_offset = normalize_account_pagination(limit, offset)
@@ -672,6 +696,7 @@ def load_accounts(group_id: int = None, limit: Any = None, offset: Any = 0,
         tag_ids=tag_ids,
         include_untagged=include_untagged,
         include_descendants=include_descendants,
+        exclude_tag_ids=exclude_tag_ids,
     )
     order_clause = build_account_order_clause(sort_by, sort_order)
     pagination_clause = ''
@@ -693,7 +718,8 @@ def load_accounts(group_id: int = None, limit: Any = None, offset: Any = 0,
 
 def count_accounts(group_id: int = None, query: str = '',
                    tag_ids: Any = None, include_untagged: bool = False,
-                   include_descendants: bool = True) -> int:
+                   include_descendants: bool = True,
+                   exclude_tag_ids: Any = None) -> int:
     db = get_db()
     normalized_query = str(query or '').strip()
     joins = '''
@@ -706,11 +732,12 @@ def count_accounts(group_id: int = None, query: str = '',
             LEFT JOIN tags t ON at.tag_id = t.id
         '''
     where_clause, params = build_account_where_clause(
-        group_id,
-        normalized_query,
-        tag_ids,
-        include_untagged,
-        include_descendants,
+        group_id=group_id,
+        query=normalized_query,
+        tag_ids=tag_ids,
+        include_untagged=include_untagged,
+        include_descendants=include_descendants,
+        exclude_tag_ids=exclude_tag_ids,
     )
     count_expr = 'COUNT(DISTINCT a.id)' if normalized_query else 'COUNT(*)'
     row = db.execute(f'''
@@ -725,7 +752,8 @@ def count_accounts(group_id: int = None, query: str = '',
 def search_account_records(query: str, limit: Any = None, offset: Any = 0,
                            sort_by: Any = 'created_at', sort_order: Any = 'desc',
                            tag_ids: Any = None, include_untagged: bool = False,
-                           group_id: int = None, include_descendants: bool = True) -> List[Dict]:
+                           group_id: int = None, include_descendants: bool = True,
+                           exclude_tag_ids: Any = None) -> List[Dict]:
     db = get_db()
     normalized_limit, normalized_offset = normalize_account_pagination(limit, offset)
     where_clause, params = build_account_where_clause(
@@ -734,6 +762,7 @@ def search_account_records(query: str, limit: Any = None, offset: Any = 0,
         tag_ids=tag_ids,
         include_untagged=include_untagged,
         include_descendants=include_descendants,
+        exclude_tag_ids=exclude_tag_ids,
     )
     order_clause = build_account_order_clause(sort_by, sort_order)
     pagination_clause = ''

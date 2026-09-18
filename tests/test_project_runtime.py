@@ -1060,6 +1060,203 @@ class ProjectRuntimeTests(unittest.TestCase):
         )
         self.assertNotIn(untagged_id, [account['id'] for account in payload['accounts']])
 
+    def test_account_list_supports_include_exclude_and_untagged_tag_filters(self):
+        tag_a_id = self._create_tag('标签 A')
+        tag_b_id = self._create_tag('标签 B')
+        tag_c_id = self._create_tag('标签 C')
+        a_only_id = self._insert_account('tag-a-only@example.com')
+        b_only_id = self._insert_account('tag-b-only@example.com')
+        a_and_b_id = self._insert_account('tag-a-and-b@example.com')
+        c_only_id = self._insert_account('tag-c-only@example.com')
+        untagged_id = self._insert_account('tag-untagged@example.com')
+
+        self._tag_account(a_only_id, tag_a_id)
+        self._tag_account(b_only_id, tag_b_id)
+        self._tag_account(a_and_b_id, tag_a_id)
+        self._tag_account(a_and_b_id, tag_b_id)
+        self._tag_account(c_only_id, tag_c_id)
+
+        def get_account_ids(query_string):
+            response = self.client.get('/api/accounts', query_string=query_string)
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertTrue(payload['success'])
+            return payload['total'], {account['id'] for account in payload['accounts']}
+
+        total, account_ids = get_account_ids({
+            'tag_ids': f'{tag_a_id},{tag_b_id}',
+            'sort_by': 'email',
+            'sort_order': 'asc',
+        })
+        self.assertEqual(total, 3)
+        self.assertEqual(account_ids, {a_only_id, b_only_id, a_and_b_id})
+
+        total, account_ids = get_account_ids([
+            ('exclude_tag_ids', str(tag_b_id)),
+            ('exclude_tag_ids', str(tag_b_id)),
+            ('sort_by', 'email'),
+            ('sort_order', 'asc'),
+        ])
+        self.assertEqual(total, 3)
+        self.assertEqual(account_ids, {a_only_id, c_only_id, untagged_id})
+
+        total, account_ids = get_account_ids({
+            'exclude_tag_ids': f'{tag_b_id},{tag_c_id}',
+            'sort_by': 'email',
+            'sort_order': 'asc',
+        })
+        self.assertEqual(total, 2)
+        self.assertEqual(account_ids, {a_only_id, untagged_id})
+
+        total, account_ids = get_account_ids([
+            ('tag_ids', str(tag_a_id)),
+            ('exclude_tag_ids', str(tag_b_id)),
+            ('sort_by', 'email'),
+            ('sort_order', 'asc'),
+        ])
+        self.assertEqual(total, 1)
+        self.assertEqual(account_ids, {a_only_id})
+
+        total, account_ids = get_account_ids({
+            'tag_ids': str(tag_a_id),
+            'include_untagged': '1',
+            'sort_by': 'email',
+            'sort_order': 'asc',
+        })
+        self.assertEqual(total, 3)
+        self.assertEqual(account_ids, {a_only_id, a_and_b_id, untagged_id})
+
+    def test_account_list_request_args_accepts_csv_repeated_and_mixed_exclude_tag_ids(self):
+        cases = (
+            ('/api/accounts?exclude_tag_ids=1,2', [1, 2]),
+            ('/api/accounts?exclude_tag_ids=1&exclude_tag_ids=2', [1, 2]),
+            ('/api/accounts?exclude_tag_ids=1,2&exclude_tag_ids=2,3', [1, 2, 3]),
+        )
+
+        for path, expected_tag_ids in cases:
+            with self.app.test_request_context(path):
+                list_args = web_outlook_app.get_account_list_request_args()
+            self.assertEqual(list_args['exclude_tag_ids'], expected_tag_ids)
+
+    def test_account_list_and_search_combine_untagged_with_multiple_excluded_tags(self):
+        tag_a_id = self._create_tag('多排除标签 A')
+        tag_b_id = self._create_tag('多排除标签 B')
+        tag_c_id = self._create_tag('多排除标签 C')
+        a_only_id = self._insert_account('multi-exclude-a-only@example.com')
+        a_and_b_id = self._insert_account('multi-exclude-a-b@example.com')
+        a_and_c_id = self._insert_account('multi-exclude-a-c@example.com')
+        b_only_id = self._insert_account('multi-exclude-b-only@example.com')
+        c_only_id = self._insert_account('multi-exclude-c-only@example.com')
+        untagged_id = self._insert_account('multi-exclude-untagged@example.com')
+
+        self._tag_account(a_only_id, tag_a_id)
+        self._tag_account(a_and_b_id, tag_a_id)
+        self._tag_account(a_and_b_id, tag_b_id)
+        self._tag_account(a_and_c_id, tag_a_id)
+        self._tag_account(a_and_c_id, tag_c_id)
+        self._tag_account(b_only_id, tag_b_id)
+        self._tag_account(c_only_id, tag_c_id)
+
+        query_string = [
+            ('tag_ids', str(tag_a_id)),
+            ('include_untagged', '1'),
+            ('exclude_tag_ids', str(tag_b_id)),
+            ('exclude_tag_ids', str(tag_c_id)),
+            ('sort_by', 'email'),
+            ('sort_order', 'asc'),
+        ]
+        response = self.client.get('/api/accounts', query_string=query_string)
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['total'], 2)
+        self.assertEqual({account['id'] for account in payload['accounts']}, {a_only_id, untagged_id})
+
+        search_response = self.client.get('/api/accounts/search', query_string=query_string + [
+            ('q', 'multi-exclude'),
+        ])
+        self.assertEqual(search_response.status_code, 200)
+        search_payload = search_response.get_json()
+        self.assertTrue(search_payload['success'])
+        self.assertEqual(search_payload['total'], 2)
+        self.assertEqual(
+            {account['id'] for account in search_payload['accounts']},
+            {a_only_id, untagged_id},
+        )
+
+        comma_search_response = self.client.get('/api/accounts/search', query_string={
+            'q': 'multi-exclude',
+            'tag_ids': str(tag_a_id),
+            'include_untagged': '1',
+            'exclude_tag_ids': f'{tag_b_id},{tag_c_id}',
+            'sort_by': 'email',
+            'sort_order': 'asc',
+        })
+        self.assertEqual(comma_search_response.status_code, 200)
+        comma_search_payload = comma_search_response.get_json()
+        self.assertTrue(comma_search_payload['success'])
+        self.assertEqual(comma_search_payload['total'], 2)
+        self.assertEqual(
+            {account['id'] for account in comma_search_payload['accounts']},
+            {a_only_id, untagged_id},
+        )
+
+    def test_account_search_count_pagination_and_descendants_share_exclude_tag_filter(self):
+        with self.app.app_context():
+            parent_group_id = web_outlook_app.add_group('标签筛选父分组')
+            child_group_id = web_outlook_app.add_group('标签筛选子分组', parent_id=parent_group_id)
+        outside_group_id = self._create_group('标签筛选组外分组')
+        tag_a_id = self._create_tag('范围标签 A')
+        tag_b_id = self._create_tag('范围标签 B')
+        parent_a_only_id = self._insert_account('scope-parent-a@example.com', group_id=parent_group_id)
+        child_a_only_id = self._insert_account('scope-child-a@example.com', group_id=child_group_id)
+        child_a_and_b_id = self._insert_account('scope-child-a-b@example.com', group_id=child_group_id)
+        outside_a_only_id = self._insert_account('scope-outside-a@example.com', group_id=outside_group_id)
+
+        for account_id in (parent_a_only_id, child_a_only_id, child_a_and_b_id, outside_a_only_id):
+            self._tag_account(account_id, tag_a_id)
+        self._tag_account(child_a_and_b_id, tag_b_id)
+
+        list_query = [
+            ('group_id', str(parent_group_id)),
+            ('tag_ids', str(tag_a_id)),
+            ('exclude_tag_ids', str(tag_b_id)),
+            ('limit', '1'),
+            ('sort_by', 'email'),
+            ('sort_order', 'asc'),
+        ]
+        first_page_response = self.client.get('/api/accounts', query_string=list_query)
+        self.assertEqual(first_page_response.status_code, 200)
+        first_page = first_page_response.get_json()
+        self.assertTrue(first_page['success'])
+        self.assertEqual(first_page['total'], 2)
+        self.assertTrue(first_page['has_more'])
+        self.assertEqual([account['id'] for account in first_page['accounts']], [child_a_only_id])
+
+        second_page_response = self.client.get('/api/accounts', query_string=list_query + [('offset', '1')])
+        self.assertEqual(second_page_response.status_code, 200)
+        second_page = second_page_response.get_json()
+        self.assertTrue(second_page['success'])
+        self.assertEqual(second_page['total'], 2)
+        self.assertFalse(second_page['has_more'])
+        self.assertEqual([account['id'] for account in second_page['accounts']], [parent_a_only_id])
+
+        search_query = [(key, value) for key, value in list_query if key != 'limit'] + [
+            ('q', 'scope-'),
+            ('limit', '10'),
+        ]
+        search_response = self.client.get('/api/accounts/search', query_string=search_query)
+        self.assertEqual(search_response.status_code, 200)
+        search_payload = search_response.get_json()
+        self.assertTrue(search_payload['success'])
+        self.assertEqual(search_payload['total'], 2)
+        self.assertEqual(
+            {account['id'] for account in search_payload['accounts']},
+            {parent_a_only_id, child_a_only_id},
+        )
+        self.assertNotIn(child_a_and_b_id, [account['id'] for account in search_payload['accounts']])
+        self.assertNotIn(outside_a_only_id, [account['id'] for account in search_payload['accounts']])
+
     def test_add_account_without_sort_order_uses_created_at_fallback(self):
         response = self.client.post(
             '/api/accounts',
@@ -2192,25 +2389,35 @@ class FrontendAccountListPreferenceTests(unittest.TestCase):
         tags_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '09-tags.js').read_text(encoding='utf-8')
 
         self.assertIn("const ACCOUNT_TAG_FILTER_STORAGE_KEY = 'outlook_account_tag_filters';", groups_js)
+        self.assertIn("const ACCOUNT_TAG_EXCLUDE_FILTER_STORAGE_KEY = 'outlook_account_tag_exclude_filters';", groups_js)
         self.assertIn('function loadAccountTagFilterPreference()', groups_js)
         self.assertIn('function saveAccountTagFilterPreference()', groups_js)
+        self.assertIn('function loadAccountTagExcludeFilterPreference()', groups_js)
+        self.assertIn('function saveAccountTagExcludeFilterPreference()', groups_js)
         self.assertIn('selectedTagFilters = loadAccountTagFilterPreference();', groups_js)
+        self.assertIn('excludedTagFilters = loadAccountTagExcludeFilterPreference();', groups_js)
 
-        tag_change_start = groups_js.index('function handleTagFilterChange()')
-        tag_change_end = groups_js.index('// 防抖函数', tag_change_start)
+        tag_change_start = groups_js.index('function applyAccountTagFilterChange()')
+        tag_change_end = groups_js.index('function setAccountTagFilterSelection', tag_change_start)
         tag_change_source = groups_js[tag_change_start:tag_change_end]
         self.assertIn('saveAccountTagFilterPreference();', tag_change_source)
+        self.assertIn('saveAccountTagExcludeFilterPreference();', tag_change_source)
+        self.assertIn('syncAccountTagFilterOptions();', tag_change_source)
 
         load_tags_start = tags_js.index('async function loadTags()')
-        load_tags_end = tags_js.index('function getSelectedTagFilterItems()', load_tags_start)
+        load_tags_end = tags_js.index('function getTagFilterSummaryText()', load_tags_start)
         load_tags_source = tags_js[load_tags_start:load_tags_end]
-        self.assertIn('loadAccountTagFilterPreference()', load_tags_source)
+        self.assertIn('pruneAccountTagFilterSelections();', load_tags_source)
         self.assertIn('saveAccountTagFilterPreference();', load_tags_source)
+        self.assertIn('saveAccountTagExcludeFilterPreference();', load_tags_source)
 
         clear_start = tags_js.index('function clearTagFilterSelection')
         clear_end = tags_js.index('// 更新标签筛选下拉框', clear_start)
         clear_source = tags_js[clear_start:clear_end]
-        self.assertIn('saveAccountTagFilterPreference();', clear_source)
+        self.assertIn('excludedTagFilters = new Set();', clear_source)
+        self.assertIn('handleTagFilterChange();', clear_source)
+        self.assertNotIn('UNTAGGED_TAG_FILTER', tags_js)
+        self.assertNotIn('include_untagged', groups_js)
 
 
 class FrontendEmailListSecurityTests(unittest.TestCase):
@@ -2361,7 +2568,9 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
     def test_temp_email_list_uses_selected_tag_filters(self):
         temp_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '03-temp-emails.js').read_text(encoding='utf-8')
 
-        self.assertIn('selectedTagFilters.size > 0', temp_js)
+        self.assertIn('hasActiveTagFilters()', temp_js)
+        self.assertIn('matchesSelectedTagFilters(email.tags)', temp_js)
+        self.assertNotIn('selectedTagFilters.size > 0', temp_js)
         self.assertNotIn('selectedTagIds', temp_js)
 
     def test_temp_email_cloudflare_global_search_is_case_insensitive(self):

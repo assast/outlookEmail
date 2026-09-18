@@ -1,4 +1,4 @@
-        /* global ACCOUNT_LIST_DEFAULT_PAGE_SIZE, ACCOUNT_LIST_MAX_PAGE_SIZE, accountListPageSize, accountListRequestSeq, accountPaginationState, accountSelectionMode, accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, formatAbsoluteDateTime, generateTempEmail, groups, handleAccountRowSelectionClick, handleAccountSelectionCheckboxClick, handleApiError, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadCloudflareChannelsForImport, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, shouldShowAccountCreatedAt, shouldShowAccountSortOrder, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, tempEmailGroupId, toggleAccountSelectionMode, updateCurrentGroupHeader, updateMobileContext */
+        /* global ACCOUNT_LIST_DEFAULT_PAGE_SIZE, ACCOUNT_LIST_MAX_PAGE_SIZE, accountListPageSize, accountListRequestSeq, accountPaginationState, accountSelectionMode, accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, excludedTagFilters, formatAbsoluteDateTime, generateTempEmail, groups, handleAccountRowSelectionClick, handleAccountSelectionCheckboxClick, handleApiError, hasActiveTagFilters, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadCloudflareChannelsForImport, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, shouldShowAccountCreatedAt, shouldShowAccountSortOrder, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, syncAccountTagFilterOptions, tempEmailGroupId, toggleAccountSelectionMode, updateCurrentGroupHeader, updateMobileContext, updateTagFilterSummary */
 
         // ==================== 分组相关 ====================
 
@@ -6,6 +6,7 @@
         const ACCOUNT_SEARCH_QUERY_STORAGE_KEY = 'outlook_account_search_query';
         const ACCOUNT_SORT_STORAGE_KEY = 'outlook_account_sort';
         const ACCOUNT_TAG_FILTER_STORAGE_KEY = 'outlook_account_tag_filters';
+        const ACCOUNT_TAG_EXCLUDE_FILTER_STORAGE_KEY = 'outlook_account_tag_exclude_filters';
         const GROUP_COLLAPSED_STORAGE_PREFIX = 'outlook_group_collapsed_';
         const GROUP_DESCRIPTION_VISIBILITY_STORAGE_KEY = 'outlook_group_descriptions_visible';
         let groupTree = [];
@@ -989,45 +990,70 @@
         }
 
         function getAccountTagFilterParams() {
-            const values = Array.from(selectedTagFilters || []);
-            const tagIds = values
-                .filter(value => !isUntaggedTagFilterValue(value))
+            const tagIds = Array.from(selectedTagFilters || [])
                 .map(value => normalizeTagFilterSelectionValue(value))
-                .filter(value => Number.isFinite(value) && value > 0);
-            const includeUntagged = values.some(value => isUntaggedTagFilterValue(value));
-            return { tagIds, includeUntagged };
+                .filter(value => value !== null);
+            const excludeTagIds = Array.from(excludedTagFilters || [])
+                .map(value => normalizeTagFilterSelectionValue(value))
+                .filter(value => value !== null);
+            return { tagIds, excludeTagIds };
         }
 
         function hasAccountServerSideFilters() {
             const filters = getAccountTagFilterParams();
-            return filters.tagIds.length > 0 || filters.includeUntagged;
+            return filters.tagIds.length > 0 || filters.excludeTagIds.length > 0;
         }
 
-        function loadAccountTagFilterPreference() {
+        function loadStoredAccountTagFilterValues(storageKey) {
             try {
-                const storedValue = localStorage.getItem(ACCOUNT_TAG_FILTER_STORAGE_KEY);
+                const storedValue = localStorage.getItem(storageKey);
                 const values = storedValue ? JSON.parse(storedValue) : [];
                 if (!Array.isArray(values)) {
                     return new Set();
                 }
-                return new Set(
+                const normalizedValues = Array.from(new Set(
                     values
                         .map(value => normalizeTagFilterSelectionValue(value))
                         .filter(value => value !== null)
-                );
+                ));
+                if (JSON.stringify(values) !== JSON.stringify(normalizedValues)) {
+                    try {
+                        localStorage.setItem(storageKey, JSON.stringify(normalizedValues));
+                    } catch (error) {
+                        // 内存中的规范化状态仍可用于当前会话。
+                    }
+                }
+                return new Set(normalizedValues);
             } catch (error) {
                 return new Set();
             }
         }
 
-        function saveAccountTagFilterPreference() {
-            const values = Array.from(selectedTagFilters || [])
+        function saveAccountTagFilterPreferenceValues(storageKey, values) {
+            const normalizedValues = Array.from(values || [])
                 .map(value => normalizeTagFilterSelectionValue(value))
                 .filter(value => value !== null);
-            localStorage.setItem(ACCOUNT_TAG_FILTER_STORAGE_KEY, JSON.stringify(Array.from(new Set(values))));
+            localStorage.setItem(storageKey, JSON.stringify(Array.from(new Set(normalizedValues))));
+        }
+
+        function loadAccountTagFilterPreference() {
+            return loadStoredAccountTagFilterValues(ACCOUNT_TAG_FILTER_STORAGE_KEY);
+        }
+
+        function saveAccountTagFilterPreference() {
+            saveAccountTagFilterPreferenceValues(ACCOUNT_TAG_FILTER_STORAGE_KEY, selectedTagFilters);
+        }
+
+        function loadAccountTagExcludeFilterPreference() {
+            return loadStoredAccountTagFilterValues(ACCOUNT_TAG_EXCLUDE_FILTER_STORAGE_KEY);
+        }
+
+        function saveAccountTagExcludeFilterPreference() {
+            saveAccountTagFilterPreferenceValues(ACCOUNT_TAG_EXCLUDE_FILTER_STORAGE_KEY, excludedTagFilters);
         }
 
         selectedTagFilters = loadAccountTagFilterPreference();
+        excludedTagFilters = loadAccountTagExcludeFilterPreference();
 
         function normalizeAccountPageSize(value) {
             const parsed = parseInt(value, 10);
@@ -1165,9 +1191,9 @@
             if (filters.tagIds.length) {
                 params.set('tag_ids', filters.tagIds.join(','));
             }
-            if (filters.includeUntagged) {
-                params.set('include_untagged', '1');
-            }
+            filters.excludeTagIds.forEach(tagId => {
+                params.append('exclude_tag_ids', String(tagId));
+            });
             return params;
         }
 
@@ -1807,7 +1833,7 @@
             }
 
             // 1. Tag 筛选
-            if (selectedTagFilters.size > 0) {
+            if (hasActiveTagFilters()) {
                 result = result.filter(acc => matchesSelectedTagFilters(acc.tags));
             }
 
@@ -1850,29 +1876,22 @@
             });
         }
 
-        // Tag Filter Change Handler
-        function handleTagFilterChange() {
-            const dropdown = document.getElementById('tagFilterDropdown');
-            const selected = dropdown ? dropdown.querySelectorAll('.tag-filter-checkbox:checked') : document.querySelectorAll('.tag-filter-checkbox:checked');
-            selectedTagFilters = new Set(
-                Array.from(selected)
-                    .map(cb => normalizeTagFilterSelectionValue(cb.value))
-                    .filter(value => value !== null)
-            );
+        function applyAccountTagFilterChange() {
             saveAccountTagFilterPreference();
-            const optionScope = dropdown || document;
-            optionScope.querySelectorAll('.tag-filter-option').forEach(option => {
-                const checkbox = option.querySelector('.tag-filter-checkbox');
-                option.classList.toggle('is-checked', !!checkbox?.checked);
-            });
-            updateTagFilterSummary();
+            saveAccountTagExcludeFilterPreference();
+            if (typeof syncAccountTagFilterOptions === 'function') {
+                syncAccountTagFilterOptions();
+            } else {
+                updateTagFilterSummary();
+            }
             invalidateAccountCaches();
             if (isTempEmailGroup) {
                 if (currentAccountListSource.length) {
                     renderTempEmailList(currentAccountListSource);
                 }
                 return;
-            } else if (currentGroupId) {
+            }
+            if (currentGroupId) {
                 refreshVisibleAccountList(true);
                 return;
             }
@@ -1880,6 +1899,36 @@
             if (currentAccountListSource.length) {
                 renderFilteredAccountList(currentAccountListSource);
             }
+        }
+
+        function handleTagFilterChange() {
+            applyAccountTagFilterChange();
+        }
+
+        function setAccountTagFilterSelection(value, state, event) {
+            event?.stopPropagation();
+            const tagId = normalizeTagFilterSelectionValue(value);
+            if (tagId === null) {
+                return;
+            }
+
+            if (state === 'include') {
+                if (selectedTagFilters.has(tagId)) {
+                    selectedTagFilters.delete(tagId);
+                } else {
+                    selectedTagFilters.add(tagId);
+                    excludedTagFilters.delete(tagId);
+                }
+            } else if (state === 'exclude') {
+                if (excludedTagFilters.has(tagId)) {
+                    excludedTagFilters.delete(tagId);
+                } else {
+                    excludedTagFilters.add(tagId);
+                    selectedTagFilters.delete(tagId);
+                }
+            }
+
+            applyAccountTagFilterChange();
         }
 
         // 防抖函数

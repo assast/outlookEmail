@@ -773,6 +773,9 @@ def get_account_list_request_args() -> Dict[str, Any]:
         'sort_by': sort_by,
         'sort_order': sort_order,
         'tag_ids': normalize_tag_filter_values(request.args.get('tag_ids', '')),
+        'exclude_tag_ids': normalize_tag_filter_values(
+            ','.join(request.args.getlist('exclude_tag_ids'))
+        ),
         'include_untagged': include_untagged,
     }
 
@@ -805,13 +808,19 @@ def api_get_accounts():
         sort_order=list_args['sort_order'],
         tag_ids=list_args['tag_ids'],
         include_untagged=list_args['include_untagged'],
+        exclude_tag_ids=list_args['exclude_tag_ids'],
     )
 
     # 返回时隐藏敏感信息
     safe_accounts = []
     for acc in accounts:
         safe_accounts.append(serialize_account_summary(acc, {}))
-    total = count_accounts(group_id, tag_ids=list_args['tag_ids'], include_untagged=list_args['include_untagged'])
+    total = count_accounts(
+        group_id,
+        tag_ids=list_args['tag_ids'],
+        include_untagged=list_args['include_untagged'],
+        exclude_tag_ids=list_args['exclude_tag_ids'],
+    )
     return jsonify(build_account_list_response(
         safe_accounts,
         total,
@@ -1241,6 +1250,7 @@ def api_search_accounts():
         sort_order=list_args['sort_order'],
         tag_ids=list_args['tag_ids'],
         include_untagged=list_args['include_untagged'],
+        exclude_tag_ids=list_args['exclude_tag_ids'],
     )
     safe_accounts = []
     for acc in accounts:
@@ -1251,6 +1261,7 @@ def api_search_accounts():
         query=query,
         tag_ids=list_args['tag_ids'],
         include_untagged=list_args['include_untagged'],
+        exclude_tag_ids=list_args['exclude_tag_ids'],
     )
     return jsonify(build_account_list_response(
         safe_accounts,

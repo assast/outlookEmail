@@ -431,6 +431,56 @@
             white-space: nowrap;
         }
 
+        .account-tag-filter-option {
+            cursor: default;
+        }
+
+        .account-tag-filter-option .tag-filter-name {
+            flex: 1;
+        }
+
+        .tag-filter-state-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+
+        .tag-filter-state-btn {
+            min-width: 28px;
+            height: 24px;
+            padding: 0 7px;
+            border: 1px solid #d9dce3;
+            border-radius: 7px;
+            background: #ffffff;
+            color: #64748b;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .tag-filter-state-btn:hover {
+            border-color: #94a3b8;
+            background: #f8fafc;
+        }
+
+        .tag-filter-state-btn.is-active {
+            border-color: #1a1a1a;
+            background: #1a1a1a;
+            color: #ffffff;
+        }
+
+        .tag-filter-hint {
+            margin: 0;
+            padding: 8px 12px;
+            border-bottom: 1px solid #eef2f7;
+            background: #f8fafc;
+            color: #64748b;
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
         .tag-filter-empty {
             padding: 18px 12px;
             text-align: center;

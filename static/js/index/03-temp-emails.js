@@ -1,4 +1,4 @@
-        /* global accountsCache, allTags, closeMobilePanels, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentMethod, currentSkip, escapeHtml, escapeJs, formatDate, groups, handleAccountSelectionCheckboxClick, handleApiError, hasMoreEmails, isLoadingMore, loadGroups, loadTags, loadTempEmails, matchesSelectedTagFilters, refreshEmails, renderAccountTagSummary, renderEmailDetail, renderEmailList, renderEmptyStateMarkup, scheduleEmailListLoadCheck, selectedTagFilters, setEmailListLoadingState, showEmailList, showMobileEmailDetail, showToast, updateBatchActionBar, updateMobileContext, updateCurrentGroupHeader */
+        /* global accountsCache, allTags, closeMobilePanels, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentMethod, currentSkip, escapeHtml, escapeJs, formatDate, groups, handleAccountSelectionCheckboxClick, handleApiError, hasActiveTagFilters, hasMoreEmails, isLoadingMore, loadGroups, loadTags, loadTempEmails, matchesSelectedTagFilters, refreshEmails, renderAccountTagSummary, renderEmailDetail, renderEmailList, renderEmptyStateMarkup, scheduleEmailListLoadCheck, setEmailListLoadingState, showEmailList, showMobileEmailDetail, showToast, updateBatchActionBar, updateMobileContext, updateCurrentGroupHeader */
 
         // ==================== 临时邮箱相关 ====================
 
@@ -100,7 +100,7 @@
                 });
             }
 
-            if (selectedTagFilters.size > 0) {
+            if (hasActiveTagFilters()) {
                 filtered = filtered.filter(email => matchesSelectedTagFilters(email.tags));
             }
 
@@ -120,7 +120,7 @@
 
             if (filtered.length === 0 && cloudflareGlobalEntries.length === 0) {
                 const providerName = filter === 'duckmail' ? 'DuckMail' : (filter === 'cloudflare' ? 'Cloudflare' : 'GPTMail');
-                const hasAdvancedFilters = !!searchQuery || selectedTagFilters.size > 0;
+                const hasAdvancedFilters = !!searchQuery || hasActiveTagFilters();
                 const hint = hasAdvancedFilters
                     ? '未找到匹配的临时邮箱'
                     : (filter === 'all' ? '暂无临时邮箱<br>点击下方按钮生成' : `暂无 ${providerName} 邮箱`);

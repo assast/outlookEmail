@@ -769,6 +769,11 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `group_id` | int | 否 | 返回指定分组及所有子分组下的账号 |
+| `tag_ids` | string | 否 | 逗号分隔的标签 ID，仅返回包含任一标签的账号 |
+| `exclude_tag_ids` | string | 否 | 要排除的标签 ID；支持 `exclude_tag_ids=1,2` 或重复传递 `exclude_tag_ids=1&exclude_tag_ids=2`，返回账号不得拥有其中任一标签 |
+| `include_untagged` | bool | 否 | 与 `tag_ids` 配合使用，是否包含未打标签账号 |
+
+同时传入 `tag_ids` 与 `exclude_tag_ids` 时，账号需拥有 `tag_ids` 中至少一个标签，且不拥有 `exclude_tag_ids` 中任一标签。`include_untagged` 会先与包含标签条件取并集，再执行排除条件。
 
 #### 响应重点字段
 
@@ -803,7 +808,10 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 | `sort_order` | string | 否 | 排序方向，`asc` 或 `desc`，默认 `desc` |
 | `group_id` | int | 否 | 仅搜索指定分组及所有子分组下的账号，不传则搜索全部分组 |
 | `tag_ids` | string | 否 | 逗号分隔的标签 ID，仅搜索包含任一标签的账号 |
+| `exclude_tag_ids` | string | 否 | 要排除的标签 ID；支持 `exclude_tag_ids=1,2` 或重复传递 `exclude_tag_ids=1&exclude_tag_ids=2`，返回账号不得拥有其中任一标签 |
 | `include_untagged` | bool | 否 | 与 `tag_ids` 配合使用，是否包含未打标签账号 |
+
+同时传入 `tag_ids` 与 `exclude_tag_ids` 时，账号需拥有 `tag_ids` 中至少一个标签，且不拥有 `exclude_tag_ids` 中任一标签。`include_untagged` 会先与包含标签条件取并集，再执行排除条件。
 
 ### POST `/api/accounts`
 

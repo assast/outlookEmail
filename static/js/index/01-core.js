@@ -39,8 +39,8 @@
         let currentEmailDetail = null; // 当前查看的邮件详细数据
         let isTrustedMode = false; // 是否处于信任模式（不过滤 HTML）
         let oauthPreviewAccount = null;
-        const UNTAGGED_TAG_FILTER_KEY = '__untagged__';
         let selectedTagFilters = new Set();
+        let excludedTagFilters = new Set();
         let tagFilterKeyword = '';
         let responsiveUiResizeTimer = null;
         const DEFAULT_MAIL_FETCH_TIMEOUT_SECONDS = 120;
@@ -95,32 +95,31 @@
         let showGroupId = true;
         let normalMailLocalRetentionEnabled = false;
 
-        function isUntaggedTagFilterValue(value) {
-            return String(value || '').trim() === UNTAGGED_TAG_FILTER_KEY;
+        function normalizeTagFilterSelectionValue(value) {
+            const normalized = Number.parseInt(String(value ?? '').trim(), 10);
+            return Number.isFinite(normalized) && normalized > 0 ? normalized : null;
         }
 
-        function normalizeTagFilterSelectionValue(value) {
-            if (isUntaggedTagFilterValue(value)) {
-                return UNTAGGED_TAG_FILTER_KEY;
-            }
-            const normalized = Number.parseInt(String(value ?? '').trim(), 10);
-            return Number.isFinite(normalized) ? normalized : null;
+        function hasActiveTagFilters() {
+            return selectedTagFilters.size > 0 || excludedTagFilters.size > 0;
         }
 
         function matchesSelectedTagFilters(tags) {
-            if (!selectedTagFilters.size) {
-                return true;
-            }
-
             const safeTags = Array.isArray(tags) ? tags : [];
-            const includeUntagged = selectedTagFilters.has(UNTAGGED_TAG_FILTER_KEY);
-            const selectedRealTagIds = Array.from(selectedTagFilters).filter(value => !isUntaggedTagFilterValue(value));
+            const selectedTagIds = Array.from(selectedTagFilters)
+                .map(value => normalizeTagFilterSelectionValue(value))
+                .filter(value => value !== null);
+            const excludedTagIds = Array.from(excludedTagFilters)
+                .map(value => normalizeTagFilterSelectionValue(value))
+                .filter(value => value !== null);
+            const matchesIncludedTags = !selectedTagIds.length || safeTags.some(tag => (
+                selectedTagIds.includes(normalizeTagFilterSelectionValue(tag?.id))
+            ));
+            const matchesExcludedTags = !safeTags.some(tag => (
+                excludedTagIds.includes(normalizeTagFilterSelectionValue(tag?.id))
+            ));
 
-            const matchesRealTag = selectedRealTagIds.length > 0
-                && safeTags.some(tag => selectedRealTagIds.includes(normalizeTagFilterSelectionValue(tag?.id)));
-            const matchesUntagged = includeUntagged && safeTags.length === 0;
-
-            return matchesRealTag || matchesUntagged;
+            return matchesIncludedTags && matchesExcludedTags;
         }
 
         function isMobileLayout() {
