@@ -329,6 +329,17 @@
                 border-radius: 9px;
             }
 
+            .email-list-header-actions {
+                gap: 6px;
+            }
+
+            .compose-mail-btn {
+                min-height: 34px;
+                padding: 0 10px;
+                border-radius: 9px;
+                font-size: 12px;
+            }
+
             .email-list-header-meta {
                 gap: 6px;
             }

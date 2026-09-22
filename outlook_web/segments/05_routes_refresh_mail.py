@@ -3837,6 +3837,101 @@ def api_get_emails(email_addr):
     return jsonify(result)
 
 
+def get_graph_send_mail_account_error(account: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """确认账号可仅以自身 Graph 委托身份发信。"""
+    account_type = str(account.get('account_type') or '').strip().lower()
+    provider = str(account.get('provider') or '').strip().lower()
+    status = str(account.get('status') or '').strip().lower()
+    authorization_type = get_account_authorization_type(account)
+    if account_type != 'outlook' or provider != 'outlook' or status != 'active':
+        return build_graph_send_error_result(
+            'GRAPH_SEND_UNSUPPORTED_ACCOUNT',
+            '仅支持正常启用的 Outlook/Hotmail Graph 账号发信',
+            400,
+        )
+    if authorization_type == 'imap':
+        return build_graph_send_error_result(
+            'GRAPH_SEND_REAUTH_REQUIRED',
+            '此账号当前使用 IMAP 授权，请重新完成 Graph 授权后再试',
+            403,
+        )
+    if not str(account.get('client_id') or '').strip() or not str(account.get('refresh_token') or '').strip():
+        return build_graph_send_error_result(
+            'GRAPH_SEND_REAUTH_REQUIRED',
+            '此账号缺少可用的 Graph 授权，请重新完成 Graph 授权后再试',
+            403,
+        )
+    return None
+
+
+@app.route('/api/outlook/send-mail', methods=['POST'])
+@login_required
+def api_send_outlook_graph_mail():
+    """以选中 Outlook 账号自身身份提交一封基础纯文本邮件。"""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        result = build_graph_send_error_result(
+            'GRAPH_SEND_INVALID_REQUEST',
+            '请求数据格式无效',
+            400,
+        )
+        return jsonify(result), 400
+
+    allowed_fields = {'account_id', 'recipients', 'subject', 'body'}
+    unsupported_fields = sorted(set(data) - allowed_fields)
+    if unsupported_fields:
+        result = build_graph_send_error_result(
+            'GRAPH_SEND_UNSUPPORTED_FIELD',
+            '基础写信不支持指定发件人、附件或富文本等字段',
+            400,
+            {'fields': unsupported_fields},
+        )
+        return jsonify(result), 400
+
+    raw_account_id = data.get('account_id')
+    try:
+        if isinstance(raw_account_id, bool):
+            raise ValueError
+        account_id = int(raw_account_id)
+    except (TypeError, ValueError):
+        account_id = 0
+    if account_id <= 0:
+        result = build_graph_send_error_result(
+            'GRAPH_SEND_INVALID_REQUEST',
+            '请选择有效的 Outlook 账号',
+            400,
+        )
+        return jsonify(result), 400
+
+    account = get_account_by_id(account_id)
+    if not account:
+        result = build_graph_send_error_result(
+            'ACCOUNT_NOT_FOUND',
+            '账号不存在',
+            404,
+        )
+        return jsonify(result), 404
+
+    account_error = get_graph_send_mail_account_error(account)
+    if account_error:
+        status_code = int(account_error['error'].get('status') or 400)
+        return jsonify(account_error), status_code
+
+    result = send_graph_mail_result(
+        account['client_id'],
+        account['refresh_token'],
+        data.get('recipients'),
+        data.get('subject'),
+        data.get('body'),
+        proxy_url=get_account_proxy_url(account),
+        fallback_proxy_urls=get_account_proxy_failover_urls(account),
+    )
+    if result.get('success'):
+        return jsonify(result), 202
+    status_code = int((result.get('error') or {}).get('status') or 502)
+    return jsonify(result), status_code
+
+
 @app.route('/api/emails/mark-read', methods=['POST'])
 @login_required
 def api_mark_emails_read():

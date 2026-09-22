@@ -1,11 +1,32 @@
-        /* global accountsCache, applyEmailListCache, closeMobilePanels, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentGroupId, currentMethod, currentSkip, emailListCache, getEmailListCacheEntry, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, hideModal, isTempEmailGroup, loadAccountsByGroup, loadEmails, loadGroups, renderEmailList, scheduleEmailListLoadCheck, showEmailList, showToast, updateMobileContext */
+        /* global accountsCache, applyEmailListCache, closeMobilePanels, currentAccount, currentAccountListSource, currentAccountSummary, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentGroupId, currentMethod, currentSkip, emailListCache, getEmailListCacheEntry, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, hideModal, isTempEmailGroup, loadAccountsByGroup, loadEmails, loadGroups, renderEmailList, scheduleEmailListLoadCheck, showEmailList, showToast, updateGraphSendMailAvailability, updateMobileContext */
 
         // ==================== 账号相关 ====================
 
+        function buildCurrentAccountSummary(email, accountId) {
+            const targetId = Number(accountId) || 0;
+            const normalizedEmail = String(email || '').trim();
+            const source = (currentAccountListSource || []).find(account => (
+                (targetId > 0 && Number(account?.id) === targetId)
+                || (targetId <= 0 && String(account?.email || '').trim() === normalizedEmail)
+            )) || {};
+            return {
+                id: Number(source.id || targetId) || 0,
+                email: String(source.email || normalizedEmail).trim(),
+                account_type: String(source.account_type || '').trim().toLowerCase(),
+                provider: String(source.provider || '').trim().toLowerCase(),
+                authorization_type: String(source.authorization_type || '').trim().toLowerCase(),
+                status: String(source.status || '').trim().toLowerCase(),
+            };
+        }
+
         // 选择账号
-        function selectAccount(email) {
+        function selectAccount(email, accountId = 0) {
             currentAccount = email;
+            currentAccountSummary = buildCurrentAccountSummary(email, accountId);
             isTempEmailGroup = false;
+            if (typeof updateGraphSendMailAvailability === 'function') {
+                updateGraphSendMailAvailability();
+            }
             currentFolder = 'all'; // 重置为全部邮件
             currentEmailId = null;
             currentEmailDetail = null;
@@ -102,6 +123,10 @@
 
                     if (currentAccount === email) {
                         currentAccount = null;
+                        currentAccountSummary = null;
+                        if (typeof updateGraphSendMailAvailability === 'function') {
+                            updateGraphSendMailAvailability();
+                        }
                         document.getElementById('currentAccount').classList.remove('show');
                         document.getElementById('emailList').innerHTML = `
                             <div class="empty-state">
@@ -148,6 +173,15 @@
 
                 if (data.success) {
                     showToast(`${action}成功`, 'success');
+                    if (Number(currentAccountSummary?.id) === Number(accountId)) {
+                        currentAccountSummary = {
+                            ...currentAccountSummary,
+                            status: newStatus,
+                        };
+                        if (typeof updateGraphSendMailAvailability === 'function') {
+                            updateGraphSendMailAvailability();
+                        }
+                    }
 
                     // 清除当前分组的缓存
                     if (currentGroupId) {

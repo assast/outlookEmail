@@ -367,12 +367,17 @@ def get_graph_token_scope_candidates(include_original_scope_fallback: bool = Fal
         scope for scope in OAUTH_GRAPH_SCOPES
         if str(scope or '').startswith('https://graph.microsoft.com/')
     ]
-    read_graph_scopes = [
+    read_write_graph_scopes = [
         scope for scope in configured_graph_scopes
+        if scope != 'https://graph.microsoft.com/Mail.Send'
+    ]
+    read_graph_scopes = [
+        scope for scope in read_write_graph_scopes
         if scope != 'https://graph.microsoft.com/Mail.ReadWrite'
     ]
     raw_candidates = [
         ('configured', build_graph_refresh_scope(configured_graph_scopes)),
+        ('read_write', build_graph_refresh_scope(read_write_graph_scopes)),
         ('read', build_graph_refresh_scope(read_graph_scopes)),
         ('default', GRAPH_DEFAULT_TOKEN_SCOPE),
     ]
@@ -562,6 +567,225 @@ def get_access_token_graph(client_id: str, refresh_token: str, proxy_url: str = 
     if result.get("success"):
         return result.get("access_token")
     return None
+
+
+_GRAPH_SEND_RECIPIENT_PATTERN = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+_GRAPH_SEND_REAUTH_MARKERS = (
+    'invalid_grant',
+    'invalid_scope',
+    'consent_required',
+    'interaction_required',
+    'mail.send',
+    'insufficient privileges',
+    'access is denied',
+    'authorization has been denied',
+    'token has expired',
+    'token is expired',
+)
+
+
+def post_once_with_primary_proxy(url: str, *, proxy_url: str = None, **kwargs):
+    """通过主代理仅提交一次 POST，避免结果不确定时重复写入远端服务。"""
+    proxy_candidate = normalize_proxy_candidate(proxy_url)
+    if proxy_candidate:
+        log_outbound_proxy_usage(f'POST {url}', proxy_candidate, label='primary')
+        request_kwargs = build_request_kwargs_for_proxy(kwargs, proxy_candidate)
+    else:
+        log_outbound_proxy_usage(f'POST {url}', '')
+        request_kwargs = dict(kwargs)
+    request_kwargs['allow_redirects'] = False
+    return requests.request('post', url, **request_kwargs)
+
+
+def normalize_graph_send_mail_payload(recipients: Any, subject: Any, body: Any) -> tuple[Optional[Dict[str, Any]], str]:
+    """校验并规范化 Graph 基础发信字段。"""
+    if not isinstance(recipients, list):
+        return None, '收件人格式无效'
+
+    normalized_recipients = []
+    seen = set()
+    for raw_recipient in recipients:
+        if not isinstance(raw_recipient, str):
+            return None, '收件人格式无效'
+        address = raw_recipient.strip()
+        normalized_address = address.lower()
+        if not _GRAPH_SEND_RECIPIENT_PATTERN.fullmatch(address):
+            return None, '收件人邮箱地址无效'
+        if normalized_address not in seen:
+            seen.add(normalized_address)
+            normalized_recipients.append(normalized_address)
+
+    if not normalized_recipients:
+        return None, '请至少填写一个收件人'
+    if not isinstance(subject, str) or not isinstance(body, str):
+        return None, '主题和正文必须为文本'
+    if '\x00' in subject or '\x00' in body:
+        return None, '主题和正文不能包含空字符'
+    if '\r' in subject or '\n' in subject:
+        return None, '主题不能包含换行符'
+    if not subject.strip() and not body.strip():
+        return None, '主题和正文不能同时为空'
+
+    return {
+        'recipients': normalized_recipients,
+        'subject': subject,
+        'body': body,
+    }, ''
+
+
+def is_graph_send_reauthorization_error(status: Any, details: Any) -> bool:
+    """判断发信失败是否需要用户重新完成 Graph 授权。"""
+    try:
+        status_code = int(status or 0)
+    except (TypeError, ValueError):
+        status_code = 0
+    if status_code in {401, 403}:
+        return True
+    try:
+        details_text = json.dumps(details, ensure_ascii=True).lower()
+    except Exception:
+        details_text = str(details or '').lower()
+    return any(marker in details_text for marker in _GRAPH_SEND_REAUTH_MARKERS)
+
+
+def build_graph_send_error_result(code: str, message: str, status: int, details: Any = None,
+                                  *, retryable: bool = False, submission_unknown: bool = False,
+                                  retry_after: Optional[int] = None) -> Dict[str, Any]:
+    """构造基础发信的稳定失败结果，避免向客户端暴露敏感凭据。"""
+    result = {
+        'success': False,
+        'submitted': False,
+        'retryable': retryable,
+        'submission_unknown': submission_unknown,
+        'error': build_error_payload(code, message, 'GraphSendError', status, details),
+    }
+    if retry_after is not None:
+        result['retry_after'] = retry_after
+    return result
+
+
+def get_graph_send_retry_after(response) -> Optional[int]:
+    """读取 Graph 429 响应中的秒级 Retry-After；非秒值交给用户稍后重试。"""
+    try:
+        raw_value = str((response.headers or {}).get('Retry-After') or '').strip()
+        retry_after = int(raw_value)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return retry_after if retry_after >= 0 else None
+
+
+def send_graph_mail_result(client_id: str, refresh_token: str, recipients: Any, subject: Any, body: Any,
+                           proxy_url: str = None,
+                           fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+    """以当前 Graph 委托账号单次提交一封基础纯文本邮件。"""
+    payload, validation_error = normalize_graph_send_mail_payload(recipients, subject, body)
+    if validation_error:
+        return build_graph_send_error_result(
+            'GRAPH_SEND_INVALID_REQUEST',
+            validation_error,
+            400,
+        )
+
+    token_result = get_access_token_graph_result(
+        client_id,
+        refresh_token,
+        proxy_url,
+        fallback_proxy_urls,
+    )
+    if not token_result.get('success'):
+        token_error = token_result.get('error') or {}
+        token_status = token_error.get('status', 502) if isinstance(token_error, dict) else 502
+        token_details = token_error.get('details', '') if isinstance(token_error, dict) else token_error
+        if is_graph_send_reauthorization_error(token_status, token_details):
+            return build_graph_send_error_result(
+                'GRAPH_SEND_REAUTH_REQUIRED',
+                '发信权限不足或授权已失效，请重新完成 Graph 授权后再试',
+                403,
+                token_details,
+            )
+        return build_graph_send_error_result(
+            'GRAPH_SEND_TOKEN_FAILED',
+            '获取发信访问令牌失败，请稍后重试',
+            int(token_status or 502),
+            token_details,
+            retryable=bool(token_error.get('retryable')) if isinstance(token_error, dict) else False,
+        )
+
+    graph_payload = {
+        'message': {
+            'subject': payload['subject'],
+            'body': {
+                'contentType': 'Text',
+                'content': payload['body'],
+            },
+            'toRecipients': [
+                {'emailAddress': {'address': recipient}}
+                for recipient in payload['recipients']
+            ],
+        },
+    }
+    headers = {
+        'Authorization': f"Bearer {token_result.get('access_token')}",
+        'Content-Type': 'application/json',
+    }
+
+    try:
+        response = post_once_with_primary_proxy(
+            'https://graph.microsoft.com/v1.0/me/sendMail',
+            headers=headers,
+            json=graph_payload,
+            timeout=HTTP_REQUEST_TIMEOUT,
+            proxy_url=proxy_url,
+        )
+    except Exception as exc:
+        return build_graph_send_error_result(
+            'GRAPH_SEND_RESULT_UNKNOWN',
+            '邮件提交结果不确定，请确认后再决定是否重新发送',
+            503,
+            sanitize_error_details(str(exc)),
+            submission_unknown=True,
+        )
+
+    if response.status_code == 202:
+        return {
+            'success': True,
+            'submitted': True,
+            'message': '邮件已提交发送',
+        }
+
+    response_status = int(response.status_code or 502)
+    response_details = get_response_details(response)
+    if response_status == 429:
+        retry_after = get_graph_send_retry_after(response)
+        return build_graph_send_error_result(
+            'GRAPH_SEND_THROTTLED',
+            '发送请求过于频繁，请稍后重试',
+            429,
+            response_details,
+            retryable=True,
+            retry_after=retry_after,
+        )
+    if 300 <= response_status < 400 or response_status == 408 or response_status >= 500:
+        return build_graph_send_error_result(
+            'GRAPH_SEND_RESULT_UNKNOWN',
+            '邮件提交结果不确定，请确认后再决定是否重新发送',
+            response_status,
+            response_details,
+            submission_unknown=True,
+        )
+    if is_graph_send_reauthorization_error(response_status, response_details):
+        return build_graph_send_error_result(
+            'GRAPH_SEND_REAUTH_REQUIRED',
+            '发信权限不足或授权已失效，请重新完成 Graph 授权后再试',
+            403,
+            response_details,
+        )
+    return build_graph_send_error_result(
+        'GRAPH_SEND_FAILED',
+        '邮件提交失败，请检查收件人和账号状态后重试',
+        response_status,
+        response_details,
+    )
 
 
 def get_emails_graph(client_id: str, refresh_token: str, folder: str = 'inbox', skip: int = 0,

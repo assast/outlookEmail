@@ -450,6 +450,48 @@
         </div>
     </div>
 
+    <!-- Outlook Graph 基础写信模态框 -->
+    <div class="modal" id="graphSendMailModal" aria-hidden="true"
+        onmousedown="if(event.target === this) hideGraphSendMailModal()">
+        <div class="modal-content graph-send-mail-modal-content">
+            <div class="modal-header">
+                <h3>写邮件</h3>
+                <button class="modal-close" type="button" aria-label="关闭写邮件" onclick="hideGraphSendMailModal()">&times;</button>
+            </div>
+            <form id="graphSendMailForm" onsubmit="event.preventDefault(); sendGraphMail();">
+                <div class="modal-body">
+                    <input type="hidden" id="graphSendMailAccountId">
+                    <div class="form-group">
+                        <label class="form-label" for="graphSendMailAccountEmail">发件账号</label>
+                        <input type="text" class="form-input" id="graphSendMailAccountEmail" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="graphSendMailRecipients">收件人</label>
+                        <input type="text" class="form-input" id="graphSendMailRecipients" autocomplete="email"
+                            placeholder="多个地址用逗号、分号或换行分隔" oninput="validateGraphSendMailRecipients()">
+                        <div class="form-hint">仅支持基础纯文本邮件。</div>
+                        <div class="graph-send-mail-validation" id="graphSendMailRecipientsError" role="alert" hidden></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="graphSendMailSubject">主题</label>
+                        <input type="text" class="form-input" id="graphSendMailSubject" autocomplete="off" maxlength="998">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="graphSendMailBody">正文</label>
+                        <textarea class="form-textarea graph-send-mail-body" id="graphSendMailBody" spellcheck="true"></textarea>
+                    </div>
+                    <div class="graph-send-mail-status" id="graphSendMailStatus" role="status" hidden></div>
+                    <button class="btn btn-secondary graph-send-mail-reauthorize" id="graphSendMailReauthorizeBtn"
+                        type="button" hidden onclick="reauthorizeGraphSendMailAccount()">重新 Graph 授权</button>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" type="button" onclick="hideGraphSendMailModal()">取消</button>
+                    <button class="btn btn-primary" id="graphSendMailSubmitBtn" type="submit">提交发送</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- 邮箱分享创建模态框 -->
     <div class="modal" id="createEmailShareModal" onmousedown="if(event.target === this) hideCreateEmailShareModal()">
         <div class="modal-content" style="width: 520px;">

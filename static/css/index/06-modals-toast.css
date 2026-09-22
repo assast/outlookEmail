@@ -498,6 +498,54 @@
             border-color: #1a1a1a;
         }
 
+        .graph-send-mail-modal-content {
+            width: min(560px, calc(100vw - 32px));
+            max-width: calc(100vw - 32px);
+        }
+
+        .graph-send-mail-body {
+            min-height: 180px;
+            font-family: inherit;
+            line-height: 1.5;
+        }
+
+        .graph-send-mail-validation,
+        .graph-send-mail-status {
+            margin-top: 8px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .graph-send-mail-validation {
+            color: #b42318;
+            background: #fef3f2;
+            border: 1px solid #fecdca;
+        }
+
+        .graph-send-mail-status.success {
+            color: #067647;
+            background: #ecfdf3;
+            border: 1px solid #abefc6;
+        }
+
+        .graph-send-mail-status.error {
+            color: #b42318;
+            background: #fef3f2;
+            border: 1px solid #fecdca;
+        }
+
+        .graph-send-mail-status.warning {
+            color: #92400e;
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+        }
+
+        .graph-send-mail-reauthorize {
+            margin-top: 12px;
+        }
+
         .form-select {
             width: 100%;
             padding: 10px 14px;

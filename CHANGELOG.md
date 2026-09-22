@@ -6,6 +6,21 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.9] - 2026-09-22
+
+### Added
+- Web 端支持已完成 GraphAPI 授权的 Outlook/Hotmail 主账号手动发送基础纯文本邮件：填写一个或多个收件人、主题和正文后，以当前账号自身身份调用 Microsoft Graph 提交发送。
+- Graph OAuth 授权范围新增 `Mail.Send`；写邮件入口仅面向已启用且非 OAuth IMAP 通道的 Outlook/Hotmail 账号显示。
+- 发信界面提供收件人校验、提交中防重复点击、权限不足时重新 Graph 授权入口，以及 Graph 限流和网络结果不确定提示。
+
+### Changed
+- Graph Refresh Token 刷新新增不含 `Mail.Send` 的读写/只读 scope 回退，尽量保持历史账号原有的读信和邮件管理能力。
+
+### Important
+- **需要重新授权：** 已有 Graph Refresh Token 不会静默获得 `Mail.Send`。需要使用 Web 端写邮件的历史 Outlook/Hotmail 账号，请重新完成一次 `GraphAPI` 授权。
+- Graph 返回 `202 Accepted` 时，界面显示“邮件已提交发送”，这不代表邮件已确认送达。网络超时或连接中断时，系统不会自动重发，以避免重复投递。
+- 首版不支持 IMAP/SMTP 手动发信、临时邮箱、别名或共享邮箱代发、附件、HTML/富文本、草稿、回复/转发、已发送列表、浏览器扩展入口、对外 API、批量、定时或自动化发信。
+
 ## [3.0.8] - 2026-09-18
 
 ### Added

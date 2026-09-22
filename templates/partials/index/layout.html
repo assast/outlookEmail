@@ -360,11 +360,17 @@
                                 <span class="email-list-hint">按时间顺序查看邮件</span>
                             </div>
                         </div>
-                        <button class="refresh-btn" onclick="refreshEmails()" title="获取邮件">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-                            </svg>
-                        </button>
+                        <div class="email-list-header-actions">
+                            <button class="compose-mail-btn" id="composeGraphMailBtn" type="button" hidden
+                                onclick="openGraphSendMailModal()" title="以当前 Outlook 账号写邮件">
+                                写邮件
+                            </button>
+                            <button class="refresh-btn" type="button" onclick="refreshEmails()" title="获取邮件">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                     <div class="folder-tabs" id="folderTabs" style="display: none;">
                         <button class="folder-tab active" data-folder="all" onclick="switchFolder('all')">

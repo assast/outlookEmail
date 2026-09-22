@@ -106,6 +106,36 @@
             display: block;
         }
 
+        .email-list-header-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .compose-mail-btn {
+            min-height: 34px;
+            padding: 0 12px;
+            border: 1px solid var(--skin-border-strong);
+            border-radius: 10px;
+            background: var(--skin-primary);
+            color: var(--skin-primary-text);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: background-color 0.15s, border-color 0.15s, opacity 0.15s;
+        }
+
+        .compose-mail-btn:hover:not(:disabled) {
+            background: var(--skin-primary-hover);
+            border-color: var(--skin-primary-hover);
+        }
+
+        .compose-mail-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
         .email-list {
             flex: 1;
             overflow-y: auto;

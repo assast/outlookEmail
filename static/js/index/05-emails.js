@@ -1,4 +1,4 @@
-        /* global EMAIL_DETAIL_REQUEST_TIMEOUT_MS, EMAIL_LIST_REQUEST_TIMEOUT_MS, adjustIframeHeight, applyEmailListCache, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, currentSkip, emailListCache, escapeHtml, fetchWithTimeout, formatDate, getEmailListCacheEntry, getFolderDisplayName, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, invalidateEmailListCache, isNormalMailLocalRetentionEnabled, isTempEmailGroup, isTimeoutAbortError, loadCloudflareGlobalMessages, mergeFolderSummaries, normalizeFolderSummaries, renderCloudflareGlobalFilterBar, renderEmptyStateMarkup, scheduleEmailListLoadCheck, showEmailFetchErrorModal, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
+        /* global EMAIL_DETAIL_REQUEST_TIMEOUT_MS, EMAIL_LIST_REQUEST_TIMEOUT_MS, adjustIframeHeight, applyEmailListCache, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentAccountSummary, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, currentSkip, emailListCache, escapeHtml, fetchWithTimeout, formatDate, getEmailListCacheEntry, getFolderDisplayName, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, hideModal, invalidateEmailListCache, isNormalMailLocalRetentionEnabled, isTempEmailGroup, isTimeoutAbortError, loadCloudflareGlobalMessages, mergeFolderSummaries, normalizeFolderSummaries, renderCloudflareGlobalFilterBar, renderEmptyStateMarkup, scheduleEmailListLoadCheck, showEmailFetchErrorModal, showMobileEmailDetail, showModal, showReauthorizeAccountModal, showToast, updateMobileContext, updateModalBodyState */
 
         // ==================== 邮件相关 ====================
 
@@ -13,6 +13,273 @@
         const normalDetailIframeResizeResources = { timers: [], observer: null };
         const fullscreenIframeResizeResources = { timers: [], observer: null };
         const NEW_EMAIL_HIGHLIGHT_CLEAR_DELAY_MS = 3500;
+        const GRAPH_SEND_MAIL_REQUEST_TIMEOUT_MS = 45000;
+        const GRAPH_SEND_MAIL_RECIPIENT_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        let graphSendMailAccountSnapshot = null;
+        let isGraphSendMailSubmitting = false;
+
+        function getGraphSendMailCandidate() {
+            const account = currentAccountSummary;
+            const accountId = Number(account?.id || 0);
+            const accountEmail = String(account?.email || '').trim();
+            const currentEmail = String(currentAccount || '').trim();
+            if (
+                isTempEmailGroup
+                || !Number.isInteger(accountId)
+                || accountId <= 0
+                || !accountEmail
+                || accountEmail.toLowerCase() !== currentEmail.toLowerCase()
+                || String(account?.account_type || '').toLowerCase() !== 'outlook'
+                || String(account?.provider || '').toLowerCase() !== 'outlook'
+                || String(account?.authorization_type || '').toLowerCase() === 'imap'
+                || String(account?.status || '').toLowerCase() !== 'active'
+            ) {
+                return null;
+            }
+            return { id: accountId, email: accountEmail };
+        }
+
+        function updateGraphSendMailAvailability() {
+            const button = document.getElementById('composeGraphMailBtn');
+            const available = !!getGraphSendMailCandidate();
+            if (button) {
+                button.hidden = !available;
+                button.disabled = !available || isGraphSendMailSubmitting;
+            }
+            return available;
+        }
+
+        function parseGraphSendMailRecipients(value) {
+            const rawRecipients = String(value || '').split(/[,;\n，；]+/)
+                .map(recipient => recipient.trim())
+                .filter(Boolean);
+            if (!rawRecipients.length) {
+                return { recipients: [], error: '请至少填写一个收件人' };
+            }
+
+            const recipients = [];
+            const seenRecipients = new Set();
+            for (const rawRecipient of rawRecipients) {
+                if (!GRAPH_SEND_MAIL_RECIPIENT_PATTERN.test(rawRecipient)) {
+                    return { recipients: [], error: '请填写有效的收件人邮箱地址' };
+                }
+                const normalizedRecipient = rawRecipient.toLowerCase();
+                if (!seenRecipients.has(normalizedRecipient)) {
+                    seenRecipients.add(normalizedRecipient);
+                    recipients.push(normalizedRecipient);
+                }
+            }
+            return { recipients, error: '' };
+        }
+
+        function setGraphSendMailValidation(message = '') {
+            const validation = document.getElementById('graphSendMailRecipientsError');
+            const input = document.getElementById('graphSendMailRecipients');
+            if (!validation || !input) {
+                return;
+            }
+            validation.textContent = message;
+            validation.hidden = !message;
+            input.setAttribute('aria-invalid', message ? 'true' : 'false');
+        }
+
+        function validateGraphSendMailRecipients() {
+            const input = document.getElementById('graphSendMailRecipients');
+            const result = parseGraphSendMailRecipients(input?.value || '');
+            setGraphSendMailValidation(result.error);
+            return !result.error;
+        }
+
+        function clearGraphSendMailFeedback() {
+            const status = document.getElementById('graphSendMailStatus');
+            const reauthorizeButton = document.getElementById('graphSendMailReauthorizeBtn');
+            if (status) {
+                status.textContent = '';
+                status.className = 'graph-send-mail-status';
+                status.hidden = true;
+            }
+            if (reauthorizeButton) {
+                reauthorizeButton.hidden = true;
+            }
+        }
+
+        function showGraphSendMailFeedback(message, type = 'error', options = {}) {
+            const status = document.getElementById('graphSendMailStatus');
+            const reauthorizeButton = document.getElementById('graphSendMailReauthorizeBtn');
+            if (status) {
+                status.textContent = message;
+                status.className = `graph-send-mail-status ${type}`;
+                status.hidden = false;
+            }
+            if (reauthorizeButton) {
+                reauthorizeButton.hidden = options.reauthorizationRequired !== true;
+            }
+        }
+
+        function setGraphSendMailSubmitting(submitting) {
+            isGraphSendMailSubmitting = submitting;
+            const submitButton = document.getElementById('graphSendMailSubmitBtn');
+            if (submitButton) {
+                submitButton.disabled = submitting;
+                submitButton.textContent = submitting ? '提交中...' : '提交发送';
+            }
+            updateGraphSendMailAvailability();
+        }
+
+        function resetGraphSendMailFormForAccount(account) {
+            const accountIdInput = document.getElementById('graphSendMailAccountId');
+            const accountEmailInput = document.getElementById('graphSendMailAccountEmail');
+            const recipientsInput = document.getElementById('graphSendMailRecipients');
+            const subjectInput = document.getElementById('graphSendMailSubject');
+            const bodyInput = document.getElementById('graphSendMailBody');
+            const previousAccountId = Number(accountIdInput?.value || 0);
+            const accountChanged = previousAccountId !== account.id;
+            if (accountIdInput) accountIdInput.value = String(account.id);
+            if (accountEmailInput) accountEmailInput.value = account.email;
+            if (accountChanged) {
+                if (recipientsInput) recipientsInput.value = '';
+                if (subjectInput) subjectInput.value = '';
+                if (bodyInput) bodyInput.value = '';
+                setGraphSendMailValidation('');
+            }
+        }
+
+        function openGraphSendMailModal() {
+            const account = getGraphSendMailCandidate();
+            if (!account) {
+                updateGraphSendMailAvailability();
+                showToast('当前账号不支持 Graph 基础发信', 'error');
+                return;
+            }
+            graphSendMailAccountSnapshot = account;
+            resetGraphSendMailFormForAccount(account);
+            clearGraphSendMailFeedback();
+            showModal('graphSendMailModal');
+            document.getElementById('graphSendMailRecipients')?.focus();
+        }
+
+        function hideGraphSendMailModal() {
+            if (isGraphSendMailSubmitting) {
+                showToast('邮件正在提交，请等待结果返回', 'info');
+                return;
+            }
+            hideModal('graphSendMailModal');
+        }
+
+        function isGraphSendMailSnapshotCurrent() {
+            const currentAccount = getGraphSendMailCandidate();
+            return !!(
+                graphSendMailAccountSnapshot
+                && currentAccount
+                && graphSendMailAccountSnapshot.id === currentAccount.id
+                && graphSendMailAccountSnapshot.email.toLowerCase() === currentAccount.email.toLowerCase()
+            );
+        }
+
+        function reauthorizeGraphSendMailAccount() {
+            const account = graphSendMailAccountSnapshot || getGraphSendMailCandidate();
+            if (!account) {
+                showGraphSendMailFeedback('当前账号已变化，请重新选择账号后再授权', 'error');
+                return;
+            }
+            showReauthorizeAccountModal({ id: account.id, email: account.email });
+        }
+
+        function getGraphSendMailFailureFeedback(data, responseStatus) {
+            const error = data?.error && typeof data.error === 'object' ? data.error : {};
+            const code = String(error.code || '');
+            if (code === 'GRAPH_SEND_REAUTH_REQUIRED') {
+                return {
+                    message: '发信权限不足或授权已失效，请重新完成 Graph 授权后再试',
+                    type: 'error',
+                    reauthorizationRequired: true,
+                };
+            }
+            if (code === 'GRAPH_SEND_THROTTLED' || responseStatus === 429) {
+                const retryAfter = Number(data?.retry_after);
+                const waitMessage = Number.isFinite(retryAfter) && retryAfter >= 0
+                    ? `发送请求过于频繁，请在 ${retryAfter} 秒后重试`
+                    : '发送请求过于频繁，请稍后重试';
+                return { message: waitMessage, type: 'warning' };
+            }
+            if (code === 'GRAPH_SEND_RESULT_UNKNOWN') {
+                return {
+                    message: '邮件提交结果不确定，请确认后再决定是否重新发送',
+                    type: 'warning',
+                };
+            }
+            return {
+                message: String(error.message || '邮件提交失败，请检查收件人和账号状态后重试'),
+                type: 'error',
+            };
+        }
+
+        async function sendGraphMail() {
+            if (isGraphSendMailSubmitting) {
+                return;
+            }
+            if (!isGraphSendMailSnapshotCurrent()) {
+                showGraphSendMailFeedback('当前账号已变化，请重新打开写邮件窗口后再提交', 'error');
+                return;
+            }
+
+            const recipientsInput = document.getElementById('graphSendMailRecipients');
+            const subjectInput = document.getElementById('graphSendMailSubject');
+            const bodyInput = document.getElementById('graphSendMailBody');
+            const recipientResult = parseGraphSendMailRecipients(recipientsInput?.value || '');
+            if (recipientResult.error) {
+                setGraphSendMailValidation(recipientResult.error);
+                return;
+            }
+            setGraphSendMailValidation('');
+
+            const subject = String(subjectInput?.value || '');
+            const body = String(bodyInput?.value || '');
+            if (!subject.trim() && !body.trim()) {
+                showGraphSendMailFeedback('主题和正文不能同时为空', 'error');
+                return;
+            }
+            if (/\r|\n/.test(subject)) {
+                showGraphSendMailFeedback('主题不能包含换行符', 'error');
+                return;
+            }
+
+            clearGraphSendMailFeedback();
+            setGraphSendMailSubmitting(true);
+            try {
+                const response = await fetchWithTimeout('/api/outlook/send-mail', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        account_id: graphSendMailAccountSnapshot.id,
+                        recipients: recipientResult.recipients,
+                        subject,
+                        body,
+                    }),
+                    timeoutMs: GRAPH_SEND_MAIL_REQUEST_TIMEOUT_MS,
+                    timeoutMessage: '邮件提交结果不确定，请确认后再决定是否重新发送',
+                });
+                const data = await response.json().catch(() => ({}));
+                if (response.status === 202 && data?.success === true && data?.submitted === true) {
+                    if (recipientsInput) recipientsInput.value = '';
+                    if (subjectInput) subjectInput.value = '';
+                    if (bodyInput) bodyInput.value = '';
+                    showGraphSendMailFeedback('邮件已提交发送', 'success');
+                    showToast('邮件已提交发送', 'success');
+                    return;
+                }
+
+                const feedback = getGraphSendMailFailureFeedback(data, response.status);
+                showGraphSendMailFeedback(feedback.message, feedback.type, feedback);
+            } catch (error) {
+                showGraphSendMailFeedback(
+                    '邮件提交结果不确定，请确认后再决定是否重新发送',
+                    'warning',
+                );
+            } finally {
+                setGraphSendMailSubmitting(false);
+            }
+        }
 
         function cleanupIframeResizeResources(resources) {
             (resources.timers || []).forEach(timerId => window.clearTimeout(timerId));

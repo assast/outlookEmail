@@ -316,6 +316,7 @@ class AccountReauthorizationTests(unittest.TestCase):
         self.assertIn('offline_access', scope)
         self.assertIn('https://graph.microsoft.com/Mail.Read', scope)
         self.assertIn('https://graph.microsoft.com/Mail.ReadWrite', scope)
+        self.assertIn('https://graph.microsoft.com/Mail.Send', scope)
         self.assertIn('https://graph.microsoft.com/User.Read', scope)
         self.assertNotIn('https://outlook.office.com/', scope)
 
@@ -350,6 +351,7 @@ class AccountReauthorizationTests(unittest.TestCase):
         self.assertEqual(scope, ' '.join(web_outlook_app.OAUTH_SCOPES))
         self.assertIn('https://graph.microsoft.com/Mail.Read', scope)
         self.assertIn('https://graph.microsoft.com/Mail.ReadWrite', scope)
+        self.assertIn('https://graph.microsoft.com/Mail.Send', scope)
         self.assertIn('https://graph.microsoft.com/User.Read', scope)
         self.assertNotIn('https://outlook.office.com/', scope)
 

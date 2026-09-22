@@ -1,4 +1,4 @@
-        /* global ACCOUNT_LIST_DEFAULT_PAGE_SIZE, ACCOUNT_LIST_MAX_PAGE_SIZE, accountListPageSize, accountListRequestSeq, accountPaginationState, accountSelectionMode, accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, excludedTagFilters, formatAbsoluteDateTime, generateTempEmail, groups, handleAccountRowSelectionClick, handleAccountSelectionCheckboxClick, handleApiError, hasActiveTagFilters, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadCloudflareChannelsForImport, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, shouldShowAccountCreatedAt, shouldShowAccountSortOrder, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, syncAccountTagFilterOptions, tempEmailGroupId, toggleAccountSelectionMode, updateCurrentGroupHeader, updateMobileContext, updateTagFilterSummary */
+        /* global ACCOUNT_LIST_DEFAULT_PAGE_SIZE, ACCOUNT_LIST_MAX_PAGE_SIZE, accountListPageSize, accountListRequestSeq, accountPaginationState, accountSelectionMode, accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentAccountSummary, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, excludedTagFilters, formatAbsoluteDateTime, generateTempEmail, groups, handleAccountRowSelectionClick, handleAccountSelectionCheckboxClick, handleApiError, hasActiveTagFilters, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadCloudflareChannelsForImport, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, shouldShowAccountCreatedAt, shouldShowAccountSortOrder, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, syncAccountTagFilterOptions, tempEmailGroupId, toggleAccountSelectionMode, updateCurrentGroupHeader, updateGraphSendMailAvailability, updateMobileContext, updateTagFilterSummary */
 
         // ==================== 分组相关 ====================
 
@@ -1454,7 +1454,7 @@
             );
         }
 
-        function handleAccountItemClick(event, email, isTemp = false) {
+        function handleAccountItemClick(event, email, isTemp = false, accountId = 0) {
             if (isAccountRowInteractiveTarget(event?.target)) {
                 return;
             }
@@ -1465,7 +1465,7 @@
             if (isTemp) {
                 selectTempEmail(email);
             } else {
-                selectAccount(email);
+                selectAccount(email, accountId);
             }
         }
 
@@ -1498,7 +1498,7 @@
             container.innerHTML = accounts.map(acc => `
                 <div class="account-item ${currentAccount === acc.email ? 'active' : ''} ${acc.status === 'inactive' ? 'inactive' : ''}"
                      data-account-id="${acc.id}"
-                     onclick="handleAccountItemClick(event, '${escapeJs(acc.email)}')">
+                     onclick="handleAccountItemClick(event, '${escapeJs(acc.email)}', false, ${Number(acc.id) || 0})">
                     <input type="checkbox" class="account-select-checkbox" value="${acc.id}" 
                            data-account-email="${escapeHtml(acc.email)}"
                            data-account-type="${escapeHtml(acc.account_type || 'outlook')}"
@@ -1758,6 +1758,10 @@
 
         function resetSelectedAccountView() {
             currentAccount = null;
+            currentAccountSummary = null;
+            if (typeof updateGraphSendMailAvailability === 'function') {
+                updateGraphSendMailAvailability();
+            }
             currentEmailId = null;
             currentEmailDetail = null;
             currentEmails = [];

@@ -2502,6 +2502,7 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
                 no_permissions_response,
                 no_permissions_response,
                 no_permissions_response,
+                no_permissions_response,
                 success_response,
             ],
         ) as mocked_request:
@@ -2514,8 +2515,9 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
         request_data = [call.kwargs['data'] for call in mocked_request.call_args_list]
         self.assertIn('scope', request_data[0])
         self.assertIn('scope', request_data[1])
-        self.assertEqual(request_data[2]['scope'], 'https://graph.microsoft.com/.default')
-        self.assertNotIn('scope', request_data[3])
+        self.assertIn('scope', request_data[2])
+        self.assertEqual(request_data[3]['scope'], 'https://graph.microsoft.com/.default')
+        self.assertNotIn('scope', request_data[4])
 
         with self.app.app_context():
             refreshed = web_outlook_app.get_account_by_id(self.account_id)
@@ -2551,6 +2553,7 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
             side_effect=[
                 unauthorized_scope_response,
                 unauthorized_scope_response,
+                unauthorized_scope_response,
                 success_response,
             ],
         ) as mocked_request:
@@ -2562,8 +2565,10 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
 
         request_data = [call.kwargs['data'] for call in mocked_request.call_args_list]
         self.assertIn('https://graph.microsoft.com/Mail.ReadWrite', request_data[0]['scope'])
-        self.assertNotIn('https://graph.microsoft.com/Mail.ReadWrite', request_data[1]['scope'])
-        self.assertEqual(request_data[2]['scope'], 'https://graph.microsoft.com/.default')
+        self.assertNotIn('https://graph.microsoft.com/Mail.Send', request_data[1]['scope'])
+        self.assertIn('https://graph.microsoft.com/Mail.ReadWrite', request_data[1]['scope'])
+        self.assertNotIn('https://graph.microsoft.com/Mail.ReadWrite', request_data[2]['scope'])
+        self.assertEqual(request_data[3]['scope'], 'https://graph.microsoft.com/.default')
 
         with self.app.app_context():
             refreshed = web_outlook_app.get_account_by_id(self.account_id)
@@ -2600,6 +2605,7 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
                 graph_failure,
                 graph_failure,
                 graph_failure,
+                graph_failure,
                 imap_success,
             ],
         ) as mocked_request:
@@ -2610,10 +2616,10 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
         self.assertTrue(payload['success'])
 
         request_urls = [call.args[1] for call in mocked_request.call_args_list]
-        self.assertEqual(request_urls[:4], [web_outlook_app.TOKEN_URL_GRAPH] * 4)
-        self.assertEqual(request_urls[4], web_outlook_app.TOKEN_URL_IMAP)
+        self.assertEqual(request_urls[:5], [web_outlook_app.TOKEN_URL_GRAPH] * 5)
+        self.assertEqual(request_urls[5], web_outlook_app.TOKEN_URL_IMAP)
 
-        imap_request_data = mocked_request.call_args_list[4].kwargs['data']
+        imap_request_data = mocked_request.call_args_list[5].kwargs['data']
         self.assertEqual(imap_request_data['scope'], web_outlook_app.IMAP_TOKEN_SCOPE)
 
         with self.app.app_context():
