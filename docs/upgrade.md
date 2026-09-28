@@ -57,15 +57,33 @@ docker compose up -d
 
 ## Windows `exe` 升级
 
-1. 从 GitHub Releases 下载新版本 `OutlookEmail-windows-x64-*.zip`
-2. 解压到新的目录或覆盖旧目录中的程序文件
-3. 保留原有数据目录 `%APPDATA%\\OutlookEmail`
-4. 启动新的 `OutlookEmail.exe`
+### 在线升级
+
+1. 登录应用并打开页面顶部的版本信息。
+2. 发现新版本后点击「立即升级」，确认开始。
+3. 等待下载、解压和重启完成；下载阶段会显示百分比、大小和速度，并允许取消。
+4. 当前页面会在服务恢复后自动刷新并显示新版本。
+
+在线升级继续使用 GitHub Release 中现有的 `OutlookEmail-windows-x64-X.Y.Z.zip`，不会下载额外安装器。升级文件临时保存在当前 EXE 所在目录，因此该目录必须允许当前用户创建、重命名和删除文件；程序不会申请 UAC 提权。
+
+如果仓库版本已经更新、但对应 Release ZIP 尚未发布，页面会提示稍后重试，当前程序不会退出。
+
+### 手动升级
+
+无法使用在线升级时仍可沿用原方式：
+
+1. 从 GitHub Releases 下载新版本 `OutlookEmail-windows-x64-*.zip`。
+2. 退出旧程序。
+3. 解压到新的目录或覆盖旧目录中的程序文件。
+4. 保留原有数据目录 `%APPDATA%\\OutlookEmail`。
+5. 启动新的 `OutlookEmail.exe`。
 
 说明：
 
 - 数据默认不在程序目录里，而是在 `%APPDATA%\\OutlookEmail`
 - 不要随意删除该目录中的数据库或密钥文件
+- 在线升级会先把旧程序备份为同目录的 `*.old.exe`，确认新版本成功监听 Web 端口后才删除
+- 新版本无法启动时会自动恢复旧版本；如果替换期间断电或进程被系统强制终止，可退出相关进程后把 `*.old.exe` 手动改回原 EXE 文件名
 
 ## Python 直跑升级
 

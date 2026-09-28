@@ -1128,6 +1128,23 @@
             </div>
             <div class="modal-body release-notice-body">
                 <div class="release-notice-version" id="releaseNoticeVersionSummary">当前版本：v{{ app_version }}</div>
+                <div class="release-notice-hint" id="releaseNoticeHint">
+                    此提示每个新版本只会显示一次。
+                </div>
+                <div class="windows-update-progress" id="windowsUpdateProgress" aria-live="polite" hidden>
+                    <div class="windows-update-progress__header">
+                        <strong id="windowsUpdateStage">准备升级</strong>
+                        <span id="windowsUpdateSpeed"></span>
+                    </div>
+                    <div class="windows-update-progress__track" role="progressbar" aria-label="Windows 更新下载进度"
+                        aria-valuemin="0" aria-valuemax="100">
+                        <div class="windows-update-progress__bar" id="windowsUpdateProgressBar" aria-valuenow="0"></div>
+                    </div>
+                    <div class="windows-update-progress__meta">
+                        <span id="windowsUpdateAmount"></span>
+                        <span id="windowsUpdateMessage"></span>
+                    </div>
+                </div>
                 <div class="release-notice-list" id="releaseNoticeNotesList">
                     <div class="release-notice-card release-notice-entry" id="releaseNoticeNotesCard">
                         <div class="release-notice-entry-header">
@@ -1139,9 +1156,6 @@
                         </ul>
                     </div>
                 </div>
-                <div class="release-notice-hint" id="releaseNoticeHint">
-                    此提示每个新版本只会显示一次。
-                </div>
                 <div class="release-notice-hint" id="releaseNoticeDockerHint" hidden>
                     仅 Docker 版本支持在线更新，请参考
                     <a href="https://github.com/assast/outlookEmail#readme" target="_blank" rel="noreferrer">README 中的「启用界面 Docker 在线更新」</a>
@@ -1151,9 +1165,13 @@
             <div class="modal-footer">
                 <a class="btn btn-secondary" id="releaseNoticeChangelogLink" href="{{ changelog_url }}" target="_blank" rel="noreferrer">查看更新日志</a>
                 <a class="btn btn-primary" id="releaseNoticeUpdateLink" href="{{ changelog_url }}" target="_blank" rel="noreferrer" onclick="markCurrentReleaseNoticeSeen()">前往下载</a>
+                <button class="btn btn-primary" id="releaseNoticeWindowsUpdateBtn" type="button"
+                    onclick="startWindowsUpdate()" hidden>立即升级</button>
                 <button class="btn btn-primary" id="releaseNoticeDockerUpdateBtn" type="button"
                     data-default-label="Docker 在线更新" data-unavailable-label="不可在线更新"
                     onclick="startDockerUpdate()" hidden>Docker 在线更新</button>
+                <button class="btn btn-secondary" id="windowsUpdateCancelBtn" type="button"
+                    onclick="cancelWindowsUpdate()" hidden>取消升级</button>
                 <button class="btn btn-secondary" type="button" onclick="dismissReleaseNotice()">我知道了</button>
             </div>
         </div>
