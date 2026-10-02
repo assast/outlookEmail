@@ -2543,6 +2543,74 @@
             line-height: 1.5;
         }
 
+        .windows-update-progress {
+            display: grid;
+            gap: 9px;
+            padding: 12px;
+            border: 1px solid #dbe3ec;
+            border-radius: 8px;
+            background: #ffffff;
+        }
+
+        .windows-update-progress[hidden] {
+            display: none;
+        }
+
+        .windows-update-progress__header,
+        .windows-update-progress__meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            min-width: 0;
+            color: #475569;
+            font-size: 12px;
+        }
+
+        .windows-update-progress__header strong {
+            color: #1f2937;
+            font-size: 13px;
+        }
+
+        .windows-update-progress__track {
+            position: relative;
+            height: 8px;
+            overflow: hidden;
+            border-radius: 6px;
+            background: #e5e7eb;
+        }
+
+        .windows-update-progress__bar {
+            width: 0;
+            height: 100%;
+            border-radius: inherit;
+            background: #2563eb;
+            transition: width 180ms ease;
+        }
+
+        .windows-update-progress__bar.is-indeterminate {
+            width: 35% !important;
+            animation: windows-update-indeterminate 1.1s ease-in-out infinite;
+        }
+
+        .windows-update-progress__meta span {
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+
+        #windowsUpdateMessage {
+            text-align: right;
+        }
+
+        #windowsUpdateMessage[data-state="error"] {
+            color: #b91c1c;
+        }
+
+        @keyframes windows-update-indeterminate {
+            0% { transform: translateX(-130%); }
+            100% { transform: translateX(290%); }
+        }
+
         /* 消息提示 */
         .toast {
             position: fixed;

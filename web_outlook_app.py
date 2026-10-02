@@ -8,8 +8,16 @@ import threading
 import webbrowser
 from pathlib import Path
 
+from outlook_web import windows_update
 from outlook_web.runtime import is_frozen, notify_startup_error, record_startup_error
 from werkzeug.serving import make_server
+
+
+_update_helper_exit_code = windows_update.run_update_helper_if_requested()
+if _update_helper_exit_code is not None:
+    raise SystemExit(_update_helper_exit_code)
+
+WINDOWS_UPDATE_STARTUP_CONTEXT = windows_update.parse_update_startup_context()
 
 
 SEGMENT_FILES = (
@@ -86,16 +94,36 @@ def run_desktop_app(access_url: str, host: str, port: int) -> None:
     from outlook_web.windows_tray import WindowsTrayApp
 
     server = DesktopServer(host, port)
-    server.start()
 
     def open_ui():
         webbrowser.open(access_url)
 
+    shutdown_started = threading.Event()
+
     def exit_app():
+        if shutdown_started.is_set():
+            return
+        shutdown_started.set()
         server.stop()
 
-    threading.Timer(1.0, open_ui).start()
-    WindowsTrayApp("OutlookEmail", open_ui, exit_app).run()
+    tray = WindowsTrayApp("OutlookEmail", open_ui, exit_app)
+
+    def shutdown_for_update():
+        try:
+            exit_app()
+        finally:
+            tray.close()
+
+    windows_update.register_shutdown_callback(shutdown_for_update)
+    try:
+        server.start()
+        windows_update.mark_update_startup_healthy(WINDOWS_UPDATE_STARTUP_CONTEXT, APP_VERSION)
+        windows_update.schedule_runner_cleanup(WINDOWS_UPDATE_STARTUP_CONTEXT)
+        if not WINDOWS_UPDATE_STARTUP_CONTEXT.get("restarted"):
+            threading.Timer(1.0, open_ui).start()
+        tray.run()
+    finally:
+        windows_update.register_shutdown_callback(None)
 
 
 def run_windows_desktop(access_url: str, host: str, port: int) -> None:
