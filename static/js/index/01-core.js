@@ -74,7 +74,12 @@
         const REFRESH_STREAM_STALL_TIMEOUT_MS = 70000;
         const VERSION_STATUS_REQUEST_TIMEOUT_MS = 12000;
         const DOCKER_UPDATE_REQUEST_TIMEOUT_MS = 20000;
+        const WINDOWS_UPDATE_REQUEST_TIMEOUT_MS = 20000;
+        const WINDOWS_UPDATE_POLL_INTERVAL_MS = 500;
+        const WINDOWS_UPDATE_RESTART_TIMEOUT_MS = 75000;
         const UPDATE_NOTICE_SEEN_VERSION_KEY = 'outlook_update_notice_seen_latest_version';
+        const WINDOWS_UPDATE_PENDING_VERSION_KEY = 'outlook_windows_update_pending_version';
+        const WINDOWS_UPDATE_COMPLETED_VERSION_KEY = 'outlook_windows_update_completed_version';
         const DEFAULT_APP_TIME_ZONE = 'Asia/Shanghai';
         const FALLBACK_APP_TIME_ZONES = [
             'Asia/Shanghai',
@@ -87,8 +92,14 @@
         ];
         let versionStatusRequest = null;
         let dockerUpdateStatusRequest = null;
+        let windowsUpdateStatusRequest = null;
         let currentVersionStatusState = 'unknown';
+        let currentVersionStatus = null;
         let dockerUpdateStatus = null;
+        let windowsUpdateStatus = null;
+        let windowsUpdateMonitorTimer = null;
+        let windowsUpdateRestartProbeRunning = false;
+        let windowsUpdateInteractionActive = false;
         let emailListLoadCheckTimer = null;
         let appTimeZone = DEFAULT_APP_TIME_ZONE;
         let showAccountCreatedAt = true;
@@ -751,6 +762,20 @@
             }
         }
 
+        function refreshOnlineUpdateHint() {
+            const dockerHint = document.getElementById('releaseNoticeDockerHint');
+            if (!dockerHint) return;
+
+            const updateAvailable = currentVersionStatusState === 'update_available';
+            const dockerAvailable = dockerUpdateStatus?.available === true;
+            const windowsEnabled = windowsUpdateStatus?.enabled === true;
+            const windowsStatusLoaded = windowsUpdateStatus !== null;
+            dockerHint.hidden = !updateAvailable
+                || dockerAvailable
+                || windowsEnabled
+                || !windowsStatusLoaded;
+        }
+
         function refreshDockerUpdateButton() {
             const updateButtons = [
                 document.getElementById('appVersionDockerUpdateBtn'),
@@ -775,10 +800,7 @@
                     : (dockerUpdateStatus?.reason || 'Docker 更新不可用');
             });
 
-            const dockerHint = document.getElementById('releaseNoticeDockerHint');
-            if (dockerHint) {
-                dockerHint.hidden = !updateAvailable || available;
-            }
+            refreshOnlineUpdateHint();
         }
 
         async function loadDockerUpdateStatus(forceRefresh = false) {
@@ -877,6 +899,363 @@
             }
         }
 
+        function formatWindowsUpdateBytes(value) {
+            const bytes = Math.max(0, Number(value) || 0);
+            if (bytes < 1024) return `${Math.round(bytes)} B`;
+            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+            if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+            return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+        }
+
+        function windowsUpdateStageLabel(state = {}) {
+            const labels = {
+                idle: '等待开始',
+                queued: '准备升级',
+                resolving: '正在查找更新包',
+                downloading: '正在下载',
+                extracting: '正在解压',
+                restarting: '正在重启',
+                completed: '升级完成',
+                cancelled: '已取消',
+                failed: '升级失败',
+            };
+            return labels[String(state.stage || 'idle')] || String(state.message || '处理中');
+        }
+
+        function renderWindowsUpdateProgress(state = {}) {
+            const progressPanel = document.getElementById('windowsUpdateProgress');
+            const stageEl = document.getElementById('windowsUpdateStage');
+            const barEl = document.getElementById('windowsUpdateProgressBar');
+            const amountEl = document.getElementById('windowsUpdateAmount');
+            const speedEl = document.getElementById('windowsUpdateSpeed');
+            const messageEl = document.getElementById('windowsUpdateMessage');
+            const cancelButton = document.getElementById('windowsUpdateCancelBtn');
+            if (!progressPanel) return;
+
+            const running = state.running === true;
+            const stage = String(state.stage || 'idle');
+            const shouldShow = windowsUpdateInteractionActive
+                || running
+                || ['restarting', 'completed', 'cancelled', 'failed'].includes(stage);
+            progressPanel.hidden = !shouldShow;
+            if (!shouldShow) return;
+
+            const downloadedBytes = Math.max(0, Number(state.downloaded_bytes) || 0);
+            const totalBytes = Math.max(0, Number(state.total_bytes) || 0);
+            const percentValue = Number(state.percent);
+            const hasPercent = Number.isFinite(percentValue) && totalBytes > 0;
+            const normalizedPercent = hasPercent ? Math.max(0, Math.min(100, percentValue)) : 0;
+
+            if (stageEl) {
+                stageEl.textContent = windowsUpdateStageLabel(state);
+            }
+            if (barEl) {
+                barEl.classList.toggle('is-indeterminate', running && !hasPercent && stage === 'downloading');
+                barEl.style.width = hasPercent ? `${normalizedPercent}%` : '0%';
+                barEl.setAttribute('aria-valuenow', hasPercent ? String(normalizedPercent) : '0');
+            }
+            if (amountEl) {
+                if (stage === 'downloading') {
+                    const totalText = totalBytes > 0 ? ` / ${formatWindowsUpdateBytes(totalBytes)}` : '';
+                    const percentText = hasPercent ? `${normalizedPercent.toFixed(1)}% · ` : '';
+                    amountEl.textContent = `${percentText}${formatWindowsUpdateBytes(downloadedBytes)}${totalText}`;
+                } else {
+                    amountEl.textContent = state.target_version ? `目标版本 ${state.target_version}` : '';
+                }
+            }
+            if (speedEl) {
+                const bytesPerSecond = Math.max(0, Number(state.bytes_per_second) || 0);
+                speedEl.textContent = stage === 'downloading' && bytesPerSecond > 0
+                    ? `${formatWindowsUpdateBytes(bytesPerSecond)}/s`
+                    : '';
+            }
+            if (messageEl) {
+                messageEl.textContent = String(state.error || state.message || '');
+                messageEl.dataset.state = state.success === false ? 'error' : stage;
+            }
+            if (cancelButton) {
+                cancelButton.hidden = !(running && state.cancelable === true);
+                cancelButton.disabled = !(running && state.cancelable === true);
+            }
+        }
+
+        function scrollWindowsUpdateProgressIntoView() {
+            const progressPanel = document.getElementById('windowsUpdateProgress');
+            if (!progressPanel || progressPanel.hidden) return;
+
+            window.requestAnimationFrame(() => {
+                const modalContent = progressPanel.closest('.release-notice-modal-content');
+                if (modalContent) {
+                    modalContent.scrollTo({ top: 0, behavior: 'smooth' });
+                    return;
+                }
+                progressPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
+        }
+
+        function refreshWindowsUpdateButton() {
+            const buttons = [
+                document.getElementById('appVersionWindowsUpdateBtn'),
+                document.getElementById('releaseNoticeWindowsUpdateBtn'),
+            ].filter(Boolean);
+            const enabled = windowsUpdateStatus?.enabled === true;
+            const available = windowsUpdateStatus?.available === true;
+            const running = windowsUpdateStatus?.state?.running === true;
+            const updateAvailable = currentVersionStatusState === 'update_available';
+
+            buttons.forEach(button => {
+                button.hidden = !(enabled && updateAvailable);
+                button.disabled = !available || running;
+                button.textContent = running ? '升级中...' : '立即升级';
+                button.title = available
+                    ? '下载更新并重启应用'
+                    : (windowsUpdateStatus?.reason || 'Windows 在线升级不可用');
+            });
+
+            const manualUpdateLink = document.getElementById('releaseNoticeUpdateLink');
+            if (manualUpdateLink) {
+                manualUpdateLink.textContent = enabled && updateAvailable ? '手动下载' : '前往下载';
+            }
+            refreshOnlineUpdateHint();
+            renderWindowsUpdateProgress(windowsUpdateStatus?.state || {});
+        }
+
+        async function loadWindowsUpdateStatus(forceRefresh = false) {
+            if (windowsUpdateStatusRequest && !forceRefresh) {
+                return windowsUpdateStatusRequest;
+            }
+            windowsUpdateStatusRequest = fetchWithTimeout('/api/windows-update/status', {
+                timeoutMs: WINDOWS_UPDATE_REQUEST_TIMEOUT_MS,
+                timeoutMessage: 'Windows 升级状态获取超时',
+                cache: 'no-store',
+                credentials: 'same-origin'
+            })
+                .then(async response => {
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.success || !payload.windows_update) {
+                        throw new Error(payload.error || 'Windows 升级状态获取失败');
+                    }
+                    windowsUpdateStatus = payload.windows_update;
+                    refreshWindowsUpdateButton();
+                    return windowsUpdateStatus;
+                })
+                .finally(() => {
+                    windowsUpdateStatusRequest = null;
+                });
+            return windowsUpdateStatusRequest;
+        }
+
+        function rememberPendingWindowsUpdate(version) {
+            try {
+                localStorage.setItem(WINDOWS_UPDATE_PENDING_VERSION_KEY, String(version || ''));
+            } catch (error) {
+                // localStorage 不可用时仍可完成升级，只是不自动展示成功提示。
+            }
+        }
+
+        function clearPendingWindowsUpdate() {
+            try {
+                localStorage.removeItem(WINDOWS_UPDATE_PENDING_VERSION_KEY);
+            } catch (error) {
+                // 忽略浏览器存储异常。
+            }
+        }
+
+        async function waitForWindowsUpdateRestart(targetVersion) {
+            if (windowsUpdateRestartProbeRunning) return;
+            windowsUpdateRestartProbeRunning = true;
+            const startedAt = Date.now();
+
+            const probe = async () => {
+                try {
+                    const response = await fetchWithTimeout('/api/version-status?refresh=1', {
+                        timeoutMs: 1800,
+                        timeoutMessage: '等待应用重启',
+                        cache: 'no-store',
+                        credentials: 'same-origin'
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    const currentVersion = String(payload?.version_status?.current_version || '').trim();
+                    if (response.ok && currentVersion === String(targetVersion || '').trim()) {
+                        try {
+                            localStorage.setItem(WINDOWS_UPDATE_COMPLETED_VERSION_KEY, currentVersion);
+                        } catch (error) {
+                            // 忽略浏览器存储异常。
+                        }
+                        clearPendingWindowsUpdate();
+                        window.location.reload();
+                        return;
+                    }
+
+                    if (response.ok) {
+                        const updateResponse = await fetchWithTimeout('/api/windows-update/status', {
+                            timeoutMs: 1800,
+                            timeoutMessage: '读取升级结果超时',
+                            cache: 'no-store',
+                            credentials: 'same-origin'
+                        });
+                        const updatePayload = await updateResponse.json().catch(() => ({}));
+                        const state = updatePayload?.windows_update?.state || {};
+                        if (updateResponse.ok && state.success === false && state.running !== true) {
+                            windowsUpdateRestartProbeRunning = false;
+                            clearPendingWindowsUpdate();
+                            windowsUpdateStatus = updatePayload.windows_update;
+                            renderWindowsUpdateProgress(state);
+                            refreshWindowsUpdateButton();
+                            showToast(state.error || state.message || '升级失败，已恢复旧版本', 'error');
+                            return;
+                        }
+                    }
+                } catch (error) {
+                    // 服务重启期间连接失败属于预期行为。
+                }
+
+                if (Date.now() - startedAt >= WINDOWS_UPDATE_RESTART_TIMEOUT_MS) {
+                    windowsUpdateRestartProbeRunning = false;
+                    showToast('应用重启超时，请检查程序目录中的旧版本备份', 'warning');
+                    return;
+                }
+                window.setTimeout(probe, 1000);
+            };
+
+            window.setTimeout(probe, 700);
+        }
+
+        async function monitorWindowsUpdateResult() {
+            if (windowsUpdateMonitorTimer) {
+                window.clearTimeout(windowsUpdateMonitorTimer);
+                windowsUpdateMonitorTimer = null;
+            }
+            try {
+                const status = await loadWindowsUpdateStatus(true);
+                const state = status?.state || {};
+                renderWindowsUpdateProgress(state);
+                if (state.stage === 'restarting') {
+                    waitForWindowsUpdateRestart(state.target_version || currentVersionStatus?.latest_version || '');
+                    return;
+                }
+                if (state.running) {
+                    windowsUpdateMonitorTimer = window.setTimeout(
+                        monitorWindowsUpdateResult,
+                        WINDOWS_UPDATE_POLL_INTERVAL_MS
+                    );
+                    return;
+                }
+                if (state.success === false) {
+                    showToast(state.error || state.message || 'Windows 在线升级失败', 'error');
+                }
+            } catch (error) {
+                const targetVersion = String(
+                    windowsUpdateStatus?.state?.target_version
+                    || currentVersionStatus?.latest_version
+                    || ''
+                ).trim();
+                if (windowsUpdateInteractionActive && targetVersion) {
+                    waitForWindowsUpdateRestart(targetVersion);
+                    return;
+                }
+                showToast(error?.message || 'Windows 升级状态获取失败', 'error');
+            }
+        }
+
+        async function startWindowsUpdate() {
+            const updateButton = document.getElementById('appVersionWindowsUpdateBtn');
+            if (updateButton?.disabled) return;
+            const targetVersion = String(currentVersionStatus?.latest_version || '').trim();
+            if (!targetVersion) {
+                showToast('未获取到目标版本', 'error');
+                return;
+            }
+            if (!window.confirm(`将下载 ${targetVersion} 并自动重启应用，确认继续？`)) {
+                return;
+            }
+
+            windowsUpdateInteractionActive = true;
+            rememberPendingWindowsUpdate(targetVersion);
+            markCurrentReleaseNoticeSeen();
+            closeVersionPopover();
+            if (currentVersionStatus) {
+                renderReleaseNotice(currentVersionStatus);
+            }
+            showModal('releaseNoticeModal');
+            renderWindowsUpdateProgress({
+                running: true,
+                stage: 'queued',
+                target_version: targetVersion,
+                message: '正在启动 Windows 在线升级',
+            });
+            scrollWindowsUpdateProgressIntoView();
+
+            try {
+                const response = await fetchWithTimeout('/api/windows-update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                    timeoutMs: WINDOWS_UPDATE_REQUEST_TIMEOUT_MS,
+                    timeoutMessage: 'Windows 在线升级启动超时',
+                    credentials: 'same-origin'
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'Windows 在线升级启动失败');
+                }
+                windowsUpdateStatus = payload.windows_update || windowsUpdateStatus;
+                refreshWindowsUpdateButton();
+                monitorWindowsUpdateResult();
+            } catch (error) {
+                clearPendingWindowsUpdate();
+                windowsUpdateInteractionActive = false;
+                renderWindowsUpdateProgress({
+                    running: false,
+                    stage: 'failed',
+                    success: false,
+                    target_version: targetVersion,
+                    error: error?.message || 'Windows 在线升级启动失败',
+                });
+                showToast(error?.message || 'Windows 在线升级启动失败', 'error');
+            }
+        }
+
+        async function cancelWindowsUpdate() {
+            try {
+                const response = await fetchWithTimeout('/api/windows-update/cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                    timeoutMs: WINDOWS_UPDATE_REQUEST_TIMEOUT_MS,
+                    timeoutMessage: '取消 Windows 在线升级超时',
+                    credentials: 'same-origin'
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || '当前升级阶段不能取消');
+                }
+                windowsUpdateStatus = payload.windows_update || windowsUpdateStatus;
+                clearPendingWindowsUpdate();
+                refreshWindowsUpdateButton();
+                monitorWindowsUpdateResult();
+            } catch (error) {
+                showToast(error?.message || '取消 Windows 在线升级失败', 'error');
+            }
+        }
+
+        function showCompletedWindowsUpdateNotice() {
+            let completedVersion = '';
+            try {
+                completedVersion = localStorage.getItem(WINDOWS_UPDATE_COMPLETED_VERSION_KEY) || '';
+                localStorage.removeItem(WINDOWS_UPDATE_COMPLETED_VERSION_KEY);
+            } catch (error) {
+                return;
+            }
+            if (completedVersion) {
+                markReleaseNoticeSeen(completedVersion);
+                showToast(`已升级到 ${completedVersion}`, 'success');
+            }
+        }
+
+        window.startWindowsUpdate = startWindowsUpdate;
+        window.cancelWindowsUpdate = cancelWindowsUpdate;
+
         function applyVersionStatus(versionStatus = {}) {
             const statusBadge = document.getElementById('appVersionStatus');
             const hintEl = document.getElementById('appVersionHint');
@@ -888,6 +1267,7 @@
             const updateUrl = String(versionStatus.update_url || '').trim();
             const defaultLabel = actionLink?.dataset.defaultLabel || '查看更新日志';
             currentVersionStatusState = state;
+            currentVersionStatus = versionStatus;
 
             if (statusBadge) {
                 statusBadge.dataset.state = state;
@@ -909,6 +1289,7 @@
             }
 
             refreshDockerUpdateButton();
+            refreshWindowsUpdateButton();
         }
 
         async function loadVersionStatus(forceRefresh = false) {
@@ -1239,6 +1620,20 @@
             closeAllModals(); // 修复：应用启动时关闭所有模态框，防止浏览器缓存导致残留的模态框背景层
             loadVersionStatus();
             loadDockerUpdateStatus();
+            loadWindowsUpdateStatus().then(status => {
+                let pendingVersion = '';
+                try {
+                    pendingVersion = localStorage.getItem(WINDOWS_UPDATE_PENDING_VERSION_KEY) || '';
+                } catch (error) {
+                    pendingVersion = '';
+                }
+                if (pendingVersion && status?.state?.running) {
+                    windowsUpdateInteractionActive = true;
+                    showModal('releaseNoticeModal');
+                    monitorWindowsUpdateResult();
+                }
+            }).catch(() => {});
+            showCompletedWindowsUpdateNotice();
             loadGroups();
             if (typeof loadTags === 'function') {
                 loadTags();

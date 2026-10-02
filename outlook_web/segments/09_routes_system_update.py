@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 from urllib.parse import quote, urlencode
 
+from outlook_web import windows_update
+
 if TYPE_CHECKING:
     from web_outlook_app import *  # noqa: F403
 
@@ -720,3 +722,74 @@ def api_start_docker_update():
             'state': get_docker_update_state(),
         },
     }), 202
+
+
+def get_windows_update_payload() -> Dict[str, Any]:
+    return {
+        **windows_update.get_windows_update_config(),
+        'state': windows_update.get_windows_update_state(),
+    }
+
+
+@app.route('/api/windows-update/status', methods=['GET'])
+@login_required
+def api_get_windows_update_status():
+    return jsonify({
+        'success': True,
+        'windows_update': get_windows_update_payload(),
+    })
+
+
+@app.route('/api/windows-update', methods=['POST'])
+@login_required
+def api_start_windows_update():
+    config = windows_update.get_windows_update_config()
+    if not config['enabled']:
+        return jsonify({'success': False, 'error': config['reason']}), 403
+    if not config['available']:
+        return jsonify({'success': False, 'error': config['reason']}), 503
+
+    version_status = get_version_status_payload(force_refresh=True)
+    if version_status.get('status') != 'update_available':
+        return jsonify({
+            'success': False,
+            'error': '当前版本没有可安装的更新',
+            'version_status': version_status,
+        }), 409
+
+    target_version = str(version_status.get('latest_version') or '').strip()
+    started, message = windows_update.start_windows_update(
+        repository_owner=REPOSITORY_OWNER,
+        repository_name=REPOSITORY_NAME,
+        target_version=target_version,
+        request_headers=_version_request_headers(),
+    )
+    if not started:
+        return jsonify({
+            'success': False,
+            'error': message,
+            'windows_update': get_windows_update_payload(),
+        }), 409
+
+    return jsonify({
+        'success': True,
+        'message': message,
+        'windows_update': get_windows_update_payload(),
+    }), 202
+
+
+@app.route('/api/windows-update/cancel', methods=['POST'])
+@login_required
+def api_cancel_windows_update():
+    cancelled, message = windows_update.cancel_windows_update()
+    if not cancelled:
+        return jsonify({
+            'success': False,
+            'error': message,
+            'windows_update': get_windows_update_payload(),
+        }), 409
+    return jsonify({
+        'success': True,
+        'message': message,
+        'windows_update': get_windows_update_payload(),
+    })

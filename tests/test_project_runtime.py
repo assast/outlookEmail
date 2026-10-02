@@ -2858,12 +2858,51 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('grid-column: 2;', settings_css)
         self.assertIn('grid-row: 1;', settings_css)
 
-    def test_version_popover_mentions_docker_only_online_update_setup(self):
+    def test_version_popover_exposes_windows_and_docker_online_update(self):
         layout_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'layout.html').read_text(encoding='utf-8')
+        dialogs_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'dialogs-management.html').read_text(encoding='utf-8')
+        core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
 
-        self.assertIn('仅 Docker 版本支持在线更新', layout_html)
-        self.assertIn('README 中的「启用界面 Docker 在线更新」', layout_html)
+        self.assertIn('Windows 桌面版与启用后的 Docker 部署支持在线更新', layout_html)
         self.assertIn('https://github.com/assast/outlookEmail#readme', layout_html)
+        self.assertIn('id="appVersionWindowsUpdateBtn"', layout_html)
+        self.assertIn('id="releaseNoticeWindowsUpdateBtn"', dialogs_html)
+        self.assertIn('id="windowsUpdateProgressBar"', dialogs_html)
+        self.assertIn('id="windowsUpdateCancelBtn"', dialogs_html)
+        self.assertIn("function startWindowsUpdate()", core_js)
+        self.assertIn("function waitForWindowsUpdateRestart(targetVersion)", core_js)
+
+    def test_windows_update_progress_is_above_release_notes_and_scrolled_into_view(self):
+        dialogs_html = pathlib.Path(
+            ROOT_DIR,
+            'templates',
+            'partials',
+            'index',
+            'dialogs-management.html',
+        ).read_text(encoding='utf-8')
+        core_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '01-core.js').read_text(encoding='utf-8')
+        release_modal = dialogs_html.split('id="releaseNoticeModal"', 1)[1].split(
+            '<!-- Outlook 上传账号模态框 -->',
+            1,
+        )[0]
+
+        self.assertLess(
+            release_modal.index('id="releaseNoticeVersionSummary"'),
+            release_modal.index('id="releaseNoticeHint"'),
+        )
+        self.assertLess(
+            release_modal.index('id="releaseNoticeHint"'),
+            release_modal.index('id="windowsUpdateProgress"'),
+        )
+        self.assertLess(
+            release_modal.index('id="windowsUpdateProgress"'),
+            release_modal.index('id="releaseNoticeNotesList"'),
+        )
+        self.assertIn('function scrollWindowsUpdateProgressIntoView()', core_js)
+        self.assertIn("progressPanel.closest('.release-notice-modal-content')", core_js)
+        self.assertIn("modalContent.scrollTo({ top: 0, behavior: 'smooth' });", core_js)
+        self.assertIn("progressPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });", core_js)
+        self.assertIn('scrollWindowsUpdateProgressIntoView();', core_js)
 
     def test_version_chip_shows_upgrade_badge_markup_and_logic(self):
         layout_html = pathlib.Path(ROOT_DIR, 'templates', 'partials', 'index', 'layout.html').read_text(encoding='utf-8')
@@ -2892,7 +2931,15 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('updateButton.hidden = !(enabled && updateAvailable);', core_js)
         self.assertIn('updateButton.disabled = !available || running;', core_js)
         self.assertIn("const dockerHint = document.getElementById('releaseNoticeDockerHint');", core_js)
-        self.assertIn('dockerHint.hidden = !updateAvailable || available;', core_js)
+        self.assertIn('function refreshOnlineUpdateHint()', core_js)
+        self.assertIn('|| windowsEnabled', core_js)
+        self.assertIn('.windows-update-progress[hidden] {', pathlib.Path(
+            ROOT_DIR,
+            'static',
+            'css',
+            'index',
+            '06-modals-toast.css',
+        ).read_text(encoding='utf-8'))
         self.assertIn('.app-version-chip__upgrade-badge {', navbar_css)
         self.assertIn('background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%);', navbar_css)
         self.assertIn('color: #92400e;', navbar_css)

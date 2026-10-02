@@ -34,6 +34,10 @@
                                 id="appVersionActionLink" data-default-label="查看更新日志">
                                 查看更新日志
                             </a>
+                            <button class="app-version-link app-version-link--primary" id="appVersionWindowsUpdateBtn"
+                                type="button" onclick="startWindowsUpdate()" hidden>
+                                立即升级
+                            </button>
                             <button class="app-version-link app-version-link--primary" id="appVersionDockerUpdateBtn"
                                 type="button" data-default-label="Docker 更新" data-unavailable-label="不可在线更新"
                                 onclick="startDockerUpdate()" hidden>
@@ -41,9 +45,8 @@
                             </button>
                         </div>
                         <div class="app-version-popover__hint">
-                            仅 Docker 版本支持在线更新，请参考
-                            <a href="https://github.com/assast/outlookEmail#readme" target="_blank" rel="noreferrer">README 中的「启用界面 Docker 在线更新」</a>
-                            进行设置。
+                            Windows 桌面版与启用后的 Docker 部署支持在线更新，其他部署方式请参考
+                            <a href="https://github.com/assast/outlookEmail#readme" target="_blank" rel="noreferrer">README</a>。
                         </div>
                     </div>
                 </div>

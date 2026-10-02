@@ -6,6 +6,12 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Added
+- Windows 便携版 EXE 支持从现有 GitHub Release ZIP 在线升级：用户确认后显示精确下载进度和速度，自动完成同目录替换与重启，并在新版本启动失败时恢复旧版本。
+
+### Changed
+- 版本弹框会按运行环境提供 Windows EXE 或 Docker 在线更新入口；Windows 下载阶段支持取消，程序目录不可写或对应 Release ZIP 尚未发布时不会退出当前版本。
+
 ## [3.0.9] - 2026-09-22
 
 ### Added

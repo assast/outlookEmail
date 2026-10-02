@@ -38,6 +38,7 @@
 - `latest` / `main` / `dev` 标签来自分支推送触发的 Docker 工作流
 - Release 工作流负责发布版本镜像 `vX.Y.Z`
 - GitHub Release 正文优先从 `CHANGELOG.md` 中提取对应版本条目
+- Windows 在线升级复用现有 ZIP，不增加发布附件；ZIP 文件名和其中顶层的 `OutlookEmail.exe` 是更新协议的一部分，不得随意改名或调整目录层级
 
 ## 发版前检查
 
@@ -115,6 +116,7 @@ git push origin v2.0.16
 - 使用 `pyinstaller --noconfirm --clean outlookEmail.spec`
 - 打包 `dist/OutlookEmail.exe`
 - 与 `README.md` 一起压缩为发布附件
+- 保持发布附件名为 `OutlookEmail-windows-x64-X.Y.Z.zip`，并确保 `OutlookEmail.exe` 位于 ZIP 顶层，供桌面版在线升级解析
 
 ### 2. 构建 macOS DMG
 
