@@ -54,11 +54,20 @@
     function showContent() {
         const invalid = document.getElementById('shareInvalidState');
         if (invalid) invalid.hidden = true;
-        
+
         const appBody = document.getElementById('appBody');
         if (appBody) appBody.style.display = 'flex';
-        
+
         setStatus('连接有效', 'active');
+    }
+
+    function renderShareVisibilityHint(maxEmailCount) {
+        const hint = document.getElementById('shareVisibilityHint');
+        if (!hint) return;
+        const count = Number(maxEmailCount);
+        const isLimited = Number.isInteger(count) && count > 0;
+        hint.hidden = !isLimited;
+        hint.textContent = isLimited ? `仅显示收件箱和垃圾邮件中当前最新 ${count} 封邮件` : '';
     }
 
     async function requestJson(url) {
@@ -700,7 +709,8 @@
             
             const titleElement = document.getElementById('shareEmailTitle');
             if (titleElement) titleElement.textContent = status.email || '邮箱分享';
-            
+            renderShareVisibilityHint(status.max_email_count);
+
             const headerAvatar = document.getElementById('headerUserAvatar');
             if (headerAvatar) {
                 headerAvatar.textContent = getInitials(status.email);
