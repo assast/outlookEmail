@@ -520,11 +520,24 @@
                     <input type="number" class="form-input" id="emailShareCustomDuration" min="1" step="1" value="1440">
                 </div>
                 <div class="form-group">
+                    <label class="form-label" for="emailShareVisibilityMode">可查看邮件</label>
+                    <select class="form-select" id="emailShareVisibilityMode" onchange="toggleEmailShareVisibilityMode()">
+                        <option value="unlimited" selected>不限量</option>
+                        <option value="latest">仅最新 N 封</option>
+                    </select>
+                </div>
+                <div class="form-group" id="emailShareMaxEmailCountGroup" style="display: none;">
+                    <label class="form-label" for="emailShareMaxEmailCount">最新邮件数量</label>
+                    <input type="number" class="form-input" id="emailShareMaxEmailCount" min="1" max="50" step="1" value="1" oninput="updateEmailShareRollingWarning()">
+                    <div class="form-hint">收件箱和垃圾邮件合计仅显示当前最新的 N 封。</div>
+                </div>
+                <div class="form-group">
                     <label class="settings-toggle settings-toggle--inline">
                         <input type="checkbox" id="emailShareNeverExpires" onchange="toggleEmailShareNeverExpires()">
                         <span class="form-label">永不过期</span>
                     </label>
                 </div>
+                <div class="form-hint" id="emailShareRollingWarning" hidden></div>
                 <div class="share-result" id="emailShareCreateResult" hidden></div>
             </div>
             <div class="modal-footer">
@@ -717,6 +730,7 @@
                                 <th width="160" class="sortable-header" data-sort-col="expires_at" onclick="handleHeaderSort('expires_at')">
                                     有效期至<span class="sort-indicator"> ↕</span>
                                 </th>
+                                <th width="110">可见范围</th>
                                 <th width="160" class="sortable-header" data-sort-col="created_at" onclick="handleHeaderSort('created_at')">
                                     创建时间<span class="sort-indicator"> ↕</span>
                                 </th>
@@ -726,7 +740,7 @@
                         </thead>
                         <tbody id="emailShareTableBody">
                             <tr>
-                                <td colspan="7" class="share-empty">正在加载分享记录...</td>
+                                <td colspan="8" class="share-empty">正在加载分享记录...</td>
                             </tr>
                         </tbody>
                     </table>

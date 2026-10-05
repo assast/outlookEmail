@@ -2938,7 +2938,8 @@ def build_retained_detail_success_response(account: Dict[str, Any], folder: str,
 
 def fetch_imap_account_detail_response(account: Dict[str, Any], folder: str,
                                        message_id: str, method: str,
-                                       id_mode: str, proxy_url: str) -> Dict[str, Any]:
+                                       id_mode: str, proxy_url: str,
+                                       strict_id_mode: bool = False) -> Dict[str, Any]:
     detail_result = get_email_detail_imap_generic_result(
         account['email'],
         account.get('imap_password', ''),
@@ -2947,7 +2948,8 @@ def fetch_imap_account_detail_response(account: Dict[str, Any], folder: str,
         message_id,
         folder,
         account.get('provider', 'custom'),
-        proxy_url
+        proxy_url,
+        strict_id_mode=strict_id_mode,
     )
     if detail_result.get('success'):
         return build_retained_detail_success_response(
@@ -2990,7 +2992,8 @@ def fetch_graph_detail_response(account: Dict[str, Any], folder: str,
 
 def fetch_oauth_imap_detail_response(account: Dict[str, Any], folder: str,
                                      message_id: str, method: str, id_mode: str,
-                                     proxy_url: str, fallback_proxy_urls: List[str]) -> Dict[str, Any]:
+                                     proxy_url: str, fallback_proxy_urls: List[str],
+                                     strict_id_mode: bool = False) -> Dict[str, Any]:
     requested_mode = str(id_mode or '').strip().lower()
     preferred_id_mode = requested_mode if requested_mode in {'uid', 'sequence'} else 'uid'
     detail_result = get_email_detail_imap_result(
@@ -3002,6 +3005,7 @@ def fetch_oauth_imap_detail_response(account: Dict[str, Any], folder: str,
         proxy_url,
         fallback_proxy_urls,
         preferred_id_mode,
+        strict_id_mode,
     )
     if not detail_result.get('success'):
         return {
@@ -3631,7 +3635,7 @@ def fetch_account_folder_emails(account: Dict[str, Any], folder: str, skip: int,
             account.get('provider', 'custom'),
             skip,
             top,
-            proxy_url
+            proxy_url,
         )
         if result.get('success'):
             return {
@@ -4131,7 +4135,8 @@ def normalize_email_detail_error(error: Any, fallback_message: str = '获取邮�
 
 
 def fetch_email_detail_for_account(account, message_id, method='graph', folder='inbox',
-                                   id_mode='', prefer_local=False):
+                                   id_mode='', prefer_local=False, strict_id_mode=False,
+                                   force_method=False):
     proxy_url = get_account_proxy_url(account)
     fallback_proxy_urls = get_account_proxy_failover_urls(account)
 
@@ -4142,7 +4147,8 @@ def fetch_email_detail_for_account(account, message_id, method='graph', folder='
 
     if account.get('account_type') == 'imap':
         result = fetch_imap_account_detail_response(
-            account, folder, message_id, method, id_mode, proxy_url
+            account, folder, message_id, method, id_mode, proxy_url,
+            strict_id_mode=strict_id_mode,
         )
         if result.get('success'):
             return result
@@ -4156,7 +4162,9 @@ def fetch_email_detail_for_account(account, message_id, method='graph', folder='
     attempts: Dict[str, Any] = {}
     stored_channel = get_account_authorization_type(account)
     method_name = str(method or 'graph').strip().lower()
-    if stored_channel:
+    if force_method and method_name in {'graph', 'imap'}:
+        channel_order = (method_name,)
+    elif stored_channel:
         channel_order = get_outlook_mail_channel_order(account)
     elif method_name == 'imap':
         # 显式的 IMAP ID 可能是 UID/sequence，不能误传给 Graph。
@@ -4170,16 +4178,19 @@ def fetch_email_detail_for_account(account, message_id, method='graph', folder='
                 account, folder, message_id, 'graph', id_mode, proxy_url, fallback_proxy_urls
             )
             if graph_result.get('success'):
-                record_outlook_mail_channel(account, 'graph')
+                if not force_method:
+                    record_outlook_mail_channel(account, 'graph')
                 return graph_result
             attempts['graph'] = graph_result.get('error')
             continue
 
         imap_result = fetch_oauth_imap_detail_response(
-            account, folder, message_id, 'imap', id_mode, proxy_url, fallback_proxy_urls
+            account, folder, message_id, 'imap', id_mode, proxy_url, fallback_proxy_urls,
+            strict_id_mode=strict_id_mode,
         )
         if imap_result.get('success'):
-            record_outlook_mail_channel(account, 'imap')
+            if not force_method:
+                record_outlook_mail_channel(account, 'imap')
             return imap_result
         attempts['imap_new'] = imap_result.get('error')
 

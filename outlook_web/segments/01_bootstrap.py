@@ -29,6 +29,7 @@ import subprocess
 import tempfile
 import zipfile
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.header import decode_header
@@ -134,6 +135,7 @@ token_refresh_run_lock = threading.Lock()
 webdav_backup_run_lock = threading.Lock()
 forwarding_run_lock = threading.Lock()
 proxy_socket_lock = threading.RLock()
+email_share_stable_ids_context = ContextVar('email_share_stable_ids_context', default=False)
 
 
 # 初始化 CSRF 保护（如果可用）
@@ -1589,6 +1591,9 @@ def init_db():
             token_encrypted TEXT NOT NULL,
             expires_at TIMESTAMP,
             never_expires INTEGER NOT NULL DEFAULT 0,
+            max_email_count INTEGER CHECK (
+                max_email_count IS NULL OR (max_email_count BETWEEN 1 AND 50)
+            ),
             revoked_at TIMESTAMP,
             last_accessed_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1604,6 +1609,10 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_email_share_links_status
         ON email_share_links(revoked_at, expires_at, never_expires)
     ''')
+    cursor.execute("PRAGMA table_info(email_share_links)")
+    email_share_columns = [col[1] for col in cursor.fetchall()]
+    if 'max_email_count' not in email_share_columns:
+        cursor.execute('ALTER TABLE email_share_links ADD COLUMN max_email_count INTEGER')
 
     # 创建审计日志表
     cursor.execute('''
