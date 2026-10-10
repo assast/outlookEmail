@@ -2014,6 +2014,31 @@ def api_get_refresh_status_list():
 
 # ==================== Email Deletion Helpers ====================
 
+_GRAPH_DELETE_REAUTH_MARKERS = (
+    'authorization_requestdenied',
+    'erroraccessdenied',
+    'access is denied',
+    'insufficient privileges',
+    'authorization has been denied',
+    'mail.readwrite',
+)
+
+
+def is_graph_delete_reauthorization_error(status_code: Any, error_body: Any) -> bool:
+    """判断删除失败是否因为缺少邮件写权限或授权失效，需要重新授权。"""
+    try:
+        code = int(status_code or 0)
+    except (TypeError, ValueError):
+        code = 0
+    if code in {401, 403}:
+        return True
+    try:
+        details_text = json.dumps(error_body, ensure_ascii=True).lower()
+    except Exception:
+        details_text = str(error_body or '').lower()
+    return any(marker in details_text for marker in _GRAPH_DELETE_REAUTH_MARKERS)
+
+
 def delete_emails_graph(client_id: str, refresh_token: str, message_ids: List[str], proxy_url: str = None,
                         fallback_proxy_urls: List[str] = None) -> Dict[str, Any]:
     """通过 Graph API 批量删除邮件（永久删除）"""
@@ -2067,25 +2092,56 @@ def delete_emails_graph(client_id: str, refresh_token: str, message_ids: List[st
                 proxy_url=proxy_url,
                 fallback_proxy_urls=fallback_proxy_urls,
             )
-
-            if response.status_code == 200:
-                results = response.json().get("responses", [])
-                for res in results:
-                    msg_id = batch[int(res['id'])]
-                    if res.get("status") in [200, 204]:
-                        success_count += 1
-                        deleted_ids.append(str(msg_id))
-                    else:
-                        failed_count += 1
-                        # 记录具体错误
-                        errors.append(f"Msg ID: {msg_id}, Status: {res.get('status')}")
-            else:
-                failed_count += len(batch)
-                errors.append(f"Batch request failed: {response.text}")
-
-        except Exception as e:
+        except Exception as exc:
             failed_count += len(batch)
-            errors.append(f"Network error: {str(e)}")
+            error_payload = build_error_payload(
+                'EMAIL_DELETE_FAILED',
+                '删除邮件失败',
+                type(exc).__name__,
+                500,
+                str(exc),
+            )
+            errors.extend({'id': str(message_id), 'error': error_payload} for message_id in batch)
+            continue
+
+        if response.status_code != 200:
+            failed_count += len(batch)
+            error_payload = build_error_payload(
+                'EMAIL_DELETE_FAILED',
+                '删除邮件失败',
+                'GraphAPIError',
+                response.status_code,
+                get_response_details(response),
+            )
+            errors.extend({'id': str(message_id), 'error': error_payload} for message_id in batch)
+            continue
+
+        results = response.json().get("responses", [])
+        for res in results:
+            msg_id = batch[int(res['id'])]
+            status_code = int(res.get('status') or 0)
+            if status_code in (200, 204):
+                success_count += 1
+                deleted_ids.append(str(msg_id))
+            else:
+                failed_count += 1
+                error_body = res.get('body') or ''
+                if is_graph_delete_reauthorization_error(status_code, error_body):
+                    message = '删除邮件失败：账号缺少邮件写权限（Mail.ReadWrite）或授权已失效，请对该账号重新授权后重试'
+                    code = 'EMAIL_DELETE_REAUTH_REQUIRED'
+                else:
+                    message = '删除邮件失败'
+                    code = 'EMAIL_DELETE_FAILED'
+                errors.append({
+                    'id': str(msg_id),
+                    'error': build_error_payload(
+                        code,
+                        message,
+                        'GraphAPIError',
+                        status_code or 500,
+                        error_body or '批处理返回空响应',
+                    )
+                })
 
     return {
         "success": failed_count == 0,
@@ -2182,6 +2238,17 @@ def normalize_email_action_items(raw_items: Any, fallback_folder: str = 'inbox')
     return normalized_items
 
 
+def unwrap_email_action_error(entry: Any) -> Any:
+    """从 {'id': ..., 'error': ...} 包装条目中提取用户可见的错误信息。"""
+    if isinstance(entry, dict):
+        inner = entry.get('error')
+        if isinstance(inner, dict) and inner.get('message'):
+            return inner
+        if isinstance(inner, str) and inner.strip():
+            return inner
+    return entry
+
+
 def merge_email_action_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     merged_updated_ids: List[str] = []
     merged_deleted_ids: List[str] = []
@@ -2207,7 +2274,7 @@ def merge_email_action_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         'errors': merged_errors,
     }
     if merged_errors:
-        merged_result['error'] = merged_errors[0]
+        merged_result['error'] = unwrap_email_action_error(merged_errors[0])
     return merged_result
 
 
