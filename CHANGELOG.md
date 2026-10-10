@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.11] - 2026-10-10
+
+### Fixed
+- Graph 批量删除邮件失败时不再只显示 `Msg ID: xxx, Status: 403`：错误提示现包含 Graph 返回的具体错误详情；当账号缺少 `Mail.ReadWrite` 写权限或授权已失效（401/403）时，直接提示对该账号重新授权。
+
 ## [3.0.10] - 2026-10-05
 
 ### Added
