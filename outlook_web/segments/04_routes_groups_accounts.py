@@ -965,6 +965,287 @@ def api_external_delete_account_by_email(email_addr):
     })
 
 
+# ==================== 对外项目 API ====================
+
+
+@app.route('/api/external/projects', methods=['GET'])
+@csrf_exempt
+@api_key_required
+def api_external_get_projects():
+    """对外 API：获取项目列表"""
+    projects = load_projects()
+    return jsonify({
+        'success': True,
+        'total': len(projects),
+        'data': {'projects': projects},
+    })
+
+
+@app.route('/api/external/projects/<project_key>', methods=['GET'])
+@csrf_exempt
+@api_key_required
+def api_external_get_project(project_key):
+    """对外 API：获取项目详情"""
+    project = get_project_by_key(project_key)
+    if not project:
+        return jsonify({'success': False, 'error': '项目不存在'}), 404
+    return jsonify({'success': True, 'data': {'project': project}})
+
+
+@app.route('/api/external/projects/<project_key>/accounts', methods=['GET'])
+@csrf_exempt
+@api_key_required
+def api_external_get_project_accounts(project_key):
+    """对外 API：查询项目邮箱池（支持 status/group_id/provider/keyword 过滤）"""
+    status = request.args.get('status', '').strip()
+    group_id = request.args.get('group_id', type=int)
+    provider = request.args.get('provider', '').strip()
+    keyword = request.args.get('keyword', '').strip()
+    result = load_project_accounts(project_key, status=status, group_id=group_id, provider=provider, keyword=keyword)
+    if not result:
+        return jsonify({'success': False, 'error': '项目不存在'}), 404
+    return jsonify({
+        'success': True,
+        'total': len(result['accounts']),
+        'data': result,
+    })
+
+
+def _external_int_account_id(data):
+    """校验并转换对外 API 请求体中的 account_id，返回 (account_id 或 None, 错误响应或 None)"""
+    account_id = data.get('account_id')
+    if account_id in (None, ''):
+        return None, (jsonify({'success': False, 'error': '缺少 account_id'}), 400)
+    try:
+        return int(account_id), None
+    except (TypeError, ValueError):
+        return None, (jsonify({'success': False, 'error': 'account_id 无效'}), 400)
+
+
+@app.route('/api/external/projects/start', methods=['POST'])
+@csrf_exempt
+@api_key_write_required
+def api_external_start_project():
+    """对外 API：启动/同步项目（需读写权限）"""
+    data = request.get_json(silent=True) or {}
+    project_key = data.get('project_key', '')
+    name = data['name'] if 'name' in data else None
+    description = data['description'] if 'description' in data else None
+    group_ids_provided = 'group_ids' in data
+    group_ids = data.get('group_ids', []) if group_ids_provided else None
+    use_alias_email_provided = 'use_alias_email' in data
+    use_alias_email = data.get('use_alias_email') if use_alias_email_provided else None
+
+    try:
+        project = start_project(
+            project_key,
+            name=name,
+            description=description,
+            group_ids=group_ids,
+            group_ids_provided=group_ids_provided,
+            use_alias_email=use_alias_email,
+            use_alias_email_provided=use_alias_email_provided,
+        )
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+    log_audit(
+        'start',
+        'project',
+        project.get('project_key'),
+        f"对外 API 启动/同步项目：created={bool(project.get('created'))}，"
+        f"新增 {int(project.get('added_count', 0))}，移除 {int(project.get('deleted_count', 0))}，"
+        f"总数 {int(project.get('total_count', 0))}",
+    )
+    return jsonify({'success': True, 'message': '项目已启动', 'data': project})
+
+
+@app.route('/api/external/projects/<project_key>/claim-random', methods=['POST'])
+@csrf_exempt
+@api_key_write_required
+def api_external_claim_project_account(project_key):
+    """对外 API：随机领取一个项目邮箱（需读写权限）"""
+    data = request.get_json(silent=True) or {}
+    caller_id = (data.get('caller_id') or '').strip()
+    task_id = (data.get('task_id') or '').strip()
+    lease_seconds = data.get('lease_seconds', 600)
+
+    if not get_project_by_key(project_key):
+        return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+    try:
+        account = claim_project_account(project_key, caller_id, task_id, lease_seconds)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+    if not account:
+        return jsonify({'success': False, 'error': '没有可领取的项目邮箱'}), 200
+    log_audit(
+        'claim',
+        'project',
+        project_key,
+        f"对外 API 领取项目邮箱 '{account.get('email', '')}'（caller_id={caller_id}，task_id={task_id}）",
+    )
+    return jsonify({'success': True, 'data': account})
+
+
+@app.route('/api/external/projects/<project_key>/complete-success', methods=['POST'])
+@csrf_exempt
+@api_key_write_required
+def api_external_complete_project_success(project_key):
+    """对外 API：标记项目邮箱注册成功（需读写权限）"""
+    data = request.get_json(silent=True) or {}
+    claim_token = (data.get('claim_token') or '').strip()
+    caller_id = (data.get('caller_id') or '').strip()
+    task_id = (data.get('task_id') or '').strip()
+    detail = sanitize_input(data.get('detail', ''), max_length=500)
+
+    account_id, error_response = _external_int_account_id(data)
+    if not claim_token:
+        return jsonify({'success': False, 'error': '缺少 account_id 或 claim_token'}), 400
+    if error_response:
+        return error_response
+
+    if complete_project_account_success(project_key, account_id, claim_token, caller_id, task_id, detail):
+        log_audit(
+            'complete',
+            'project',
+            project_key,
+            f"对外 API 标记项目账号成功：account_id={account_id}（caller_id={caller_id}）",
+        )
+        return jsonify({'success': True, 'message': '项目账号已标记成功'})
+    return jsonify({'success': False, 'error': '项目账号状态不匹配'}), 400
+
+
+@app.route('/api/external/projects/<project_key>/complete-failed', methods=['POST'])
+@csrf_exempt
+@api_key_write_required
+def api_external_complete_project_failed(project_key):
+    """对外 API：标记项目邮箱注册失败（需读写权限）"""
+    data = request.get_json(silent=True) or {}
+    claim_token = (data.get('claim_token') or '').strip()
+    caller_id = (data.get('caller_id') or '').strip()
+    task_id = (data.get('task_id') or '').strip()
+    detail = sanitize_input(data.get('detail', ''), max_length=500)
+
+    account_id, error_response = _external_int_account_id(data)
+    if not claim_token:
+        return jsonify({'success': False, 'error': '缺少 account_id 或 claim_token'}), 400
+    if error_response:
+        return error_response
+
+    if complete_project_account_failed(project_key, account_id, claim_token, caller_id, task_id, detail):
+        log_audit(
+            'complete',
+            'project',
+            project_key,
+            f"对外 API 标记项目账号失败：account_id={account_id}（caller_id={caller_id}）",
+        )
+        return jsonify({'success': True, 'message': '项目账号已标记失败'})
+    return jsonify({'success': False, 'error': '项目账号状态不匹配'}), 400
+
+
+@app.route('/api/external/projects/<project_key>/release', methods=['POST'])
+@csrf_exempt
+@api_key_write_required
+def api_external_release_project_account(project_key):
+    """对外 API：释放项目邮箱回待领取池（需读写权限）"""
+    data = request.get_json(silent=True) or {}
+    claim_token = (data.get('claim_token') or '').strip()
+    caller_id = (data.get('caller_id') or '').strip()
+    task_id = (data.get('task_id') or '').strip()
+    detail = sanitize_input(data.get('detail', ''), max_length=500)
+
+    account_id, error_response = _external_int_account_id(data)
+    if not claim_token:
+        return jsonify({'success': False, 'error': '缺少 account_id 或 claim_token'}), 400
+    if error_response:
+        return error_response
+
+    if release_project_account(project_key, account_id, claim_token, caller_id, task_id, detail):
+        log_audit(
+            'release',
+            'project',
+            project_key,
+            f"对外 API 释放项目账号：account_id={account_id}（caller_id={caller_id}）",
+        )
+        return jsonify({'success': True, 'message': '项目账号已释放'})
+    return jsonify({'success': False, 'error': '项目账号状态不匹配'}), 400
+
+
+@app.route('/api/external/projects/<project_key>/reset-failed', methods=['POST'])
+@csrf_exempt
+@api_key_write_required
+def api_external_reset_project_failed(project_key):
+    """对外 API：重置失败邮箱为可领取（需读写权限）"""
+    data = request.get_json(silent=True) or {}
+    detail = sanitize_input(data.get('detail', ''), max_length=500)
+
+    account_id, error_response = _external_int_account_id(data)
+    if error_response:
+        return error_response
+
+    if reset_project_account_failed(project_key, account_id, detail):
+        log_audit(
+            'reset',
+            'project',
+            project_key,
+            f"对外 API 重置失败邮箱：account_id={account_id}",
+        )
+        return jsonify({'success': True, 'message': '失败邮箱已重置为可领取'})
+    return jsonify({'success': False, 'error': '项目账号状态不匹配'}), 400
+
+
+@app.route('/api/external/projects/<project_key>/remove-account', methods=['POST'])
+@csrf_exempt
+@api_key_write_required
+def api_external_remove_project_account(project_key):
+    """对外 API：从项目移除邮箱（需读写权限）"""
+    data = request.get_json(silent=True) or {}
+    detail = sanitize_input(data.get('detail', ''), max_length=500)
+
+    account_id, error_response = _external_int_account_id(data)
+    if error_response:
+        return error_response
+
+    if remove_project_account(project_key, account_id, detail):
+        log_audit(
+            'remove',
+            'project',
+            project_key,
+            f"对外 API 移除项目邮箱：account_id={account_id}",
+        )
+        return jsonify({'success': True, 'message': '项目邮箱已移除'})
+    return jsonify({'success': False, 'error': '项目账号状态不匹配或正在领取中'}), 400
+
+
+@app.route('/api/external/projects/<project_key>/restore-account', methods=['POST'])
+@csrf_exempt
+@api_key_write_required
+def api_external_restore_project_account(project_key):
+    """对外 API：恢复被移除的项目邮箱（需读写权限）"""
+    data = request.get_json(silent=True) or {}
+    detail = sanitize_input(data.get('detail', ''), max_length=500)
+
+    account_id, error_response = _external_int_account_id(data)
+    if error_response:
+        return error_response
+
+    if restore_project_account(project_key, account_id, detail):
+        log_audit(
+            'restore',
+            'project',
+            project_key,
+            f"对外 API 恢复项目邮箱：account_id={account_id}",
+        )
+        return jsonify({'success': True, 'message': '项目邮箱已恢复'})
+    return jsonify({'success': False, 'error': '项目账号状态不匹配'}), 400
+
+
 # ==================== 项目 API ====================
 
 @app.route('/api/projects', methods=['GET'])
