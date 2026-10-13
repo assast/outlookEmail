@@ -39,6 +39,8 @@
 | GET | `/api/external/accounts` | API Key | JSON | 获取普通邮箱账号列表 |
 | GET | `/api/external/emails` | API Key | JSON | 获取指定邮箱邮件列表 |
 | POST | `/api/external/outlook/upload` | API Key | JSON | 上传 Outlook 邮箱账号密码到上传表（默认未授权，支持单条/批量） |
+| POST | `/api/external/accounts` | API Key（读写） | JSON | 批量导入正式邮箱账号（可指定分组、标签） |
+| DELETE | `/api/external/accounts/email/<email_addr>` | API Key（读写） | JSON | 按邮箱删除正式账号 |
 
 ### 分组、账号、标签、项目
 
@@ -167,6 +169,13 @@
 - Query: `?api_key=your-api-key`
 
 可在 Web 界面 `设置 -> 对外 API Key` 中配置。
+
+API Key 分为两级权限（`设置 -> 对外 API Key 权限`，或通过 `GET/PUT /api/settings` 的 `external_api_key_permission` 字段读取与修改）：
+
+- `readonly`（默认）：保留升级前的全部对外能力，包括查询账号列表、查询邮件、上传 Outlook 暂存账号
+- `readwrite`：额外开放正式账号的导入（`POST /api/external/accounts`）与删除（`DELETE /api/external/accounts/email/<email_addr>`）端点
+
+权限为 `readonly` 时调用读写端点返回 `403`，错误信息中包含切换指引；权限取值大小写不敏感，非法值写入时返回 `400`。
 
 ### 完整 API
 
@@ -590,6 +599,84 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 - 入库记录 `is_authorized` 一律为 `0`（未授权）
 - 请求体既无 `email` 也无非空 `accounts` 时返回 HTTP 400
 - 缺少 / 无效 API Key 时由鉴权层返回 HTTP 401 / 403
+
+### POST `/api/external/accounts`
+
+批量导入**正式邮箱账号**（写入 `accounts` 主表），需 API Key 且权限为读写（`readwrite`）。
+
+支持与 Web 端一致的账号串格式；Outlook 账号为 `邮箱----密码----第三段----第四段`（默认第三段是 Client ID、第四段是 Refresh Token；也可通过 `account_format` 指定相反顺序，系统会按 UUID 形态自动识别纠偏）。IMAP 账号支持 `邮箱----IMAP密码`（内置 provider）或 `邮箱----IMAP密码----IMAP主机----IMAP端口`（`provider` 为 `custom`）。
+
+#### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `accounts` | string / array | 是 | 多行字符串（按换行拆分）或字符串数组；每行一条账号串，空行忽略 |
+| `account_format` | string | 否 | `client_id_refresh_token`（默认）或 `refresh_token_client_id` |
+| `group_id` | int | 否 | 目标分组 ID，默认 `1`；分组不存在返回 404 |
+| `provider` | string | 否 | 邮箱提供商标识，默认 `outlook`；未知值按邮箱地址推断，推断不出按 `custom` 处理 |
+| `remark` | string | 否 | 本次导入账号统一备注（最长 500 字符） |
+| `tag_ids` | int[] | 否 | 本次导入账号统一绑定的标签 ID 列表；不存在的标签 ID 会被忽略 |
+| `imap_host` | string | 否 | 自定义 IMAP 服务器地址（`provider=custom` 时必填） |
+| `imap_port` | int | 否 | IMAP 端口，默认 `993` |
+
+#### 请求示例
+
+```bash
+curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
+  -d '{"accounts":"a@outlook.com----pwd1----3f2504e0-4f89-11d3-9a0c-0305e82c3301----token1\nb@outlook.com----pwd2----3f2504e0-4f89-11d3-9a0c-0305e82c3302----token2","group_id":2,"tag_ids":[5]}' \
+  "http://localhost:5000/api/external/accounts"
+```
+
+#### 成功响应示例
+
+```json
+{
+  "success": true,
+  "message": "成功导入 2 个账号",
+  "added_count": 2,
+  "skipped_count": 0,
+  "invalid_count": 0,
+  "tagged_count": 2
+}
+```
+
+#### 返回说明
+
+- `added_count` / `skipped_count` / `invalid_count` / `tagged_count`：新增、重复跳过（邮箱已存在，不覆盖原记录）、格式无效、成功绑定标签的计数
+- 本次没有新账号被导入时返回 HTTP 400（`success: false`），响应体同样携带各计数
+- 密码、Refresh Token、IMAP 密码加密存储，响应不回显
+- 权限为 `readonly` 时返回 403，错误信息包含切换指引
+- 每次调用写入一条审计日志（`action=import`）
+
+### DELETE `/api/external/accounts/email/<email_addr>`
+
+按邮箱地址删除**正式邮箱账号**，需 API Key 且权限为读写（`readwrite`）。
+
+#### 请求示例
+
+```bash
+curl -X DELETE -H "X-API-Key: your-api-key" \
+  "http://localhost:5000/api/external/accounts/email/user%40outlook.com"
+```
+
+#### 成功响应示例
+
+```json
+{
+  "success": true,
+  "message": "已删除账号 user@outlook.com",
+  "deleted_email": "user@outlook.com"
+}
+```
+
+#### 返回说明
+
+- 路径中的邮箱地址建议 URL 编码（`@` 写作 `%40`），直接书写 `@` 或 `+` 也可以
+- 邮箱匹配大小写不敏感；传入别名邮箱时会删除其归属的主账号
+- `deleted_email` 返回库内的规范邮箱（可能是混合大小写或主邮箱，与请求地址不完全一致）
+- 账号不存在返回 HTTP 404
+- 删除会连带清理账号的标签、别名，并把项目关联记录标记为 `deleted`（项目历史保留）
+- 每次调用写入一条审计日志（`action=delete`）
 
 ### Outlook 上传账号管理
 
@@ -2248,6 +2335,7 @@ POST /api/cloudflare/channels
 | --- | --- |
 | `login_password_masked` | 登录密码掩码 |
 | `external_api_key` | 当前对外 API Key |
+| `external_api_key_permission` | 对外 API Key 权限级别，未配置时返回 `readonly` |
 | `duckmail_base_url` | DuckMail API 地址 |
 | `duckmail_api_key` | DuckMail API Key |
 | `cloudflare_worker_domain` | 旧单渠道 Cloudflare Worker 域名，主要用于升级迁移 |
@@ -2311,6 +2399,7 @@ POST /api/cloudflare/channels
 | `show_account_sort_order` | bool | 是否在邮箱列表展示自定义排序值 |
 | `active_skin_id` | string | 当前系统级外观皮肤 ID；所有登录设备共用同一设置 |
 | `external_api_key` | string | 对外 API Key，可传空字符串清空 |
+| `external_api_key_permission` | string | 对外 API Key 权限：`readonly` 或 `readwrite`，大小写不敏感；非法值返回 HTTP 400，不传该字段时保持现有值 |
 | `normal_mail_local_retention_enabled` | bool/string | 是否启用普通邮箱本地保留；通过 `/api/settings` 更新会同步刷新后端进程内读取缓存 |
 
 说明：修改 `login_password` 时必须提供正确的 `current_login_password`；改密成功后服务端会轮换登录会话版本，其他已登录的 Web Session 需要重新登录，当前改密会话保持有效。

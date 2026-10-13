@@ -6,6 +6,16 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.12] - 2026-10-13
+
+### Added
+- 对外 API Key 新增权限分级（`readonly` 默认 / `readwrite`）：只读保持升级前的全部对外能力；读写额外开放正式账号导入与删除端点。设置界面新增「对外 API Key 权限」下拉，`GET/PUT /api/settings` 新增 `external_api_key_permission` 字段（非法值返回 400，不传字段时保持现有值）。
+- 新增 `POST /api/external/accounts`：按 `邮箱----密码----client_id----refresh_token` 或 IMAP 账号串批量导入正式账号，支持 `group_id`（分组不存在返回 404）、`account_format`、`provider`、`remark`、`tag_ids`、`imap_host`/`imap_port`，返回 added/skipped/invalid/tagged 计数并写审计日志。
+- 新增 `DELETE /api/external/accounts/email/<邮箱>`：按邮箱删除正式账号（大小写不敏感，支持别名，会连带清理标签/别名并把项目关联标记为 `deleted`），不存在返回 404，成功返回库内规范邮箱并写审计日志。
+
+### Security
+- 两个新写端点均要求 API Key 且权限为读写；只读权限调用返回 403 并附切换指引。原有三个对外端点行为不变，升级后默认零行为变化；浏览器扩展保存设置不会覆盖权限字段。
+
 ## [3.0.11] - 2026-10-10
 
 ### Fixed

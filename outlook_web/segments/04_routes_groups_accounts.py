@@ -855,6 +855,116 @@ def api_external_get_accounts():
     })
 
 
+@app.route('/api/external/accounts', methods=['POST'])
+@csrf_exempt
+@api_key_write_required
+def api_external_import_accounts():
+    """对外 API：批量导入正式邮箱账号（需读写权限）"""
+    data = request.get_json(silent=True) or {}
+
+    raw_accounts = data.get('accounts')
+    if isinstance(raw_accounts, str):
+        lines = raw_accounts.split('\n')
+    elif isinstance(raw_accounts, list):
+        lines = raw_accounts
+    else:
+        return jsonify({'success': False, 'error': '请求体需包含 accounts 字段（多行字符串或字符串数组）'}), 400
+    lines = [str(line or '').strip() for line in lines if str(line or '').strip()]
+    if not lines:
+        return jsonify({'success': False, 'error': 'accounts 不能为空'}), 400
+
+    account_format = str(data.get('account_format') or 'client_id_refresh_token').strip()
+    if account_format not in ('client_id_refresh_token', 'refresh_token_client_id'):
+        return jsonify({'success': False, 'error': 'account_format 无效，支持 client_id_refresh_token 或 refresh_token_client_id'}), 400
+
+    try:
+        group_id = int(data.get('group_id', 1) or 1)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'group_id 无效'}), 400
+    if not get_group_by_id(group_id):
+        return jsonify({'success': False, 'error': f'分组 {group_id} 不存在'}), 404
+
+    imap_host = (data.get('imap_host', '') or '').strip()
+    try:
+        imap_port = int(data.get('imap_port', 993) or 993)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'IMAP 端口无效'}), 400
+
+    provider = str(data.get('provider', 'outlook') or 'outlook').strip()
+    remark = sanitize_input(str(data.get('remark', '') or '').strip(), max_length=500)
+    tag_ids = normalize_tag_ids_input(data.get('tag_ids', []))
+
+    parsed_accounts = []
+    invalid_count = 0
+    for line in lines:
+        parsed = parse_account_import(line, account_format, provider, imap_host, imap_port)
+        if parsed:
+            parsed_accounts.append(parsed)
+        else:
+            invalid_count += 1
+
+    result = add_accounts_bulk(
+        parsed_accounts,
+        group_id,
+        remark=remark,
+        tag_ids=tag_ids,
+    )
+    added_count = result.get('added_count', 0)
+    skipped_count = result.get('skipped_count', 0)
+    tagged_count = result.get('tagged_count', 0)
+
+    log_audit(
+        'import',
+        'accounts',
+        str(group_id),
+        f"对外 API 导入账号：新增 {added_count}，跳过重复 {skipped_count}，"
+        f"格式无效 {invalid_count}，分组 {group_id}"
+    )
+
+    if added_count > 0:
+        return jsonify({
+            'success': True,
+            'message': f'成功导入 {added_count} 个账号',
+            'added_count': added_count,
+            'skipped_count': skipped_count,
+            'invalid_count': invalid_count,
+            'tagged_count': tagged_count,
+        })
+    return jsonify({
+        'success': False,
+        'error': '没有新账号被导入（可能格式错误或已存在）',
+        'added_count': added_count,
+        'skipped_count': skipped_count,
+        'invalid_count': invalid_count,
+        'tagged_count': tagged_count,
+    }), 400
+
+
+@app.route('/api/external/accounts/email/<email_addr>', methods=['DELETE'])
+@csrf_exempt
+@api_key_write_required
+def api_external_delete_account_by_email(email_addr):
+    """对外 API：按邮箱删除正式账号（需读写权限）"""
+    email_addr = str(email_addr or '').strip()
+    if not email_addr:
+        return jsonify({'success': False, 'error': '邮箱地址不能为空'}), 400
+
+    account = get_account_by_email(email_addr)
+    if not account:
+        return jsonify({'success': False, 'error': f'邮箱账号 {email_addr} 不存在'}), 404
+
+    stored_email = account.get('email', email_addr)
+    if not delete_account_by_email(stored_email):
+        return jsonify({'success': False, 'error': '删除失败'}), 500
+
+    log_audit('delete', 'account', stored_email, f"对外 API 按邮箱删除账号 '{stored_email}'")
+    return jsonify({
+        'success': True,
+        'message': f'已删除账号 {stored_email}',
+        'deleted_email': stored_email,
+    })
+
+
 # ==================== 项目 API ====================
 
 @app.route('/api/projects', methods=['GET'])

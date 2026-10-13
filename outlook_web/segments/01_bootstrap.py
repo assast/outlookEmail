@@ -3492,6 +3492,15 @@ def get_external_api_key() -> str:
     return get_setting('external_api_key', '')
 
 
+EXTERNAL_API_KEY_PERMISSIONS = ('readonly', 'readwrite')
+
+
+def get_external_api_key_permission() -> str:
+    """获取对外 API Key 权限级别（非法值与未配置均按只读兜底）"""
+    permission = str(get_setting('external_api_key_permission', 'readonly') or '').strip().lower()
+    return permission if permission in EXTERNAL_API_KEY_PERMISSIONS else 'readonly'
+
+
 def get_duckmail_base_url() -> str:
     """获取 DuckMail API 基础 URL（优先从数据库读取）"""
     url = get_setting('duckmail_base_url')
