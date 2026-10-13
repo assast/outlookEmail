@@ -590,6 +590,8 @@ def api_get_settings():
             settings['login_password_masked'] = '*' * len(pwd)
     # 返回解密后的对外 API Key
     settings['external_api_key'] = get_external_api_key()
+    # 返回对外 API Key 权限级别（未配置时默认 readonly）
+    settings['external_api_key_permission'] = get_external_api_key_permission()
     # 返回 DuckMail 设置
     settings['duckmail_base_url'] = get_duckmail_base_url()
     settings['duckmail_api_key'] = get_duckmail_api_key()
@@ -874,6 +876,16 @@ def api_update_settings():
         else:
             if set_setting('external_api_key', ''):
                 updated.append('对外 API Key（已清空）')
+
+    # 更新对外 API Key 权限
+    if 'external_api_key_permission' in data:
+        new_permission = str(data.get('external_api_key_permission') or '').strip().lower()
+        if new_permission not in EXTERNAL_API_KEY_PERMISSIONS:
+            return jsonify({'success': False, 'error': '对外 API Key 权限必须是 readonly 或 readwrite'}), 400
+        if set_setting('external_api_key_permission', new_permission):
+            updated.append('对外 API Key 权限')
+        else:
+            errors.append('更新对外 API Key 权限失败')
 
     # 更新 DuckMail 设置
     if 'duckmail_base_url' in data:

@@ -3233,6 +3233,24 @@ def api_key_required(f):
     return decorated_function
 
 
+def api_key_write_required(f):
+    """API Key 写权限验证装饰器（只读权限时拒绝对外写操作）"""
+    def permission_gate(*args, **kwargs):
+        if get_external_api_key_permission() != 'readwrite':
+            return jsonify({
+                'success': False,
+                'error': '当前对外 API Key 权限为只读（readonly），无权执行该写操作；'
+                         '请在 Web 系统设置的「对外 API Key 权限」切换为读写（readwrite）后重试'
+            }), 403
+        return f(*args, **kwargs)
+
+    decorated_function = api_key_required(permission_gate)
+    decorated_function = wraps(f)(decorated_function)
+    decorated_function._requires_api_key = True
+    decorated_function._requires_api_key_write = True
+    return decorated_function
+
+
 def assert_endpoint_protection(endpoint: str, protection_attr: str, protection_name: str):
     """确保动态替换后的 endpoint 仍然保留必须的鉴权保护。"""
     view_func = app.view_functions.get(endpoint)

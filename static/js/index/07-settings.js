@@ -1774,6 +1774,8 @@
                     populateTimeZoneOptions(appTimeZone);
                     document.getElementById('settingsApiKey').value = data.settings.gptmail_api_key || '';
                     document.getElementById('settingsExternalApiKey').value = data.settings.external_api_key || '';
+                    document.getElementById('settingsExternalApiKeyPermission').value =
+                        data.settings.external_api_key_permission === 'readwrite' ? 'readwrite' : 'readonly';
                     document.getElementById('settingsDuckmailBaseUrl').value = data.settings.duckmail_base_url || '';
                     document.getElementById('settingsDuckmailApiKey').value = data.settings.duckmail_api_key || '';
                     document.getElementById('settingsCloudflareAiEnabled').checked = String(data.settings.cloudflare_ai_username_enabled) === 'true';
@@ -1882,6 +1884,7 @@
 
             settings.gptmail_api_key = apiKey;
             settings.external_api_key = externalApiKey;
+            settings.external_api_key_permission = document.getElementById('settingsExternalApiKeyPermission')?.value || 'readonly';
             settings.duckmail_base_url = document.getElementById('settingsDuckmailBaseUrl').value.trim();
             settings.duckmail_api_key = document.getElementById('settingsDuckmailApiKey').value.trim();
             settings.cloudflare_ai_username_enabled = !!document.getElementById('settingsCloudflareAiEnabled')?.checked;
