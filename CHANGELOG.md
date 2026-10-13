@@ -6,6 +6,19 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.13] - 2026-10-13
+
+### Added
+- 项目接口开放到对外 API Key，供外部系统直接对接邮箱领取与回报：只读权限即可查询项目列表（`GET /api/external/projects`）、项目详情与项目邮箱池（`GET /api/external/projects/<project_key>/accounts`，支持 `status`/`group_id`/`provider`/`keyword` 过滤）；读写权限额外开放 `start`、`claim-random`、`complete-success`、`complete-failed`、`release`、`reset-failed`、`remove-account`、`restore-account` 八个操作端点。
+- 对外项目端点与 Web 端 `/api/projects/*` 共用同一套后端逻辑：状态机（toClaim/claiming/done/failed/removed/deleted）、租约超时自动回收、同一邮箱多项目独立状态、领取 `claim_token` 防误报、启动补全/删除补偿/别名入池规则完全一致，响应结构镜像 Web 端（列表查询额外带 `total`）。
+- 所有对外项目读写操作写入审计日志（`resource_type=project`），状态流转同时记录项目事件供 Web 端追溯。
+
+### Changed
+- 对外 `claim-random` 在项目不存在时返回 404（Web 端返回与池耗尽相同的提示），便于外部脚本区分配置错误与池耗尽；池耗尽仍返回 200 + `success:false`，与 Web 端一致。
+
+### Security
+- 领取与回报类端点要求 API Key 且权限为读写（`readwrite`）；只读权限调用返回 403 并附切换指引。查询类端点对任意权限开放，升级后只读 Key 立即可查询项目数据；Web 端项目路由仍要求 Session 登录。
+
 ## [3.0.12] - 2026-10-13
 
 ### Added

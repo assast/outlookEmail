@@ -41,6 +41,17 @@
 | POST | `/api/external/outlook/upload` | API Key | JSON | 上传 Outlook 邮箱账号密码到上传表（默认未授权，支持单条/批量） |
 | POST | `/api/external/accounts` | API Key（读写） | JSON | 批量导入正式邮箱账号（可指定分组、标签） |
 | DELETE | `/api/external/accounts/email/<email_addr>` | API Key（读写） | JSON | 按邮箱删除正式账号 |
+| GET | `/api/external/projects` | API Key | JSON | 获取项目列表（含各状态计数） |
+| GET | `/api/external/projects/<project_key>` | API Key | JSON | 获取项目详情 |
+| GET | `/api/external/projects/<project_key>/accounts` | API Key | JSON | 查询项目邮箱池（支持 status/group_id/provider/keyword 过滤） |
+| POST | `/api/external/projects/start` | API Key（读写） | JSON | 创建项目或补全项目范围 |
+| POST | `/api/external/projects/<project_key>/claim-random` | API Key（读写） | JSON | 随机领取一个项目邮箱 |
+| POST | `/api/external/projects/<project_key>/complete-success` | API Key（读写） | JSON | 标记项目邮箱注册成功 |
+| POST | `/api/external/projects/<project_key>/complete-failed` | API Key（读写） | JSON | 标记项目邮箱注册失败 |
+| POST | `/api/external/projects/<project_key>/release` | API Key（读写） | JSON | 释放领取中的项目邮箱 |
+| POST | `/api/external/projects/<project_key>/reset-failed` | API Key（读写） | JSON | 把失败状态重置回可领取 |
+| POST | `/api/external/projects/<project_key>/remove-account` | API Key（读写） | JSON | 从项目移出邮箱 |
+| POST | `/api/external/projects/<project_key>/restore-account` | API Key（读写） | JSON | 恢复已移出的项目邮箱 |
 
 ### 分组、账号、标签、项目
 
@@ -172,8 +183,8 @@
 
 API Key 分为两级权限（`设置 -> 对外 API Key 权限`，或通过 `GET/PUT /api/settings` 的 `external_api_key_permission` 字段读取与修改）：
 
-- `readonly`（默认）：保留升级前的全部对外能力，包括查询账号列表、查询邮件、上传 Outlook 暂存账号
-- `readwrite`：额外开放正式账号的导入（`POST /api/external/accounts`）与删除（`DELETE /api/external/accounts/email/<email_addr>`）端点
+- `readonly`（默认）：保留升级前的全部对外能力，包括查询账号列表、查询邮件、上传 Outlook 暂存账号，以及查询项目列表与项目邮箱池
+- `readwrite`：额外开放正式账号的导入（`POST /api/external/accounts`）与删除（`DELETE /api/external/accounts/email/<email_addr>`）端点，以及项目的启动/领取/回报操作（`start`、`claim-random`、`complete-success`、`complete-failed`、`release`、`reset-failed`、`remove-account`、`restore-account`）
 
 权限为 `readonly` 时调用读写端点返回 `403`，错误信息中包含切换指引；权限取值大小写不敏感，非法值写入时返回 `400`。
 
@@ -677,6 +688,162 @@ curl -X DELETE -H "X-API-Key: your-api-key" \
 - 账号不存在返回 HTTP 404
 - 删除会连带清理账号的标签、别名，并把项目关联记录标记为 `deleted`（项目历史保留）
 - 每次调用写入一条审计日志（`action=delete`）
+
+### 对外项目 API
+
+把项目管理能力开放给外部系统对接：查询类端点（项目列表、项目详情、项目邮箱池）使用任意权限的 API Key 即可访问；领取与回报类端点需要权限为读写（`readwrite`）。
+
+对外项目端点与 Web 端 `/api/projects/*` 共用同一套后端逻辑，语义完全一致：
+
+- 项目状态机（`toClaim` / `claiming` / `done` / `failed` / `removed` / `deleted`）、租约超时自动回收（默认 600 秒，最大 3600 秒）、同一邮箱多项目独立状态等规则见[项目管理](#项目管理)章节
+- `start` 的创建/补全、分组范围、别名邮箱入池、删除补偿规则同样适用
+- 响应结构镜像 Web 端（`data` 包装），列表查询额外在顶层返回 `total`
+
+#### GET `/api/external/projects`
+
+获取项目列表（含各状态计数）。响应结构与 `GET /api/projects` 一致，顶层额外带 `total`。
+
+```bash
+curl -H "X-API-Key: your-api-key" "http://localhost:5000/api/external/projects"
+```
+
+#### GET `/api/external/projects/<project_key>`
+
+获取单个项目详情；项目不存在返回 HTTP 404。
+
+#### GET `/api/external/projects/<project_key>/accounts`
+
+查询项目邮箱池，响应结构与 `GET /api/projects/<project_key>/accounts` 一致（含 `project` 统计与 `accounts` 明细），顶层额外带 `total`。
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `status` | string | 否 | 按项目状态过滤，如 `toClaim`、`claiming`、`done`、`failed`、`removed` |
+| `group_id` | int | 否 | 按当前分组或项目来源分组过滤；会包含该分组及所有子分组 |
+| `provider` | string | 否 | 按邮箱 provider 过滤 |
+| `keyword` | string | 否 | 在邮箱地址、备注里做模糊搜索 |
+
+```bash
+curl -H "X-API-Key: your-api-key" \
+  "http://localhost:5000/api/external/projects/gpt/accounts?status=toClaim"
+```
+
+典型用法：外部系统用 `status=toClaim` 查询未注册邮箱池，用 `status=done` 查询已注册邮箱池，实现按渠道排除已注册邮箱。
+
+#### POST `/api/external/projects/start`
+
+创建项目或补全项目范围，需读写权限。请求体与 `POST /api/projects/start` 一致（`project_key` 必填，`name` / `description` / `group_ids` / `use_alias_email` 可选）。
+
+```bash
+curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
+  -d '{"project_key":"gpt","name":"GPT 注册","group_ids":[1,2]}' \
+  "http://localhost:5000/api/external/projects/start"
+```
+
+#### POST `/api/external/projects/<project_key>/claim-random`
+
+从项目里领取一个可用邮箱，需读写权限。请求体与 Web 端一致：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `caller_id` | string | 是 | 调用方标识 |
+| `task_id` | string | 是 | 当前任务标识 |
+| `lease_seconds` | int | 否 | 租期秒数，默认 `600`，最大 `3600`；超时未回报会自动回收到 `toClaim` |
+
+```bash
+curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
+  -d '{"caller_id":"worker-1","task_id":"task-001","lease_seconds":600}' \
+  "http://localhost:5000/api/external/projects/gpt/claim-random"
+```
+
+成功响应示例：
+
+```json
+{
+  "success": true,
+  "data": {
+    "project_key": "gpt",
+    "project_account_id": 101,
+    "account_id": 12,
+    "email": "user@example.com",
+    "primary_email": "user@example.com",
+    "group_id": 1,
+    "provider": "outlook",
+    "account_type": "outlook",
+    "remark": "",
+    "claim_token": "pclm_xxx",
+    "claimed_at": "2026-04-15T10:00:00+00:00",
+    "lease_expires_at": "2026-04-15T10:10:00+00:00"
+  }
+}
+```
+
+- 领取的邮箱处于 `claiming` 状态并持有 `claim_token`，后续回报必须携带
+- 项目内无可领取邮箱时返回 HTTP 200 + `{"success": false, "error": "没有可领取的项目邮箱"}`
+- 项目不存在返回 HTTP 404（与 Web 端不同，便于外部脚本区分配置错误与池耗尽）
+
+#### POST `/api/external/projects/<project_key>/complete-success`
+
+把领取中的邮箱标记为注册成功（`claiming` → `done`），需读写权限。请求体与 Web 端一致：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `account_id` | int | 是 | 领取响应中的账号 ID |
+| `claim_token` | string | 是 | 领取时返回的 token |
+| `caller_id` | string | 否 | 调用方标识 |
+| `task_id` | string | 否 | 任务标识 |
+| `detail` | string | 否 | 成功说明（最长 500 字符） |
+
+`done` 状态的邮箱不会再被本项目分配，即「该邮箱已在此渠道注册」。
+
+#### POST `/api/external/projects/<project_key>/complete-failed`
+
+把领取中的邮箱标记为注册失败（`claiming` → `failed`），需读写权限。请求体与 `complete-success` 一致；`failed` 不会自动再次参与分配，需调用 `reset-failed` 重置。
+
+#### POST `/api/external/projects/<project_key>/release`
+
+主动释放领取中的邮箱（`claiming` → `toClaim`），适合任务中断、主动放弃等场景，需读写权限。请求体与 `complete-success` 一致。
+
+#### POST `/api/external/projects/<project_key>/reset-failed`
+
+把 `failed` 邮箱重置回 `toClaim`，需读写权限。请求体只需 `account_id`（必填）与 `detail`（可选）。
+
+#### POST `/api/external/projects/<project_key>/remove-account`
+
+把项目邮箱移出项目范围（目标状态 `removed`；`claiming` 中会拒绝），需读写权限。请求体只需 `account_id` 与可选 `detail`。
+
+#### POST `/api/external/projects/<project_key>/restore-account`
+
+把 `removed` 项目邮箱恢复回 `toClaim`，需读写权限。请求体只需 `account_id` 与可选 `detail`。
+
+#### 对接示例与通用行为
+
+完整外部对接流程：
+
+```bash
+# 1. 启动/同步项目（首次调用即创建）
+curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
+  -d '{"project_key":"gpt"}' "http://localhost:5000/api/external/projects/start"
+
+# 2. 查询未注册邮箱池
+curl -H "X-API-Key: your-api-key" \
+  "http://localhost:5000/api/external/projects/gpt/accounts?status=toClaim"
+
+# 3. 领取邮箱并执行注册流程
+CLAIM=$(curl -s -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
+  -d '{"caller_id":"worker-1","task_id":"task-001"}' \
+  "http://localhost:5000/api/external/projects/gpt/claim-random")
+
+# 4. 注册完成后回报结果
+curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
+  -d "{\"account_id\":12,\"claim_token\":\"pclm_xxx\",\"caller_id\":\"worker-1\",\"detail\":\"注册成功\"}" \
+  "http://localhost:5000/api/external/projects/gpt/complete-success"
+```
+
+通用行为：
+
+- 回报类端点在 `account_id` / `claim_token` 不匹配当前 `claiming` 记录时返回 HTTP 400（`项目账号状态不匹配`）；`account_id` 非整数返回 HTTP 400（`account_id 无效`）
+- 权限为 `readonly` 时调用读写端点返回 HTTP 403，错误信息包含切换指引
+- 所有读写操作写入审计日志（`action` 为 `start` / `claim` / `complete` / `release` / `reset` / `remove` / `restore`，`resource_type=project`），项目状态流转同时记录项目事件供 Web 端追溯
 
 ### Outlook 上传账号管理
 
