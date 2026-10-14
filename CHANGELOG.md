@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.14] - 2026-10-14
+
 ### Added
 - 对外 API 新增批量修改账号分组端点 `POST /api/external/accounts/batch-update-group`（需读写权限）：支持 `account_ids`（自动过滤非法 ID）与 `group_id`，分组不存在返回 404、系统分组与无匹配账号返回 400，返回 `updated_count` 并写审计日志；设备端可把已使用账号挪到专属分组做视觉区分（#91）。
 - 项目生命周期管理接口：Web 端与对外 API 均新增项目停用（`POST /api/projects/<project_key>/archive`）、恢复（`/restore`）与删除（`DELETE /api/projects/<project_key>`）端点。停用后 `claim-random` 返回 400「项目已停用」，查询与回报类端点不受影响；删除会移除项目、邮箱池关联、分组范围与项目事件历史，但不删除 `accounts` 主表账号，存在 `claiming` 邮箱时拒绝删除（#91）。
