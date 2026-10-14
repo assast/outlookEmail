@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Added
+- 对外 API 新增批量修改账号分组端点 `POST /api/external/accounts/batch-update-group`（需读写权限）：支持 `account_ids`（自动过滤非法 ID）与 `group_id`，分组不存在返回 404、系统分组与无匹配账号返回 400，返回 `updated_count` 并写审计日志；设备端可把已使用账号挪到专属分组做视觉区分（#91）。
+- 项目生命周期管理接口：Web 端与对外 API 均新增项目停用（`POST /api/projects/<project_key>/archive`）、恢复（`/restore`）与删除（`DELETE /api/projects/<project_key>`）端点。停用后 `claim-random` 返回 400「项目已停用」，查询与回报类端点不受影响；删除会移除项目、邮箱池关联、分组范围与项目事件历史，但不删除 `accounts` 主表账号，存在 `claiming` 邮箱时拒绝删除（#91）。
+
+### Changed
+- 对外与 Web 端 `claim-random` 在项目不存在时统一返回 HTTP 400「项目不存在」（原先 Web 端与池耗尽同为 200 提示，无法区分）。
+- 再次调用 `start` 不再重置项目状态：停用（`archived`）的项目照常补全范围但保持停用，需显式调用 `restore` 恢复（原先 `start` 会把 status 静默改回 `active`）。
+
 ## [3.0.13] - 2026-10-13
 
 ### Added

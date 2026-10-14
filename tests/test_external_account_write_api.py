@@ -129,6 +129,18 @@ class ExternalAccountWriteAuthTests(ExternalAccountWriteTestBase):
         self.assertEqual(response.status_code, 403)
         self.assertFalse(response.get_json()['success'])
 
+    def test_readonly_permission_rejects_batch_update_group_with_403(self):
+        response = self.client.post(
+            '/api/external/accounts/batch-update-group',
+            headers=self._headers(),
+            json={'account_ids': [1], 'group_id': 2},
+        )
+        self.assertEqual(response.status_code, 403)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertIn('readonly', payload['error'])
+        self.assertIn('readwrite', payload['error'])
+
     def test_unset_permission_defaults_to_readonly(self):
         self._set_permission(None)
         response = self._import_lines([self._outlook_line('a@outlook.com')])
@@ -150,7 +162,11 @@ class ExternalAccountWriteAuthTests(ExternalAccountWriteTestBase):
         self.assertTrue(response.get_json()['success'])
 
     def test_routes_marked_with_decorators(self):
-        for endpoint in ('api_external_import_accounts', 'api_external_delete_account_by_email'):
+        for endpoint in (
+            'api_external_import_accounts',
+            'api_external_delete_account_by_email',
+            'api_external_batch_update_account_group',
+        ):
             view = self.app.view_functions[endpoint]
             self.assertTrue(getattr(view, '_requires_api_key', False), endpoint)
             self.assertTrue(getattr(view, '_requires_api_key_write', False), endpoint)
@@ -445,6 +461,110 @@ class ExternalAccountDeleteRouteTests(ExternalAccountWriteTestBase):
         self.assertEqual(audit['action'], 'delete')
         self.assertEqual(audit['resource_type'], 'account')
         self.assertEqual(audit['resource_id'], 'audit-del@outlook.com')
+        self.assertIn('对外 API', audit['details'])
+
+
+class ExternalAccountBatchUpdateGroupRouteTests(ExternalAccountWriteTestBase):
+    def setUp(self):
+        super().setUp()
+        self._set_permission('readwrite')
+
+    def _create_group(self, name='外部写入测试分组'):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            cursor = db.execute(
+                "INSERT INTO groups (name, description, color, sort_order, is_system) VALUES (?, '', '#123456', 999, 0)",
+                (name,),
+            )
+            db.commit()
+            return int(cursor.lastrowid)
+
+    def _batch_update_group(self, account_ids, group_id):
+        return self.client.post(
+            '/api/external/accounts/batch-update-group',
+            headers=self._headers(),
+            json={'account_ids': account_ids, 'group_id': group_id},
+        )
+
+    def test_batch_update_group_moves_accounts(self):
+        self._import_lines([
+            self._outlook_line('move-one@outlook.com'),
+            self._outlook_line('move-two@outlook.com'),
+        ])
+        row_one = self._fetch_account_row('move-one@outlook.com')
+        row_two = self._fetch_account_row('move-two@outlook.com')
+        group_id = self._create_group()
+
+        response = self._batch_update_group([row_one['id'], row_two['id']], group_id)
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['updated_count'], 2)
+
+        self.assertEqual(self._fetch_account_row('move-one@outlook.com')['group_id'], group_id)
+        self.assertEqual(self._fetch_account_row('move-two@outlook.com')['group_id'], group_id)
+
+    def test_batch_update_group_ignores_invalid_ids(self):
+        self._import_lines([self._outlook_line('partial@outlook.com')])
+        row = self._fetch_account_row('partial@outlook.com')
+        group_id = self._create_group()
+
+        response = self._batch_update_group([row['id'], 'abc', None, 0, 99999], group_id)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['updated_count'], 1)
+        self.assertEqual(self._fetch_account_row('partial@outlook.com')['group_id'], group_id)
+
+    def test_batch_update_group_missing_account_ids_returns_400(self):
+        group_id = self._create_group()
+        for body in ({'group_id': group_id}, {'account_ids': [], 'group_id': group_id}):
+            response = self.client.post(
+                '/api/external/accounts/batch-update-group',
+                headers=self._headers(),
+                json=body,
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertFalse(response.get_json()['success'])
+
+    def test_batch_update_group_no_matched_accounts_returns_400(self):
+        group_id = self._create_group()
+        response = self._batch_update_group([99998, 99999], group_id)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.get_json()['success'])
+
+    def test_batch_update_group_invalid_group_id_returns_400(self):
+        response = self._batch_update_group([1], 'abc')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.get_json()['success'])
+
+    def test_batch_update_group_group_not_found_returns_404(self):
+        response = self._batch_update_group([1], 99999)
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(response.get_json()['success'])
+
+    def test_batch_update_group_system_group_rejected(self):
+        self._import_lines([self._outlook_line('system@outlook.com')])
+        row = self._fetch_account_row('system@outlook.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            temp_group = db.execute(
+                "SELECT id FROM groups WHERE name = '临时邮箱' LIMIT 1"
+            ).fetchone()
+
+        response = self._batch_update_group([row['id']], temp_group['id'])
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.get_json()['success'])
+        self.assertEqual(self._fetch_account_row('system@outlook.com')['group_id'], 1)
+
+    def test_batch_update_group_writes_audit_log(self):
+        self._import_lines([self._outlook_line('audit-move@outlook.com')])
+        row = self._fetch_account_row('audit-move@outlook.com')
+        group_id = self._create_group()
+
+        self._batch_update_group([row['id']], group_id)
+        audit = self._last_audit_row()
+        self.assertEqual(audit['action'], 'update')
+        self.assertEqual(audit['resource_type'], 'accounts')
+        self.assertEqual(audit['resource_id'], str(group_id))
         self.assertIn('对外 API', audit['details'])
 
 

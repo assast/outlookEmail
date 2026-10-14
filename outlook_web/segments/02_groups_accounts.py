@@ -2138,6 +2138,7 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
 
 PROJECT_ACCOUNT_STATUSES = {'toClaim', 'claiming', 'done', 'failed', 'removed', 'deleted'}
 PROJECT_RESTORABLE_STATUSES = {'toClaim', 'done', 'failed', 'removed'}
+PROJECT_STATUSES = {'active', 'archived'}
 
 
 def project_now_iso() -> str:
@@ -2307,6 +2308,77 @@ def load_projects() -> List[Dict[str, Any]]:
         '''
     ).fetchall()
     return [serialize_project_row(row, db=db) for row in rows]
+
+
+def set_project_status(project_key: str, status: str) -> Optional[Dict[str, Any]]:
+    """停用（archived）或恢复（active）项目；项目不存在返回 None。"""
+    normalized_key = normalize_project_key(project_key)
+    if not normalized_key:
+        raise ValueError('project_key 不能为空')
+    normalized_status = str(status or '').strip().lower()
+    if normalized_status not in PROJECT_STATUSES:
+        raise ValueError('status 仅支持 active / archived')
+
+    db = get_db()
+    now_str = project_now_iso()
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        row = db.execute(
+            'SELECT id FROM projects WHERE project_key = ? LIMIT 1',
+            (normalized_key,)
+        ).fetchone()
+        if not row:
+            db.rollback()
+            return None
+        db.execute(
+            'UPDATE projects SET status = ?, updated_at = ? WHERE id = ?',
+            (normalized_status, now_str, row['id'])
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return get_project_by_key(normalized_key)
+
+
+def delete_project(project_key: str) -> Optional[Dict[str, Any]]:
+    """删除项目及其邮箱池关联；正在领取中的邮箱会阻止删除。返回删除前的项目摘要。"""
+    normalized_key = normalize_project_key(project_key)
+    if not normalized_key:
+        raise ValueError('project_key 不能为空')
+
+    db = get_db()
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        row = db.execute(
+            'SELECT id FROM projects WHERE project_key = ? LIMIT 1',
+            (normalized_key,)
+        ).fetchone()
+        if not row:
+            db.rollback()
+            return None
+        project_id = int(row['id'])
+
+        claiming_count = int(
+            db.execute(
+                "SELECT COUNT(*) AS count FROM project_accounts WHERE project_id = ? AND status = 'claiming'",
+                (project_id,)
+            ).fetchone()['count']
+        )
+        if claiming_count:
+            db.rollback()
+            raise ValueError(f'有 {claiming_count} 个邮箱正在领取中，请先完成或释放后再删除项目')
+
+        summary = get_project_by_key(normalized_key, db=db)
+        db.execute('DELETE FROM project_account_events WHERE project_id = ?', (project_id,))
+        db.execute('DELETE FROM project_accounts WHERE project_id = ?', (project_id,))
+        db.execute('DELETE FROM project_group_scopes WHERE project_id = ?', (project_id,))
+        db.execute('DELETE FROM projects WHERE id = ?', (project_id,))
+        db.commit()
+        return summary
+    except Exception:
+        db.rollback()
+        raise
 
 
 def get_project_scope_accounts(project_id: int, db=None) -> List[sqlite3.Row]:
@@ -2591,7 +2663,6 @@ def start_project(
                     description = ?,
                     scope_mode = ?,
                     use_alias_email = ?,
-                    status = 'active',
                     last_scope_synced_at = ?,
                     updated_at = ?
                 WHERE id = ?
@@ -2700,9 +2771,12 @@ def claim_project_account(project_key: str, caller_id: str, task_id: str, lease_
             'SELECT * FROM projects WHERE project_key = ? LIMIT 1',
             (normalized_key,)
         ).fetchone()
-        if not project or project['status'] != 'active':
+        if not project:
             db.rollback()
-            return None
+            raise ValueError('项目不存在')
+        if project['status'] != 'active':
+            db.rollback()
+            raise ValueError('项目已停用（archived），无法领取项目邮箱')
 
         row = db.execute(
             '''

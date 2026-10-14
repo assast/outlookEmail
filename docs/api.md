@@ -41,6 +41,7 @@
 | POST | `/api/external/outlook/upload` | API Key | JSON | 上传 Outlook 邮箱账号密码到上传表（默认未授权，支持单条/批量） |
 | POST | `/api/external/accounts` | API Key（读写） | JSON | 批量导入正式邮箱账号（可指定分组、标签） |
 | DELETE | `/api/external/accounts/email/<email_addr>` | API Key（读写） | JSON | 按邮箱删除正式账号 |
+| POST | `/api/external/accounts/batch-update-group` | API Key（读写） | JSON | 批量修改账号分组 |
 | GET | `/api/external/projects` | API Key | JSON | 获取项目列表（含各状态计数） |
 | GET | `/api/external/projects/<project_key>` | API Key | JSON | 获取项目详情 |
 | GET | `/api/external/projects/<project_key>/accounts` | API Key | JSON | 查询项目邮箱池（支持 status/group_id/provider/keyword 过滤） |
@@ -52,6 +53,9 @@
 | POST | `/api/external/projects/<project_key>/reset-failed` | API Key（读写） | JSON | 把失败状态重置回可领取 |
 | POST | `/api/external/projects/<project_key>/remove-account` | API Key（读写） | JSON | 从项目移出邮箱 |
 | POST | `/api/external/projects/<project_key>/restore-account` | API Key（读写） | JSON | 恢复已移出的项目邮箱 |
+| POST | `/api/external/projects/<project_key>/archive` | API Key（读写） | JSON | 停用项目（停用后无法领取） |
+| POST | `/api/external/projects/<project_key>/restore` | API Key（读写） | JSON | 恢复停用的项目 |
+| DELETE | `/api/external/projects/<project_key>` | API Key（读写） | JSON | 删除项目及其邮箱池关联 |
 
 ### 分组、账号、标签、项目
 
@@ -103,6 +107,9 @@
 | POST | `/api/projects/<project_key>/reset-failed` | Session + CSRF | JSON | 把失败状态重置回可领取 |
 | POST | `/api/projects/<project_key>/remove-account` | Session + CSRF | JSON | 从项目移出邮箱 |
 | POST | `/api/projects/<project_key>/restore-account` | Session + CSRF | JSON | 恢复已移出的项目邮箱 |
+| POST | `/api/projects/<project_key>/archive` | Session + CSRF | JSON | 停用项目（停用后无法领取） |
+| POST | `/api/projects/<project_key>/restore` | Session + CSRF | JSON | 恢复停用的项目 |
+| DELETE | `/api/projects/<project_key>` | Session + CSRF | JSON | 删除项目及其邮箱池关联 |
 
 ### 刷新、日志、邮件、设置、临时邮箱
 
@@ -184,7 +191,7 @@
 API Key 分为两级权限（`设置 -> 对外 API Key 权限`，或通过 `GET/PUT /api/settings` 的 `external_api_key_permission` 字段读取与修改）：
 
 - `readonly`（默认）：保留升级前的全部对外能力，包括查询账号列表、查询邮件、上传 Outlook 暂存账号，以及查询项目列表与项目邮箱池
-- `readwrite`：额外开放正式账号的导入（`POST /api/external/accounts`）与删除（`DELETE /api/external/accounts/email/<email_addr>`）端点，以及项目的启动/领取/回报操作（`start`、`claim-random`、`complete-success`、`complete-failed`、`release`、`reset-failed`、`remove-account`、`restore-account`）
+- `readwrite`：额外开放正式账号的导入（`POST /api/external/accounts`）、删除（`DELETE /api/external/accounts/email/<email_addr>`）与批量改分组（`POST /api/external/accounts/batch-update-group`）端点，以及项目的启动/领取/回报操作（`start`、`claim-random`、`complete-success`、`complete-failed`、`release`、`reset-failed`、`remove-account`、`restore-account`）和生命周期操作（`archive`、`restore`、`DELETE /api/external/projects/<project_key>`）
 
 权限为 `readonly` 时调用读写端点返回 `403`，错误信息中包含切换指引；权限取值大小写不敏感，非法值写入时返回 `400`。
 
@@ -689,6 +696,43 @@ curl -X DELETE -H "X-API-Key: your-api-key" \
 - 删除会连带清理账号的标签、别名，并把项目关联记录标记为 `deleted`（项目历史保留）
 - 每次调用写入一条审计日志（`action=delete`）
 
+### POST `/api/external/accounts/batch-update-group`
+
+批量修改正式账号的分组，需 API Key 且权限为读写（`readwrite`）。适合设备端把已使用的账号挪到「已使用」等分组做视觉区分。
+
+#### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `account_ids` | int[] | 是 | 账号 ID 列表；非法值（非正整数）会被自动过滤 |
+| `group_id` | int | 是 | 目标分组 ID |
+
+#### 请求示例
+
+```bash
+curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
+  -d '{"account_ids":[12,13],"group_id":3}' \
+  "http://localhost:5000/api/external/accounts/batch-update-group"
+```
+
+#### 成功响应示例
+
+```json
+{
+  "success": true,
+  "message": "已将 2 个账号移动到「已使用」分组",
+  "updated_count": 2
+}
+```
+
+#### 返回说明
+
+- `account_ids` 为空或全部非法返回 HTTP 400
+- 目标分组不存在返回 HTTP 404
+- 不能移动到系统分组（如「临时邮箱」），返回 HTTP 400
+- `updated_count` 是实际匹配到并被移动的账号数量；没有任何匹配账号时返回 HTTP 400
+- 每次调用写入一条审计日志（`action=update`）
+
 ### 对外项目 API
 
 把项目管理能力开放给外部系统对接：查询类端点（项目列表、项目详情、项目邮箱池）使用任意权限的 API Key 即可访问；领取与回报类端点需要权限为读写（`readwrite`）。
@@ -697,6 +741,7 @@ curl -X DELETE -H "X-API-Key: your-api-key" \
 
 - 项目状态机（`toClaim` / `claiming` / `done` / `failed` / `removed` / `deleted`）、租约超时自动回收（默认 600 秒，最大 3600 秒）、同一邮箱多项目独立状态等规则见[项目管理](#项目管理)章节
 - `start` 的创建/补全、分组范围、别名邮箱入池、删除补偿规则同样适用
+- 项目的停用/恢复（`active` / `archived`）与删除端点同样开放，规则见[项目生命周期](#项目生命周期)
 - 响应结构镜像 Web 端（`data` 包装），列表查询额外在顶层返回 `total`
 
 #### GET `/api/external/projects`
@@ -780,6 +825,7 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 - 领取的邮箱处于 `claiming` 状态并持有 `claim_token`，后续回报必须携带
 - 项目内无可领取邮箱时返回 HTTP 200 + `{"success": false, "error": "没有可领取的项目邮箱"}`
 - 项目不存在返回 HTTP 404（与 Web 端不同，便于外部脚本区分配置错误与池耗尽）
+- 项目处于停用状态（`archived`）时返回 HTTP 400，错误信息为「项目已停用」
 
 #### POST `/api/external/projects/<project_key>/complete-success`
 
@@ -814,6 +860,45 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 #### POST `/api/external/projects/<project_key>/restore-account`
 
 把 `removed` 项目邮箱恢复回 `toClaim`，需读写权限。请求体只需 `account_id` 与可选 `detail`。
+
+#### POST `/api/external/projects/<project_key>/archive`
+
+停用项目（`active` → `archived`），需读写权限。停用后：
+
+- `claim-random` 返回 HTTP 400「项目已停用」
+- 项目的查询、回报类端点（`complete-success` / `complete-failed` / `release` 等）仍可正常使用，便于收尾在途任务
+- 再次调用 `start` 只会补全范围，**不会**把项目重新激活；恢复需显式调用 `restore`
+
+```bash
+curl -X POST -H "X-API-Key: your-api-key" \
+  "http://localhost:5000/api/external/projects/gpt/archive"
+```
+
+#### POST `/api/external/projects/<project_key>/restore`
+
+恢复停用的项目（`archived` → `active`），需读写权限。恢复后 `claim-random` 立即可用，项目内各邮箱状态保持不变。
+
+```bash
+curl -X POST -H "X-API-Key: your-api-key" \
+  "http://localhost:5000/api/external/projects/gpt/restore"
+```
+
+#### DELETE `/api/external/projects/<project_key>`
+
+删除项目及其邮箱池关联，需读写权限。
+
+```bash
+curl -X DELETE -H "X-API-Key: your-api-key" \
+  "http://localhost:5000/api/external/projects/gpt"
+```
+
+删除规则：
+
+- 删除的是项目本身与「邮箱 ↔ 项目」关联（含项目事件历史），**不会**删除 `accounts` 主表里的账号
+- 存在 `claiming` 状态（正在领取中）的邮箱时拒绝删除，返回 HTTP 400 并提示数量；先 `complete-*` 或 `release` 后即可删除
+- 删除不可恢复；若之后用同一 `project_key` 重新 `start`，会创建全新项目、按当前范围重新入池
+- 项目不存在返回 HTTP 404
+- 每次调用写入一条审计日志（`action=delete`）
 
 #### 对接示例与通用行为
 
@@ -1526,6 +1611,8 @@ Content-Type: application/json
   - `removed`：人工移出项目范围
   - `deleted`：系统主表里的账号已删除，但项目历史仍保留
 
+项目自身的启用/停用与删除见[项目生命周期](#项目生命周期)。
+
 ### GET `/api/projects`
 
 获取项目列表。
@@ -1566,6 +1653,42 @@ Content-Type: application/json
 
 获取单个项目详情。
 
+### 项目生命周期
+
+项目自身有 `status` 字段，取值 `active`（默认）或 `archived`（停用）：
+
+- 停用后 `claim-random` 拒绝领取（HTTP 400「项目已停用」），池耗尽仍是 HTTP 200，两者可区分
+- 停用不影响查询与回报类操作，在途的 `claiming` 邮箱仍可 `complete-*` 或 `release`
+- 再次 `start` 不会重新激活停用的项目，只会照常补全范围；恢复需调用 `restore`
+- 删除项目会移除项目本身、邮箱池关联（`project_accounts`）、分组范围与项目事件历史；`accounts` 主表里的账号不受影响
+- 存在 `claiming` 状态的邮箱时删除会被拒绝，先完成或释放后重试
+- 用同一 `project_key` 在删除后重新 `start` 会创建全新项目
+
+### POST `/api/projects/<project_key>/archive`
+
+停用项目（`active` → `archived`）。
+
+### POST `/api/projects/<project_key>/restore`
+
+恢复停用的项目（`archived` → `active`），项目内各邮箱状态保持不变。
+
+### DELETE `/api/projects/<project_key>`
+
+删除项目及其邮箱池关联（不影响账号本身）；有邮箱正在领取中时返回 HTTP 400。
+
+成功响应示例：
+
+```json
+{
+  "success": true,
+  "message": "已删除项目 gpt",
+  "deleted_project": {
+    "project_key": "gpt",
+    "total_count": 500
+  }
+}
+```
+
 ### POST `/api/projects/start`
 
 启动项目。
@@ -1581,6 +1704,7 @@ Content-Type: application/json
   - 默认沿用原有范围
   - 如果本次显式传了 `group_ids`，会更新范围后再补全
   - 只补新增邮箱，不会重置已有项目状态
+  - 不会改变项目的 `active` / `archived` 状态；停用的项目照常补全范围，但恢复需要显式调用 `restore`
 
 删除补偿规则：
 
@@ -1796,6 +1920,8 @@ Content-Type: application/json
   "error": "没有可领取的项目邮箱"
 }
 ```
+
+项目不存在或项目已停用（`archived`）时返回 HTTP 400，错误信息分别为「项目不存在」「项目已停用（archived），无法领取项目邮箱」。
 
 ### POST `/api/projects/<project_key>/complete-success`
 
