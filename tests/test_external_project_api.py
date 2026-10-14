@@ -29,6 +29,9 @@ WRITE_ENDPOINTS = (
     'api_external_reset_project_failed',
     'api_external_remove_project_account',
     'api_external_restore_project_account',
+    'api_external_archive_project',
+    'api_external_restore_project',
+    'api_external_delete_project',
 )
 
 
@@ -189,6 +192,8 @@ class ExternalProjectAuthTests(ExternalProjectTestBase):
             ('/api/external/projects/readonly-peek/reset-failed', {'account_id': 1}),
             ('/api/external/projects/readonly-peek/remove-account', {'account_id': 1}),
             ('/api/external/projects/readonly-peek/restore-account', {'account_id': 1}),
+            ('/api/external/projects/readonly-peek/archive', {}),
+            ('/api/external/projects/readonly-peek/restore', {}),
         ]
         for path, body in cases:
             response = self.client.post(path, headers=self._headers(), json=body)
@@ -197,6 +202,13 @@ class ExternalProjectAuthTests(ExternalProjectTestBase):
             self.assertFalse(payload['success'], path)
             self.assertIn('readonly', payload['error'])
             self.assertIn('readwrite', payload['error'])
+
+        response = self.client.delete(
+            '/api/external/projects/readonly-peek',
+            headers=self._headers(),
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.get_json()['success'])
 
     def test_unset_permission_defaults_to_readonly(self):
         self._set_permission(None)
@@ -553,6 +565,155 @@ class ExternalProjectStartTests(ExternalProjectTestBase):
         self.assertEqual(audit['action'], 'start')
         self.assertEqual(audit['resource_type'], 'project')
         self.assertEqual(audit['resource_id'], 'audit-channel')
+        self.assertIn('对外 API', audit['details'])
+
+
+class ExternalProjectLifecycleTests(ExternalProjectTestBase):
+    def setUp(self):
+        super().setUp()
+        self._set_permission('readwrite')
+        self.account_id = self._insert_account('lifecycle@outlook.com')
+        self._start_project_via_api('lifecycle-channel', name='生命周期')
+
+    def _project_status(self, project_key='lifecycle-channel'):
+        response = self.client.get(
+            f'/api/external/projects/{project_key}',
+            headers=self._headers(),
+        )
+        return response.get_json()['data']['project']['status']
+
+    def test_archive_and_restore_toggle_status(self):
+        archive = self._post_project_action('lifecycle-channel', 'archive', {})
+        self.assertEqual(archive.status_code, 200)
+        payload = archive.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['data']['project']['status'], 'archived')
+        self.assertEqual(self._project_status(), 'archived')
+
+        restore = self._post_project_action('lifecycle-channel', 'restore', {})
+        self.assertEqual(restore.status_code, 200)
+        self.assertEqual(restore.get_json()['data']['project']['status'], 'active')
+        self.assertEqual(self._project_status(), 'active')
+
+    def test_archived_project_blocks_claim_with_400(self):
+        self._post_project_action('lifecycle-channel', 'archive', {})
+
+        response = self._claim_via_api('lifecycle-channel')
+        self.assertEqual(response.status_code, 400)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertIn('停用', payload['error'])
+
+    def test_start_on_archived_project_keeps_archived(self):
+        self._post_project_action('lifecycle-channel', 'archive', {})
+
+        response = self._start_project_via_api('lifecycle-channel')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()['success'])
+        self.assertEqual(self._project_status(), 'archived')
+
+    def test_restore_reenables_claim(self):
+        self._post_project_action('lifecycle-channel', 'archive', {})
+        self._post_project_action('lifecycle-channel', 'restore', {})
+
+        response = self._claim_via_api('lifecycle-channel')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()['success'])
+
+    def test_archive_missing_project_returns_404(self):
+        response = self._post_project_action('no-such-project', 'archive', {})
+        self.assertEqual(response.status_code, 404)
+        response = self._post_project_action('no-such-project', 'restore', {})
+        self.assertEqual(response.status_code, 404)
+
+    def test_archive_writes_audit_log(self):
+        self._post_project_action('lifecycle-channel', 'archive', {})
+        audit = self._last_audit_row()
+        self.assertEqual(audit['action'], 'archive')
+        self.assertEqual(audit['resource_type'], 'project')
+        self.assertEqual(audit['resource_id'], 'lifecycle-channel')
+        self.assertIn('对外 API', audit['details'])
+
+    def test_delete_removes_project_and_pool(self):
+        response = self.client.delete(
+            '/api/external/projects/lifecycle-channel',
+            headers=self._headers(),
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['deleted_project']['total_count'], 1)
+
+        detail = self.client.get(
+            '/api/external/projects/lifecycle-channel',
+            headers=self._headers(),
+        )
+        self.assertEqual(detail.status_code, 404)
+
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            self.assertIsNone(
+                db.execute(
+                    'SELECT id FROM projects WHERE project_key = ?', ('lifecycle-channel',)
+                ).fetchone()
+            )
+            self.assertIsNone(
+                db.execute(
+                    'SELECT id FROM project_accounts WHERE account_id = ?', (self.account_id,)
+                ).fetchone()
+            )
+            self.assertIsNone(
+                db.execute(
+                    'SELECT id FROM project_account_events WHERE account_id = ?', (self.account_id,)
+                ).fetchone()
+            )
+            # 账号本身不受影响
+            account = db.execute(
+                'SELECT id FROM accounts WHERE id = ?', (self.account_id,)
+            ).fetchone()
+            self.assertIsNotNone(account)
+
+    def test_delete_blocked_while_claiming(self):
+        claim = self._claim_via_api('lifecycle-channel').get_json()['data']
+
+        response = self.client.delete(
+            '/api/external/projects/lifecycle-channel',
+            headers=self._headers(),
+        )
+        self.assertEqual(response.status_code, 400)
+        payload = response.get_json()
+        self.assertFalse(payload['success'])
+        self.assertIn('领取中', payload['error'])
+
+        # 释放后可删除
+        release = self._post_project_action('lifecycle-channel', 'release', {
+            'account_id': claim['account_id'],
+            'claim_token': claim['claim_token'],
+        })
+        self.assertEqual(release.status_code, 200)
+
+        response = self.client.delete(
+            '/api/external/projects/lifecycle-channel',
+            headers=self._headers(),
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_delete_missing_project_returns_404(self):
+        response = self.client.delete(
+            '/api/external/projects/no-such-project',
+            headers=self._headers(),
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_delete_writes_audit_log(self):
+        self.client.delete(
+            '/api/external/projects/lifecycle-channel',
+            headers=self._headers(),
+        )
+        audit = self._last_audit_row()
+        self.assertEqual(audit['action'], 'delete')
+        self.assertEqual(audit['resource_type'], 'project')
+        self.assertEqual(audit['resource_id'], 'lifecycle-channel')
         self.assertIn('对外 API', audit['details'])
 
 

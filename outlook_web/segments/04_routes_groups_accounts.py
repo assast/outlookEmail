@@ -965,6 +965,65 @@ def api_external_delete_account_by_email(email_addr):
     })
 
 
+@app.route('/api/external/accounts/batch-update-group', methods=['POST'])
+@csrf_exempt
+@api_key_write_required
+def api_external_batch_update_account_group():
+    """对外 API：批量修改账号分组（需读写权限）"""
+    data = request.get_json(silent=True) or {}
+
+    account_ids = normalize_account_ids(data.get('account_ids', []))
+    if not account_ids:
+        return jsonify({'success': False, 'error': '缺少 account_ids 或全部无效'}), 400
+
+    group_id = data.get('group_id')
+    try:
+        group_id = int(group_id)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'group_id 无效'}), 400
+
+    group = get_group_by_id(group_id)
+    if not group:
+        return jsonify({'success': False, 'error': f'分组 {group_id} 不存在'}), 404
+    if group.get('is_system'):
+        return jsonify({'success': False, 'error': '不能移动到系统分组'}), 400
+
+    db = get_db()
+    try:
+        placeholders = ','.join('?' * len(account_ids))
+        updated_count = int(
+            db.execute(
+                f'SELECT COUNT(*) AS count FROM accounts WHERE id IN ({placeholders})',
+                account_ids,
+            ).fetchone()['count']
+        )
+        if not updated_count:
+            return jsonify({'success': False, 'error': '没有匹配的账号'}), 400
+        db.execute(
+            f'''
+            UPDATE accounts SET group_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+            ''',
+            [group_id] + account_ids
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+    log_audit(
+        'update',
+        'accounts',
+        str(group_id),
+        f"对外 API 批量移动 {updated_count} 个账号到分组「{group['name']}」",
+    )
+    return jsonify({
+        'success': True,
+        'message': f'已将 {updated_count} 个账号移动到「{group["name"]}」分组',
+        'updated_count': updated_count,
+    })
+
+
 # ==================== 对外项目 API ====================
 
 
@@ -1246,6 +1305,63 @@ def api_external_restore_project_account(project_key):
     return jsonify({'success': False, 'error': '项目账号状态不匹配'}), 400
 
 
+@app.route('/api/external/projects/<project_key>/archive', methods=['POST'])
+@csrf_exempt
+@api_key_write_required
+def api_external_archive_project(project_key):
+    """对外 API：停用项目（需读写权限）"""
+    try:
+        project = set_project_status(project_key, 'archived')
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    if not project:
+        return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+    log_audit('archive', 'project', project_key, '对外 API 停用项目（archived）')
+    return jsonify({'success': True, 'message': '项目已停用', 'data': {'project': project}})
+
+
+@app.route('/api/external/projects/<project_key>/restore', methods=['POST'])
+@csrf_exempt
+@api_key_write_required
+def api_external_restore_project(project_key):
+    """对外 API：恢复停用的项目（需读写权限）"""
+    try:
+        project = set_project_status(project_key, 'active')
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    if not project:
+        return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+    log_audit('restore', 'project', project_key, '对外 API 恢复项目（active）')
+    return jsonify({'success': True, 'message': '项目已恢复', 'data': {'project': project}})
+
+
+@app.route('/api/external/projects/<project_key>', methods=['DELETE'])
+@csrf_exempt
+@api_key_write_required
+def api_external_delete_project(project_key):
+    """对外 API：删除项目及其邮箱池关联（需读写权限）"""
+    try:
+        summary = delete_project(project_key)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    if not summary:
+        return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+    log_audit(
+        'delete',
+        'project',
+        project_key,
+        f"对外 API 删除项目：移除 {int(summary.get('total_count', 0))} 个邮箱池关联",
+    )
+    return jsonify({
+        'success': True,
+        'message': f"已删除项目 {project_key}",
+        'deleted_project': summary,
+    })
+
+
 # ==================== 项目 API ====================
 
 @app.route('/api/projects', methods=['GET'])
@@ -1429,6 +1545,60 @@ def api_restore_project_account(project_key):
     if restore_project_account(project_key, int(account_id), detail):
         return jsonify({'success': True, 'message': '项目邮箱已恢复'})
     return jsonify({'success': False, 'error': '项目账号状态不匹配'}), 400
+
+
+@app.route('/api/projects/<project_key>/archive', methods=['POST'])
+@login_required
+def api_archive_project(project_key):
+    """停用项目（archived），停用后无法领取邮箱"""
+    try:
+        project = set_project_status(project_key, 'archived')
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    if not project:
+        return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+    log_audit('archive', 'project', project_key, 'Web 端停用项目（archived）')
+    return jsonify({'success': True, 'message': '项目已停用', 'data': {'project': project}})
+
+
+@app.route('/api/projects/<project_key>/restore', methods=['POST'])
+@login_required
+def api_restore_project(project_key):
+    """恢复停用的项目（active）"""
+    try:
+        project = set_project_status(project_key, 'active')
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    if not project:
+        return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+    log_audit('restore', 'project', project_key, 'Web 端恢复项目（active）')
+    return jsonify({'success': True, 'message': '项目已恢复', 'data': {'project': project}})
+
+
+@app.route('/api/projects/<project_key>', methods=['DELETE'])
+@login_required
+def api_delete_project(project_key):
+    """删除项目及其邮箱池关联（不影响账号本身）"""
+    try:
+        summary = delete_project(project_key)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    if not summary:
+        return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+    log_audit(
+        'delete',
+        'project',
+        project_key,
+        f"Web 端删除项目：移除 {int(summary.get('total_count', 0))} 个邮箱池关联",
+    )
+    return jsonify({
+        'success': True,
+        'message': f'已删除项目 {project_key}',
+        'deleted_project': summary,
+    })
 
 
 # ==================== 标签 API ====================
