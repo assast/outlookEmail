@@ -1613,6 +1613,8 @@ Content-Type: application/json
 
 项目自身的启用/停用与删除见[项目生命周期](#项目生命周期)。
 
+Web 端提供项目管理界面：在「设置 → 常规设置 → 项目管理入口」开启后（默认关闭），顶部导航出现「项目管理」入口，支持创建项目、查看各状态计数、停用/恢复与删除；接口能力与本节完全一致。
+
 ### GET `/api/projects`
 
 获取项目列表。
@@ -2644,6 +2646,7 @@ POST /api/cloudflare/channels
 | `mail_fetch_timeout_seconds` | 普通 Outlook/IMAP 读取邮件列表的整体超时秒数，范围 `30-300`，默认 `120` |
 | `show_account_created_at` | 是否在邮箱列表展示创建时间 |
 | `show_account_sort_order` | 是否在邮箱列表展示自定义排序值 |
+| `show_project_management` | 是否在顶部导航展示「项目管理」入口，未配置时返回 `false` |
 | `active_skin_id` | 当前实际生效皮肤 ID；配置不可用时会返回 `classic` |
 | `configured_skin_id` | 当前保存的皮肤 ID；可能因为皮肤不可用而与 `active_skin_id` 不同 |
 | `active_skin` | 当前实际生效皮肤对象 |
@@ -2690,6 +2693,7 @@ POST /api/cloudflare/channels
 | `mail_fetch_timeout_seconds` | int | 普通 Outlook/IMAP 邮件列表整体获取超时，范围 `30-300`；未传则保留现有值。尚未保存该设置时回退环境变量 `MAIL_FETCH_OVERALL_TIMEOUT`，再回退 `120` |
 | `show_account_created_at` | bool | 是否在邮箱列表展示创建时间 |
 | `show_account_sort_order` | bool | 是否在邮箱列表展示自定义排序值 |
+| `show_project_management` | bool | 是否在顶部导航展示「项目管理」入口；默认关闭，开启后可在网页上创建项目、查看计数、停用/恢复与删除 |
 | `active_skin_id` | string | 当前系统级外观皮肤 ID；所有登录设备共用同一设置 |
 | `external_api_key` | string | 对外 API Key，可传空字符串清空 |
 | `external_api_key_permission` | string | 对外 API Key 权限：`readonly` 或 `readwrite`，大小写不敏感；非法值返回 HTTP 400，不传该字段时保持现有值 |
