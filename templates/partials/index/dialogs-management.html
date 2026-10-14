@@ -138,6 +138,13 @@
                                     </label>
                                     <div class="form-hint">关闭后，不再展示分组 ID 徽标。</div>
                                 </div>
+                                <div class="form-group">
+                                    <label class="settings-toggle settings-toggle--card">
+                                        <input type="checkbox" id="settingsShowProjectManagement">
+                                        <span class="form-label">项目管理入口</span>
+                                    </label>
+                                    <div class="form-hint">开启后，顶部导航显示「项目管理」入口，可在网页上创建项目、查看各状态计数、停用/恢复与删除项目；默认关闭。</div>
+                                </div>
                             </div>
                         </section>
 
@@ -1396,6 +1403,89 @@
         </div>
     </div>
 
+    <!-- 项目管理模态框（入口默认隐藏，需在设置中开启） -->
+    <div class="modal" id="projectManagementModal" onmousedown="if(event.target === this) hideProjectManagementModal()">
+        <div class="modal-content" style="width: min(1240px, 96vw);">
+            <div class="modal-header">
+                <h3>项目管理</h3>
+                <button class="modal-close" onclick="hideProjectManagementModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-hint project-mgmt-hint">
+                    项目把邮箱池里的邮箱按项目维度独立管理：同一个邮箱可以参与多个项目，各项目状态互不影响；领取、成功、失败等明细状态请通过项目 API 查看。删除项目只移除项目关联，不会删除邮箱账号本身。
+                </div>
+                <div class="project-mgmt-toolbar">
+                    <input type="text" id="projectSearchInput" class="form-input project-mgmt-search"
+                        placeholder="按 Key / 名称过滤" autocomplete="off" oninput="filterProjects(this.value)">
+                    <button class="btn btn-secondary" type="button" onclick="loadProjects()">刷新</button>
+                    <button class="btn btn-primary" type="button" id="projectCreateToggleBtn" onclick="toggleProjectCreateForm()">新建项目</button>
+                </div>
+                <div class="project-mgmt-create" id="projectCreateForm" style="display: none;">
+                    <div class="project-mgmt-create__grid">
+                        <div class="form-group">
+                            <label class="form-label" for="projectKeyInput">项目 Key *</label>
+                            <input type="text" class="form-input" id="projectKeyInput" placeholder="例如 my-project" autocomplete="off">
+                            <div class="form-hint">仅小写字母、数字、<code>-</code>、<code>_</code>；服务端会统一转小写。已存在的 Key 会按本次配置同步邮箱池。</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="projectNameInput">名称（可选）</label>
+                            <input type="text" class="form-input" id="projectNameInput" placeholder="项目显示名称" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="projectDescriptionInput">描述（可选）</label>
+                            <input type="text" class="form-input" id="projectDescriptionInput" placeholder="项目用途说明" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label class="settings-toggle settings-toggle--card">
+                                <input type="checkbox" id="projectUseAliasEmail">
+                                <span class="form-label">使用别名邮箱入池</span>
+                            </label>
+                            <div class="form-hint">开启后优先把账号的别名邮箱加入项目；没有别名的账号回退使用主邮箱。</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">项目分组范围</label>
+                        <label class="settings-toggle settings-toggle--card project-mgmt-groups__all">
+                            <input type="checkbox" id="projectGroupSelectAll" onchange="toggleProjectGroupSelectAll(this.checked)">
+                            <span class="form-label">全选</span>
+                        </label>
+                        <div class="project-mgmt-groups" id="projectGroupCheckboxList"></div>
+                        <div class="form-hint">不选择任何分组时，项目范围为全部邮箱。范围会包含所选分组及其所有子分组中的邮箱。</div>
+                    </div>
+                    <div class="project-mgmt-create__actions">
+                        <button class="btn btn-secondary" type="button" onclick="toggleProjectCreateForm(false)">取消</button>
+                        <button class="btn btn-primary" type="button" id="submitCreateProjectBtn" onclick="submitCreateProject()">创建项目</button>
+                    </div>
+                </div>
+                <div class="project-mgmt-table-wrap">
+                    <table class="project-mgmt-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 150px; min-width: 120px;">Key</th>
+                                <th style="width: 160px; min-width: 100px;">名称</th>
+                                <th style="width: 90px; min-width: 80px;">状态</th>
+                                <th style="width: 72px; min-width: 64px;">总数</th>
+                                <th style="width: 80px; min-width: 72px;">待领取</th>
+                                <th style="width: 80px; min-width: 72px;">领取中</th>
+                                <th style="width: 80px; min-width: 72px;">已完成</th>
+                                <th style="width: 72px; min-width: 64px;">失败</th>
+                                <th style="width: 180px; min-width: 170px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="projectsTableBody">
+                            <tr>
+                                <td colspan="9" class="project-mgmt-empty">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideProjectManagementModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
     <style>
         .upload-accounts-guide {
             margin-bottom: 14px;
@@ -1935,5 +2025,136 @@
         .upload-accounts-row--editing td:last-child {
             text-align: center;
             white-space: nowrap;
+        }
+        .project-mgmt-hint {
+            margin-bottom: 12px;
+        }
+        .project-mgmt-toolbar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .project-mgmt-search {
+            flex: 1;
+            min-width: 180px;
+        }
+        .project-mgmt-create {
+            margin-bottom: 12px;
+            padding: 14px;
+            border: 1px solid var(--skin-border, #e5e7eb);
+            border-radius: 8px;
+            background: var(--skin-surface-muted, #f8fafc);
+        }
+        .project-mgmt-create__grid {
+            display: grid;
+            grid-template-columns: 2fr 1.5fr 1.5fr auto;
+            gap: 12px;
+            align-items: start;
+        }
+        .project-mgmt-create__actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 12px;
+        }
+        .project-mgmt-groups__all {
+            display: inline-flex;
+            margin-bottom: 8px;
+        }
+        .project-mgmt-groups {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 14px;
+            max-height: 132px;
+            overflow-y: auto;
+            padding: 8px 10px;
+            border: 1px solid var(--skin-border, #e5e7eb);
+            border-radius: 6px;
+            background: var(--skin-surface, #ffffff);
+        }
+        .project-mgmt-group-option {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--skin-text, #1f2937);
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        .project-mgmt-group-empty {
+            font-size: 13px;
+            color: var(--text-muted, #6b7280);
+        }
+        .project-mgmt-table-wrap {
+            min-height: 240px;
+            overflow-x: auto;
+            border: 1px solid var(--border-color, #e5e7eb);
+            border-radius: 8px;
+        }
+        .project-mgmt-table {
+            width: 100%;
+            min-width: 980px;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: 13px;
+        }
+        .project-mgmt-table th,
+        .project-mgmt-table td {
+            padding: 8px 10px;
+            text-align: center;
+            border-bottom: 1px solid var(--border-color, #eef0f3);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .project-mgmt-table th {
+            background: var(--table-head-bg, #f6f7f9);
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            text-align: center;
+        }
+        .project-mgmt-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .project-mgmt-table tbody tr:hover {
+            background: var(--row-hover-bg, rgba(0, 0, 0, 0.03));
+        }
+        .project-mgmt-table td.project-mgmt-empty {
+            text-align: center;
+            color: var(--text-muted, #6b7280);
+            padding: 24px 10px;
+            white-space: normal;
+        }
+        .project-mgmt-table td:last-child {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: center;
+        }
+        .project-mgmt-key {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+        .project-mgmt-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .project-mgmt-badge--active {
+            background: rgba(16, 185, 129, 0.15);
+            color: #047857;
+        }
+        .project-mgmt-badge--archived {
+            background: rgba(107, 114, 128, 0.15);
+            color: #4b5563;
+        }
+        @media (max-width: 900px) {
+            .project-mgmt-create__grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>

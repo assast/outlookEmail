@@ -613,6 +613,7 @@ def api_get_settings():
     settings['show_account_created_at'] = get_setting('show_account_created_at', 'true')
     settings['show_account_sort_order'] = get_setting('show_account_sort_order', 'false')
     settings['show_group_id'] = get_setting('show_group_id', 'true')
+    settings['show_project_management'] = get_setting('show_project_management', 'false')
     settings['mail_fetch_timeout_seconds'] = str(get_mail_fetch_timeout_seconds())
     settings['normal_mail_local_retention_enabled'] = get_setting(
         'normal_mail_local_retention_enabled',
@@ -842,6 +843,16 @@ def api_update_settings():
                 errors.append('更新组ID展示失败')
         else:
             errors.append('组ID展示必须是 true 或 false')
+
+    if 'show_project_management' in data:
+        show_project_management = str(data['show_project_management']).lower()
+        if show_project_management in ('true', 'false'):
+            if set_setting('show_project_management', show_project_management):
+                updated.append('项目管理入口展示')
+            else:
+                errors.append('更新项目管理入口展示失败')
+        else:
+            errors.append('项目管理入口展示必须是 true 或 false')
 
     if 'normal_mail_local_retention_enabled' in data:
         retention_enabled = str(data['normal_mail_local_retention_enabled']).strip().lower()

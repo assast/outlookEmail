@@ -105,6 +105,7 @@
         let showAccountCreatedAt = true;
         let showAccountSortOrder = false;
         let showGroupId = true;
+        let showProjectManagement = false;
         let normalMailLocalRetentionEnabled = false;
 
         function normalizeTagFilterSelectionValue(value) {
@@ -197,6 +198,18 @@
 
         function shouldShowGroupId() {
             return showGroupId !== false;
+        }
+
+        function setShowProjectManagement(enabled) {
+            showProjectManagement = enabled === true;
+            if (typeof applyProjectManagementVisibility === 'function') {
+                applyProjectManagementVisibility();
+            }
+            return showProjectManagement;
+        }
+
+        function shouldShowProjectManagement() {
+            return showProjectManagement === true;
         }
 
         function setNormalMailLocalRetentionEnabled(enabled) {
@@ -1527,6 +1540,7 @@
                 setShowAccountCreatedAt(String(data?.settings?.show_account_created_at) !== 'false');
                 setShowAccountSortOrder(String(data?.settings?.show_account_sort_order) === 'true');
                 setShowGroupId(String(data?.settings?.show_group_id) !== 'false');
+                setShowProjectManagement(String(data?.settings?.show_project_management) === 'true');
                 setNormalMailLocalRetentionEnabled(String(data?.settings?.normal_mail_local_retention_enabled) === 'true');
                 return data?.settings || null;
             } catch (error) {

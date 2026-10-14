@@ -1802,6 +1802,7 @@
                     document.getElementById('settingsShowAccountCreatedAt').checked = String(data.settings.show_account_created_at) !== 'false';
                     document.getElementById('settingsShowAccountSortOrder').checked = String(data.settings.show_account_sort_order) === 'true';
                     document.getElementById('settingsShowGroupId').checked = String(data.settings.show_group_id) !== 'false';
+                    document.getElementById('settingsShowProjectManagement').checked = String(data.settings.show_project_management) === 'true';
                     const retentionEnabled = parseSettingsBoolean(data.settings.normal_mail_local_retention_enabled);
                     document.getElementById('normalMailLocalRetentionEnabled').checked = retentionEnabled;
                     setNormalMailLocalRetentionEnabled(retentionEnabled);
@@ -1865,6 +1866,7 @@
             const showAccountCreatedAt = !!document.getElementById('settingsShowAccountCreatedAt')?.checked;
             const showAccountSortOrder = !!document.getElementById('settingsShowAccountSortOrder')?.checked;
             const showGroupId = !!document.getElementById('settingsShowGroupId')?.checked;
+            const showProjectManagement = !!document.getElementById('settingsShowProjectManagement')?.checked;
             const normalMailLocalRetentionEnabled = !!document.getElementById('normalMailLocalRetentionEnabled')?.checked;
             const settings = {};
             const forwardChannels = getSelectedForwardChannels();
@@ -2029,6 +2031,7 @@
             settings.show_account_created_at = showAccountCreatedAt;
             settings.show_account_sort_order = showAccountSortOrder;
             settings.show_group_id = showGroupId;
+            settings.show_project_management = showProjectManagement;
             settings.normal_mail_local_retention_enabled = normalMailLocalRetentionEnabled;
             settings.forward_channels = forwardChannels;
             settings.forward_check_interval_seconds = forwardSeconds;
@@ -2105,6 +2108,7 @@
             setShowAccountCreatedAt(showAccountCreatedAt);
             setShowAccountSortOrder(showAccountSortOrder);
             setShowGroupId(showGroupId);
+            setShowProjectManagement(showProjectManagement);
             setMailFetchTimeoutSeconds(mailFetchTimeoutSeconds);
             setNormalMailLocalRetentionEnabled(normalMailLocalRetentionEnabled);
             if (wasRetentionEnabled && !normalMailLocalRetentionEnabled

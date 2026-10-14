@@ -749,6 +749,7 @@ INDEX_JS_FILES = (
     'js/index/10-batch-actions.js',
     'js/index/11-email-shares.js',
     'js/index/12-outlook-upload-accounts.js',
+    'js/index/13-projects.js',
 )
 
 # GPTMail API 配置
