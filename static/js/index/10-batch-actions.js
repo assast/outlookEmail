@@ -1,4 +1,4 @@
-        /* global accountPaginationState, accountsCache, clearEmailSelection, closeModal, copyTextToClipboard, currentAccount, currentAccountListSource, currentEmailDetail, currentGroupId, deleteAccount, getSelectedForwardChannels, handleApiError, hideModal, invalidateAccountCaches, isTempEmailGroup, loadAccountsByGroup, loadGroups, loadTags, refreshVisibleAccountList, renderEmailList, selectedEmailIds, setModalVisible, showModal, showToast, startSelectedAccountExport, updateBatchActionBar */
+        /* global accountPaginationState, accountsCache, clearEmailSelection, closeModal, copyTextToClipboard, currentAccount, currentAccountListSource, currentEmailDetail, currentGroupId, deleteAccount, getSelectedForwardChannels, handleApiError, hideModal, invalidateAccountCaches, isTempEmailGroup, loadAccountsByGroup, loadGroups, loadTags, refreshVisibleAccountList, renderEmailList, selectedEmailIds, setModalVisible, showModal, showToast, startSelectedAccountExport, syncAccountMoreActiveDot, updateBatchActionBar */
 
         // ==================== 批量操作 ====================
 
@@ -19,14 +19,26 @@
         function setAccountSelectionMode(enabled) {
             accountSelectionMode = !!enabled;
             document.getElementById('accountPanel')?.classList.toggle('account-selection-mode', accountSelectionMode);
-            document.querySelectorAll('.account-selection-mode-btn').forEach(button => {
-                button.classList.toggle('active', accountSelectionMode);
-                button.setAttribute('aria-pressed', accountSelectionMode ? 'true' : 'false');
-                button.title = accountSelectionMode ? '退出批量选择' : '批量选择';
-            });
+            syncAccountSelectionMenuItem();
+            if (typeof syncAccountMoreActiveDot === 'function') {
+                syncAccountMoreActiveDot();
+            }
             if (!accountSelectionMode) {
                 accountSelectionDragState = null;
             }
+        }
+
+        function syncAccountSelectionMenuItem() {
+            const label = accountSelectionMode ? '退出批量选择' : '批量选择';
+            document.querySelectorAll('.account-menu-item--selection').forEach(item => {
+                item.classList.toggle('active', accountSelectionMode);
+                item.setAttribute('aria-pressed', accountSelectionMode ? 'true' : 'false');
+                item.title = label;
+                const labelEl = item.querySelector('.account-menu-item-label');
+                if (labelEl) {
+                    labelEl.textContent = label;
+                }
+            });
         }
 
         function toggleAccountSelectionMode() {

@@ -1,4 +1,4 @@
-        /* global ACCOUNT_LIST_DEFAULT_PAGE_SIZE, ACCOUNT_LIST_MAX_PAGE_SIZE, accountListPageSize, accountListRequestSeq, accountPaginationState, accountSelectionMode, accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentAccountSummary, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, excludedTagFilters, formatAbsoluteDateTime, generateTempEmail, groups, handleAccountRowSelectionClick, handleAccountSelectionCheckboxClick, handleApiError, hasActiveTagFilters, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadCloudflareChannelsForImport, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, shouldShowAccountCreatedAt, shouldShowAccountSortOrder, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, syncAccountTagFilterOptions, tempEmailGroupId, toggleAccountSelectionMode, updateCurrentGroupHeader, updateGraphSendMailAvailability, updateMobileContext, updateTagFilterSummary */
+        /* global ACCOUNT_LIST_DEFAULT_PAGE_SIZE, ACCOUNT_LIST_MAX_PAGE_SIZE, accountListPageSize, accountListRequestSeq, accountPaginationState, accountSelectionMode, accountsCache, closeAllModals, currentAccount, currentAccountListSource, currentAccountSummary, currentEmailDetail, currentEmailId, currentEmails, currentGroupId, currentSkip, currentSortBy, currentSortOrder, deleteAccount, editingGroupId, escapeHtml, excludedTagFilters, formatAbsoluteDateTime, generateTempEmail, groups, handleAccountRowSelectionClick, handleAccountSelectionCheckboxClick, handleApiError, hasActiveTagFilters, hasMoreEmails, hideModal, isMobileLayout, isTempEmailGroup, loadCloudflareChannelsForImport, loadTempEmails, localStorage, matchesSelectedTagFilters, normalizeTagFilterSelectionValue, openMobilePanel, renderEmptyStateMarkup, renderTempEmailList, resetSelectedAccountView, selectedColor, selectedTagFilters, setModalVisible, shouldShowAccountCreatedAt, shouldShowAccountSortOrder, showAddAccountModal, showGetRefreshTokenModal, showModal, showRefreshError, showTagManagementModal, showToast, suppressGroupClickUntil, syncAccountMoreActiveDot, syncAccountTagFilterOptions, tempEmailGroupId, toggleAccountSelectionMode, updateCurrentGroupHeader, updateGraphSendMailAvailability, updateMobileContext, updateTagFilterSummary */
 
         // ==================== 分组相关 ====================
 
@@ -850,7 +850,7 @@
         // 刷新按钮（复用 refreshCurrentAccountList 功能）
         function renderAccountRefreshButton() {
             return `
-                <button class="panel-action-btn" onclick="refreshCurrentAccountList()" title="刷新邮箱列表">
+                <button class="panel-action-btn" id="refreshAccountListBtn" onclick="refreshCurrentAccountList()" title="刷新邮箱列表">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M1 8a7 7 0 0 1 13.22-3.22M15 8a7 7 0 0 1-13.22 3.22"/>
                         <path d="M14 1v3.5H10.5M2 15v-3.5h3.5"/>
@@ -859,33 +859,85 @@
             `;
         }
 
-        // 更新账号面板头部动作按钮
-        function renderAccountSelectionModeButton() {
-            const activeClass = accountSelectionMode ? ' active' : '';
-            const title = accountSelectionMode ? '退出批量选择' : '批量选择';
+        function closeAccountMoreMenu() {
+            document.querySelectorAll('.account-more-dropdown').forEach(dropdown => {
+                dropdown.classList.remove('is-open');
+            });
+        }
+
+        function renderAccountSelectionMenuItem() {
+            const active = accountSelectionMode === true;
+            const label = active ? '退出批量选择' : '批量选择';
             return `
-                <button class="panel-action-btn account-selection-mode-btn${activeClass}" id="accountSelectionModeBtn"
-                        onclick="toggleAccountSelectionMode()" title="${title}" aria-pressed="${accountSelectionMode ? 'true' : 'false'}">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="2" y="2" width="12" height="12" rx="2"></rect>
-                        <path d="M5 8l2 2 4-4"></path>
-                    </svg>
+                <button class="dropdown-item account-menu-item account-menu-item--selection${active ? ' active' : ''}" role="menuitem"
+                        onclick="toggleAccountSelectionMode(); closeAccountMoreMenu()"
+                        title="${label}" aria-pressed="${active ? 'true' : 'false'}">
+                    <span class="account-menu-item-icon">
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="2" width="12" height="12" rx="2"></rect>
+                            <path d="M5 8l2 2 4-4"></path>
+                        </svg>
+                    </span>
+                    <span class="account-menu-item-label">${label}</span>
+                    <span class="account-menu-item-check">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 8.5l3.5 3.5L13 5"></path>
+                        </svg>
+                    </span>
                 </button>
             `;
         }
 
-        function renderAccountMinimalModeButton() {
+        function renderAccountMinimalMenuItem() {
             const isMinimal = localStorage.getItem('outlook_account_list_minimal') === 'true';
-            const activeClass = isMinimal ? ' active' : '';
-            const title = isMinimal ? '切换详细展示' : '切换极简展示';
+            const label = isMinimal ? '切换详细展示' : '切换极简展示';
             return `
-                <button class="panel-action-btn${activeClass}" id="accountMinimalBtn" onclick="toggleAccountMinimalMode()" title="${title}" aria-pressed="${isMinimal ? 'true' : 'false'}">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="2" y="2.5" width="12" height="2.5" rx="0.5"></rect>
-                        <rect x="2" y="6.75" width="12" height="2.5" rx="0.5"></rect>
-                        <rect x="2" y="11" width="12" height="2.5" rx="0.5"></rect>
-                    </svg>
+                <button class="dropdown-item account-menu-item account-menu-item--minimal${isMinimal ? ' active' : ''}" role="menuitem"
+                        onclick="toggleAccountMinimalMode(); closeAccountMoreMenu()"
+                        title="${label}" aria-pressed="${isMinimal ? 'true' : 'false'}">
+                    <span class="account-menu-item-icon">
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="2.5" width="12" height="2.5" rx="0.5"></rect>
+                            <rect x="2" y="6.75" width="12" height="2.5" rx="0.5"></rect>
+                            <rect x="2" y="11" width="12" height="2.5" rx="0.5"></rect>
+                        </svg>
+                    </span>
+                    <span class="account-menu-item-label">${label}</span>
+                    <span class="account-menu-item-check">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 8.5l3.5 3.5L13 5"></path>
+                        </svg>
+                    </span>
                 </button>
+            `;
+        }
+
+        // 更多操作下拉（批量选择/管理标签/切换极简展示）
+        function renderAccountMoreDropdown() {
+            return `
+                <div class="navbar-dropdown account-more-dropdown">
+                    <button class="panel-action-btn account-more-btn dropdown-toggle" id="accountMoreBtn" title="更多操作" aria-haspopup="menu">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <circle cx="3" cy="8" r="1.6"></circle>
+                            <circle cx="8" cy="8" r="1.6"></circle>
+                            <circle cx="13" cy="8" r="1.6"></circle>
+                        </svg>
+                    </button>
+                    <div class="navbar-dropdown-menu" role="menu">
+                        ${renderAccountSelectionMenuItem()}
+                        <button class="dropdown-item account-menu-item account-menu-item--tags" role="menuitem"
+                                onclick="showTagManagementModal(); closeAccountMoreMenu()" title="管理标签">
+                            <span class="account-menu-item-icon">
+                                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M7 1.5h6v6L6.5 14 2 9.5 7 1.5z"></path>
+                                    <circle cx="9.5" cy="5" r="1.2" fill="currentColor"></circle>
+                                </svg>
+                            </span>
+                            <span class="account-menu-item-label">管理标签</span>
+                        </button>
+                        ${renderAccountMinimalMenuItem()}
+                    </div>
+                </div>
             `;
         }
 
@@ -896,14 +948,6 @@
             if (isTempEmailGroup) {
                 actions.innerHTML = `
                     ${renderAccountRefreshButton()}
-                    ${renderAccountSelectionModeButton()}
-                    <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M7 1.5h6v6L6.5 14 2 9.5 7 1.5z"></path>
-                            <circle cx="9.5" cy="5" r="1.2" fill="currentColor"></circle>
-                        </svg>
-                    </button>
-                    ${renderAccountMinimalModeButton()}
                     <button class="panel-action-btn panel-action-btn-accent" onclick="generateTempEmail()" title="生成临时邮箱">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="9 1 2 9 8 9 7 15 14 7 8 7 9 1"></polygon>
@@ -915,6 +959,7 @@
                                 d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" />
                         </svg>
                     </button>
+                    ${renderAccountMoreDropdown()}
                 `;
                 // 显示渠道筛选、隐藏排序
                 document.getElementById('tempEmailProviderFilter').style.display = 'flex';
@@ -933,14 +978,6 @@
             } else {
                 actions.innerHTML = `
                     ${renderAccountRefreshButton()}
-                    ${renderAccountSelectionModeButton()}
-                    <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M7 1.5h6v6L6.5 14 2 9.5 7 1.5z"></path>
-                            <circle cx="9.5" cy="5" r="1.2" fill="currentColor"></circle>
-                        </svg>
-                    </button>
-                    ${renderAccountMinimalModeButton()}
                     <button class="panel-action-btn panel-action-btn-accent" onclick="showGetRefreshTokenModal()" title="授权并保存 Outlook 账号">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="5.5" cy="10.5" r="3.5"></circle>
@@ -953,6 +990,7 @@
                                 d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" />
                         </svg>
                     </button>
+                    ${renderAccountMoreDropdown()}
                 `;
                 // 隐藏渠道筛选、显示排序、恢复标签筛选
                 document.getElementById('tempEmailProviderFilter').style.display = 'none';
@@ -965,6 +1003,9 @@
                 if (searchInput) {
                     searchInput.placeholder = '邮箱|别名|备注|标签';
                 }
+            }
+            if (typeof syncAccountMoreActiveDot === 'function') {
+                syncAccountMoreActiveDot();
             }
         }
 

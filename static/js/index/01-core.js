@@ -1,4 +1,4 @@
-        /* global applyPendingNewMailSync, closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, hasPendingNewMailSync, initAccountListScroll, initAccountPageSizeSelect, initAccountSearchInput, initAccountSearchScopeSelect, initAccountSelectionGestures, initColorPicker, initEmailListScroll, loadGroups, loadMoreCloudflareGlobalMessages, loadTags, renderEmailList, saveAccountSearchQueryPreference, scheduleEmailListLoadCheck, searchAccounts */
+        /* global accountSelectionMode, applyPendingNewMailSync, closeAllModals, debounce, ensureForwardingSettingsUI, handleGlobalGroupPointerMove, handleGlobalGroupPointerUp, hasPendingNewMailSync, initAccountListScroll, initAccountPageSizeSelect, initAccountSearchInput, initAccountSearchScopeSelect, initAccountSelectionGestures, initColorPicker, initEmailListScroll, loadGroups, loadMoreCloudflareGlobalMessages, loadTags, renderEmailList, saveAccountSearchQueryPreference, scheduleEmailListLoadCheck, searchAccounts */
 
         // 全局状态
         let csrfToken = null;
@@ -2829,13 +2829,8 @@ ${details}
         function updateCurrentGroupHeader(group = null, titleOverride = '') {
             const nameEl = document.getElementById('currentGroupName');
             const idBadgeEl = document.getElementById('currentGroupIdBadge');
-            const refreshBtn = document.getElementById('refreshAccountListBtn');
             if (!nameEl || !idBadgeEl) {
                 return;
-            }
-
-            if (refreshBtn) {
-                refreshBtn.style.display = (group || titleOverride) ? 'inline-flex' : 'none';
             }
 
             if (titleOverride) {
@@ -2883,34 +2878,48 @@ ${details}
             }
         }
 
+        function syncAccountMoreActiveDot() {
+            const btn = document.getElementById('accountMoreBtn');
+            if (!btn) return;
+            const panel = document.getElementById('accountPanel');
+            const minimalActive = !!panel && panel.classList.contains('minimal-mode');
+            const selectionActive = typeof accountSelectionMode !== 'undefined' && accountSelectionMode === true;
+            btn.classList.toggle('has-active', selectionActive || minimalActive);
+        }
+
+        function syncAccountMinimalMenuItem(isMinimal) {
+            const label = isMinimal ? '切换详细展示' : '切换极简展示';
+            document.querySelectorAll('.account-menu-item--minimal').forEach(item => {
+                item.classList.toggle('active', isMinimal);
+                item.setAttribute('aria-pressed', isMinimal ? 'true' : 'false');
+                item.title = label;
+                const labelEl = item.querySelector('.account-menu-item-label');
+                if (labelEl) {
+                    labelEl.textContent = label;
+                }
+            });
+        }
+
         function initAccountMinimalModeState() {
             const isMinimal = localStorage.getItem('outlook_account_list_minimal') === 'true';
             const panel = document.getElementById('accountPanel');
-            const btn = document.getElementById('accountMinimalBtn');
             if (panel) {
                 panel.classList.toggle('minimal-mode', isMinimal);
             }
-            if (btn) {
-                btn.classList.toggle('active', isMinimal);
-                btn.setAttribute('aria-pressed', isMinimal ? 'true' : 'false');
-                btn.title = isMinimal ? '切换详细展示' : '切换极简展示';
-            }
+            syncAccountMinimalMenuItem(isMinimal);
+            syncAccountMoreActiveDot();
         }
 
         function toggleAccountMinimalMode() {
             const panel = document.getElementById('accountPanel');
-            const btn = document.getElementById('accountMinimalBtn');
             if (!panel) return;
 
             const isMinimal = !panel.classList.contains('minimal-mode');
             panel.classList.toggle('minimal-mode', isMinimal);
             localStorage.setItem('outlook_account_list_minimal', String(isMinimal));
 
-            if (btn) {
-                btn.classList.toggle('active', isMinimal);
-                btn.setAttribute('aria-pressed', isMinimal ? 'true' : 'false');
-                btn.title = isMinimal ? '切换详细展示' : '切换极简展示';
-            }
+            syncAccountMinimalMenuItem(isMinimal);
+            syncAccountMoreActiveDot();
         }
 
         // ==================== 主题与列表刷新相关 ====================
