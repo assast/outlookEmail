@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.18] - 2026-10-16
+
+### Fixed
+- 超大邮箱 SEARCH 响应超过 imaplib 单行读取上限时重连按序列号枚举（#93）：邮件数约十几万时 `SEARCH ALL` 的单行响应（全部邮件 ID）超过 Python 标准库 imaplib 的 1MB 行上限，抛 `got more than 1000000 bytes` 且残留响应导致连接失步。现在检测到该错误后自动重连并重新 SELECT，按序列号 1..EXISTS 枚举、只 FETCH 当前页，超大邮箱可正常浏览翻页；重连失败仍返回 502 并保留原始错误详情。
+
 ## [3.0.17] - 2026-10-16
 
 ### Fixed
