@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.17] - 2026-10-16
+
+### Fixed
+- 阿里云等 IMAP 服务器拒绝 SEARCH 命令时回退序列号枚举（#93）：此前 IMAP 服务器对 `UID SEARCH` 与 `SEARCH` 均返回 NO/BAD（阿里云对不支持的参数返回 `BAD invalid command or parameters`）时，整个邮箱直接报 `IMAP_SEARCH_FAILED` 502 无法浏览。现在当两次 SEARCH 均为协议级拒绝（连接仍可用）且 SELECT 返回 EXISTS > 0 时，回退为按序列号 1..N 枚举取信；超时/连接中断等异常不回退，仍返回 502 以免 FETCH 必挂。
+
 ## [3.0.16] - 2026-10-16
 
 ### Fixed

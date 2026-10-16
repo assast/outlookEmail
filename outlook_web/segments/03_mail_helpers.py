@@ -2137,6 +2137,18 @@ def search_imap_message_ids(mail) -> tuple[Optional[List[bytes]], str, List[Dict
     return None, '', attempts
 
 
+def is_imap_search_protocol_rejection(attempts: List[Dict[str, Any]]) -> bool:
+    """判断 SEARCH 失败是否全部为服务器协议级拒绝（NO/BAD）。
+
+    协议级拒绝意味着服务器明确回了错误响应、连接本身仍然可用，
+    此时可以安全回退到按 SELECT EXISTS 的序列号枚举；
+    超时/连接中断等异常（status 为异常类名）则不行，回退 FETCH 也必挂。
+    """
+    if not attempts:
+        return False
+    return all(str(item.get('status') or '') in ('NO', 'BAD') for item in attempts)
+
+
 def search_imap_message_uids_by_arrival(mail) -> tuple[Optional[List[bytes]], List[Dict[str, Any]]]:
     attempts: List[Dict[str, Any]] = []
     try:
@@ -2732,17 +2744,23 @@ def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
         else:
             message_ids, search_mode, search_attempts = search_imap_message_ids(mail)
             if message_ids is None:
-                return {
-                    'success': False,
-                    'error': build_error_payload(
-                        'IMAP_SEARCH_FAILED',
-                        'IMAP 搜索邮件失败',
-                        'IMAPSearchError',
-                        502,
-                        {'attempts': search_attempts[:10]}
-                    ),
-                    'error_code': 'IMAP_SEARCH_FAILED'
-                }
+                # 服务器明确拒绝 SEARCH（如阿里云 IMAP 返回 BAD）但连接仍可用时，
+                # 回退为按 SELECT EXISTS 的序列号枚举，避免整个邮箱无法浏览
+                if selected_exists > 0 and is_imap_search_protocol_rejection(search_attempts):
+                    message_ids = build_sequence_message_ids(selected_exists)
+                    search_mode = 'sequence'
+                else:
+                    return {
+                        'success': False,
+                        'error': build_error_payload(
+                            'IMAP_SEARCH_FAILED',
+                            'IMAP 搜索邮件失败',
+                            'IMAPSearchError',
+                            502,
+                            {'attempts': search_attempts[:10]}
+                        ),
+                        'error_code': 'IMAP_SEARCH_FAILED'
+                    }
 
             if not message_ids and selected_exists > 0:
                 message_ids = build_sequence_message_ids(selected_exists)

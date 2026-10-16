@@ -594,6 +594,127 @@ class ImapFolderResolutionTests(unittest.TestCase):
         self.assertEqual(result['emails'][0]['id'], '1')
         self.assertEqual(result['emails'][0]['subject'], 'exists fallback')
 
+    def test_is_imap_search_protocol_rejection_classifies_attempts(self):
+        self.assertFalse(web_outlook_app.is_imap_search_protocol_rejection([]))
+        self.assertTrue(web_outlook_app.is_imap_search_protocol_rejection([
+            {'mode': 'uid', 'status': 'BAD'},
+            {'mode': 'sequence', 'status': 'NO'},
+        ]))
+        self.assertFalse(web_outlook_app.is_imap_search_protocol_rejection([
+            {'mode': 'uid', 'status': 'TimeoutError'},
+            {'mode': 'sequence', 'status': 'BAD'},
+        ]))
+
+    def test_custom_imap_falls_back_to_sequence_when_search_rejected_with_bad(self):
+        raw_email = (
+            b"Subject: search rejected fallback\r\n"
+            b"From: sender@example.com\r\n"
+            b"To: user@example.com\r\n"
+            b"Date: Tue, 14 Apr 2026 08:20:50 +0000\r\n"
+            b"\r\n"
+            b"rejected body\r\n"
+        )
+
+        class SearchRejectedMail(FakeMail):
+            def select(self, name, readonly=True):
+                self.select_calls.append((name, readonly))
+                if name in {'INBOX', '"INBOX"'}:
+                    return 'OK', [b'1']
+                return 'NO', [b'folder not found']
+
+            def uid(self, command, *args, **kwargs):
+                if command == 'SEARCH':
+                    return 'BAD', [b'invalid command or parameters']
+                return super().uid(command, *args, **kwargs)
+
+            def search(self, *_args, **_kwargs):
+                return 'NO', [b'SEARCH failed']
+
+            def fetch(self, message_id, _query):
+                if str(message_id) == '1':
+                    return 'OK', [(
+                        b'1 (FLAGS () INTERNALDATE "14-Apr-2026 08:20:50 +0000" RFC822 {128}',
+                        raw_email,
+                    )]
+                return 'NO', [b'not found']
+
+        mail = SearchRejectedMail(list_entries=[b'(\\HasNoChildren) "." "INBOX"'])
+
+        with patch.object(web_outlook_app, 'create_imap_connection', return_value=mail):
+            result = web_outlook_app.get_emails_imap_generic(
+                email_addr='user@example.com',
+                imap_password='secret',
+                imap_host='imap.example.com',
+                folder='inbox',
+                provider='custom',
+            )
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(result['emails']), 1)
+        self.assertEqual(result['emails'][0]['id'], '1')
+        self.assertEqual(result['emails'][0]['subject'], 'search rejected fallback')
+
+    def test_custom_imap_search_rejection_without_messages_still_fails(self):
+        class EmptyRejectedMail(FakeMail):
+            def select(self, name, readonly=True):
+                self.select_calls.append((name, readonly))
+                if name in {'INBOX', '"INBOX"'}:
+                    return 'OK', [b'0']
+                return 'NO', [b'folder not found']
+
+            def uid(self, command, *args, **kwargs):
+                if command == 'SEARCH':
+                    return 'BAD', [b'invalid command or parameters']
+                return super().uid(command, *args, **kwargs)
+
+            def search(self, *_args, **_kwargs):
+                return 'NO', [b'SEARCH failed']
+
+        mail = EmptyRejectedMail(list_entries=[b'(\\HasNoChildren) "." "INBOX"'])
+
+        with patch.object(web_outlook_app, 'create_imap_connection', return_value=mail):
+            result = web_outlook_app.get_emails_imap_generic(
+                email_addr='user@example.com',
+                imap_password='secret',
+                imap_host='imap.example.com',
+                folder='inbox',
+                provider='custom',
+            )
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error_code'], 'IMAP_SEARCH_FAILED')
+
+    def test_custom_imap_search_timeout_does_not_fall_back_to_sequence(self):
+        class SearchTimeoutMail(FakeMail):
+            def select(self, name, readonly=True):
+                self.select_calls.append((name, readonly))
+                if name in {'INBOX', '"INBOX"'}:
+                    return 'OK', [b'5']
+                return 'NO', [b'folder not found']
+
+            def uid(self, command, *args, **kwargs):
+                if command == 'SEARCH':
+                    raise TimeoutError('timed out')
+                return super().uid(command, *args, **kwargs)
+
+            def search(self, *_args, **_kwargs):
+                raise TimeoutError('timed out')
+
+        mail = SearchTimeoutMail(list_entries=[b'(\\HasNoChildren) "." "INBOX"'])
+
+        with patch.object(web_outlook_app, 'create_imap_connection', return_value=mail):
+            result = web_outlook_app.get_emails_imap_generic(
+                email_addr='user@example.com',
+                imap_password='secret',
+                imap_host='imap.example.com',
+                folder='inbox',
+                provider='custom',
+            )
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error_code'], 'IMAP_SEARCH_FAILED')
+        self.assertIn('TimeoutError', result['error']['details'])
+
     def test_fetch_account_emails_all_fetches_in_parallel(self):
         account = {
             'email': 'user@outlook.com',
