@@ -966,6 +966,16 @@ class EmailShareFrontendContractTests(unittest.TestCase):
         self.assertIn('max_email_count: maxEmailCount', shares_js)
         self.assertIn('formatEmailShareVisibility', shares_js)
 
+    def test_admin_ui_formats_share_times_in_app_timezone(self):
+        # 后端 expires_at/created_at 均为无时区标记的 UTC 字符串，
+        # 前端必须经 formatAbsoluteDateTime 转成应用时区展示（issue #94）
+        shares_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '11-email-shares.js').read_text(encoding='utf-8')
+
+        self.assertIn('formatAbsoluteDateTime', shares_js)
+        self.assertIn('return formatAbsoluteDateTime(share.expires_at);', shares_js)
+        self.assertIn('formatAbsoluteDateTime(share.created_at)', shares_js)
+        self.assertNotIn('return share.expires_at || ', shares_js)
+
     def test_share_page_contains_read_only_shell(self):
         template = pathlib.Path(ROOT_DIR, 'templates', 'email_share.html').read_text(encoding='utf-8')
         share_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'email-share.js').read_text(encoding='utf-8')
