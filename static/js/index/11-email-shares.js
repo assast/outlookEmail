@@ -1,4 +1,4 @@
-        /* global copyTextToClipboard, escapeHtml, handleApiError, hideModal, showConfirmModal, showModal, showToast */
+        /* global copyTextToClipboard, escapeHtml, formatAbsoluteDateTime, handleApiError, hideModal, showConfirmModal, showModal, showToast */
 
         // ==================== 邮箱分享 ====================
 
@@ -13,7 +13,7 @@
             if (share.never_expires) {
                 return '永不过期';
             }
-            return share.expires_at || '未设置';
+            return formatAbsoluteDateTime(share.expires_at);
         }
 
         function formatEmailShareVisibility(share) {
@@ -231,7 +231,7 @@
                         </td>
                         <td class="share-cell-mono">${escapeHtml(expiryStr)}</td>
                         <td>${escapeHtml(visibilityStr)}</td>
-                        <td class="share-cell-mono">${escapeHtml(share.created_at || '')}</td>
+                        <td class="share-cell-mono" title="${escapeHtml(share.created_at || '')}">${escapeHtml(formatAbsoluteDateTime(share.created_at))}</td>
                         <td>
                             <div class="share-url-container">
                                 <input type="text" class="form-input share-url-input" readonly value="${escapeHtml(share.share_url || '')}">
