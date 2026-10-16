@@ -2149,6 +2149,51 @@ def is_imap_search_protocol_rejection(attempts: List[Dict[str, Any]]) -> bool:
     return all(str(item.get('status') or '') in ('NO', 'BAD') for item in attempts)
 
 
+def is_imap_search_response_too_large(attempts: List[Dict[str, Any]]) -> bool:
+    """判断 SEARCH 失败是否因响应超过 imaplib 单行读取上限（imaplib._MAXLINE = 1MB）。
+
+    SEARCH ALL 把全部邮件 ID 放在一行返回，超大邮箱（约十几万封）会超限抛
+    imaplib.IMAP4.error("got more than 1000000 bytes")；且响应残留使连接失步，
+    后续命令会读到脏数据，只能重连后改按序列号枚举。
+    """
+    for item in attempts:
+        response = str(item.get('response') or '')
+        if 'got more than' in response and 'bytes' in response:
+            return True
+    return False
+
+
+def reopen_imap_session_for_sequence_fetch(email_addr: str, imap_password: str, imap_host: str,
+                                           imap_port: int, proxy_url: str, provider: str,
+                                           folder_name: str) -> tuple[Optional[Any], int]:
+    """连接因 SEARCH 响应超限失步后，重连并重新 SELECT 同一文件夹。
+
+    返回 (新连接, 新的 EXISTS 数)；任一步失败返回 (None, 0)，由调用方维持原报错。
+    """
+    mail = None
+    try:
+        mail = create_imap_connection(imap_host, imap_port, proxy_url)
+        mail.login(email_addr, imap_password)
+        send_imap_id(mail, provider, imap_host)
+        selected, attempts = try_select_imap_folder(mail, folder_name, readonly=True)
+        if not selected:
+            return None, 0
+        exists = 0
+        for attempt in reversed(attempts):
+            if str(attempt.get('status') or '') == 'OK':
+                exists = extract_imap_exists_count(attempt.get('response'))
+                if exists > 0:
+                    break
+        return mail, exists
+    except Exception:
+        if mail is not None:
+            try:
+                mail.logout()
+            except Exception:
+                pass
+        return None, 0
+
+
 def search_imap_message_uids_by_arrival(mail) -> tuple[Optional[List[bytes]], List[Dict[str, Any]]]:
     attempts: List[Dict[str, Any]] = []
     try:
@@ -2746,10 +2791,26 @@ def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
             if message_ids is None:
                 # 服务器明确拒绝 SEARCH（如阿里云 IMAP 返回 BAD）但连接仍可用时，
                 # 回退为按 SELECT EXISTS 的序列号枚举，避免整个邮箱无法浏览
+                sequence_ids = None
                 if selected_exists > 0 and is_imap_search_protocol_rejection(search_attempts):
-                    message_ids = build_sequence_message_ids(selected_exists)
+                    sequence_ids = build_sequence_message_ids(selected_exists)
                     search_mode = 'sequence'
-                else:
+                elif selected_exists > 0 and is_imap_search_response_too_large(search_attempts):
+                    # 超大邮箱 SEARCH ALL 单行响应超 imaplib 1MB 读取上限，连接已失步：
+                    # 重连后按序列号 1..EXISTS 枚举（SEARCH ALL 的结果本就是 1..N），
+                    # 只 FETCH 当前页，避开超限问题
+                    new_mail, new_exists = reopen_imap_session_for_sequence_fetch(
+                        email_addr, imap_password, imap_host, imap_port, proxy_url, provider, selected)
+                    if new_mail is not None:
+                        try:
+                            mail.logout()
+                        except Exception:
+                            pass
+                        mail = new_mail
+                        selected_exists = new_exists
+                        sequence_ids = build_sequence_message_ids(new_exists)
+                        search_mode = 'sequence'
+                if sequence_ids is None:
                     return {
                         'success': False,
                         'error': build_error_payload(
@@ -2761,6 +2822,7 @@ def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
                         ),
                         'error_code': 'IMAP_SEARCH_FAILED'
                     }
+                message_ids = sequence_ids
 
             if not message_ids and selected_exists > 0:
                 message_ids = build_sequence_message_ids(selected_exists)

@@ -715,6 +715,115 @@ class ImapFolderResolutionTests(unittest.TestCase):
         self.assertEqual(result['error_code'], 'IMAP_SEARCH_FAILED')
         self.assertIn('TimeoutError', result['error']['details'])
 
+    def test_is_imap_search_response_too_large_detects_limit_error(self):
+        too_large = [
+            {'mode': 'uid', 'status': 'error', 'response': 'command: UID => got more than 1000000 bytes'},
+            {'mode': 'sequence', 'status': 'error', 'response': 'command: SEARCH => got more than 1000000 bytes'},
+        ]
+        self.assertTrue(web_outlook_app.is_imap_search_response_too_large(too_large))
+        self.assertFalse(web_outlook_app.is_imap_search_response_too_large([]))
+        self.assertFalse(web_outlook_app.is_imap_search_response_too_large([
+            {'mode': 'uid', 'status': 'TimeoutError', 'response': 'timed out'},
+        ]))
+        self.assertFalse(web_outlook_app.is_imap_search_response_too_large([
+            {'mode': 'uid', 'status': 'BAD', 'response': 'invalid command or parameters'},
+        ]))
+
+    def test_custom_imap_reconnects_when_search_response_exceeds_line_limit(self):
+        raw_email = (
+            b"Subject: too large fallback\r\n"
+            b"From: sender@example.com\r\n"
+            b"To: user@example.com\r\n"
+            b"Date: Tue, 14 Apr 2026 08:20:50 +0000\r\n"
+            b"\r\n"
+            b"reconnected body\r\n"
+        )
+
+        class SearchTooLargeMail(FakeMail):
+            def select(self, name, readonly=True):
+                self.select_calls.append((name, readonly))
+                if name in {'INBOX', '"INBOX"'}:
+                    return 'OK', [b'150000']
+                return 'NO', [b'folder not found']
+
+            def uid(self, command, *args, **kwargs):
+                if command == 'SEARCH':
+                    raise web_outlook_app.imaplib.IMAP4.error('command: UID => got more than 1000000 bytes')
+                return super().uid(command, *args, **kwargs)
+
+            def search(self, *_args, **_kwargs):
+                raise web_outlook_app.imaplib.IMAP4.error('command: SEARCH => got more than 1000000 bytes')
+
+        class ReconnectedMail(FakeMail):
+            def __init__(self):
+                super().__init__(list_entries=[b'(\\HasNoChildren) "." "INBOX"'])
+                self.fetch_calls = []
+
+            def select(self, name, readonly=True):
+                self.select_calls.append((name, readonly))
+                if name in {'INBOX', '"INBOX"'}:
+                    return 'OK', [b'2']
+                return 'NO', [b'folder not found']
+
+            def fetch(self, message_id, query):
+                self.fetch_calls.append((str(message_id), query))
+                return 'OK', [(
+                    b'2 (FLAGS () INTERNALDATE "14-Apr-2026 08:20:50 +0000" RFC822 {128}',
+                    raw_email,
+                )]
+
+        first_mail = SearchTooLargeMail()
+        second_mail = ReconnectedMail()
+
+        with patch.object(web_outlook_app, 'create_imap_connection', side_effect=[first_mail, second_mail]):
+            result = web_outlook_app.get_emails_imap_generic(
+                email_addr='user@example.com',
+                imap_password='secret',
+                imap_host='imap.example.com',
+                folder='inbox',
+                provider='custom',
+            )
+
+        self.assertTrue(result['success'], result.get('error'))
+        self.assertEqual(len(result['emails']), 2)
+        self.assertEqual({item['subject'] for item in result['emails']}, {'too large fallback'})
+        self.assertTrue(first_mail.logged_out)
+        self.assertTrue(second_mail.logged_out)
+        self.assertEqual({call[0] for call in second_mail.fetch_calls}, {'1', '2'})
+
+    def test_custom_imap_search_too_large_reconnect_failure_keeps_error(self):
+        class SearchTooLargeMail(FakeMail):
+            def select(self, name, readonly=True):
+                self.select_calls.append((name, readonly))
+                if name in {'INBOX', '"INBOX"'}:
+                    return 'OK', [b'150000']
+                return 'NO', [b'folder not found']
+
+            def uid(self, command, *args, **kwargs):
+                if command == 'SEARCH':
+                    raise web_outlook_app.imaplib.IMAP4.error('command: UID => got more than 1000000 bytes')
+                return super().uid(command, *args, **kwargs)
+
+            def search(self, *_args, **_kwargs):
+                raise web_outlook_app.imaplib.IMAP4.error('command: SEARCH => got more than 1000000 bytes')
+
+        mail = SearchTooLargeMail()
+
+        with patch.object(web_outlook_app, 'create_imap_connection',
+                          side_effect=[mail, ConnectionError('reconnect failed')]):
+            result = web_outlook_app.get_emails_imap_generic(
+                email_addr='user@example.com',
+                imap_password='secret',
+                imap_host='imap.example.com',
+                folder='inbox',
+                provider='custom',
+            )
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error_code'], 'IMAP_SEARCH_FAILED')
+        self.assertIn('got more than', result['error']['details'])
+        self.assertTrue(mail.logged_out)
+
     def test_fetch_account_emails_all_fetches_in_parallel(self):
         account = {
             'email': 'user@outlook.com',
