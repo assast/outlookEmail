@@ -446,6 +446,12 @@
                                 <button class="btn btn-primary" type="button" id="triggerForwardingCheckBtn" onclick="triggerForwardingCheck()">手动触发转发检查</button>
                             </div>
                         </div>
+                        <div class="form-group">
+                            <label class="form-label" for="forwardKeywords">转发关键词筛选</label>
+                            <textarea class="form-input" id="forwardKeywords" rows="3" placeholder="Access deactivated&#10;账号已停用"></textarea>
+                            <div class="form-hint">每行一个关键词，主题或正文包含任意一个才转发，不区分大小写；留空转发全部邮件，对所有转发渠道生效。</div>
+                            <div class="form-hint">修改后如需重新检查之前的邮件，请在账号转发日志中回退游标；已成功转发过的邮件仍会去重。</div>
+                        </div>
                         <div class="form-group forwarding-channel-group">
                             <div class="forwarding-channel-group__head">
                                 <label class="form-label">转发渠道</label>
@@ -1168,8 +1174,8 @@
                             <span class="release-notice-badge">最新</span>
                         </div>
                         <ul>
-                            <li>主页支持批量启用、停用账号，Token 刷新管理支持批量停用（#97）。</li>
-                            <li>停用保留账号凭据和项目记录，后续领取、Token 刷新和自动转发会跳过；可在主页批量启用恢复。</li>
+                            <li>转发摘要显示邮件的实际收件人和抄送地址（#96）。</li>
+                            <li>邮件转发设置支持关键词筛选，主题或完整正文命中任意一项才转发；留空保持全部转发。</li>
                         </ul>
                     </div>
                 </div>

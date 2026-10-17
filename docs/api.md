@@ -2678,6 +2678,7 @@ POST /api/cloudflare/channels
 | `forward_account_delay_seconds` | 串行模式下账号间隔秒数；并行模式返回 `0` |
 | `forward_email_window_minutes` | 转发时间窗口 |
 | `forward_include_junkemail` | 是否转发垃圾箱 |
+| `forward_keywords` | 转发关键词文本，每行一个，默认空字符串（全部转发） |
 | `email_forward_recipient` | SMTP 转发收件人 |
 | `smtp_host` | SMTP 主机 |
 | `smtp_port` | SMTP 端口 |
@@ -2747,6 +2748,7 @@ POST /api/cloudflare/channels
 | `forward_account_delay_seconds` | int | 串行模式下账号间隔，范围 `0-60`；并行模式会保存为 `0` |
 | `forward_email_window_minutes` | int | 转发邮件时间范围，范围 `0-10080`，`0` 表示不限制 |
 | `forward_include_junkemail` | bool | 是否把垃圾箱邮件也纳入转发轮询 |
+| `forward_keywords` | string | 每行一个关键词，主题或完整可见正文包含任一项才转发，不区分大小写；空字符串关闭筛选，保存时去除空行及重复项 |
 | `forward_channels` | array<string> | `smtp` / `telegram` / `wecom` |
 | `email_forward_recipient` | string | SMTP 转发收件人 |
 | `smtp_host` | string | SMTP 主机 |
@@ -2771,6 +2773,7 @@ POST /api/cloudflare/channels
   "forward_account_delay_seconds": 0,
   "forward_email_window_minutes": 30,
   "forward_include_junkemail": true,
+  "forward_keywords": "Access deactivated\n账号已停用",
   "smtp_provider": "outlook",
   "forward_channels": ["smtp", "telegram"]
 }
