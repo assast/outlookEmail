@@ -90,6 +90,7 @@
 | GET | `/api/accounts/<account_id>/aliases` | Session | JSON | 获取账号别名 |
 | PUT | `/api/accounts/<account_id>/aliases` | Session + CSRF | JSON | 整体替换账号别名 |
 | POST | `/api/accounts/batch-update-group` | Session + CSRF | JSON | 批量改分组 |
+| POST | `/api/accounts/batch-update-status` | Session + CSRF | JSON | 批量启用或停用账号 |
 | POST | `/api/accounts/batch-update-forwarding` | Session + CSRF | JSON | 批量改转发开关 |
 | POST | `/api/accounts/batch-update-proxy` | Session + CSRF | JSON | 批量改账号级代理 |
 | GET | `/api/tags` | Session | JSON | 获取标签列表 |
@@ -1455,6 +1456,24 @@ Content-Type: application/json
   "group_id": 5
 }
 ```
+
+### POST `/api/accounts/batch-update-status`
+
+批量启用或停用正式邮箱账号，使用登录会话和 CSRF 校验。
+
+```json
+{
+  "account_ids": [1, 2, 3],
+  "status": "inactive"
+}
+```
+
+- `account_ids` 为账号 ID 数组，重复 ID 会去重，无效 ID 会忽略。
+- `status` 必须为 `active`（启用）或 `inactive`（停用）。
+- 返回 `updated_count`、`updated_accounts`、`unchanged_count` 和 `missing_ids`，已处于目标状态的账号不会重复更新。
+- 请求体或状态无效、没有可修改账号时返回 HTTP 400；未登录返回 HTTP 401。
+- 停用保留账号凭据和项目记录，后续项目领取、Token 刷新和自动转发会跳过该账号。已有项目领取状态不会被撤销；恢复启用也不会重置项目进度。
+- 主页支持批量启用和停用；Token 刷新管理仅展示启用的 Outlook 账号，可批量停用，恢复请使用主页入口。
 
 ### POST `/api/accounts/batch-update-forwarding`
 

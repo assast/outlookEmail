@@ -871,6 +871,7 @@
                                 <button class="batch-btn batch-btn-accent" type="button" id="refreshAddTagBtn" onclick="showRefreshBatchTagModal('add')">标签+</button>
                                 <button class="batch-btn batch-btn-accent" type="button" id="refreshRemoveTagBtn" onclick="showRefreshBatchTagModal('remove')">标签-</button>
                                 <button class="batch-btn batch-btn-accent" type="button" id="refreshMoveGroupBtn" onclick="showRefreshBatchMoveGroupModal()">移动</button>
+                                <button class="batch-btn batch-btn-neutral" type="button" id="refreshDisableAccountsBtn" onclick="disableSelectedRefreshAccounts()">停用账号</button>
                                 <button class="batch-btn batch-btn-danger" type="button" id="refreshDeleteSelectedBtn" onclick="deleteSelectedRefreshAccounts()">删除</button>
                             </div>
                         </div>
@@ -1167,7 +1168,8 @@
                             <span class="release-notice-badge">最新</span>
                         </div>
                         <ul>
-                            <li>暂时无法获取更新内容，可查看完整更新日志。</li>
+                            <li>主页支持批量启用、停用账号，Token 刷新管理支持批量停用（#97）。</li>
+                            <li>停用保留账号凭据和项目记录，后续领取、Token 刷新和自动转发会跳过；可在主页批量启用恢复。</li>
                         </ul>
                     </div>
                 </div>

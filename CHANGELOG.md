@@ -6,6 +6,16 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.19] - 2026-10-17
+
+### Added
+- 批量启用与停用邮箱账号（#97）：主页邮箱列表支持批量「启用账号 / 停用账号」，Token 刷新管理支持筛选刷新失败账号后批量停用；操作前显示确认提示，并自动跳过已处于目标状态的账号。
+- 新增登录态接口 `POST /api/accounts/batch-update-status`，支持账号 ID 去重、状态校验，并返回实际更新、无需更新和未找到的账号数量及列表。
+
+### Important
+- 停用会保留密码、Refresh Token 和项目记录，后续项目领取、Token 刷新及自动转发会跳过停用账号；已有项目领取状态不会撤销，恢复启用不会重置项目进度。
+- 停用账号会从 Token 刷新管理列表移除，仍可在主页找到并批量启用。本次升级无需迁移数据库。
+
 ## [3.0.18] - 2026-10-16
 
 ### Fixed

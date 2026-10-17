@@ -405,6 +405,7 @@
                     batchDeleteBtn.textContent = '删除';
                 }
             }
+            syncAccountStatusBatchControls(getMainAccountBatchSelectionContext());
         }
 
         let activeAccountBatchSelectionContext = null;
@@ -469,6 +470,8 @@
                     outlookAutoAuth: document.getElementById('batchOutlookAutoAuthBtn'),
                     enableForwarding: document.getElementById('batchEnableForwardingBtn'),
                     disableForwarding: document.getElementById('batchDisableForwardingBtn'),
+                    enableAccounts: document.getElementById('batchEnableAccountsBtn'),
+                    disableAccounts: document.getElementById('batchDisableAccountsBtn'),
                     proxy: document.getElementById('batchProxyBtn'),
                     delete: document.getElementById('batchDeleteAccountsBtn'),
                 },
@@ -569,6 +572,74 @@
         function updateAccountBatchControls(context = getCurrentAccountBatchSelectionContext()) {
             if (typeof context.updateControls === 'function') {
                 context.updateControls();
+            }
+        }
+
+        function syncAccountStatusBatchControls(context, isBusy = false) {
+            const accounts = getAccountBatchSelectedAccounts(context);
+            const buttons = [
+                [getAccountBatchButton(context, 'enableAccounts'), 'active', '启用账号'],
+                [getAccountBatchButton(context, 'disableAccounts'), 'inactive', '停用账号'],
+            ];
+            const isUpdating = buttons.some(([button]) => button?.dataset.loading === 'true');
+            buttons.forEach(([button, status, label]) => {
+                if (!button) return;
+                const eligibleCount = accounts.filter(account => (account.status || 'active') !== status).length;
+                button.style.display = context.isTempContext ? 'none' : 'inline-flex';
+                button.disabled = context.isTempContext || eligibleCount === 0 || isBusy || isUpdating;
+                button.title = accounts.length && !eligibleCount ? `所选账号无需${label}` : '';
+                if (button.dataset.loading !== 'true') {
+                    button.textContent = eligibleCount > 0 && eligibleCount !== accounts.length
+                        ? `${label} (${eligibleCount})` : label;
+                }
+            });
+        }
+
+        async function updateStatusForSelectedAccounts(targetStatus) {
+            const context = getCurrentAccountBatchSelectionContext();
+            const button = getAccountBatchButton(context, targetStatus === 'active' ? 'enableAccounts' : 'disableAccounts');
+            if (!button || button.disabled || context.isTempContext) return;
+            const accountIds = getAccountBatchSelectedIds(context);
+            if (!accountIds.length) return;
+            const actionLabel = targetStatus === 'active' ? '启用' : '停用';
+            const hint = targetStatus === 'inactive'
+                ? '账号凭据和项目记录会保留，停用后不再参与新领取、Token 刷新和自动转发，可在主页批量启用恢复。'
+                : '恢复后账号可重新参与领取、Token 刷新和已配置的自动转发。';
+            if (!(await showConfirmModal(`确定要${actionLabel}所选 ${accountIds.length} 个账号吗？已处于目标状态的账号会自动跳过。${hint}`, {
+                title: `批量${actionLabel}账号`, confirmText: `确认${actionLabel}`, danger: targetStatus === 'inactive',
+            }))) return;
+
+            button.dataset.loading = 'true';
+            button.disabled = true;
+            button.textContent = `${actionLabel}中...`;
+            updateAccountBatchControls(context);
+            try {
+                const response = await fetch('/api/accounts/batch-update-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ account_ids: accountIds, status: targetStatus }),
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    handleApiError(data, `批量${actionLabel}失败`);
+                    return;
+                }
+                if (currentAccountSummary && (data.updated_accounts || []).some(account => Number(account.id) === Number(currentAccountSummary.id))) {
+                    currentAccountSummary = { ...currentAccountSummary, status: targetStatus };
+                    if (typeof updateGraphSendMailAvailability === 'function') {
+                        updateGraphSendMailAvailability();
+                    }
+                }
+                showToast(data.message || `已${actionLabel} ${data.updated_count} 个账号`, 'success');
+                await afterSuccessfulAccountBatchMutation(context);
+                if (context.source === 'main-account-list' && typeof loadRefreshStats === 'function') {
+                    await loadRefreshStats();
+                }
+            } catch (error) {
+                showToast(`批量${actionLabel}失败`, 'error');
+            } finally {
+                button.dataset.loading = 'false';
+                updateAccountBatchControls(context);
             }
         }
 

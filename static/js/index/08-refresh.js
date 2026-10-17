@@ -343,6 +343,7 @@
                     refresh: document.getElementById('refreshSelectedBtn'),
                     enableForwarding: document.getElementById('refreshEnableForwardingBtn'),
                     disableForwarding: document.getElementById('refreshDisableForwardingBtn'),
+                    disableAccounts: document.getElementById('refreshDisableAccountsBtn'),
                     proxy: document.getElementById('refreshProxyBtn'),
                     delete: document.getElementById('refreshDeleteSelectedBtn'),
                 },
@@ -557,6 +558,7 @@
         }
 
         function syncRefreshBatchControls() {
+            syncAccountStatusBatchControls(getRefreshAccountBatchContext(), refreshModalState.isRunning);
             const selectedIds = getSelectedRefreshAccountIds();
             const visibleIds = getVisibleRefreshAccountIds();
             const visibleSelectedCount = visibleIds.filter(accountId => refreshModalState.selectedAccountIds.has(accountId)).length;
@@ -1335,6 +1337,11 @@
 
         async function disableForwardingForSelectedRefreshAccounts() {
             return withRefreshAccountBatchContext(() => updateForwardingForSelectedAccounts(false));
+        }
+
+        async function disableSelectedRefreshAccounts() {
+            if (refreshModalState.isRunning) return;
+            return withRefreshAccountBatchContext(() => updateStatusForSelectedAccounts('inactive'));
         }
 
         function showRefreshBatchProxyModal() {
