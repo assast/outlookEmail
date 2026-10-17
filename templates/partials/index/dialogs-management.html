@@ -446,6 +446,12 @@
                                 <button class="btn btn-primary" type="button" id="triggerForwardingCheckBtn" onclick="triggerForwardingCheck()">手动触发转发检查</button>
                             </div>
                         </div>
+                        <div class="form-group">
+                            <label class="form-label" for="forwardKeywords">转发关键词筛选</label>
+                            <textarea class="form-input" id="forwardKeywords" rows="3" placeholder="Access deactivated&#10;账号已停用"></textarea>
+                            <div class="form-hint">每行一个关键词，主题或正文包含任意一个才转发，不区分大小写；留空转发全部邮件，对所有转发渠道生效。</div>
+                            <div class="form-hint">修改后如需重新检查之前的邮件，请在账号转发日志中回退游标；已成功转发过的邮件仍会去重。</div>
+                        </div>
                         <div class="form-group forwarding-channel-group">
                             <div class="forwarding-channel-group__head">
                                 <label class="form-label">转发渠道</label>

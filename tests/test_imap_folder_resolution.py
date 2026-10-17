@@ -3750,6 +3750,7 @@ class MultiChannelForwardingTests(unittest.TestCase):
             db.commit()
 
             self.assertTrue(web_outlook_app.set_setting('forward_channels', 'smtp,telegram'))
+            self.assertTrue(web_outlook_app.set_setting('forward_keywords', ''))
             self.assertTrue(web_outlook_app.set_setting('forward_execution_mode', 'serial'))
             self.assertTrue(web_outlook_app.set_setting('forward_parallel_workers', '4'))
             self.assertTrue(web_outlook_app.set_setting('email_forward_recipient', 'main@example.com'))
@@ -3773,6 +3774,140 @@ class MultiChannelForwardingTests(unittest.TestCase):
                 (self.account_id,),
             )
             db.commit()
+
+    def tearDown(self):
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute("DELETE FROM settings WHERE key = 'forward_keywords'")
+            db.commit()
+
+    def test_forward_payload_shows_actual_recipients_and_escapes_html(self):
+        detail = {
+            'subject': 'notice', 'from': 'sender@example.com',
+            'to': 'Alias <alias+tag@example.com>, second@example.com',
+            'cc': 'Team <team@example.com>', 'body': 'hello', 'body_type': 'text',
+        }
+        _, plain, html_body, notification = web_outlook_app.build_forward_payload(
+            {'email': 'primary@example.com'}, detail,
+        )
+        for text in (plain, notification):
+            self.assertIn('账号: primary@example.com', text)
+            self.assertIn('收件人: ' + detail['to'], text)
+            self.assertIn('抄送: ' + detail['cc'], text)
+        self.assertIn('Alias &lt;alias+tag@example.com&gt;', html_body)
+        self.assertIn('Team &lt;team@example.com&gt;', html_body)
+        _, plain, html_body, notification = web_outlook_app.build_forward_payload(
+            {'email': 'primary@example.com'}, {'body': 'hello'},
+        )
+        self.assertIn('收件人: 未提供', notification)
+        self.assertNotIn('收件人: primary@example.com', notification)
+        for text in (plain, html_body, notification):
+            self.assertNotIn('抄送', text)
+
+    def test_forward_keywords_match_full_visible_subject_or_body(self):
+        for detail, keywords, expected in [
+            ({'subject': 'Your ACCESS DEACTIVATED notice'}, ['Access deactivated'], True),
+            ({'body': 'x' * 3000 + 'access deactivated'}, ['Access deactivated'], True),
+            ({'body': '<p>Access&nbsp;<b>deactivated</b></p>', 'body_type': 'html'}, ['Access deactivated'], True),
+            ({'body': '<script>Access deactivated</script><p>hello</p>', 'body_type': 'html'}, ['Access deactivated'], False),
+            ({'body': '账号已停用'}, ['Access deactivated', '已停用'], True),
+            ({'from': 'Access deactivated', 'to': 'Access deactivated', 'body': 'hello'}, ['Access deactivated'], False),
+            ({'body': 'hello'}, [], True),
+        ]:
+            with self.subTest(detail=detail, keywords=keywords):
+                self.assertEqual(web_outlook_app.forward_email_matches_keywords(detail, keywords), expected)
+
+    def test_settings_api_roundtrips_and_validates_forward_keywords(self):
+        self.app.config['WTF_CSRF_ENABLED'] = False
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session['logged_in'] = True
+        self.assertEqual(client.get('/api/settings').get_json()['settings']['forward_keywords'], '')
+        response = client.put('/api/settings', json={
+            'forward_keywords': '  Access deactivated  \r\n\n已停用\nACCESS DEACTIVATED\n',
+        })
+        self.assertTrue(response.get_json()['success'])
+        self.assertEqual(client.get('/api/settings').get_json()['settings']['forward_keywords'],
+                         'Access deactivated\n已停用')
+        with self.app.app_context():
+            self.assertEqual(web_outlook_app.build_forwarding_job_config()['keywords'],
+                             ['Access deactivated', '已停用'])
+        for invalid in (None, [], 123):
+            with self.subTest(invalid=invalid):
+                response = client.put('/api/settings', json={'forward_keywords': invalid})
+                self.assertFalse(response.get_json()['success'])
+                self.assertEqual(client.get('/api/settings').get_json()['settings']['forward_keywords'],
+                                 'Access deactivated\n已停用')
+        self.assertTrue(client.put('/api/settings', json={'forward_keywords': ''}).get_json()['success'])
+        with self.app.app_context():
+            self.assertEqual(web_outlook_app.build_forwarding_job_config()['keywords'], [])
+
+    def _process_keyword_messages(self, items, details, *, telegram_success=True):
+        with self.app.app_context():
+            web_outlook_app.set_setting('forward_keywords', 'Access deactivated')
+            web_outlook_app.set_setting('forward_channels', 'smtp,telegram,wecom')
+            web_outlook_app.set_setting_encrypted('wecom_webhook_url', 'https://example.com/robot')
+            config = web_outlook_app.build_forwarding_job_config()
+            config.update(include_junkemail=False, forward_window_start=None)
+            account = web_outlook_app.get_account_by_id(self.account_id)
+        with patch.object(web_outlook_app, 'fetch_forward_candidates', return_value={
+            'success': True, 'emails': items,
+        }), patch.object(web_outlook_app, 'fetch_forward_detail', side_effect=lambda _account, message_id, _folder: details[message_id]) as detail_mock, patch.object(
+            web_outlook_app, 'send_forward_email', return_value=True,
+        ) as email_mock, patch.object(
+            web_outlook_app, 'send_forward_telegram', return_value=telegram_success,
+        ) as tg_mock, patch.object(
+            web_outlook_app, 'send_forward_wecom', return_value=True,
+        ) as wecom_mock:
+            result = web_outlook_app.process_forwarding_account(account, config)
+        return result, detail_mock, email_mock, tg_mock, wecom_mock
+
+    def test_forward_keywords_skip_all_channels_and_advance_cursor(self):
+        items = [{'id': 'filtered', 'date': '2026-10-18T01:00:00Z', 'folder': 'inbox'}]
+        details = {'filtered': {'id': 'filtered', 'subject': 'newsletter', 'body': 'hello'}}
+        result, _, email_mock, tg_mock, wecom_mock = self._process_keyword_messages(items, details)
+        for sender in (email_mock, tg_mock, wecom_mock):
+            sender.assert_not_called()
+        self.assertTrue(result['cursor_updated'])
+        self.assertFalse(result['had_processing_failure'])
+        with self.app.app_context():
+            rows = web_outlook_app.get_db().execute(
+                'SELECT COUNT(*) AS count FROM forwarding_logs WHERE account_id = ?', (self.account_id,),
+            ).fetchone()
+            self.assertEqual(rows['count'], 0)
+        result, detail_mock, *_ = self._process_keyword_messages(items, details)
+        self.assertEqual(result['pending_count'], 0)
+        detail_mock.assert_not_called()
+
+    def test_forward_keywords_preserve_failed_older_mail_for_retry(self):
+        items = [
+            {'id': 'failed', 'date': '2026-10-18T01:00:00Z', 'folder': 'inbox'},
+            {'id': 'filtered', 'date': '2026-10-18T02:00:00Z', 'folder': 'inbox'},
+        ]
+        matching = {'id': 'failed', 'body': 'x' * 3000 + 'ACCESS DEACTIVATED',
+                    'to': 'alias@example.com', 'cc': 'team@example.com'}
+        for detail_fails in (True, False):
+            with self.subTest(detail_fails=detail_fails):
+                with self.app.app_context():
+                    db = web_outlook_app.get_db()
+                    db.execute('DELETE FROM forward_logs')
+                    db.execute('UPDATE accounts SET forward_last_checked_at = NULL WHERE id = ?', (self.account_id,))
+                    db.commit()
+                details = {'failed': None if detail_fails else matching,
+                           'filtered': {'id': 'filtered', 'body': 'newsletter'}}
+                result, *_ = self._process_keyword_messages(items, details, telegram_success=False)
+                self.assertTrue(result['had_processing_failure'])
+                self.assertFalse(result['cursor_updated'])
+                details['failed'] = matching
+                result, _, email_mock, tg_mock, wecom_mock = self._process_keyword_messages(items, details)
+                self.assertFalse(result['had_processing_failure'])
+                with self.app.app_context():
+                    self.assertEqual(result['cursor'], web_outlook_app.parse_email_datetime(items[-1]['date']).isoformat())
+                tg_mock.assert_called_once()
+                self.assertIn('收件人: alias@example.com', tg_mock.call_args.args[0])
+                self.assertIn('抄送: team@example.com', wecom_mock.call_args.args[0] if detail_fails else tg_mock.call_args.args[0])
+                self.assertEqual(email_mock.call_count, int(detail_fails))
+                self.assertEqual(wecom_mock.call_count, int(detail_fails))
 
     def test_process_forwarding_job_sends_to_all_enabled_channels(self):
         email_item = {

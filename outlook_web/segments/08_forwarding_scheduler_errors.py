@@ -363,23 +363,53 @@ def send_forward_wecom_with_config(config: Dict[str, Any], text: str) -> bool:
     return response.ok
 
 
+def normalize_forward_keywords(value: str) -> list[str]:
+    keywords = []
+    seen = set()
+    for line in value.splitlines():
+        keyword = line.strip()
+        if keyword and keyword.casefold() not in seen:
+            keywords.append(keyword)
+            seen.add(keyword.casefold())
+    return keywords
+
+
+def forward_email_matches_keywords(email_detail: Dict[str, Any], keywords: list[str]) -> bool:
+    if not keywords:
+        return True
+    subject = str(email_detail.get('subject') or '').casefold()
+    body = str(email_detail.get('body') or '')
+    if email_detail.get('body_type') == 'html':
+        body = html.unescape(strip_html_content(body))
+    body = ' '.join(body.split()).casefold()
+    return any(keyword.casefold() in subject or keyword.casefold() in body for keyword in keywords)
+
+
 def build_forward_payload(account: Dict[str, Any], email_detail: Dict[str, Any]) -> tuple[str, str, str, str]:
     subject = email_detail.get('subject') or '无主题'
     sender = email_detail.get('from') or '未知'
+    recipient = str(email_detail.get('to') or '').strip() or '未提供'
+    cc = str(email_detail.get('cc') or '').strip()
+    recipient_text = f'收件人: {recipient}\n'
+    recipient_html = f'<p><strong>收件人:</strong> {html.escape(recipient)}</p>'
+    if cc:
+        recipient_text += f'抄送: {cc}\n'
+        recipient_html += f'<p><strong>抄送:</strong> {html.escape(cc)}</p>'
     received_at = email_detail.get('date') or ''
     body = email_detail.get('body') or ''
     body_text = strip_html_content(body) if email_detail.get('body_type') == 'html' else strip_html_content(body.replace('<br>', '\n'))
     body_text = body_text[:2000]
 
     title = f"[邮件转发] {subject}"
-    plain = f"账号: {account.get('email','')}\n发件人: {sender}\n时间: {received_at}\n主题: {subject}\n\n{body_text}"
+    plain = f"账号: {account.get('email','')}\n发件人: {sender}\n{recipient_text}时间: {received_at}\n主题: {subject}\n\n{body_text}"
     html_body = (
         f"<p><strong>账号:</strong> {html.escape(account.get('email', ''))}</p>"
         f"<p><strong>发件人:</strong> {html.escape(sender)}</p>"
+        f"{recipient_html}"
         f"<p><strong>时间:</strong> {html.escape(received_at)}</p>"
         f"<p><strong>主题:</strong> {html.escape(subject)}</p><hr>{body}"
     )
-    telegram_text = f"新邮件转发\n账号: {account.get('email','')}\n发件人: {sender}\n主题: {subject}\n时间: {received_at}\n\n{body_text[:1200]}"
+    telegram_text = f"新邮件转发\n账号: {account.get('email','')}\n发件人: {sender}\n{recipient_text}主题: {subject}\n时间: {received_at}\n\n{body_text[:1200]}"
     return title, plain, html_body, telegram_text
 
 
@@ -497,6 +527,7 @@ def build_forwarding_job_config() -> Dict[str, Any]:
             get_setting_decrypted('wecom_webhook_url', '').strip()
         ),
         'include_junkemail': get_bool_setting('forward_include_junkemail', False),
+        'keywords': normalize_forward_keywords(get_setting('forward_keywords', '')),
         'account_delay_seconds': account_delay_seconds,
         'forward_window_start': (
             datetime.now() - timedelta(minutes=forward_window_minutes)
@@ -710,6 +741,15 @@ def process_forwarding_account(account_row: Dict[str, Any], job_config: Dict[str
                     )
                     continue
 
+                if not forward_email_matches_keywords(detail, job_config.get('keywords', [])):
+                    app.logger.info(
+                        '[forward] skip email not matching keywords: account=%s message_id=%s',
+                        account.get('email', ''), item.get('id', ''),
+                    )
+                    if item_time and (latest_success_time is None or item_time > latest_success_time):
+                        latest_success_time = item_time
+                    continue
+
                 title, plain, html_body, telegram_text = build_forward_payload(account, detail)
                 message_processed = False
                 message_failed = False
@@ -771,7 +811,7 @@ def process_forwarding_account(account_row: Dict[str, Any], job_config: Dict[str
                     latest_success_time = item_time
 
             cursor_value = account.get('forward_last_checked_at', '')
-            if latest_success_time and (cursor_time is None or latest_success_time > cursor_time):
+            if not result['had_processing_failure'] and latest_success_time and (cursor_time is None or latest_success_time > cursor_time):
                 cursor_value = latest_success_time.isoformat()
                 conn.execute(
                     'UPDATE accounts SET forward_last_checked_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',

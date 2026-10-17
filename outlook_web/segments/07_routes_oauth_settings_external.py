@@ -635,6 +635,7 @@ def api_get_settings():
     )
     settings['forward_email_window_minutes'] = get_setting('forward_email_window_minutes', '0')
     settings['forward_include_junkemail'] = get_setting('forward_include_junkemail', 'false')
+    settings['forward_keywords'] = get_setting('forward_keywords', '')
     settings['email_forward_recipient'] = get_setting('email_forward_recipient', '')
     settings['smtp_host'] = get_setting('smtp_host', '')
     settings['smtp_port'] = get_setting('smtp_port', '465')
@@ -1059,6 +1060,14 @@ def api_update_settings():
                 errors.append('保存转发邮件时间范围失败')
         except ValueError:
             errors.append('转发邮件时间范围必须是数字')
+
+    if 'forward_keywords' in data:
+        if not isinstance(data['forward_keywords'], str):
+            errors.append('转发关键词必须为文本，每行一个关键词')
+        elif set_setting('forward_keywords', '\n'.join(normalize_forward_keywords(data['forward_keywords']))):
+            updated.append('转发关键词筛选')
+        else:
+            errors.append('保存转发关键词筛选失败')
 
     if 'forward_include_junkemail' in data:
         include_junk = str(data['forward_include_junkemail']).lower()
