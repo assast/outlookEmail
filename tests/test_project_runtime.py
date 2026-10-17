@@ -85,6 +85,93 @@ class ProjectRuntimeTests(unittest.TestCase):
             db.commit()
             return int(cursor.lastrowid)
 
+    def test_batch_account_status_preserves_data_and_controls_account_eligibility(self):
+        account_id = self._insert_account('batch-status@example.com')
+        inactive_id = self._insert_account('already-inactive@example.com', status='inactive')
+        unselected_id = self._insert_account('unselected-status@example.com')
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            db.execute(
+                '''UPDATE accounts SET password = ?, refresh_token = ?, forward_enabled = 1,
+                   last_refresh_status = 'failed', last_refresh_error = 'expired' WHERE id = ?''',
+                (web_outlook_app.encrypt_data('saved-password'),
+                 web_outlook_app.encrypt_data('saved-token'), account_id),
+            )
+            db.commit()
+            before = dict(db.execute('SELECT * FROM accounts WHERE id = ?', (account_id,)).fetchone())
+            web_outlook_app.start_project('batch-status')
+
+        response = self.client.post('/api/accounts/batch-update-status', json={
+            'account_ids': [account_id, str(account_id), inactive_id, 99999999, 'invalid', -1],
+            'status': 'inactive',
+        })
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()
+        self.assertTrue(result['success'])
+        self.assertEqual(result['updated_count'], 1)
+        self.assertEqual(result['unchanged_count'], 1)
+        self.assertEqual(result['missing_ids'], [99999999])
+        self.assertEqual(result['updated_accounts'], [{'id': account_id, 'email': before['email']}])
+
+        with self.app.app_context():
+            db = web_outlook_app.get_db()
+            after = dict(db.execute('SELECT * FROM accounts WHERE id = ?', (account_id,)).fetchone())
+            self.assertEqual(after['status'], 'inactive')
+            for key in before.keys() - {'status', 'updated_at'}:
+                self.assertEqual(after[key], before[key], key)
+            self.assertEqual(web_outlook_app.query_refreshable_accounts()['total'], 1)
+            self.assertEqual(web_outlook_app.get_forwarding_enabled_accounts(), [])
+            claim = web_outlook_app.claim_project_account('batch-status', 'worker', 'unselected')
+            self.assertEqual(claim['account_id'], unselected_id)
+            self.assertTrue(web_outlook_app.complete_project_account_success(
+                'batch-status', unselected_id, claim['claim_token'],
+            ))
+            self.assertIsNone(web_outlook_app.claim_project_account('batch-status', 'worker', 'task'))
+
+        # 停用账号仍在主页列表中，允许批量恢复。
+        accounts = self.client.get('/api/accounts/search?q=batch-status').get_json()['accounts']
+        self.assertEqual(accounts[0]['status'], 'inactive')
+        restored = self.client.post('/api/accounts/batch-update-status', json={
+            'account_ids': [account_id, inactive_id], 'status': 'active',
+        }).get_json()
+        self.assertTrue(restored['success'])
+        self.assertEqual(restored['updated_count'], 2)
+        with self.app.app_context():
+            self.assertEqual(web_outlook_app.query_refreshable_accounts()['total'], 3)
+            self.assertEqual([a['id'] for a in web_outlook_app.get_forwarding_enabled_accounts()], [account_id])
+            claim = web_outlook_app.claim_project_account('batch-status', 'worker', 'task')
+            self.assertIn(claim['account_id'], [account_id, inactive_id])
+
+        unchanged = self.client.post('/api/accounts/batch-update-status', json={
+            'account_ids': [account_id, inactive_id], 'status': 'active',
+        }).get_json()
+        self.assertTrue(unchanged['success'])
+        self.assertEqual(unchanged['updated_count'], 0)
+        self.assertEqual(unchanged['unchanged_count'], 2)
+
+    def test_batch_account_status_rejects_invalid_requests_and_requires_login(self):
+        account_id = self._insert_account('invalid-batch-status@example.com')
+        for payload in [
+            {}, [], {'account_ids': [account_id]},
+            {'account_ids': [account_id], 'status': 'deleted'},
+            {'account_ids': [account_id], 'status': ['inactive']},
+            {'account_ids': str(account_id), 'status': 'inactive'},
+            {'account_ids': [], 'status': 'inactive'},
+            {'account_ids': [99999999], 'status': 'inactive'},
+        ]:
+            with self.subTest(payload=payload):
+                response = self.client.post('/api/accounts/batch-update-status', json=payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertFalse(response.get_json()['success'])
+        with self.app.app_context():
+            row = web_outlook_app.get_db().execute('SELECT status FROM accounts WHERE id = ?', (account_id,)).fetchone()
+            self.assertEqual(row['status'], 'active')
+        response = self.app.test_client().post('/api/accounts/batch-update-status', json={
+            'account_ids': [account_id], 'status': 'inactive',
+        })
+        self.assertEqual(response.status_code, 401)
+        self.assertFalse(response.get_json()['success'])
+
     def _set_group_sort_order(self, group_id: int, sort_order: int):
         with self.app.app_context():
             db = web_outlook_app.get_db()
