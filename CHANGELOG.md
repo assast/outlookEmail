@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.20] - 2026-10-18
+
 ### Added
 - 邮件转发摘要新增实际收件人和抄送地址，Telegram、企业微信及 SMTP 共用一致的收件信息展示（#96）。
 - 邮件转发设置新增关键词筛选：每行一个，主题或完整可见正文命中任意关键词才转发，不区分大小写；留空保持全部转发，支持保存、回显和清空（#96）。
