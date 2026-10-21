@@ -2044,10 +2044,13 @@ Web 端提供项目管理界面：在「设置 → 常规设置 → 项目管理
 | GET | `/api/accounts/trigger-scheduled-refresh` | Query: `force=true/false` | 手动触发一次“定时刷新”逻辑，返回 `text/event-stream` |
 | POST | `/api/accounts/stop-full-refresh` | 无 | 请求停止当前全量刷新任务 |
 
+单账号刷新与重试成功时返回 `token_rotated` 和 `message`：仅当新 Refresh Token 与旧值不同且成功写库，`token_rotated` 才为 `true`，文案为“刷新成功，Token 已更新”；未返回新值或返回旧值时为 `false`，文案为“验证成功，Token 未轮换，继续使用原 Token”。成功获取新值但保存失败会返回刷新失败。
+
 `/api/accounts/refresh-all`、`/api/accounts/refresh-failed-stream`、`/api/accounts/refresh-selected-stream/<task_id>`、`/api/accounts/trigger-scheduled-refresh` 都会返回 SSE 事件流，常见事件类型包括：
 
 - `start`
 - `progress`
+- `account_result`：包含单账号的 `status`、`message` 和 `token_rotated`
 - `delay`
 - `complete`
 
@@ -2102,6 +2105,8 @@ Web 端提供项目管理界面：在「设置 → 常规设置 → 项目管理
 - `requested_count`
 - `processed_count`
 - `success_count`
+- `rotated_count`：成功且 Token 已轮换的账号数
+- `unrotated_count`：成功但 Token 未轮换的账号数
 - `failed_count`
 - `skipped_count`
 - `failed_list`
@@ -2118,6 +2123,10 @@ Web 端提供项目管理界面：在「设置 → 常规设置 → 项目管理
 | GET | `/api/accounts/refresh-status-list` | Query: `q`、`status`、`page`、`page_size` | 获取 Token 刷新管理邮箱列表 |
 
 `GET /api/accounts/refresh-logs/failed` 返回的是“当前仍处于失败状态的邮箱快照”，不再是历史失败日志列表。
+
+全局与单账号刷新日志包含 `token_rotated`（`true` / `false` / `null`）和对应的 `message`。旧日志的轮换结果为 `null`，表示未记录，不能推断为未轮换。刷新管理列表通过 `last_refresh_token_rotated` 返回最近一次结果，并展示三个独立时间：`last_refresh_at` 表示最近一次请求，`last_refresh_success_at` 表示最近一次成功刷新（未轮换也算成功），`refresh_token_updated_at` 表示最近一次 Token 更新。失败不覆盖成功时间，未轮换不覆盖 Token 更新时间；未知时间返回 `null`，界面显示 `-`。
+
+单账号刷新响应和 SSE 的 `account_result` 同时返回这三个数据库时间。旧账号首次迁移时会从成功日志和最近成功状态恢复可确认的成功时间，无记录的保持为空。
 
 `GET /api/accounts/refresh-status-list` 查询参数：
 

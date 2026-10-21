@@ -1371,8 +1371,10 @@ def init_db():
             fallback_proxy_url_1 TEXT DEFAULT '',
             fallback_proxy_url_2 TEXT DEFAULT '',
             last_refresh_at TIMESTAMP,
+            last_refresh_success_at TIMESTAMP,
             last_refresh_status TEXT DEFAULT 'never',
             last_refresh_error TEXT,
+            last_refresh_token_rotated INTEGER,
             refresh_token_updated_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1507,10 +1509,16 @@ def init_db():
             refresh_type TEXT DEFAULT 'manual',
             status TEXT NOT NULL,
             error_message TEXT,
+            token_rotated INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE CASCADE
         )
     ''')
+
+    cursor.execute('PRAGMA table_info(account_refresh_logs)')
+    refresh_log_columns = [column[1] for column in cursor.fetchall()]
+    if 'token_rotated' not in refresh_log_columns:
+        cursor.execute('ALTER TABLE account_refresh_logs ADD COLUMN token_rotated INTEGER')
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS token_refresh_state (
@@ -1822,6 +1830,24 @@ def init_db():
         cursor.execute("ALTER TABLE accounts ADD COLUMN last_refresh_status TEXT DEFAULT 'never'")
     if 'last_refresh_error' not in columns:
         cursor.execute('ALTER TABLE accounts ADD COLUMN last_refresh_error TEXT')
+    if 'last_refresh_token_rotated' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN last_refresh_token_rotated INTEGER')
+    if 'last_refresh_success_at' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN last_refresh_success_at TIMESTAMP')
+        cursor.execute('''
+            UPDATE accounts
+            SET last_refresh_success_at = (
+                SELECT MAX(l.created_at)
+                FROM account_refresh_logs l
+                WHERE l.account_id = accounts.id AND l.status = 'success'
+            )
+        ''')
+        cursor.execute('''
+            UPDATE accounts
+            SET last_refresh_success_at = last_refresh_at
+            WHERE last_refresh_status = 'success' AND last_refresh_at IS NOT NULL
+              AND (last_refresh_success_at IS NULL OR last_refresh_at > last_refresh_success_at)
+        ''')
     if 'refresh_token_updated_at' not in columns:
         cursor.execute('ALTER TABLE accounts ADD COLUMN refresh_token_updated_at TIMESTAMP')
     if 'account_type' not in columns:

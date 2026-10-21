@@ -1415,8 +1415,14 @@ def serialize_account_summary(account: Dict[str, Any], last_refresh_log: Optiona
         'forward_enabled': bool(account.get('forward_enabled')),
         'proxy_override_enabled': account_has_proxy_override(account),
         'last_refresh_at': refresh_state['last_refresh_at'],
+        'last_refresh_success_at': account.get('last_refresh_success_at'),
+        'refresh_token_updated_at': account.get('refresh_token_updated_at'),
         'last_refresh_status': refresh_state['last_refresh_status'],
         'last_refresh_error': refresh_state['last_refresh_error'],
+        'last_refresh_token_rotated': (
+            bool(account['last_refresh_token_rotated'])
+            if account.get('last_refresh_token_rotated') is not None else None
+        ),
         'created_at': account.get('created_at', ''),
         'updated_at': account.get('updated_at', ''),
         'tags': account.get('tags', [])
