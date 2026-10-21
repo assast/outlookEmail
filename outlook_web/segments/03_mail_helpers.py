@@ -363,6 +363,9 @@ def build_graph_refresh_scope(graph_scopes: List[str]) -> str:
 
 
 def get_graph_token_scope_candidates(include_original_scope_fallback: bool = False) -> List[tuple[str, str]]:
+    if include_original_scope_fallback:
+        return [('default', GRAPH_DEFAULT_TOKEN_SCOPE), ('original', '')]
+
     configured_graph_scopes = [
         scope for scope in OAUTH_GRAPH_SCOPES
         if str(scope or '').startswith('https://graph.microsoft.com/')
@@ -381,9 +384,6 @@ def get_graph_token_scope_candidates(include_original_scope_fallback: bool = Fal
         ('read', build_graph_refresh_scope(read_graph_scopes)),
         ('default', GRAPH_DEFAULT_TOKEN_SCOPE),
     ]
-    if include_original_scope_fallback:
-        raw_candidates.append(('original', ''))
-
     candidates = []
     seen_scopes = set()
     for label, scope in raw_candidates:
@@ -418,11 +418,22 @@ def is_graph_token_scope_retryable_response(response) -> bool:
     ))
 
 
+def extract_refresh_token_from_response(response) -> str:
+    """只提取响应中非空的 refresh_token，未返回时保留已有 token。"""
+    try:
+        payload = response.json()
+    except ValueError:
+        return ''
+    token = payload.get('refresh_token') if isinstance(payload, dict) else None
+    return token.strip() if isinstance(token, str) else ''
+
+
 def request_graph_token_response(client_id: str, refresh_token: str, proxy_url: str = None,
                                  fallback_proxy_urls: Optional[List[str]] = None,
                                  include_original_scope_fallback: bool = False):
-    """请求 Graph token，优先使用授权时的显式委托 scope，避免 .default 依赖应用预配置权限。"""
+    """拉信优先显式 scope；刷新优先 .default，缺少 refresh_token 时尝试原始 scope。"""
     last_response = None
+    successful_response = None
     candidates = get_graph_token_scope_candidates(include_original_scope_fallback)
     for index, (_label, scope) in enumerate(candidates):
         data = {
@@ -433,16 +444,29 @@ def request_graph_token_response(client_id: str, refresh_token: str, proxy_url: 
         if scope:
             data["scope"] = scope
 
-        response = post_with_proxy_fallback(
-            TOKEN_URL_GRAPH,
-            data=data,
-            timeout=HTTP_REQUEST_TIMEOUT,
-            proxy_url=proxy_url,
-            fallback_proxy_urls=fallback_proxy_urls,
-        )
+        try:
+            response = post_with_proxy_fallback(
+                TOKEN_URL_GRAPH,
+                data=data,
+                timeout=HTTP_REQUEST_TIMEOUT,
+                proxy_url=proxy_url,
+                fallback_proxy_urls=fallback_proxy_urls,
+            )
+        except requests.exceptions.RequestException:
+            if successful_response is not None:
+                return successful_response
+            raise
         last_response = response
         if response.status_code == 200:
-            return response
+            if not include_original_scope_fallback or extract_refresh_token_from_response(response):
+                return response
+            if successful_response is None:
+                successful_response = response
+            if index == len(candidates) - 1:
+                return successful_response
+            continue
+        if successful_response is not None:
+            return successful_response
         if index == len(candidates) - 1 or not is_graph_token_scope_retryable_response(response):
             return response
 

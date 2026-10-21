@@ -564,31 +564,54 @@ def finalize_aborted_retry_refresh(conn, log_refresh_type: str,
     }
 
 
+def build_refresh_success_message(token_rotated: Optional[bool]) -> str:
+    if token_rotated is True:
+        return '刷新成功，Token 已更新'
+    if token_rotated is False:
+        return '验证成功，Token 未轮换，继续使用原 Token'
+    return '刷新成功（轮换结果未记录）'
+
+
+def get_account_refresh_timestamps(account_id: int, db_conn=None) -> Dict[str, Any]:
+    db = db_conn or get_db()
+    row = db.execute(
+        'SELECT last_refresh_at, last_refresh_success_at, refresh_token_updated_at '
+        'FROM accounts WHERE id = ?', (account_id,),
+    ).fetchone()
+    return dict(row) if row is not None else {}
+
+
 def log_refresh_result(account_id: int, account_email: str, refresh_type: str, status: str,
-                       error_message: str = None, db_conn=None):
+                       error_message: str = None, db_conn=None, token_rotated: Optional[bool] = None):
     """记录刷新结果到数据库"""
     db = db_conn or get_db()
     should_commit = db_conn is None
     normalized_status = 'success' if str(status or '').strip().lower() == 'success' else 'failed'
     sanitized_error = sanitize_error_details(error_message)[:500] if error_message else None
+    rotation_value = int(token_rotated) if token_rotated is not None else None
     try:
         db.execute('''
-            INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (account_id, account_email, refresh_type, normalized_status, sanitized_error))
+            INSERT INTO account_refresh_logs (account_id, account_email, refresh_type, status, error_message, token_rotated)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (account_id, account_email, refresh_type, normalized_status, sanitized_error, rotation_value))
 
         db.execute(
             '''
             UPDATE accounts
             SET last_refresh_at = CURRENT_TIMESTAMP,
+                last_refresh_success_at = CASE WHEN ? = 'success'
+                    THEN CURRENT_TIMESTAMP ELSE last_refresh_success_at END,
                 last_refresh_status = ?,
                 last_refresh_error = ?,
+                last_refresh_token_rotated = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             ''',
             (
                 normalized_status,
+                normalized_status,
                 sanitized_error if normalized_status == 'failed' else None,
+                rotation_value,
                 account_id,
             )
         )
@@ -615,7 +638,7 @@ def persist_rotated_refresh_token(account_id: int, refresh_token: str, db_conn=N
     db = db_conn or get_db()
     should_commit = db_conn is None
     try:
-        db.execute(
+        cursor = db.execute(
             '''
             UPDATE accounts
             SET refresh_token = ?, refresh_token_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
@@ -625,7 +648,7 @@ def persist_rotated_refresh_token(account_id: int, refresh_token: str, db_conn=N
         )
         if should_commit:
             db.commit()
-        return True
+        return cursor.rowcount == 1
     except Exception as e:
         if should_commit:
             try:
@@ -696,11 +719,7 @@ def test_refresh_token(client_id: str, refresh_token: str, proxy_url: str = None
                 errors.append(f'Graph 刷新请求异常: {str(exc)}')
                 continue
             if response.status_code == 200:
-                try:
-                    payload = response.json()
-                except Exception:
-                    payload = {}
-                return True, None, str(payload.get('refresh_token') or '').strip(), 'graph'
+                return True, None, extract_refresh_token_from_response(response), 'graph'
             errors.append(f'Graph 刷新失败: {extract_token_response_error(response)}')
             continue
 
@@ -715,11 +734,7 @@ def test_refresh_token(client_id: str, refresh_token: str, proxy_url: str = None
             errors.append(f'IMAP 刷新请求异常: {str(exc)}')
             continue
         if response.status_code == 200:
-            try:
-                payload = response.json()
-            except Exception:
-                payload = {}
-            return True, None, str(payload.get('refresh_token') or '').strip(), 'imap'
+            return True, None, extract_refresh_token_from_response(response), 'imap'
         errors.append(f'IMAP 刷新失败: {extract_token_response_error(response)}')
 
     return False, '; '.join(errors) or 'Graph/IMAP 刷新失败', '', ''
@@ -759,9 +774,12 @@ def refresh_outlook_account_token(account: sqlite3.Row, refresh_type: str = 'man
         refresh_token = decrypt_data(encrypted_refresh_token) if encrypted_refresh_token else encrypted_refresh_token
     except Exception as e:
         error_msg = sanitize_error_details(f"解密 token 失败: {str(e)}")
-        log_refresh_result(account_id, account_email, refresh_type, 'failed', error_msg, db_conn=db_conn)
+        log_refresh_result(account_id, account_email, refresh_type, 'failed', error_msg,
+                           db_conn=db_conn, token_rotated=False)
         return {
             'success': False,
+            'token_rotated': False,
+            **get_account_refresh_timestamps(account_id, db_conn),
             'error_message': error_msg,
             'error_payload': build_error_payload(
                 "TOKEN_DECRYPT_FAILED",
@@ -787,8 +805,12 @@ def refresh_outlook_account_token(account: sqlite3.Row, refresh_type: str = 'man
     actual_channel = normalize_outlook_authorization_type(actual_channel)
     sanitized_error = sanitize_error_details(error_msg) if error_msg else ''
 
+    token_rotated = False
     if success and rotated_refresh_token and rotated_refresh_token != refresh_token:
-        persist_rotated_refresh_token(account_id, rotated_refresh_token, db_conn)
+        token_rotated = persist_rotated_refresh_token(account_id, rotated_refresh_token, db_conn)
+        if not token_rotated:
+            success = False
+            sanitized_error = '已获取新 Token，但保存失败，请重试'
     if success and actual_channel:
         try:
             update_account_authorization_type(account_id, actual_channel, db=db_conn)
@@ -802,18 +824,24 @@ def refresh_outlook_account_token(account: sqlite3.Row, refresh_type: str = 'man
         refresh_type,
         'success' if success else 'failed',
         sanitized_error or None,
-        db_conn=db_conn
+        db_conn=db_conn,
+        token_rotated=token_rotated,
     )
+    refresh_timestamps = get_account_refresh_timestamps(account_id, db_conn)
 
     if success:
         return {
             'success': True,
-            'message': 'Token 刷新成功',
+            'message': build_refresh_success_message(token_rotated),
+            'token_rotated': token_rotated,
+            **refresh_timestamps,
             'authorization_type': actual_channel,
         }
 
     return {
         'success': False,
+        'token_rotated': token_rotated,
+        **refresh_timestamps,
         'error_message': sanitized_error or '未知错误',
         'authorization_type': actual_channel,
         'error_payload': build_error_payload(
@@ -854,9 +882,18 @@ def api_refresh_account(account_id):
 
     cleanup_refresh_logs()
     result = refresh_outlook_account_token(account, 'manual')
+    payload = {
+        'success': result['success'],
+        'token_rotated': result.get('token_rotated'),
+        'last_refresh_at': result.get('last_refresh_at'),
+        'last_refresh_success_at': result.get('last_refresh_success_at'),
+        'refresh_token_updated_at': result.get('refresh_token_updated_at'),
+    }
     if result['success']:
-        return jsonify({'success': True, 'message': result['message']})
-    return jsonify({'success': False, 'error': result['error_payload']})
+        payload['message'] = result['message']
+    else:
+        payload['error'] = result['error_payload']
+    return jsonify(payload)
 
 
 @app.route('/api/accounts/refresh-selected', methods=['POST'])
@@ -898,6 +935,8 @@ def api_refresh_selected_accounts():
 
     found_ids = {row['id'] for row in accounts}
     success_count = 0
+    rotated_count = 0
+    unrotated_count = 0
     failed_count = 0
     skipped_count = 0
     failed_list = []
@@ -925,6 +964,10 @@ def api_refresh_selected_accounts():
         result = refresh_outlook_account_token(account, 'manual')
         if result['success']:
             success_count += 1
+            if result.get('token_rotated') is True:
+                rotated_count += 1
+            elif result.get('token_rotated') is False:
+                unrotated_count += 1
             continue
 
         failed_count += 1
@@ -948,6 +991,8 @@ def api_refresh_selected_accounts():
         'requested_count': requested_count,
         'processed_count': processed_count,
         'success_count': success_count,
+        'rotated_count': rotated_count,
+        'unrotated_count': unrotated_count,
         'failed_count': failed_count,
         'skipped_count': skipped_count,
         'failed_list': failed_list,
@@ -1013,6 +1058,26 @@ def get_refresh_delay_seconds(db_conn) -> int:
         return max(0, min(60, int(row['value']) if row and row['value'] is not None else 5))
     except (TypeError, ValueError):
         return 5
+
+
+def build_refresh_account_result_event(account, result: Dict[str, Any], current: int, total: int,
+                                       success_count: int, failed_count: int) -> Dict[str, Any]:
+    return {
+        'type': 'account_result',
+        'current': current,
+        'total': total,
+        'account_id': account['id'],
+        'email': account['email'],
+        'status': 'success' if result.get('success') else 'failed',
+        'error_message': result.get('error_message') or '',
+        'message': result.get('message') or '',
+        'token_rotated': result.get('token_rotated'),
+        'last_refresh_at': result.get('last_refresh_at'),
+        'last_refresh_success_at': result.get('last_refresh_success_at'),
+        'refresh_token_updated_at': result.get('refresh_token_updated_at'),
+        'success_count': success_count,
+        'failed_count': failed_count,
+    }
 
 
 def run_full_refresh(snapshot_trigger_type: str, log_refresh_type: str,
@@ -1095,17 +1160,9 @@ def run_full_refresh(snapshot_trigger_type: str, log_refresh_type: str,
                 })
             current_account_counted = True
             if progress_callback:
-                progress_callback({
-                    'type': 'account_result',
-                    'current': index,
-                    'total': total,
-                    'account_id': account['id'],
-                    'email': account['email'],
-                    'status': 'success' if result.get('success') else 'failed',
-                    'error_message': result.get('error_message') or '',
-                    'success_count': success_count,
-                    'failed_count': failed_count,
-                })
+                progress_callback(build_refresh_account_result_event(
+                    account, result, index, total, success_count, failed_count,
+                ))
             if is_token_refresh_stop_requested():
                 stopped_payload = finalize_stopped_full_refresh(
                     conn,
@@ -1251,7 +1308,8 @@ def stream_full_refresh_events(snapshot_trigger_type: str, log_refresh_type: str
                     'error': result.get('error_message') or '未知错误',
                 })
             current_account_counted = True
-            yield f"data: {json.dumps({'type': 'account_result', 'current': index, 'total': total, 'account_id': account['id'], 'email': account['email'], 'status': 'success' if result.get('success') else 'failed', 'error_message': result.get('error_message') or '', 'success_count': success_count, 'failed_count': failed_count})}\n\n"
+            event = build_refresh_account_result_event(account, result, index, total, success_count, failed_count)
+            yield f"data: {json.dumps(event)}\n\n"
             if is_token_refresh_stop_requested():
                 stopped_payload = finalize_stopped_full_refresh(
                     conn,
@@ -1374,7 +1432,8 @@ def stream_failed_refresh_events():
                 })
             current_account_counted = True
 
-            yield f"data: {json.dumps({'type': 'account_result', 'current': index, 'total': total, 'account_id': account['id'], 'email': account['email'], 'status': 'success' if result.get('success') else 'failed', 'error_message': result.get('error_message') or '', 'success_count': success_count, 'failed_count': failed_count})}\n\n"
+            event = build_refresh_account_result_event(account, result, index, total, success_count, failed_count)
+            yield f"data: {json.dumps(event)}\n\n"
 
             if is_token_refresh_stop_requested():
                 yield f"data: {json.dumps(build_stopped_refresh_payload(total, success_count, failed_count, failed_list, delay_seconds=delay_seconds, refresh_type='retry_failed'))}\n\n"
@@ -1552,7 +1611,8 @@ def stream_selected_refresh_events(account_ids: List[int]):
                 })
             current_account_counted = True
 
-            yield f"data: {json.dumps({'type': 'account_result', 'current': index, 'total': total, 'account_id': account['id'], 'email': account['email'], 'status': 'success' if result.get('success') else 'failed', 'error_message': result.get('error_message') or '', 'success_count': success_count, 'failed_count': failed_count})}\n\n"
+            event = build_refresh_account_result_event(account, result, index, total, success_count, failed_count)
+            yield f"data: {json.dumps(event)}\n\n"
 
             if is_token_refresh_stop_requested():
                 yield f"data: {json.dumps(build_stopped_refresh_payload(total, success_count, failed_count, failed_list, delay_seconds=delay_seconds, refresh_type='manual_selected'))}\n\n"
@@ -1740,12 +1800,16 @@ def api_stop_full_refresh():
 
 def serialize_refresh_log_row(row):
     account_email = row['current_account_email'] or row['log_account_email']
+    token_rotated = bool(row['token_rotated']) if row['token_rotated'] is not None else None
     return {
         'id': row['id'],
         'account_id': row['account_id'],
         'account_email': account_email,
         'refresh_type': row['refresh_type'],
         'status': row['status'],
+        'token_rotated': token_rotated,
+        'message': (build_refresh_success_message(token_rotated) if row['status'] == 'success'
+                    else row['error_message'] or '刷新失败'),
         'error_message': row['error_message'],
         'created_at': row['created_at']
     }
@@ -1769,13 +1833,14 @@ def api_get_refresh_logs():
             a.email AS current_account_email,
             l.refresh_type,
             l.status,
+            l.token_rotated,
             l.error_message,
             l.created_at
         FROM account_refresh_logs l
         LEFT JOIN accounts a ON l.account_id = a.id
         WHERE l.refresh_type IN ('manual', 'scheduled')
         AND l.created_at >= datetime('now', '-6 months')
-        ORDER BY l.created_at DESC
+        ORDER BY l.created_at DESC, l.id DESC
         LIMIT ? OFFSET ?
     ''', (limit, offset))
 
@@ -1805,12 +1870,13 @@ def api_get_account_refresh_logs(account_id):
             a.email AS current_account_email,
             l.refresh_type,
             l.status,
+            l.token_rotated,
             l.error_message,
             l.created_at
         FROM account_refresh_logs l
         LEFT JOIN accounts a ON l.account_id = a.id
         WHERE l.account_id = ?
-        ORDER BY l.created_at DESC
+        ORDER BY l.created_at DESC, l.id DESC
         LIMIT ? OFFSET ?
     ''', (account_id, limit, offset))
 

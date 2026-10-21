@@ -850,8 +850,11 @@
                 }
 
                 const toastType = data.failed_count > 0 || data.skipped_count > 0 ? 'warning' : 'success';
+                const rotationSummary = typeof data.rotated_count === 'number'
+                    ? `（Token 已更新 ${data.rotated_count}，未轮换 ${data.unrotated_count}）`
+                    : '';
                 showToast(
-                    `批量刷新完成：成功 ${data.success_count}，失败 ${data.failed_count}，跳过 ${data.skipped_count}`,
+                    `批量刷新完成：成功 ${data.success_count}${rotationSummary}，失败 ${data.failed_count}，跳过 ${data.skipped_count}`,
                     toastType
                 );
 

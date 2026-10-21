@@ -6,6 +6,20 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.21] - 2026-10-21
+
+### Added
+- Token 刷新结果区分“刷新成功，Token 已更新”和“验证成功，Token 未轮换，继续使用原 Token”，单账号提示、批量日志和刷新列表同步展示，并持久化每次刷新是否轮换的结果。
+- Token 刷新管理新增“最近成功刷新”和“最近轮换”时间，与“最近刷新”分别展示；未轮换但请求成功同样更新成功时间，后续失败保留上次成功时间，未轮换保留上次轮换时间。
+- 批量刷新完成提示增加 Token 已更新与未轮换的账号数量。
+
+### Fixed
+- Outlook Graph Token 刷新改为优先请求 `.default`，成功但未返回有效 Refresh Token 时继续尝试原始授权 scope；补发失败或仍未返回新值时保留已有成功结果和旧 Token，避免跳过可用的轮换机会。拉信请求保持原有 scope 顺序。
+- 新 Refresh Token 保存失败时记录为刷新失败，避免误报 Token 已更新；刷新日志补充同秒排序，确保最新结果优先展示。
+
+### Important
+- 启动时自动补齐数据库字段，并从已有成功日志和账号状态恢复可确认的最近成功时间；旧日志的轮换结果显示为“未记录”，未知时间保持为空，无需手动迁移。
+
 ## [3.0.20] - 2026-10-18
 
 ### Added
