@@ -1,6 +1,7 @@
 import importlib
 import os
 import pathlib
+import re
 import sys
 import tempfile
 import unittest
@@ -137,13 +138,179 @@ class EmailShareLinkTests(unittest.TestCase):
                 for row in db.execute('PRAGMA table_info(email_share_links)').fetchall()
             }
             migrated_row = db.execute(
-                'SELECT max_email_count FROM email_share_links WHERE token_hash = ?',
+                'SELECT max_email_count, access_code_hash FROM email_share_links WHERE token_hash = ?',
                 (web_outlook_app.hash_email_share_token(legacy_token),)
             ).fetchone()
             self.assertIn('max_email_count', columns)
+            self.assertIn('access_code_hash', columns)
             self.assertIsNone(migrated_row['max_email_count'])
+            self.assertIsNone(migrated_row['access_code_hash'])
 
             web_outlook_app.init_db()
+
+        anonymous = self.app.test_client()
+        self.assertEqual(anonymous.get(f'/api/share/email/{legacy_token}/status').status_code, 200)
+
+    def test_access_code_is_hashed_and_not_exposed_by_management_api(self):
+        account_id = self._insert_account()
+        share = self._create_share(account_id, access_code='Ab12')
+        self.assertTrue(share['requires_access_code'])
+        self.assertNotIn('access_code', share)
+        self.assertNotIn('access_code_hash', share)
+        with self.app.app_context():
+            row = web_outlook_app.get_email_share_row_by_id(share['id'])
+            self.assertNotEqual(row['access_code_hash'], 'Ab12')
+            self.assertTrue(web_outlook_app.verify_password('Ab12', row['access_code_hash']))
+        listed = self.client.get('/api/email-shares').get_json()['shares'][0]
+        self.assertTrue(listed['requires_access_code'])
+        self.assertNotIn('access_code_hash', listed)
+
+    def test_create_share_validates_optional_access_code(self):
+        account_id = self._insert_account()
+        for code in (None, ''):
+            share = self._create_share(account_id, access_code=code)
+            self.assertFalse(share['requires_access_code'])
+        for code in ('a', 'abc', 'a' * 33, 'ab 12', '中文代码', 1234, True, [], {}):
+            with self.subTest(code=code):
+                response = self.client.post('/api/email-shares', json={
+                    'account_id': account_id, 'access_code': code,
+                })
+                self.assertEqual(response.status_code, 400)
+                self.assertFalse(response.get_json()['success'])
+        self._create_share(account_id, access_code='a' * 32)
+
+    def test_access_code_blocks_all_anonymous_read_routes_without_leaking_email(self):
+        account_id = self._insert_account()
+        share = self._create_share(account_id, access_code='Ab12')
+        token = self._token_from_share_url(share['share_url'])
+        anonymous = self.app.test_client()
+        page = anonymous.get(f'/share/email/{token}')
+        self.assertNotIn(b'shared@example.com', page.data)
+        self.assertIn('no-store', page.headers['Cache-Control'])
+        with patch.object(web_outlook_app, 'fetch_account_emails') as list_mock, patch.object(
+            web_outlook_app, 'fetch_email_detail_for_account'
+        ) as detail_mock:
+            for suffix in ('status', 'emails', 'email/msg-1'):
+                response = anonymous.get(f'/api/share/email/{token}/{suffix}')
+                self.assertEqual(response.status_code, 403)
+                self.assertTrue(response.get_json()['requires_access_code'])
+                self.assertNotIn('email', response.get_json())
+                self.assertIn('no-store', response.headers['Cache-Control'])
+            list_mock.assert_not_called()
+            detail_mock.assert_not_called()
+        with self.app.app_context():
+            self.assertIsNone(web_outlook_app.get_email_share_row_by_id(share['id'])['last_accessed_at'])
+
+    def test_verified_access_is_bound_to_link_and_session_and_grants_only_read_access(self):
+        account_id = self._insert_account()
+        share = self._create_share(account_id, access_code='Ab12')
+        other = self._create_share(account_id, access_code='Ab12')
+        token = self._token_from_share_url(share['share_url'])
+        other_token = self._token_from_share_url(other['share_url'])
+        anonymous = self.app.test_client()
+        verify_url = f'/api/share/email/{token}/verify'
+        for code in ('ab12', '', None, 1234):
+            response = anonymous.post(verify_url, json={'access_code': code})
+            self.assertEqual(response.status_code, 403)
+        verified = anonymous.post(verify_url, json={'access_code': 'Ab12'})
+        self.assertEqual(verified.status_code, 200)
+        self.assertEqual(anonymous.get(f'/api/share/email/{token}/status').get_json()['email'], 'shared@example.com')
+        self.assertEqual(anonymous.get(f'/api/share/email/{other_token}/status').status_code, 403)
+        self.assertEqual(self.app.test_client().get(f'/api/share/email/{token}/status').status_code, 403)
+        self.assertEqual(anonymous.post(
+            f'/api/share/email/{other_token}/verify', json={'access_code': 'Ab12'}
+        ).status_code, 200)
+        self.assertEqual(anonymous.get(f'/api/share/email/{token}/status').status_code, 200)
+        with patch.object(web_outlook_app, 'fetch_account_emails', return_value={
+            'success': True, 'emails': [],
+        }) as list_mock, patch.object(web_outlook_app, 'fetch_email_detail_for_account', return_value={
+            'success': True, 'email': {'id': 'msg-1'},
+        }) as detail_mock:
+            self.assertEqual(anonymous.get(f'/api/share/email/{token}/emails').status_code, 200)
+            self.assertEqual(anonymous.get(f'/api/share/email/{token}/email/msg-1').status_code, 200)
+            list_mock.assert_called_once()
+            detail_mock.assert_called_once()
+        self.assertEqual(anonymous.get('/api/email-shares').status_code, 401)
+        self.assertEqual(anonymous.post('/api/emails/delete', json={}).status_code, 401)
+        self.assertEqual(anonymous.get(f'/share/email/{token}').status_code, 200)
+
+    def test_verified_access_still_enforces_email_visibility_limit(self):
+        account_id = self._insert_account()
+        share = self._create_share(account_id, access_code='Ab12', max_email_count=1)
+        token = self._token_from_share_url(share['share_url'])
+        anonymous = self.app.test_client()
+        self.assertEqual(anonymous.post(
+            f'/api/share/email/{token}/verify', json={'access_code': 'Ab12'}
+        ).status_code, 200)
+        folder_emails = {
+            'inbox': [{'id': 'old', 'date': '2026-01-01T00:00:00Z', 'id_mode': 'graph'}],
+            'junkemail': [{'id': 'new', 'date': '2026-01-02T00:00:00Z', 'id_mode': 'graph'}],
+        }
+        with patch.object(web_outlook_app, 'fetch_account_emails', side_effect=self._make_share_folder_fetch(
+            folder_emails, expected_top=web_outlook_app.EMAIL_SHARE_CANDIDATE_PAGE_SIZE
+        )), patch.object(web_outlook_app, 'fetch_email_detail_for_account') as detail_mock:
+            inbox = anonymous.get(f'/api/share/email/{token}/emails?folder=inbox').get_json()
+            junk = anonymous.get(f'/api/share/email/{token}/emails?folder=junkemail').get_json()
+            self.assertEqual(inbox['emails'], [])
+            self.assertEqual([email['id'] for email in junk['emails']], ['new'])
+            response = anonymous.get(f'/api/share/email/{token}/email/old?folder=inbox&id_mode=graph')
+            self.assertEqual(response.status_code, 404)
+            detail_mock.assert_not_called()
+
+    def test_access_code_verification_is_rate_limited_separately_from_admin_login(self):
+        account_id = self._insert_account()
+        share = self._create_share(account_id, access_code='Ab12')
+        token = self._token_from_share_url(share['share_url'])
+        anonymous = self.app.test_client()
+        url = f'/api/share/email/{token}/verify'
+        for _ in range(web_outlook_app.MAX_LOGIN_ATTEMPTS):
+            self.assertEqual(anonymous.post(url, json={'access_code': 'wrong'}).status_code, 403)
+        blocked = anonymous.post(url, json={'access_code': 'Ab12'})
+        self.assertEqual(blocked.status_code, 429)
+        self.assertGreater(int(blocked.headers['Retry-After']), 0)
+        self.assertEqual(anonymous.get(f'/api/share/email/{token}/status').status_code, 403)
+        self.assertTrue(web_outlook_app.check_rate_limit('127.0.0.1')[0])
+        later = web_outlook_app.time.time() + web_outlook_app.LOCKOUT_DURATION + 1
+        with patch.object(web_outlook_app.time, 'time', return_value=later):
+            self.assertEqual(anonymous.post(url, json={'access_code': 'Ab12'}).status_code, 200)
+
+    def test_verified_share_still_obeys_expiry_revocation_and_deletion(self):
+        account_id = self._insert_account()
+        for invalidation in ('expired', 'revoked', 'deleted'):
+            with self.subTest(invalidation=invalidation):
+                share = self._create_share(account_id, access_code='Ab12', max_email_count=1)
+                token = self._token_from_share_url(share['share_url'])
+                anonymous = self.app.test_client()
+                verify_url = f'/api/share/email/{token}/verify'
+                self.assertEqual(anonymous.post(verify_url, json={'access_code': 'Ab12'}).status_code, 200)
+                if invalidation == 'expired':
+                    with self.app.app_context():
+                        db = web_outlook_app.get_db()
+                        db.execute("UPDATE email_share_links SET expires_at = '2000-01-01' WHERE id = ?", (share['id'],))
+                        db.commit()
+                elif invalidation == 'revoked':
+                    self.client.post(f"/api/email-shares/{share['id']}/cancel")
+                else:
+                    self.client.delete(f"/api/email-shares/{share['id']}")
+                for suffix in ('status', 'emails', 'email/msg-1'):
+                    self.assertEqual(anonymous.get(f'/api/share/email/{token}/{suffix}').status_code, 404)
+                self.assertEqual(anonymous.post(verify_url, json={'access_code': 'Ab12'}).status_code, 404)
+
+    def test_anonymous_access_code_verification_supports_csrf_protection(self):
+        if not web_outlook_app.CSRF_AVAILABLE:
+            self.skipTest('Flask-WTF is unavailable')
+        account_id = self._insert_account()
+        share = self._create_share(account_id, access_code='Ab12')
+        token = self._token_from_share_url(share['share_url'])
+        self.app.config['WTF_CSRF_ENABLED'] = True
+        self.addCleanup(self.app.config.update, WTF_CSRF_ENABLED=False)
+        anonymous = self.app.test_client()
+        page = anonymous.get(f'/share/email/{token}').get_data(as_text=True)
+        csrf_token = re.search(r'<meta name="csrf-token" content="([^"]+)"', page).group(1)
+        url = f'/api/share/email/{token}/verify'
+        self.assertEqual(anonymous.post(url, json={'access_code': 'Ab12'}).status_code, 400)
+        response = anonymous.post(url, json={'access_code': 'Ab12'}, headers={'X-CSRFToken': csrf_token})
+        self.assertEqual(response.status_code, 200)
 
     def test_create_share_validates_and_serializes_email_visibility_limit(self):
         account_id = self._insert_account()

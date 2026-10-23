@@ -1598,6 +1598,7 @@ def init_db():
             account_id INTEGER NOT NULL,
             token_hash TEXT UNIQUE NOT NULL,
             token_encrypted TEXT NOT NULL,
+            access_code_hash TEXT,
             expires_at TIMESTAMP,
             never_expires INTEGER NOT NULL DEFAULT 0,
             max_email_count INTEGER CHECK (
@@ -1622,6 +1623,8 @@ def init_db():
     email_share_columns = [col[1] for col in cursor.fetchall()]
     if 'max_email_count' not in email_share_columns:
         cursor.execute('ALTER TABLE email_share_links ADD COLUMN max_email_count INTEGER')
+    if 'access_code_hash' not in email_share_columns:
+        cursor.execute('ALTER TABLE email_share_links ADD COLUMN access_code_hash TEXT')
 
     # 创建审计日志表
     cursor.execute('''
