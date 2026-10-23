@@ -506,6 +506,11 @@
                     <input type="text" class="form-input" id="emailShareAccountEmail" readonly>
                 </div>
                 <div class="form-group">
+                    <label class="form-label" for="emailShareAccessCode">访问码（可选）</label>
+                    <input type="text" class="form-input" id="emailShareAccessCode" minlength="4" maxlength="32" pattern="[A-Za-z0-9]{4,32}" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="留空则无需访问码">
+                    <div class="form-hint">4–32 位英文字母或数字，区分大小写。设置后，访客需输入访问码才能查看邮箱。</div>
+                </div>
+                <div class="form-group">
                     <label class="form-label">有效期</label>
                     <select class="form-select" id="emailShareDurationPreset" onchange="syncEmailShareDurationPreset()">
                         <option value="60">1 小时</option>

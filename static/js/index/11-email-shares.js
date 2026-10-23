@@ -37,6 +37,8 @@
                 result.hidden = true;
                 result.replaceChildren();
             }
+            const accessCode = document.getElementById('emailShareAccessCode');
+            if (accessCode) accessCode.value = '';
             const preset = document.getElementById('emailShareDurationPreset');
             if (preset) preset.value = '1440';
             const custom = document.getElementById('emailShareCustomDuration');
@@ -118,7 +120,7 @@
             return Number.isInteger(value) ? value : 0;
         }
 
-        function renderEmailShareCreateResult(share) {
+        function renderEmailShareCreateResult(share, accessCode = '') {
             const result = document.getElementById('emailShareCreateResult');
             if (!result) return;
             result.hidden = false;
@@ -126,8 +128,9 @@
                 <div class="share-result__label">分享链接</div>
                 <div class="share-result__row">
                     <input type="text" class="form-input" readonly value="${escapeHtml(share.share_url || '')}">
-                    <button class="btn btn-secondary" type="button" onclick="copyEmailShareUrl('${escapeHtml(share.share_url || '')}')">复制</button>
+                    <button class="btn btn-secondary" type="button" onclick="copyEmailShareUrl('${escapeHtml(share.share_url || '')}', '${escapeHtml(accessCode)}')">${accessCode ? '复制链接和访问码' : '复制'}</button>
                 </div>
+                ${accessCode ? `<div class="form-hint">访问码：${escapeHtml(accessCode)}（请保存，关闭后无法再次查看）</div>` : ''}
                 <div class="form-hint">有效期：${escapeHtml(formatEmailShareExpiry(share))}</div>
                 <div class="form-hint">可见范围：${escapeHtml(formatEmailShareVisibility(share))}</div>
             `;
@@ -138,6 +141,7 @@
             const neverExpires = !!document.getElementById('emailShareNeverExpires')?.checked;
             const durationMinutes = getEmailShareDurationMinutes();
             const maxEmailCount = getEmailShareMaxEmailCount();
+            const accessCode = document.getElementById('emailShareAccessCode')?.value || '';
             if (!accountId) {
                 showToast('缺少邮箱账号', 'error');
                 return;
@@ -148,6 +152,10 @@
             }
             if (isEmailShareVisibilityLimited() && (maxEmailCount < 1 || maxEmailCount > 50)) {
                 showToast('邮件数量限制应为 1 到 50 的整数', 'error');
+                return;
+            }
+            if (accessCode && !/^[A-Za-z0-9]{4,32}$/.test(accessCode)) {
+                showToast('访问码须为 4–32 位英文字母或数字', 'error');
                 return;
             }
 
@@ -161,12 +169,13 @@
                         account_id: accountId,
                         duration_minutes: durationMinutes,
                         never_expires: neverExpires,
-                        max_email_count: maxEmailCount
+                        max_email_count: maxEmailCount,
+                        access_code: accessCode
                     })
                 });
                 const data = await response.json();
                 if (data.success) {
-                    renderEmailShareCreateResult(data.share);
+                    renderEmailShareCreateResult(data.share, accessCode);
                     showToast('分享链接已创建', 'success');
                     loadEmailShares();
                 } else {
@@ -178,12 +187,13 @@
                 if (button) button.disabled = false;
             }
         }
-        function copyEmailShareUrl(url) {
+        function copyEmailShareUrl(url, accessCode = '') {
             if (!url) {
                 showToast('分享链接不可用', 'error');
                 return;
             }
-            copyTextToClipboard(url, '分享链接已复制');
+            const text = accessCode ? `分享链接：${url}\n访问码：${accessCode}` : url;
+            copyTextToClipboard(text, accessCode ? '分享链接和访问码已复制' : '分享链接已复制');
         }
 
         let allEmailShares = [];
@@ -237,6 +247,7 @@
                                 <input type="text" class="form-input share-url-input" readonly value="${escapeHtml(share.share_url || '')}">
                                 <button class="btn btn-secondary btn-sm-action" type="button" onclick="copyEmailShareUrl('${escapeHtml(share.share_url || '')}')">复制</button>
                             </div>
+                            <div class="form-hint">${share.requires_access_code ? '需访问码' : '无需访问码'}</div>
                         </td>
                         <td style="text-align: right;">
                             <div style="display: flex; gap: 6px; justify-content: flex-end;">

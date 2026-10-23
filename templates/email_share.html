@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() if csrf_token is defined else '' }}">
     <title>Outlook 共享邮箱</title>
     <link rel="icon" href="{{ url_for('favicon') }}" type="image/svg+xml">
     <!-- Fonts -->
@@ -57,7 +58,7 @@
         </header>
 
         <!-- Main Body -->
-        <div class="app-body" id="appBody">
+        <div class="app-body" id="appBody"{% if share_status == 'access_code_required' %} style="display: none;"{% endif %}>
             <!-- Sidebar / Folder Navigation -->
             <nav class="app-sidebar">
                 <div class="sidebar-header">
@@ -130,6 +131,22 @@
                     </div>
                 </div>
             </main>
+        </div>
+
+        <div class="overlay-screen" id="shareAccessCodeState"{% if share_status != 'access_code_required' %} hidden{% endif %}>
+            <div class="error-card">
+                <div class="error-icon-wrapper">
+                    <i data-lucide="lock-keyhole" class="error-icon"></i>
+                </div>
+                <h2>请输入访问码</h2>
+                <p>此邮箱分享已设置访问码，请向分享者获取后输入。</p>
+                <form class="share-access-form" id="shareAccessCodeForm">
+                    <label for="shareAccessCodeInput">访问码</label>
+                    <input id="shareAccessCodeInput" type="text" minlength="4" maxlength="32" pattern="[A-Za-z0-9]{4,32}" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="输入访问码（区分大小写）" aria-describedby="shareAccessCodeError" required>
+                    <p id="shareAccessCodeError" role="alert" hidden></p>
+                    <button id="shareAccessCodeSubmit" type="submit">查看邮箱</button>
+                </form>
+            </div>
         </div>
 
         <!-- Invalid Link Screen Overlay -->
