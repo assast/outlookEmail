@@ -596,6 +596,8 @@ def send_forward_channel(conn, account: Dict[str, Any], detail: Dict[str, Any],
                 'success',
                 db_conn=conn,
             )
+            # 去重记录和成功日志一起提交，不跨下一次网络请求持有写锁。
+            conn.commit()
             return True, False, elapsed_ms(send_started), True
 
         failure_messages = {
@@ -612,6 +614,7 @@ def send_forward_channel(conn, account: Dict[str, Any], detail: Dict[str, Any],
             failure_messages.get(channel, f'{channel} 转发返回失败'),
             db_conn=conn,
         )
+        conn.commit()
         app.logger.warning(
             '[forward] send channel returned false: account=%s message_id=%s channel=%s',
             account.get('email', ''),
@@ -620,6 +623,7 @@ def send_forward_channel(conn, account: Dict[str, Any], detail: Dict[str, Any],
         )
         return False, True, elapsed_ms(send_started), False
     except Exception as exc:
+        conn.rollback()
         log_forwarding_result(
             account['id'],
             account.get('email', ''),
@@ -629,6 +633,7 @@ def send_forward_channel(conn, account: Dict[str, Any], detail: Dict[str, Any],
             str(exc),
             db_conn=conn,
         )
+        conn.commit()
         app.logger.warning(
             '[forward] send channel failed: account=%s message_id=%s channel=%s error=%s',
             account.get('email', ''),
@@ -669,6 +674,8 @@ def process_forwarding_account(account_row: Dict[str, Any], job_config: Dict[str
                         error_message,
                         db_conn=conn,
                     )
+                    # 先提交失败日志，再联网获取下一个文件夹。
+                    conn.commit()
                     app.logger.warning(
                         '[forward] fetch candidates failed: account=%s folder=%s duration_ms=%s error=%s',
                         account.get('email', ''),
@@ -734,6 +741,8 @@ def process_forwarding_account(account_row: Dict[str, Any], job_config: Dict[str
                         '获取邮件详情失败',
                         db_conn=conn,
                     )
+                    # 先释放写锁，再获取下一封邮件详情。
+                    conn.commit()
                     app.logger.warning(
                         '[forward] skip email detail fetch failed: account=%s message_id=%s',
                         account.get('email', ''),

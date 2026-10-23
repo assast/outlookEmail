@@ -6,6 +6,12 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.23] - 2026-10-23
+
+### Fixed
+- 修复后台邮件转发在后续网络请求期间持续持有 SQLite 写锁的问题：文件夹或邮件详情获取失败、各渠道发送结束后及时提交，减少前台刷新和查看邮件时因本地缓存写入被阻塞而出现的数据库锁定错误（#100）。
+- 各转发渠道独立提交去重记录，后续邮件处理异常不再撤销已成功渠道的记录，减少重试时的重复转发。
+
 ## [3.0.22] - 2026-10-23
 
 ### Added
