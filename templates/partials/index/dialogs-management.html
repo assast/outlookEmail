@@ -479,6 +479,13 @@
                                         <span class="forward-channel-option__meta">通过群机器人 Webhook 推送到企业微信群。</span>
                                     </span>
                                 </label>
+                                <label class="forward-channel-option">
+                                    <input type="checkbox" id="forwardChannelFeishu" onchange="syncForwardChannelUI()">
+                                    <span class="forward-channel-option__content">
+                                        <span class="forward-channel-option__title">飞书</span>
+                                        <span class="forward-channel-option__meta">通过群机器人 Webhook 推送邮件摘要。</span>
+                                    </span>
+                                </label>
                             </div>
                         </div>
                         <div class="forward-channel-empty" id="forwardChannelEmptyState" hidden>
@@ -599,6 +606,35 @@
                                         <input type="text" class="form-input" id="settingsWecomWebhookUrl" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
                                         <div class="form-hint">在企业微信群机器人里复制完整 Webhook 地址即可，无需额外配置 Bot Token 或 Chat ID。</div>
                                     </div>
+                                </div>
+                            </section>
+                            <section class="forward-channel-panel forward-channel-panel--feishu" data-channel="feishu" hidden>
+                                <div class="forward-channel-panel__header">
+                                    <div class="forward-channel-panel__heading">
+                                        <h5 class="forward-channel-panel__title">飞书机器人转发</h5>
+                                        <p class="forward-channel-panel__desc">向飞书群推送邮件摘要，可选开启签名校验。</p>
+                                    </div>
+                                    <div class="forward-channel-panel__actions">
+                                        <button class="btn btn-sm btn-secondary" type="button" id="testFeishuBtn" onclick="testForwardChannel('feishu')">发送测试消息</button>
+                                        <span class="forward-channel-panel__tag">飞书</span>
+                                    </div>
+                                </div>
+                                <div class="forward-grid">
+                                    <div class="form-group forward-field forward-field--full">
+                                        <label class="form-label" for="settingsFeishuWebhookUrl">Webhook 地址</label>
+                                        <input type="password" class="form-input" id="settingsFeishuWebhookUrl" autocomplete="off" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+                                        <div class="form-hint">复制飞书群自定义机器人的 Webhook。保存后不回显，留空保留已有配置。</div>
+                                    </div>
+                                    <div class="form-group forward-field forward-field--full">
+                                        <label class="form-label" for="settingsFeishuSignSecret">签名密钥</label>
+                                        <input type="password" class="form-input" id="settingsFeishuSignSecret" autocomplete="new-password" placeholder="可选，填写机器人签名校验密钥">
+                                        <div class="form-hint">机器人开启签名校验时填写，留空保留已保存密钥。测试消息使用当前表单，不会自动保存。</div>
+                                    </div>
+                                    <label class="settings-toggle settings-toggle--inline forward-field--full">
+                                        <input type="checkbox" id="settingsFeishuClearSignSecret">
+                                        <span class="form-label">移除已保存的签名密钥（测试时也不使用签名）</span>
+                                    </label>
+                                    <div class="form-hint forward-field--full">使用关键词安全校验时，可在飞书机器人中配置“邮件转发”；测试和正式通知都包含该词。</div>
                                 </div>
                             </section>
                         </div>
@@ -1174,8 +1210,9 @@
                             <span class="release-notice-badge">最新</span>
                         </div>
                         <ul>
-                            <li>优化后台邮件转发，减少刷新或查看邮件时的数据库锁定报错。</li>
-                            <li>已成功转发渠道及时保存去重记录，后续邮件处理异常时重试可跳过已完成渠道。</li>
+                            <li>新增飞书群机器人推送，可在「设置 -> 邮件转发设置」中启用。</li>
+                            <li>支持可选签名校验和发送测试消息，保存后即可推送新邮件摘要。</li>
+                            <li>飞书与现有渠道共用关键词筛选和去重规则，转发历史可查看发送结果。</li>
                         </ul>
                     </div>
                 </div>

@@ -52,6 +52,7 @@ class ForwardingTransactionTests(unittest.TestCase):
         self.smtp = self.start_patch('send_forward_email', return_value=True)
         self.telegram = self.start_patch('send_forward_telegram', return_value=True)
         self.wecom = self.start_patch('send_forward_wecom', return_value=True)
+        self.feishu = self.start_patch('send_forward_feishu', return_value=True)
         self.config = {
             'email_enabled': True, 'telegram_enabled': False, 'wecom_enabled': False,
             'include_junkemail': False, 'keywords': [], 'forward_window_start': None,
@@ -183,6 +184,38 @@ class ForwardingTransactionTests(unittest.TestCase):
                 self.assert_probe(observed, expected, [
                     (message_id, channel, 'success', None) for message_id, channel in expected
                 ])
+
+    def test_feishu_network_does_not_hold_writer_and_success_deduplicates(self):
+        evidence = []
+        self.feishu.side_effect = lambda *_args: evidence.append(self.probe()) or True
+        items = [self.item('first'), self.item('second')]
+        result = self.process(items, feishu_enabled=True)
+        self.assertFalse(result['had_processing_failure'])
+        self.assertEqual(result['feishu_success_count'], 2)
+        self.assertEqual(len(evidence), 2)
+        self.assert_probe(evidence[0], [('first', 'email')], [('first', 'email', 'success', None)])
+        pairs = [('first', 'email'), ('first', 'feishu'), ('second', 'email')]
+        self.assert_probe(evidence[1], pairs, [(message, channel, 'success', None) for message, channel in pairs])
+        result = self.process(items, feishu_enabled=True)
+        self.assertEqual(self.feishu.call_count, 2)
+        self.assertEqual(result['feishu_success_count'], 0)
+
+    def test_feishu_failure_preserves_cursor_and_other_channel_success_for_retry(self):
+        self.feishu.side_effect = ValueError('飞书关键词验证失败')
+        result = self.process([self.item('retry')], feishu_enabled=True)
+        self.assertTrue(result['had_processing_failure'])
+        self.assertFalse(result['cursor_updated'])
+        self.assertEqual(result['feishu_success_count'], 0)
+        self.assert_probe(self.probe(), [('retry', 'email')], [
+            ('retry', 'email', 'success', None), ('retry', 'feishu', 'failed', '飞书关键词验证失败'),
+        ])
+        self.feishu.side_effect = None
+        result = self.process([self.item('retry')], feishu_enabled=True)
+        self.assertFalse(result['had_processing_failure'])
+        self.assertTrue(result['cursor_updated'])
+        self.assertEqual(result['feishu_success_count'], 1)
+        self.smtp.assert_called_once()
+        self.assertEqual(self.feishu.call_count, 2)
 
     def test_failed_send_commits_audit_and_releases_writer_before_return(self):
         for outcome in ('false', 'exception'):

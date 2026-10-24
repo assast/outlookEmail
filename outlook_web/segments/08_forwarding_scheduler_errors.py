@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import sys
 import time
+import hmac
+import math
 
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from email.utils import parsedate_to_datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from werkzeug.exceptions import HTTPException
@@ -27,6 +31,9 @@ FORWARD_EXECUTION_MODES = {'serial', 'parallel'}
 FORWARD_PARALLEL_WORKERS_MIN = 1
 FORWARD_PARALLEL_WORKERS_MAX = 10
 FORWARD_PARALLEL_WORKERS_DEFAULT = 4
+FEISHU_RATE_LOCK = threading.Lock()
+FEISHU_RATE_STATE = {}
+FEISHU_MESSAGE_BYTES_MAX = 20 * 1024
 
 
 def safe_console_print(*args: Any, sep: str = ' ', end: str = '\n',
@@ -63,6 +70,7 @@ def normalize_forward_channel_settings(raw_channels: Any) -> list[str]:
         'wecom': FORWARD_CHANNEL_WECOM_SETTING,
         'wechatwork': FORWARD_CHANNEL_WECOM_SETTING,
         'qywx': FORWARD_CHANNEL_WECOM_SETTING,
+        'feishu': FORWARD_CHANNEL_FEISHU_SETTING,
     }
 
     for item in values:
@@ -87,6 +95,8 @@ def get_configured_forward_channels() -> list[str]:
         channels.append(FORWARD_CHANNEL_TG_SETTING)
     if get_setting_decrypted('wecom_webhook_url', '').strip():
         channels.append(FORWARD_CHANNEL_WECOM_SETTING)
+    if is_feishu_forward_configured():
+        channels.append(FORWARD_CHANNEL_FEISHU_SETTING)
     return channels
 
 
@@ -363,6 +373,155 @@ def send_forward_wecom_with_config(config: Dict[str, Any], text: str) -> bool:
     return response.ok
 
 
+def resolve_feishu_forward_config(config=None, *, require_webhook: bool = True) -> Dict[str, str]:
+    if config is None:
+        config = {}
+    if not isinstance(config, dict):
+        raise ValueError('飞书配置必须是对象')
+    for field in ('webhook_url', 'sign_secret'):
+        if field in config and not isinstance(config[field], str):
+            raise ValueError('飞书 Webhook 和签名密钥必须是文本')
+    if 'clear_sign_secret' in config and not isinstance(config['clear_sign_secret'], bool):
+        raise ValueError('飞书清除签名选项必须是布尔值')
+    webhook_url = config.get('webhook_url', '').strip() or get_setting_decrypted('feishu_webhook_url', '').strip()
+    sign_secret = '' if config.get('clear_sign_secret') else (
+        config.get('sign_secret', '').strip() or get_setting_decrypted('feishu_sign_secret', '').strip()
+    )
+    if webhook_url:
+        try:
+            parsed = urlparse(webhook_url)
+            valid = (
+                parsed.scheme == 'https' and parsed.hostname == 'open.feishu.cn'
+                and parsed.port in (None, 443) and not parsed.username and not parsed.password
+                and not parsed.query and not parsed.fragment
+                and re.fullmatch(r'/open-apis/bot/v2/hook/[A-Za-z0-9_-]+', parsed.path)
+                and not re.search(r'\s', webhook_url)
+            )
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError('飞书 Webhook 必须是有效的 https://open.feishu.cn/open-apis/bot/v2/hook/ 地址')
+        webhook_url = f'https://open.feishu.cn{parsed.path}'
+    elif require_webhook:
+        raise ValueError('请先填写飞书 Webhook 地址')
+    return {'webhook_url': webhook_url, 'sign_secret': sign_secret}
+
+
+def is_feishu_forward_configured() -> bool:
+    try:
+        return bool(resolve_feishu_forward_config(require_webhook=False)['webhook_url'])
+    except ValueError:
+        return False
+
+
+def reserve_feishu_send_slot(webhook_url: str) -> str:
+    key = hashlib.sha256(webhook_url.encode('utf-8')).hexdigest()
+    while True:
+        with FEISHU_RATE_LOCK:
+            now = time.monotonic()
+            state = FEISHU_RATE_STATE.setdefault(key, {'sent_at': deque(), 'retry_at': 0.0})
+            if state['retry_at'] > now:
+                raise ValueError('飞书机器人限流，请稍后重试')
+            sent_at = state['sent_at']
+            while sent_at and sent_at[0] <= now - 60:
+                sent_at.popleft()
+            delay = max(
+                sent_at[-5] + 1 - now if len(sent_at) >= 5 else 0,
+                sent_at[0] + 60 - now if len(sent_at) >= 100 else 0,
+            )
+            if delay <= 0:
+                sent_at.append(now)
+                return key
+        time.sleep(delay)
+
+
+def set_feishu_retry_after(key: str, header: str) -> None:
+    try:
+        delay = float(header)
+    except (TypeError, ValueError):
+        try:
+            delay = parsedate_to_datetime(header).timestamp() - time.time()
+        except (TypeError, ValueError, OverflowError):
+            return
+    if math.isfinite(delay) and delay > 0:
+        with FEISHU_RATE_LOCK:
+            state = FEISHU_RATE_STATE[key]
+            state['retry_at'] = max(state['retry_at'], time.monotonic() + delay)
+
+
+def encode_feishu_payload(payload: Dict[str, Any]) -> bytes:
+    def encode():
+        return json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+
+    encoded = encode()
+    if len(encoded) <= FEISHU_MESSAGE_BYTES_MAX:
+        return encoded
+    text = payload['content']['text']
+    low, high = 0, len(text)
+    while low < high:
+        middle = (low + high + 1) // 2
+        payload['content']['text'] = text[:middle] + '\n…（内容已截断）'
+        if len(encode()) <= FEISHU_MESSAGE_BYTES_MAX:
+            low = middle
+        else:
+            high = middle - 1
+    payload['content']['text'] = text[:low] + '\n…（内容已截断）'
+    return encode()
+
+
+def _send_feishu_message(config: Dict[str, str], text: str) -> bool:
+    key = reserve_feishu_send_slot(config['webhook_url'])
+    payload = {'msg_type': 'text', 'content': {'text': text}}
+    if config['sign_secret']:
+        timestamp = str(int(time.time()))
+        signature_key = f"{timestamp}\n{config['sign_secret']}".encode('utf-8')
+        payload.update(timestamp=timestamp, sign=base64.b64encode(
+            hmac.new(signature_key, b'', hashlib.sha256).digest(),
+        ).decode('ascii'))
+    try:
+        # The generic proxy failover logs URLs and may resend POSTs; a Webhook is secret.
+        response = requests.request(
+            'post', config['webhook_url'], data=encode_feishu_payload(payload),
+            headers={'Content-Type': 'application/json'}, timeout=15, allow_redirects=False,
+        )
+    except requests.RequestException:
+        raise ValueError('飞书请求失败或发送结果不确定，请先检查群消息再重试') from None
+    if response.status_code == 429:
+        set_feishu_retry_after(key, response.headers.get('Retry-After'))
+        raise ValueError('飞书机器人限流，请稍后重试')
+    if not 200 <= response.status_code < 300:
+        raise ValueError(f'飞书发送失败（HTTP {response.status_code}）')
+    try:
+        result = response.json()
+    except ValueError:
+        raise ValueError('飞书响应不是有效 JSON，发送结果不确定') from None
+    if not isinstance(result, dict):
+        raise ValueError('飞书响应缺少有效业务码，发送结果不确定')
+    code = result.get('code', result.get('StatusCode'))
+    if type(code) is not int:
+        raise ValueError('飞书响应缺少有效业务码，发送结果不确定')
+    if code == 0:
+        return True
+    errors = {
+        19021: '飞书签名验证失败，请检查签名密钥和服务器时间',
+        19022: '飞书 IP 白名单验证失败，请检查机器人安全设置',
+        19024: '飞书关键词验证失败，请在机器人安全设置中配置“邮件转发”',
+        11232: '飞书机器人限流，请稍后重试',
+        9499: '飞书消息格式不被接受',
+    }
+    if code == 11232:
+        set_feishu_retry_after(key, response.headers.get('Retry-After'))
+    raise ValueError(errors.get(code, f'飞书发送失败（业务码 {code}）'))
+
+
+def send_forward_feishu(text: str) -> bool:
+    return _send_feishu_message(resolve_feishu_forward_config(), text)
+
+
+def send_forward_feishu_with_config(config: Dict[str, Any], text: str) -> bool:
+    return _send_feishu_message(resolve_feishu_forward_config(config), text)
+
+
 def normalize_forward_keywords(value: str) -> list[str]:
     keywords = []
     seen = set()
@@ -526,6 +685,7 @@ def build_forwarding_job_config() -> Dict[str, Any]:
         'wecom_enabled': FORWARD_CHANNEL_WECOM_SETTING in forward_channels and bool(
             get_setting_decrypted('wecom_webhook_url', '').strip()
         ),
+        'feishu_enabled': FORWARD_CHANNEL_FEISHU_SETTING in forward_channels and is_feishu_forward_configured(),
         'include_junkemail': get_bool_setting('forward_include_junkemail', False),
         'keywords': normalize_forward_keywords(get_setting('forward_keywords', '')),
         'account_delay_seconds': account_delay_seconds,
@@ -558,6 +718,7 @@ def build_forwarding_account_result(account: Dict[str, Any]) -> Dict[str, Any]:
         'email_success_count': 0,
         'telegram_success_count': 0,
         'wecom_success_count': 0,
+        'feishu_success_count': 0,
         'cursor_updated': False,
         'cursor': account.get('forward_last_checked_at', ''),
         'had_processing_failure': False,
@@ -604,6 +765,7 @@ def send_forward_channel(conn, account: Dict[str, Any], detail: Dict[str, Any],
             FORWARD_CHANNEL_EMAIL: 'SMTP 转发返回失败',
             FORWARD_CHANNEL_TELEGRAM: 'Telegram 转发返回失败',
             FORWARD_CHANNEL_WECOM: '企业微信转发返回失败',
+            FORWARD_CHANNEL_FEISHU: '飞书转发返回失败',
         }
         log_forwarding_result(
             account['id'],
@@ -763,52 +925,21 @@ def process_forwarding_account(account_row: Dict[str, Any], job_config: Dict[str
                 message_processed = False
                 message_failed = False
 
-                if job_config.get('email_enabled'):
+                channels = (
+                    ('email', FORWARD_CHANNEL_EMAIL, send_forward_email, (title, plain, html_body)),
+                    ('telegram', FORWARD_CHANNEL_TELEGRAM, send_forward_telegram, (telegram_text,)),
+                    ('wecom', FORWARD_CHANNEL_WECOM, send_forward_wecom, (telegram_text,)),
+                    ('feishu', FORWARD_CHANNEL_FEISHU, send_forward_feishu, (telegram_text,)),
+                )
+                for name, channel, sender, args in channels:
+                    if not job_config.get(f'{name}_enabled'):
+                        continue
                     processed, failed, duration_ms, sent = send_forward_channel(
-                        conn,
-                        account,
-                        detail,
-                        FORWARD_CHANNEL_EMAIL,
-                        send_forward_email,
-                        title,
-                        plain,
-                        html_body,
+                        conn, account, detail, channel, sender, *args,
                     )
                     result['channel_send_ms'] += duration_ms
                     if sent:
-                        result['email_success_count'] += 1
-                    if processed:
-                        message_processed = True
-                    message_failed = message_failed or failed
-
-                if job_config.get('telegram_enabled'):
-                    processed, failed, duration_ms, sent = send_forward_channel(
-                        conn,
-                        account,
-                        detail,
-                        FORWARD_CHANNEL_TELEGRAM,
-                        send_forward_telegram,
-                        telegram_text,
-                    )
-                    result['channel_send_ms'] += duration_ms
-                    if sent:
-                        result['telegram_success_count'] += 1
-                    if processed:
-                        message_processed = True
-                    message_failed = message_failed or failed
-
-                if job_config.get('wecom_enabled'):
-                    processed, failed, duration_ms, sent = send_forward_channel(
-                        conn,
-                        account,
-                        detail,
-                        FORWARD_CHANNEL_WECOM,
-                        send_forward_wecom,
-                        telegram_text,
-                    )
-                    result['channel_send_ms'] += duration_ms
-                    if sent:
-                        result['wecom_success_count'] += 1
+                        result[f'{name}_success_count'] += 1
                     if processed:
                         message_processed = True
                     message_failed = message_failed or failed
@@ -859,6 +990,7 @@ def process_forwarding_account(account_row: Dict[str, Any], job_config: Dict[str
                 f"email_success={result['email_success_count']} "
                 f"telegram_success={result['telegram_success_count']} "
                 f"wecom_success={result['wecom_success_count']} "
+                f"feishu_success={result['feishu_success_count']} "
                 f"cursor_updated={result['cursor_updated']} "
                 f"cursor={result['cursor']} "
                 f"had_failure={result['had_processing_failure']} "
@@ -924,6 +1056,7 @@ def summarize_forwarding_results(results: list[Dict[str, Any]]) -> Dict[str, Any
         'email_success_count': sum(int(item.get('email_success_count') or 0) for item in results),
         'telegram_success_count': sum(int(item.get('telegram_success_count') or 0) for item in results),
         'wecom_success_count': sum(int(item.get('wecom_success_count') or 0) for item in results),
+        'feishu_success_count': sum(int(item.get('feishu_success_count') or 0) for item in results),
     }
 
 
@@ -940,6 +1073,7 @@ def process_forwarding_job():
                 job_config['email_enabled']
                 or job_config['telegram_enabled']
                 or job_config['wecom_enabled']
+                or job_config.get('feishu_enabled')
             ):
                 safe_console_print('[forward] skip job: no active channels configured')
                 return {'success': True, 'skipped': True, 'reason': 'no_active_channels'}
@@ -954,6 +1088,7 @@ def process_forwarding_job():
                 f"email_enabled={job_config['email_enabled']} "
                 f"telegram_enabled={job_config['telegram_enabled']} "
                 f"wecom_enabled={job_config['wecom_enabled']} "
+                f"feishu_enabled={job_config.get('feishu_enabled', False)} "
                 f"account_delay_seconds={job_config['account_delay_seconds']}"
             )
 
@@ -970,7 +1105,8 @@ def process_forwarding_job():
                 f"failed_accounts={summary['failed_count']} "
                 f"email_success={summary['email_success_count']} "
                 f"telegram_success={summary['telegram_success_count']} "
-                f"wecom_success={summary['wecom_success_count']}"
+                f"wecom_success={summary['wecom_success_count']} "
+                f"feishu_success={summary['feishu_success_count']}"
             )
             return {'success': True, 'skipped': False, **summary}
         except Exception as exc:
@@ -1075,6 +1211,12 @@ def api_test_forward_channel():
             if not send_forward_wecom_with_config(wecom_config, telegram_text):
                 return jsonify({'success': False, 'error': '企业微信测试发送失败，请检查当前表单配置'})
             return jsonify({'success': True, 'message': '企业微信测试消息已发送，请检查群机器人所在会话'})
+
+        if channel == 'feishu':
+            feishu_config = config.get('feishu', {}) if isinstance(config, dict) else {}
+            if not send_forward_feishu_with_config(feishu_config, f'[邮件转发] {telegram_text}'):
+                return jsonify({'success': False, 'error': '飞书测试发送失败，请检查当前表单配置'})
+            return jsonify({'success': True, 'message': '飞书测试消息已发送，请检查机器人所在群聊'})
 
         return jsonify({'success': False, 'error': '未知转发渠道'})
     except Exception as exc:

@@ -1828,6 +1828,7 @@
                     document.getElementById('settingsTelegramTopicId').value = data.settings.telegram_topic_id || '';
                     document.getElementById('settingsTelegramProxyUrl').value = data.settings.telegram_proxy_url || '';
                     document.getElementById('settingsWecomWebhookUrl').value = data.settings.wecom_webhook_url || '';
+                    setFeishuForwardingSettings(data.settings);
                     document.getElementById('webdavBackupEnabled').checked = String(data.settings.webdav_backup_enabled) === 'true';
                     document.getElementById('webdavBackupUrl').value = data.settings.webdav_backup_url || '';
                     document.getElementById('webdavBackupUsername').value = data.settings.webdav_backup_username || '';
@@ -1924,6 +1925,7 @@
             const telegramTopicId = document.getElementById('settingsTelegramTopicId').value.trim();
             const telegramProxyUrl = document.getElementById('settingsTelegramProxyUrl').value.trim();
             const wecomWebhookUrl = document.getElementById('settingsWecomWebhookUrl').value.trim();
+            const feishuDraft = getFeishuForwardingDraftConfig();
             const webdavBackupSettings = getWebdavBackupFormSettings();
             const webdavBackupChanged = hasWebdavBackupSettingsChanged(webdavBackupSettings);
             const webdavBackupVerifyPassword = document.getElementById('webdavBackupVerifyPassword')?.value || '';
@@ -1996,6 +1998,10 @@
                 showToast('启用企业微信转发时必须填写 Webhook 地址', 'error');
                 return;
             }
+            if (forwardChannels.includes('feishu') && !hasFeishuWebhook(feishuDraft)) {
+                showToast('启用飞书转发时必须填写 Webhook 地址', 'error');
+                return;
+            }
             if (webdavBackupChanged) {
                 if (!webdavBackupVerifyPassword) {
                     showToast('修改 WebDAV 备份设置需要输入登录密码', 'error');
@@ -2057,6 +2063,9 @@
             settings.telegram_topic_id = telegramTopicId;
             settings.telegram_proxy_url = telegramProxyUrl;
             settings.wecom_webhook_url = wecomWebhookUrl;
+            settings.feishu_webhook_url = feishuDraft.webhook_url;
+            settings.feishu_sign_secret = feishuDraft.sign_secret;
+            settings.feishu_clear_sign_secret = feishuDraft.clear_sign_secret;
 
             if (webdavBackupChanged) {
                 Object.assign(settings, webdavBackupSettings);
@@ -2160,6 +2169,36 @@
             hideSettingsModal();
         }
 
+        function setFeishuForwardingSettings(settings) {
+            for (const [id, key] of [
+                ['settingsFeishuWebhookUrl', 'feishu_webhook_url'],
+                ['settingsFeishuSignSecret', 'feishu_sign_secret'],
+            ]) {
+                const input = document.getElementById(id);
+                input.value = '';
+                input.dataset.configured = String(!!settings[`${key}_configured`]);
+                input.placeholder = settings[`${key}_configured`]
+                    ? '已配置，留空保留；填写新值替换'
+                    : (key === 'feishu_webhook_url'
+                        ? 'https://open.feishu.cn/open-apis/bot/v2/hook/...'
+                        : '可选，填写机器人签名校验密钥');
+            }
+            document.getElementById('settingsFeishuClearSignSecret').checked = false;
+        }
+
+        function getFeishuForwardingDraftConfig() {
+            return {
+                webhook_url: document.getElementById('settingsFeishuWebhookUrl').value.trim(),
+                sign_secret: document.getElementById('settingsFeishuSignSecret').value.trim(),
+                clear_sign_secret: document.getElementById('settingsFeishuClearSignSecret').checked,
+            };
+        }
+
+        function hasFeishuWebhook(draft) {
+            return !!draft.webhook_url
+                || document.getElementById('settingsFeishuWebhookUrl').dataset.configured === 'true';
+        }
+
         function buildForwardingDraftConfig() {
             const smtpPortValue = document.getElementById('settingsSmtpPort').value.trim();
             const smtpPort = parseInt(smtpPortValue || '465', 10);
@@ -2183,16 +2222,17 @@
                 },
                 wecom: {
                     webhook_url: document.getElementById('settingsWecomWebhookUrl').value.trim(),
-                }
+                },
+                feishu: getFeishuForwardingDraftConfig(),
             };
         }
 
         async function testForwardChannel(channel) {
-            const btn = document.getElementById(
-                channel === 'smtp'
-                    ? 'testSmtpBtn'
-                    : (channel === 'telegram' ? 'testTelegramBtn' : 'testWecomBtn')
-            );
+            const buttonIds = {
+                smtp: 'testSmtpBtn', telegram: 'testTelegramBtn',
+                wecom: 'testWecomBtn', feishu: 'testFeishuBtn',
+            };
+            const btn = document.getElementById(buttonIds[channel]);
             if (!btn || btn.disabled) return;
 
             const draft = buildForwardingDraftConfig();
@@ -2229,6 +2269,11 @@
             } else if (channel === 'wecom') {
                 if (!draft.wecom.webhook_url) {
                     showToast('请先填写企业微信 Webhook 地址', 'error');
+                    return;
+                }
+            } else if (channel === 'feishu') {
+                if (!hasFeishuWebhook(draft.feishu)) {
+                    showToast('请先填写飞书 Webhook 地址', 'error');
                     return;
                 }
             } else {
