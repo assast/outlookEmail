@@ -2181,7 +2181,8 @@
                 telegram: 'telegram',
                 wecom: 'wecom',
                 wechatwork: 'wecom',
-                qywx: 'wecom'
+                qywx: 'wecom',
+                feishu: 'feishu'
             };
             const values = Array.isArray(rawChannels)
                 ? rawChannels
@@ -2194,25 +2195,25 @@
             )];
         }
 
+        const FORWARD_CHANNEL_CHECKBOX_IDS = {
+            smtp: 'forwardChannelSmtp',
+            telegram: 'forwardChannelTelegram',
+            wecom: 'forwardChannelWecom',
+            feishu: 'forwardChannelFeishu',
+        };
+
         function getSelectedForwardChannels() {
-            const checkboxMap = {
-                smtp: 'forwardChannelSmtp',
-                telegram: 'forwardChannelTelegram',
-                wecom: 'forwardChannelWecom',
-            };
-            return Object.keys(checkboxMap).filter(channel =>
-                document.getElementById(checkboxMap[channel])?.checked
+            return Object.keys(FORWARD_CHANNEL_CHECKBOX_IDS).filter(channel =>
+                document.getElementById(FORWARD_CHANNEL_CHECKBOX_IDS[channel])?.checked
             );
         }
 
         function setSelectedForwardChannels(rawChannels) {
             const channels = normalizeForwardChannels(rawChannels);
-            const smtpCheckbox = document.getElementById('forwardChannelSmtp');
-            const telegramCheckbox = document.getElementById('forwardChannelTelegram');
-            const wecomCheckbox = document.getElementById('forwardChannelWecom');
-            if (smtpCheckbox) smtpCheckbox.checked = channels.includes('smtp');
-            if (telegramCheckbox) telegramCheckbox.checked = channels.includes('telegram');
-            if (wecomCheckbox) wecomCheckbox.checked = channels.includes('wecom');
+            Object.entries(FORWARD_CHANNEL_CHECKBOX_IDS).forEach(([channel, id]) => {
+                const checkbox = document.getElementById(id);
+                if (checkbox) checkbox.checked = channels.includes(channel);
+            });
             syncForwardChannelUI();
         }
 

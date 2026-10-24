@@ -1527,6 +1527,10 @@
             }
         }
 
+        function getForwardingChannelLabel(channel) {
+            return channel === 'feishu' ? '飞书' : (channel || '-');
+        }
+
         async function loadForwardingLogs() {
             const drawer = document.getElementById('forwardingLogsDrawer');
             const container = document.getElementById('forwardingLogsContainer');
@@ -1552,7 +1556,7 @@
                                         <div style="font-size: 12px; color: ${statusColor}; font-weight: 600;">${statusText}</div>
                                     </div>
                                     <div style="font-size: 12px; color: #666; line-height: 1.7;">
-                                        <div>渠道：${escapeHtml(log.channel || '-')}</div>
+                                        <div>渠道：${escapeHtml(getForwardingChannelLabel(log.channel))}</div>
                                         <div>邮件 ID：${escapeHtml(log.message_id || '-')}</div>
                                         <div>时间：${formatDateTime(log.created_at)}</div>
                                     </div>
@@ -1601,7 +1605,7 @@
                                         <div style="font-size: 12px; color: #dc3545; font-weight: 600;">失败</div>
                                     </div>
                                     <div style="font-size: 12px; color: #666; line-height: 1.7;">
-                                        <div>渠道：${escapeHtml(log.channel || '-')}</div>
+                                        <div>渠道：${escapeHtml(getForwardingChannelLabel(log.channel))}</div>
                                         <div>邮件 ID：${escapeHtml(log.message_id || '-')}</div>
                                         <div>时间：${formatDateTime(log.created_at)}</div>
                                     </div>
