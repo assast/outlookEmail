@@ -14,6 +14,7 @@ datas = [
     (str(project_root / "static"), "static"),
     (str(project_root / "outlook_web" / "segments"), "outlook_web/segments"),
     (str(project_root / "VERSION"), "."),
+    (str(project_root / "third_party" / "icloud-mail-LICENSE.txt"), "third_party"),
 ]
 
 

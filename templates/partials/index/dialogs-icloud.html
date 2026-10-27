@@ -1,0 +1,79 @@
+<div class="modal" id="icloudManagementModal" role="dialog" aria-modal="true" aria-labelledby="icloudTitle">
+    <div class="modal-content icloud-management">
+        <div class="modal-header">
+            <h3 id="icloudTitle">iCloud 管理</h3>
+            <button class="modal-close" type="button" onclick="hideModal('icloudManagementModal')" aria-label="关闭">×</button>
+        </div>
+        <div class="modal-body">
+            <p class="form-hint">Apple 管理连接与 IMAP 收信分别配置。收信账号请使用 App 专用密码；隐藏邮件地址需要 iCloud+。</p>
+            <p id="icloudMessage" role="status" aria-live="polite"></p>
+            <div class="icloud-columns">
+                <aside aria-label="Apple 主号">
+                    <div class="icloud-actions">
+                        <button class="btn btn-secondary" data-ic-action="new" type="button">新增主号</button>
+                        <button class="btn btn-secondary" data-ic-action="refresh" type="button">刷新本地状态</button>
+                    </div>
+                    <div id="icloudAccountList"></div>
+                </aside>
+                <section>
+                    <form id="icloudAccountForm" onsubmit="saveICloudAccount(event)">
+                        <div class="icloud-fields">
+                            <label>Apple ID<input class="form-input" id="icAppleId" type="email" required autocomplete="username"></label>
+                            <label>区域<select class="form-select" id="icRegion"><option value="global">国际区</option><option value="cn">中国大陆</option></select></label>
+                            <label>收信绑定<select class="form-select" id="icMailbox"><option value="">不绑定，独立管理</option></select></label>
+                            <label>备注<input class="form-input" id="icRemark" autocomplete="off"></label>
+                        </div>
+                        <div class="icloud-actions">
+                            <label><input type="checkbox" id="icEnabled" checked>启用主号</label>
+                            <label><input type="checkbox" id="icAutoLogin">会话失效后自动重登（默认关闭）</label>
+                        </div>
+                        <details>
+                            <summary>自动重登凭据</summary>
+                            <p class="form-hint">留空保留已存值；勾选清除才删除。Apple 登录密码与 IMAP App 专用密码不同。</p>
+                            <label>Apple 登录密码<input class="form-input" type="password" id="icPassword" autocomplete="new-password"></label>
+                            <label><input type="checkbox" id="icClearPassword">清除已存密码</label>
+                            <label>该主号接码 URL<input class="form-input" type="password" id="icCodeUrl" autocomplete="new-password"></label>
+                            <label><input type="checkbox" id="icClearCodeUrl">清除已存接码 URL</label>
+                            <p id="icCredentialFlags" class="form-hint"></p>
+                        </details>
+                        <div class="icloud-actions">
+                            <button class="btn btn-primary" type="submit">保存主号</button>
+                            <button class="btn btn-secondary" type="button" data-ic-action="delete-main">删除本地主号</button>
+                        </div>
+                    </form>
+                    <div id="icloudConnectedPanel" hidden>
+                        <hr>
+                        <h4>管理连接</h4>
+                        <p id="icMailboxState" class="form-hint"></p>
+                        <div id="icloudSessions"></div>
+                        <div class="icloud-fields">
+                            <label>登录通道<select class="form-select" id="icChannel"><option value="web">iCloud Web / 隐藏地址</option><option value="account">Apple Account</option></select></label>
+                            <label>本次登录密码<input class="form-input" type="password" id="icLoginPassword" autocomplete="current-password" placeholder="留空使用已保存密码"></label>
+                            <label>本次六位验证码<input class="form-input" id="icCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
+                        </div>
+                        <div class="icloud-actions">
+                            <button class="btn btn-secondary" type="button" data-ic-action="login">人工登录 / 接管</button>
+                            <button class="btn btn-secondary" type="button" data-ic-action="verify">提交验证码</button>
+                            <button class="btn btn-secondary" type="button" data-ic-action="logout">退出 Apple 会话</button>
+                        </div>
+                        <p class="form-hint">开启自动重登时，退出后仍会重新登录；持续退出请先关闭自动重登。人工账户操作需要在 Apple 官方页面完成。</p>
+                        <hr>
+                        <h4>隐藏邮件地址</h4>
+                        <div class="icloud-fields">
+                            <label>标签<input class="form-input" id="icAliasLabel"></label>
+                            <label>备注<input class="form-input" id="icAliasNote"></label>
+                        </div>
+                        <div class="icloud-actions">
+                            <button class="btn btn-secondary" type="button" data-ic-action="sync">同步 / 只读核对</button>
+                            <button class="btn btn-primary" type="button" data-ic-action="create">生成并保留地址</button>
+                        </div>
+                        <div class="icloud-table-wrap"><table class="icloud-table">
+                            <thead><tr><th>地址 / 标签 / 备注</th><th>转发至</th><th>状态</th><th>操作</th></tr></thead>
+                            <tbody id="icloudAliases"></tbody>
+                        </table></div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>

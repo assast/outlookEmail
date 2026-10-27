@@ -1,4 +1,5 @@
 from __future__ import annotations
+from outlook_web.icloud_mail import message_recipient_headers
 
 import secrets
 
@@ -837,7 +838,7 @@ def get_emails_graph(client_id: str, refresh_token: str, folder: str = 'inbox', 
         params = {
             "$top": top,
             "$skip": skip,
-            "$select": "id,subject,from,toRecipients,receivedDateTime,isRead,hasAttachments,bodyPreview",
+            "$select": "id,subject,from,toRecipients,ccRecipients,internetMessageHeaders,receivedDateTime,isRead,hasAttachments,bodyPreview",
             "$orderby": "receivedDateTime desc"
         }
         headers = {
@@ -919,7 +920,7 @@ def get_email_detail_graph_result(client_id: str, refresh_token: str, message_id
     try:
         url = f"https://graph.microsoft.com/v1.0/me/messages/{message_id}"
         params = {
-            "$select": "id,subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,hasAttachments,body,bodyPreview"
+            "$select": "id,subject,from,toRecipients,ccRecipients,internetMessageHeaders,receivedDateTime,isRead,hasAttachments,body,bodyPreview"
         }
         headers = {
             "Authorization": f"Bearer {access_token}",
@@ -1427,6 +1428,7 @@ def get_emails_imap_with_server(account: str, client_id: str, refresh_token: str
                         'id': msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id),
                         'subject': decode_header_value(msg.get("Subject", "无主题")),
                         'from': decode_header_value(msg.get("From", "未知发件人")),
+                        'recipient_headers': message_recipient_headers(msg),
                         'to': decode_header_value(msg.get("To", "")),
                         'date': internal_date or msg.get("Date", "未知时间"),
                         'id_mode': id_mode,
@@ -1886,6 +1888,7 @@ def build_email_detail_from_message(msg, message_id: str, date_value: str = '') 
         'id': str(message_id),
         'subject': decode_header_value(msg.get('Subject', '无主题')),
         'from': decode_header_value(msg.get('From', '未知发件人')),
+        'recipient_headers': message_recipient_headers(msg),
         'to': decode_header_value(msg.get('To', '')),
         'cc': decode_header_value(msg.get('Cc', '')),
         'date': date_value or msg.get('Date', ''),
@@ -2737,7 +2740,7 @@ def delete_emails_imap_generic_result(email_addr: str, imap_password: str, imap_
 def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
                             imap_port: int = 993, folder: str = 'inbox',
                             provider: str = 'custom', skip: int = 0, top: int = 20,
-                            proxy_url: str = '') -> Dict[str, Any]:
+                            proxy_url: str = '', recipient_address: str = '') -> Dict[str, Any]:
     require_stable_ids = email_share_stable_ids_context.get()
     mail = None
     imap_id_info = {}
@@ -2795,7 +2798,15 @@ def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
                 if selected_exists > 0:
                     break
 
-        if require_stable_ids:
+        if recipient_address:
+            safe_address = recipient_address.replace('\\', '\\\\').replace('"', '\\"')
+            criteria = '(OR OR OR HEADER To "{0}" HEADER Cc "{0}" HEADER Delivered-To "{0}" HEADER X-Original-To "{0}")'.format(safe_address)
+            status, data = mail.uid('SEARCH', None, criteria)
+            if status != 'OK':
+                return {'success': False, 'error': 'IMAP 收件人候选搜索失败', 'scan_incomplete': True}
+            message_ids = data[0].split() if data and data[0] else []
+            search_mode = 'uid'
+        elif require_stable_ids:
             message_ids, search_attempts = search_imap_message_uids_by_arrival(mail)
             if message_ids is None:
                 return {
@@ -2892,6 +2903,7 @@ def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
                     'id': uid.decode('utf-8', errors='ignore') if isinstance(uid, (bytes, bytearray)) else str(uid),
                     'subject': decode_header_value(msg.get('Subject', '无主题')),
                     'from': decode_header_value(msg.get('From', '未知')),
+                    'recipient_headers': message_recipient_headers(msg),
                     'to': decode_header_value(msg.get('To', '')),
                     'date': internal_date or msg.get('Date', ''),
                     'id_mode': (

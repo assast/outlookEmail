@@ -581,6 +581,9 @@ IMAP_IDENTITY_FIELDS = {
 }
 
 MAIL_PROVIDERS = {
+    "icloud": {
+        "label": "iCloud", "imap_host": "imap.mail.me.com", "imap_port": 993, "account_type": "imap",
+    },
     "outlook": {
         "label": "Outlook",
         "imap_host": IMAP_SERVER_NEW,
@@ -638,6 +641,7 @@ MAIL_PROVIDERS = {
 }
 
 DOMAIN_PROVIDER_MAP = {
+    "icloud.com": "icloud", "me.com": "icloud", "mac.com": "icloud",
     "outlook.com": "outlook",
     "hotmail.com": "outlook",
     "live.com": "outlook",
@@ -737,6 +741,7 @@ INDEX_CSS_FILES = (
     'css/index/06-modals-toast.css',
     'css/index/07-meta.css',
     'css/index/08-responsive.css',
+    'css/index/09-icloud.css',
 )
 INDEX_JS_FILES = (
     'js/index/01-core.js',
@@ -752,6 +757,7 @@ INDEX_JS_FILES = (
     'js/index/11-email-shares.js',
     'js/index/12-outlook-upload-accounts.js',
     'js/index/13-projects.js',
+    'js/index/14-icloud.js',
 )
 
 # GPTMail API 配置
@@ -2525,6 +2531,9 @@ def init_db():
 
     # 迁移现有明文数据为加密数据
     migrate_sensitive_data(conn)
+
+    from outlook_web.icloud_store import init_icloud_schema
+    init_icloud_schema(conn)
 
     conn.commit()
     conn.close()

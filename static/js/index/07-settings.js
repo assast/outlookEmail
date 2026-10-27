@@ -1380,7 +1380,10 @@
                     document.getElementById('editFallbackProxyUrl2').value = acc.fallback_proxy_url_2 || '';
                     document.getElementById('editSortOrder').value = Number(acc.sort_order || 0);
                     document.getElementById('editRemark').value = acc.remark || '';
-                    document.getElementById('editAliases').value = Array.isArray(acc.aliases) ? acc.aliases.join('\n') : '';
+                    const managedAliases = new Set(acc.managed_aliases || []);
+                    document.getElementById('editAliases').value = (acc.aliases || []).filter(alias => !managedAliases.has(alias)).join('\n');
+                    document.getElementById('editManagedAliases').textContent = managedAliases.size
+                        ? `iCloud 托管别名（只读，请前往 iCloud 管理）：${[...managedAliases].join('、')}` : '';
                     document.getElementById('editStatus').value = acc.status || 'active';
                     if (document.getElementById('editForwardEnabled')) {
                         document.getElementById('editForwardEnabled').checked = !!acc.forward_enabled;

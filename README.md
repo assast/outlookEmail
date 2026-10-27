@@ -391,6 +391,8 @@ user@outlook.com----password123----24d9a0ed-8787-4584-883c-2fd79308940a----0.AXE
 
 #### 标准 IMAP 邮箱
 
+iCloud 支持 `imap.mail.me.com:993` 和 App 专用密码，并提供独立的 Apple 主号、隐藏邮件地址管理及可选自动重登入口。配置、邮件隔离、备份和降级步骤见 [iCloud 使用说明](docs/icloud.md)。Apple 私有协议与长期续期仍需真实账号验收。
+
 适用于 Gmail、QQ、163、126、Yahoo、阿里邮箱等：
 
 ```txt
@@ -770,6 +772,7 @@ MIT License - 详见 [LICENSE](LICENSE)
 - [GPTMail](https://mail.chatgpt.org.uk)
 - [Flask](https://flask.palletsprojects.com/)
 - [Resin](https://github.com/Resinat/Resin) — 高性能粘性代理池网关
+- [icloud-mail](https://github.com/t508708/icloud-mail) — iCloud Mail 协议参考；部分实现基于其 MIT 许可代码改编，详见 [第三方许可说明](third_party/icloud-mail-LICENSE.txt)
 
 ## ⭐ Star History
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from outlook_web.icloud_mail import belongs_to, recipient_addresses
 
 from concurrent.futures import ThreadPoolExecutor, wait
 import secrets
@@ -2643,6 +2644,7 @@ def build_retained_normal_mail_list_row(account_id: int, item: Dict[str, Any],
         'subject': coerce_retained_mail_text(normalized.get('subject')) or '无主题',
         'sender': coerce_retained_mail_text(normalized.get('from')) or '未知',
         'recipients': coerce_retained_mail_text(normalized.get('to')),
+        'recipient_evidence': json.dumps(sorted(recipient_addresses(source))),
         'received_at': coerce_retained_mail_text(normalized.get('date')),
         'received_at_sort': retained_mail_received_at_sort(normalized.get('date')),
         'is_read': coerce_retained_mail_bool(normalized.get('is_read')),
@@ -2777,13 +2779,13 @@ def upsert_retained_normal_mail_list_items(account: Dict[str, Any], folder: str,
         '''
         INSERT INTO retained_normal_mail_messages (
             account_id, folder, provider_message_id, id_mode,
-            subject, sender, recipients, received_at, received_at_sort,
+            subject, sender, recipients, recipient_evidence, received_at, received_at_sort,
             is_read, has_attachments, body_preview,
             list_cached, list_cached_at, last_synced_at, updated_at
         )
         VALUES (
             :account_id, :folder, :provider_message_id, :id_mode,
-            :subject, :sender, :recipients, :received_at, :received_at_sort,
+            :subject, :sender, :recipients, :recipient_evidence, :received_at, :received_at_sort,
             :is_read, :has_attachments, :body_preview,
             1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
@@ -2792,6 +2794,7 @@ def upsert_retained_normal_mail_list_items(account: Dict[str, Any], folder: str,
             subject = excluded.subject,
             sender = excluded.sender,
             recipients = excluded.recipients,
+            recipient_evidence = excluded.recipient_evidence,
             received_at = excluded.received_at,
             received_at_sort = excluded.received_at_sort,
             is_read = excluded.is_read,
@@ -2977,6 +2980,7 @@ def build_retained_normal_mail_detail_row(account: Dict[str, Any], folder: str,
         'subject': coerce_retained_mail_text(detail.get('subject')) or '无主题',
         'sender': coerce_retained_mail_text(detail.get('from')) or '未知',
         'recipients': coerce_retained_mail_text(detail.get('to')),
+        'recipient_evidence': json.dumps(sorted(recipient_addresses(detail))),
         'cc': coerce_retained_mail_text(detail.get('cc')),
         'received_at': coerce_retained_mail_text(detail.get('date')),
         'received_at_sort': retained_mail_received_at_sort(detail.get('date')),
@@ -3003,13 +3007,13 @@ def upsert_retained_normal_mail_detail(account: Dict[str, Any], folder: str,
         '''
         INSERT INTO retained_normal_mail_messages (
             account_id, folder, provider_message_id, id_mode,
-            subject, sender, recipients, cc, received_at, received_at_sort,
+            subject, sender, recipients, cc, recipient_evidence, received_at, received_at_sort,
             has_attachments, body, body_type, attachments_json,
             body_cached, body_cached_at, last_synced_at, updated_at
         )
         VALUES (
             :account_id, :folder, :provider_message_id, :id_mode,
-            :subject, :sender, :recipients, :cc, :received_at, :received_at_sort,
+            :subject, :sender, :recipients, :cc, :recipient_evidence, :received_at, :received_at_sort,
             :has_attachments, :body, :body_type, :attachments_json,
             1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
@@ -3018,6 +3022,7 @@ def upsert_retained_normal_mail_detail(account: Dict[str, Any], folder: str,
             subject = excluded.subject,
             sender = excluded.sender,
             recipients = excluded.recipients,
+            recipient_evidence = excluded.recipient_evidence,
             cc = excluded.cc,
             received_at = excluded.received_at,
             received_at_sort = excluded.received_at_sort,
@@ -3039,6 +3044,7 @@ def upsert_retained_normal_mail_detail(account: Dict[str, Any], folder: str,
 def format_graph_email_detail(detail: Dict[str, Any], attachments: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {
         'id': detail.get('id'),
+        'internetMessageHeaders': detail.get('internetMessageHeaders', []),
         'subject': detail.get('subject', '无主题'),
         'from': detail.get('from', {}).get('emailAddress', {}).get('address', '未知'),
         'to': ', '.join([
@@ -3185,6 +3191,7 @@ def retained_mail_row_to_list_item(row) -> Dict[str, Any]:
         'subject': row['subject'] or '无主题',
         'from': row['sender'] or '未知',
         'to': row['recipients'] or '',
+        'recipient_evidence': json.loads(row['recipient_evidence'] or '[]'),
         'date': row['received_at'] or '',
         'is_read': bool(row['is_read']),
         'has_attachments': bool(row['has_attachments']),
@@ -3227,6 +3234,7 @@ def retained_mail_row_to_detail_response(row) -> Dict[str, Any]:
             'subject': row['subject'] or '无主题',
             'from': row['sender'] or '未知',
             'to': row['recipients'] or '',
+            'recipient_evidence': json.loads(row['recipient_evidence'] or '[]'),
             'cc': row['cc'] or '',
             'date': row['received_at'] or '',
             'body': row['body'] or '',
@@ -3265,7 +3273,7 @@ def fetch_retained_normal_mail_detail(account: Dict[str, Any], folder: str,
     row = get_db().execute(
         f'''
         SELECT provider_message_id, id_mode, folder, subject, sender,
-               recipients, cc, received_at, body, body_type,
+               recipients, cc, recipient_evidence, received_at, body, body_type,
                attachments_json, has_attachments
         FROM retained_normal_mail_messages
         WHERE account_id = ?
@@ -3475,6 +3483,11 @@ def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
                                     subject_contains: str = '',
                                     from_contains: str = '',
                                     keyword: str = '') -> Dict[str, Any]:
+    if account.get('icloud_address'):
+        return fetch_icloud_isolated_emails(account, folder, skip, top, {
+            'include_body': include_body, 'subject_contains': subject_contains,
+            'from_contains': from_contains, 'keyword': keyword,
+        })
     folder_name = normalize_folder_name(folder)
     if folder_name not in VALID_MAIL_FOLDERS:
         return {
@@ -3503,7 +3516,7 @@ def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
     )
     cte_sql = f'''
         WITH ranked_retained AS (
-            SELECT provider_message_id, subject, sender, recipients, received_at,
+            SELECT provider_message_id, subject, sender, recipients, recipient_evidence, received_at,
                    is_read, has_attachments, body_preview, body, folder, id_mode,
                    received_at_sort, id,
                    ROW_NUMBER() OVER (
@@ -3531,7 +3544,7 @@ def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
     body_column = ', body' if include_body else ''
     rows = db.execute(
         cte_sql + f'''
-        SELECT provider_message_id, subject, sender, recipients, received_at,
+        SELECT provider_message_id, subject, sender, recipients, recipient_evidence, received_at,
                is_read, has_attachments, body_preview{body_column}, folder, id_mode
         FROM filtered_retained
         ORDER BY received_at_sort DESC, id DESC
@@ -3557,6 +3570,8 @@ def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
 def format_graph_email_item(item: Dict[str, Any], folder: str) -> Dict[str, Any]:
     return normalize_email_list_item({
         'id': item.get('id'),
+        'internetMessageHeaders': item.get('internetMessageHeaders', []),
+        'cc': ', '.join(r.get('emailAddress', {}).get('address', '') for r in item.get('ccRecipients', [])),
         'subject': item.get('subject', '无主题'),
         'from': item.get('from', {}).get('emailAddress', {}).get('address', '未知'),
         'to': ', '.join([
@@ -3759,6 +3774,7 @@ def fetch_account_folder_emails(account: Dict[str, Any], folder: str, skip: int,
         }
 
     if account.get('account_type') == 'imap':
+        recipient_options = {'recipient_address': account['_icloud_scan_address']} if account.get('_icloud_scan_address') else {}
         result = get_emails_imap_generic(
             account['email'],
             account.get('imap_password', ''),
@@ -3769,6 +3785,7 @@ def fetch_account_folder_emails(account: Dict[str, Any], folder: str, skip: int,
             skip,
             top,
             proxy_url,
+            **recipient_options,
         )
         if result.get('success'):
             return {
@@ -3862,6 +3879,8 @@ def fetch_account_folder_emails(account: Dict[str, Any], folder: str, skip: int,
 
 
 def fetch_account_emails(account: Dict[str, Any], folder: str, skip: int, top: int) -> Dict[str, Any]:
+    if account.get('icloud_address'):
+        return fetch_icloud_isolated_emails(account, folder, skip, top)
     proxy_url = get_account_proxy_url(account)
     fallback_proxy_urls = get_account_proxy_failover_urls(account)
     folder_name = normalize_folder_name(folder)
@@ -4237,6 +4256,9 @@ def api_get_raw_email(email_addr, message_id):
     if raw_content is None:
         return jsonify({'success': False, 'error': '获取原始邮件失败'})
 
+    if account.get('icloud_address') and not belongs_to(raw_content.encode() if isinstance(raw_content, str) else raw_content, account['icloud_address']):
+        return jsonify({'success': False, 'error': '邮件不属于该隐藏地址或缺少收件证据'}), 404
+
     if isinstance(raw_content, str):
         raw_text = raw_content
     else:
@@ -4270,6 +4292,17 @@ def normalize_email_detail_error(error: Any, fallback_message: str = '获取邮�
 def fetch_email_detail_for_account(account, message_id, method='graph', folder='inbox',
                                    id_mode='', prefer_local=False, strict_id_mode=False,
                                    force_method=False):
+    if account.get('icloud_address'):
+        primary = dict(account)
+        address = primary.pop('icloud_address')
+        result = fetch_email_detail_for_account(primary, message_id, method, folder, id_mode,
+            prefer_local=prefer_local, strict_id_mode=strict_id_mode, force_method=force_method)
+        if result.get('success') and belongs_to(result.get('email', {}), address):
+            return result
+        if prefer_local and result.get('source') == 'local_retention':
+            return fetch_email_detail_for_account(account, message_id, method, folder, id_mode,
+                prefer_local=False, strict_id_mode=strict_id_mode, force_method=force_method)
+        return {'success': False, 'error': '邮件不属于该隐藏地址或缺少收件证据', 'code': 'ICLOUD_MESSAGE_NOT_FOUND'}
     proxy_url = get_account_proxy_url(account)
     fallback_proxy_urls = get_account_proxy_failover_urls(account)
 
@@ -4362,6 +4395,10 @@ def api_get_email_detail(email_addr, message_id):
 
 
 def download_email_attachment_for_account(account, method, message_id, attachment_id, folder, proxy_url, fallback_proxy_urls, id_mode=''):
+    if account.get('icloud_address'):
+        checked = fetch_email_detail_for_account(account, message_id, method, folder, id_mode)
+        if not checked.get('success'):
+            return checked
     if account.get('account_type') == 'imap':
         return download_email_attachment_imap_generic_result(
             account['email'],
@@ -4399,6 +4436,10 @@ def download_email_attachment_for_account(account, method, message_id, attachmen
 
 
 def get_email_attachment_metadata_for_download(account, method, message_id, folder, proxy_url, fallback_proxy_urls, id_mode=''):
+    if account.get('icloud_address'):
+        checked = fetch_email_detail_for_account(account, message_id, method, folder, id_mode)
+        if not checked.get('success'):
+            return checked
     if account.get('account_type') == 'imap':
         detail_result = get_email_detail_imap_generic_result(
             account['email'],

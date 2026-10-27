@@ -1,0 +1,87 @@
+{
+  "source": "t508708/icloud-mail@a2b952c2b50992c15f0f54dff23a15a234189a50; synthetic protocol fixtures, not live captures",
+  "vector": {
+    "wantDerived": "9601fa505b07f7552bbfa237464cb59ed582258b5672fbc1eb57bd36f284bd55",
+    "wantA": "630acdff5d334462d92a29e0b7fa6e20020f3333292f6d3a640f1c7a76ad9d317531c57979952e5736c88db118d060dc0539a812b9b0af3b4002380a9f28ae4a7c45a896542de05fbcf76a4e7e0739b9a55d5d6c7aba4f1e1b58729a79bc084d5ff513eaec33ce978f5bad87e579b5a95fc773198e22697b2eadab9eb94f84cdcf1fe94ff09f88d4ca46e968bba443ff71167571f19feb052869bd28d7dabf963b7fe399a1f70e7e08d00e1a3778ed1dddc3325dd09e05d31e774d1fd295c4abfbc613446232004d67cb03d6a034d2ce6ca0a544a0ff5b434b4b4267fa6c6d72acbbda2efc1ef1d1fe36d35382b089abe556862aec35b29d3d0cdf359a9cfed3",
+    "wantB": "0c5f6ebc72f986145214a2a678a351fb39177e2a49f09d0deff1b70db87e9c6d193566d0cded170511aba1d5dd7b37609c33a7388291b1186a324638729cb6059d9ca14396dda0a2954baf428b44cf65377493ef12935ca050cb09733c6e5f8626646a7021206199c2b95a7bd0c26124ee4707b800149ae899f2305c3ed0c064383042796cd8daa7bc90d07c55679b3b21d10d80d9545b756a4e08c0674d75782dde6809ac54649c859dd5206578c19fffb518a32c61100c68f4d8e16441e5d681da1244066767e35d565d134921f0773fe816a04bf81fcaa994238acc5bedad3db777124220704035f6ecb4aec10ae77408ce048ccad7428e845f3de786522f",
+    "wantM1": "e41aa90f640a369544a1bfcea2c47aa3834cf0fd4b6086f28409a76d5dd24eb7",
+    "wantM2": "33a593c2c11554f2fd7d43165a6b77a0dd7795c4f722b8110b1933f0b0e8c50f",
+    "apple_id": "test@example.com",
+    "password": "correct horse battery staple",
+    "private": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+    "salt": "00112233445566778899aabbccddeeff"
+  },
+  "challenge": {
+    "salt": "ABEiM0RVZneImaq7zN3u/w==",
+    "b": "DF9uvHL5hhRSFKKmeKNR+zkXfipJ8J0N7/G3Dbh+nG0ZNWbQze0XBRGrodXdezdgnDOnOIKRsRhqMkY4cpy2BZ2coUOW3aCilUuvQotEz2U3dJPvEpNcoFDLCXM8bl+GJmRqcCEgYZnCuVp70MJhJO5HB7gAFJromfIwXD7QwGQ4MEJ5bNjap7yQ0HxVZ5s7IdENgNlUW3VqTgjAZ011eC3eaAmsVGSchZ3VIGV4wZ//tRijLGEQDGj02OFkQeXWgdoSRAZnZ+NdVl0TSSHwdz/oFqBL+B/KqZQjisxb7a09t3cSQiBwQDX27LSuwQrndAjOBIzK10KOhF8954ZSLw==",
+    "c": "fixture-challenge-not-a-real-token",
+    "iteration": 1000,
+    "protocol": "s2k_fo"
+  },
+  "regions": [
+    {
+      "region": "global",
+      "home": "https://www.icloud.com",
+      "setup": "https://setup.icloud.com/setup/ws/1",
+      "country": "US",
+      "premium": "https://p01-maildomainws.icloud.com"
+    },
+    {
+      "region": "cn",
+      "home": "https://www.icloud.com.cn",
+      "setup": "https://setup.icloud.com.cn/setup/ws/1",
+      "country": "CN",
+      "premium": "https://p01-maildomainws.icloud.com.cn"
+    }
+  ],
+  "web_directory": {
+    "success": true,
+    "result": {
+      "hmeEmails": [
+        {
+          "anonymousId": "fixture-web-a",
+          "hme": "synthetic.a@icloud.com",
+          "forwardToEmail": "receiver@example.com",
+          "isActive": true,
+          "label": "测试标签",
+          "note": "不含真实凭据"
+        },
+        {
+          "anonymousId": "fixture-web-b",
+          "hme": "synthetic.b@icloud.com",
+          "forwardToEmail": "receiver@example.com",
+          "isActive": false,
+          "label": "",
+          "note": ""
+        }
+      ],
+      "total": 2
+    }
+  },
+  "account_directory": {
+    "forwardToEmailAddress": "receiver@example.com",
+    "privateEmailList": [
+      {
+        "id": "fixture.account.a",
+        "emailAddress": "synthetic.a@icloud.com",
+        "active": true,
+        "label": "测试标签",
+        "note": ""
+      },
+      {
+        "emailAddress": "synthetic-relay@privaterelay.appleid.com"
+      }
+    ],
+    "inactivePrivateEmailList": [
+      {
+        "id": "fixture.account.b",
+        "emailAddress": "synthetic.b@icloud.com",
+        "active": false
+      }
+    ]
+  },
+  "account_fingerprint": {
+    "timestamp": 1700000000.25,
+    "expected": "Nla44j1e3NlY5BNlY5BSs5uQ32SCVgepPhLeBlV0R0odm_dhrxbuJjkWxv55DtOKepPhJOWVdIXaDK1dDvkEmdUeWy855BNlY5BNlriQB4bVNjMk.CJM"
+  }
+}

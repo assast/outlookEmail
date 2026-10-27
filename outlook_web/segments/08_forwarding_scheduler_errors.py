@@ -1571,6 +1571,10 @@ def init_scheduler():
 
                 jobs_added = add_webdav_backup_job(scheduler, CronTrigger, app_tzinfo) or jobs_added
 
+                manager = globals().get('icloud_manager')
+                if manager is not None:
+                    jobs_added = manager.restore(scheduler) or jobs_added
+
                 if not jobs_added:
                     return None
 
@@ -1595,6 +1599,9 @@ def shutdown_scheduler():
     global scheduler_instance
 
     with scheduler_lock:
+        manager = globals().get('icloud_manager')
+        if manager is not None:
+            manager.stop()
         if scheduler_instance is None:
             return
         try:

@@ -1883,6 +1883,8 @@ def api_get_account(account_id):
             'has_imap_password': bool(account.get('imap_password')),
             'imap_password': account.get('imap_password', '') or '',
             'aliases': account.get('aliases', []),
+            'managed_aliases': [row[0] for row in get_db().execute(
+                'SELECT alias_email FROM account_aliases WHERE account_id=? AND icloud_alias_id IS NOT NULL', (account_id,))],
             'alias_count': account.get('alias_count', 0),
             'matched_alias': account.get('matched_alias', ''),
             'forward_enabled': bool(account.get('forward_enabled')),

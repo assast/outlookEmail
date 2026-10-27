@@ -17,6 +17,7 @@
     {% include "partials/index/dialogs-primary.html" %}
     {% include "partials/index/dialogs-management.html" %}
     {% include "partials/index/dialogs-oauth.html" %}
+    {% include "partials/index/dialogs-icloud.html" %}
 
     <!-- 消息提示 -->
     <div class="toast" id="toast"></div>
@@ -39,6 +40,7 @@
     <script src="{{ url_for('static', filename='js/index/11-email-shares.js', v=frontend_asset_hash) }}"></script>
     <script src="{{ url_for('static', filename='js/index/12-outlook-upload-accounts.js', v=frontend_asset_hash) }}"></script>
     <script src="{{ url_for('static', filename='js/index/13-projects.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/14-icloud.js', v=frontend_asset_hash) }}"></script>
 
     <!-- 全屏查看邮件模态框 -->
     <div id="fullscreenEmailModal" class="fullscreen-email-modal" onmousedown="closeFullscreenEmailOnBackdrop(event)">

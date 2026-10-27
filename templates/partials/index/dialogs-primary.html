@@ -120,6 +120,7 @@
                                 <label class="form-label">邮箱类型</label>
                                 <select class="form-select" id="importProviderSelect" onchange="updateImportHint()">
                                     <option value="outlook">Outlook OAuth</option>
+                                    <option value="icloud">iCloud（App 专用密码）</option>
                                     <option value="gmail">Gmail</option>
                                     <option value="qq">QQ</option>
                                     <option value="163">163</option>
@@ -224,6 +225,7 @@
                                 <label class="form-label">邮箱类型</label>
                                 <select class="form-select" id="editProviderSelect" onchange="updateEditAccountFields()">
                                     <option value="outlook">Outlook OAuth</option>
+                                    <option value="icloud">iCloud（App 专用密码）</option>
                                     <option value="gmail">Gmail</option>
                                     <option value="qq">QQ</option>
                                     <option value="163">163</option>
@@ -386,6 +388,7 @@
                             <div class="form-group">
                                 <label class="form-label">别名邮箱</label>
                                 <textarea class="form-textarea edit-account-note" id="editAliases" placeholder="每行一个别名邮箱，例如&#10;alias1@example.com&#10;alias2@example.com" rows="4"></textarea>
+                                <p id="editManagedAliases" class="form-hint"></p>
                                 <div class="form-hint">支持多个别名。保存后，可直接用别名邮箱调用 API 获取该账号收到的邮件或验证码。</div>
                             </div>
                         </div>

@@ -2152,6 +2152,7 @@
 
         // 显示添加分组模态框
         const MAIL_PROVIDER_LABELS = {
+            icloud: 'iCloud',
             outlook: 'Outlook',
             gmail: 'Gmail',
             qq: 'QQ',
