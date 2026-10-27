@@ -6,6 +6,18 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.25] - 2026-10-27
+
+### Added
+- iCloud 管理（#101）：支持配置 Apple 主号、人工登录与双重验证码、同步/创建/停用/删除隐藏邮件地址、可选自动重登，并可将地址映射到对应的收信账号。
+- 普通邮箱支持 iCloud IMAP 与 App 专用密码；新增独立的 iCloud 使用说明，涵盖配置、备份和降级。
+
+### Security
+- Apple 登录密码、管理会话及自动重登配置加密保存；验证码仅用于当前验证流程，不持久化。
+
+### Important
+- 无需手动迁移。Apple 私有协议与长期续期尚未通过真实账号验收；请按使用说明自行验证登录、地址管理和收信。
+
 ## [3.0.24] - 2026-10-24
 
 ### Added
