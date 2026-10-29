@@ -69,6 +69,18 @@ docker-compose up -d
 2. **检查 API 权限** - 确保已添加所需的 API 权限
 3. **查看详细错误** - 打开浏览器开发者工具（F12），查看 Network 标签
 
+### IMAP 取信缓慢
+
+日志中的 `[imap]` 记录使用同一 `request_id` 串联一次列表或正文请求，`operation=list/detail` 区分操作。查看 `stage` 和 `elapsed_ms` 可定位耗时：
+
+- `connect`：DNS、TCP、TLS 和服务器问候。
+- `login`、`identify`、`select`、`search`：认证、客户端标识、文件夹选择和邮件搜索。
+- `fetch`、`parse`：网络拉取和邮件解析。
+- `logout`、`total`：关闭连接和总耗时。
+- Outlook IMAP 列表另有 `token` 阶段，用于刷新 OAuth 令牌。
+
+`fetch_commands`、`response_bytes`、`message_count` 分别显示拉取命令数、响应字节数和邮件数量；日志不包含密码、令牌或邮件内容。正常分页列表只批量获取邮件头和附件结构；正文在点开邮件时读取。服务器明确拒绝批量请求时，会记录 `batch_rejected` 并回退到逐封读取邮件头。
+
 ### 502 错误（Nginx）
 
 **原因：** 应用未正常启动或端口配置错误

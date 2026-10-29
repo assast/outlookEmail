@@ -1210,9 +1210,9 @@
                             <span class="release-notice-badge">最新</span>
                         </div>
                         <ul>
-                            <li>新增 iCloud 管理，可登录 Apple 主号并同步、管理隐藏邮件地址。</li>
-                            <li>可将隐藏邮件地址映射到收信账号；普通 iCloud 邮箱支持 App 专用密码。</li>
-                            <li>Apple 私有协议和长期续期仍需真实账号验证，详情见 README 中的 iCloud 使用说明。</li>
+                            <li>优化 IMAP 邮件列表加载，按页批量获取邮件头和附件信息。</li>
+                            <li>列表加载不再下载正文和附件，打开邮件时才读取正文，并保留已缓存预览。</li>
+                            <li>新增 IMAP 分阶段耗时日志，便于排查连接、搜索和邮件拉取缓慢的问题。</li>
                         </ul>
                     </div>
                 </div>

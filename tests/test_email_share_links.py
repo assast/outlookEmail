@@ -690,7 +690,7 @@ class EmailShareLinkTests(unittest.TestCase):
                     return 'OK', [b'42']
                 if command == 'FETCH':
                     return 'OK', [(
-                        b'42 (INTERNALDATE "14-Apr-2026 10:00:00 +0000" RFC822 {64}',
+                        b'42 (UID 42 INTERNALDATE "14-Apr-2026 10:00:00 +0000" BODY[HEADER] {64}',
                         raw_email,
                     )]
                 return 'NO', []
@@ -734,7 +734,7 @@ class EmailShareLinkTests(unittest.TestCase):
         self.assertFalse(result['has_more'])
         self.assertEqual(connection.uid_calls, [
             ('SORT', '(REVERSE ARRIVAL)', 'UTF-8', 'ALL'),
-            ('FETCH', b'42', '(INTERNALDATE RFC822)'),
+            ('FETCH', b'42', '(UID FLAGS INTERNALDATE BODYSTRUCTURE BODY.PEEK[HEADER])'),
         ])
         self.assertEqual(connection.fetch_calls, [])
         self.assertTrue(connection.logged_out)

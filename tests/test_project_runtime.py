@@ -2549,11 +2549,10 @@ class FrontendEmailBodyRetentionAndIframeTests(unittest.TestCase):
     def setUp(self):
         self.emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
 
-    def test_body_retention_failed_requests_are_retryable(self):
-        self.assertIn('const requestedKeys = items', self.emails_js)
-        self.assertIn('requestedKeys.forEach(key => requestedBodyRetentionKeys.add(key));', self.emails_js)
-        self.assertIn('requestedKeys.forEach(key => requestedBodyRetentionKeys.delete(key));', self.emails_js)
-        self.assertIn('if (data && data.success === false)', self.emails_js)
+    def test_bodies_are_fetched_on_detail_requests_instead_of_new_row_prefetch(self):
+        self.assertNotIn("fetch('/api/emails/retain-bodies'", self.emails_js)
+        self.assertIn('function buildEmailDetailRequestUrl(', self.emails_js)
+        self.assertIn("query.set('prefer_local', '1');", self.emails_js)
 
     def test_normal_detail_iframe_resize_resources_are_cleaned(self):
         self.assertIn('const normalDetailIframeResizeResources = { timers: [], observer: null };', self.emails_js)
@@ -2833,7 +2832,7 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('const mergeResult = mergeEmailListByStableKey(', apply_block)
         self.assertIn('currentEmails = mergeResult.emails;', apply_block)
         self.assertIn('renderEmailList(currentEmails);', apply_block)
-        self.assertIn('requestBodyRetentionForNewRows(newlySyncedRows, pending.options.folder);', apply_block)
+        self.assertNotIn('requestBodyRetentionForNewRows', apply_block)
         self.assertIn('scheduleNewEmailHighlightClear();', apply_block)
 
         self.assertIn("notice.setAttribute('role', 'button');", emails_js)
