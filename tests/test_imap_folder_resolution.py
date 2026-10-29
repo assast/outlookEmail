@@ -178,16 +178,12 @@ class ImapFolderResolutionTests(unittest.TestCase):
                 if command == 'FETCH':
                     uid = args[0]
                     uid_text = uid.decode('utf-8') if isinstance(uid, (bytes, bytearray)) else str(uid)
-                    if uid_text == '1':
-                        return 'OK', [(
-                            b'1 (FLAGS () INTERNALDATE "14-Apr-2026 10:00:00 +0000" RFC822 {128}',
-                            raw_old_header,
-                        )]
-                    if uid_text == '2':
-                        return 'OK', [(
-                            b'2 (FLAGS () INTERNALDATE "13-Apr-2026 10:00:00 +0000" RFC822 {128}',
-                            raw_new_header,
-                        )]
+                    return 'OK', [
+                        (b'1 (UID 1 FLAGS () INTERNALDATE "14-Apr-2026 10:00:00 +0000" BODY[HEADER] {128}', raw_old_header),
+                        b')',
+                        (b'2 (UID 2 FLAGS () INTERNALDATE "13-Apr-2026 10:00:00 +0000" BODY[HEADER] {128}', raw_new_header),
+                        b')',
+                    ]
                 return super().uid(command, *args, **kwargs)
 
         mail = GmailListMail(selectable={'INBOX'})
@@ -215,20 +211,15 @@ class ImapFolderResolutionTests(unittest.TestCase):
                 if command == 'FETCH':
                     uid = args[0]
                     uid_text = uid.decode('utf-8') if isinstance(uid, (bytes, bytearray)) else str(uid)
-                    minute = int(uid_text) % 60
-                    internal_date = f'14-Apr-2026 08:{minute:02d}:00 +0000'
-                    raw_email = (
-                        f"Subject: page message {uid_text}\r\n"
-                        "From: sender@example.com\r\n"
-                        "To: user@example.com\r\n"
-                        f"Date: Tue, 14 Apr 2026 08:{minute:02d}:00 +0000\r\n"
-                        "\r\n"
-                        "hello\r\n"
-                    ).encode('utf-8')
-                    return 'OK', [(
-                        f'{uid_text} (FLAGS () INTERNALDATE "{internal_date}" RFC822 {{{len(raw_email)}}}'.encode('utf-8'),
-                        raw_email,
-                    )]
+                    data = []
+                    for identifier in uid_text.split(','):
+                        minute = int(identifier) % 60
+                        raw_header = f'Subject: page message {identifier}\r\n\r\n'.encode()
+                        data.extend([(
+                            f'{identifier} (UID {identifier} FLAGS () INTERNALDATE "14-Apr-2026 08:{minute:02d}:00 +0000" BODY[HEADER] {{{len(raw_header)}}}'.encode(),
+                            raw_header,
+                        ), b')'])
+                    return 'OK', data
                 return super().uid(command, *args, **kwargs)
 
         def fetch_page(skip):
@@ -275,7 +266,7 @@ class ImapFolderResolutionTests(unittest.TestCase):
                 if command == 'FETCH':
                     return 'OK', [
                         (
-                            b'11 (INTERNALDATE "14-Apr-2026 08:20:50 +0000" RFC822 {128}',
+                            b'11 (UID 11 INTERNALDATE "14-Apr-2026 08:20:50 +0000" BODY[HEADER] {128}',
                             raw_email,
                         ),
                         b' FLAGS (\\Seen))',
@@ -767,10 +758,13 @@ class ImapFolderResolutionTests(unittest.TestCase):
 
             def fetch(self, message_id, query):
                 self.fetch_calls.append((str(message_id), query))
-                return 'OK', [(
-                    b'2 (FLAGS () INTERNALDATE "14-Apr-2026 08:20:50 +0000" RFC822 {128}',
-                    raw_email,
-                )]
+                data = []
+                for identifier in str(message_id).split(','):
+                    data.extend([(
+                        f'{identifier} (FLAGS () INTERNALDATE "14-Apr-2026 08:20:50 +0000" BODY[HEADER] {{128}}'.encode(),
+                        raw_email,
+                    ), b')'])
+                return 'OK', data
 
         first_mail = SearchTooLargeMail()
         second_mail = ReconnectedMail()
@@ -789,7 +783,7 @@ class ImapFolderResolutionTests(unittest.TestCase):
         self.assertEqual({item['subject'] for item in result['emails']}, {'too large fallback'})
         self.assertTrue(first_mail.logged_out)
         self.assertTrue(second_mail.logged_out)
-        self.assertEqual({call[0] for call in second_mail.fetch_calls}, {'1', '2'})
+        self.assertEqual([call[0] for call in second_mail.fetch_calls], ['2,1'])
 
     def test_custom_imap_search_too_large_reconnect_failure_keeps_error(self):
         class SearchTooLargeMail(FakeMail):

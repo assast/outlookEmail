@@ -88,6 +88,20 @@ class NormalMailRetentionTests(unittest.TestCase):
             'has_more': False,
         }
 
+    def test_header_only_sync_preserves_existing_preview(self):
+        item = self._remote_list_result()['emails'][1]
+        with self.app.app_context():
+            web_outlook_app.upsert_retained_normal_mail_list_items(self.account, 'inbox', [item])
+            web_outlook_app.upsert_retained_normal_mail_list_items(
+                self.account, 'inbox', [{**item, 'body_preview': '', 'is_read': False}]
+            )
+            row = web_outlook_app.get_db().execute(
+                'SELECT body_preview, is_read FROM retained_normal_mail_messages WHERE provider_message_id = ?',
+                (item['id'],),
+            ).fetchone()
+        self.assertEqual(row['body_preview'], 'Inbox preview')
+        self.assertEqual(row['is_read'], 0)
+
     def test_retention_enabled_setting_uses_process_cache(self):
         with self.app.app_context():
             web_outlook_app.clear_normal_mail_local_retention_enabled_cache()

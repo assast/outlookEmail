@@ -36,7 +36,9 @@ Remote sync must not block initial list rendering. A failed sync should leave th
 
 When background sync finds messages that were not already retained locally, the client should show a non-destructive new-message notice. The notice tells the user that newer remote messages are available without abruptly replacing the list while they are reading.
 
-Background sync must stage newly discovered rows without immediately merging them into the current visible list. After the user accepts the notice, the client merges the staged rows into the current list, highlights the newly visible messages, updates the list cache, and triggers best-effort body retention for the newly accepted rows.
+Background sync must stage newly discovered rows without immediately merging them into the current visible list. After the user accepts the notice, the client merges the staged rows into the current list, highlights the newly visible messages, and updates the list cache. Accepting the notice does not prefetch message bodies.
+
+IMAP lists fetch message headers, flags, arrival dates, and attachment structure in a single batch for the requested page. They do not download bodies or attachments. Previously retained previews are preserved; messages without a cached preview show the empty-preview placeholder until content is available.
 
 ## Detail body retention
 

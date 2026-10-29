@@ -417,7 +417,10 @@
                 const key = getEmailMessageStableKey(emailItem, fallbackFolder);
                 if (key && indexByKey.has(key)) {
                     const index = indexByKey.get(key);
-                    mergedEmails[index] = { ...mergedEmails[index], ...emailItem };
+                    mergedEmails[index] = {
+                        ...mergedEmails[index], ...emailItem,
+                        body_preview: emailItem.body_preview || mergedEmails[index].body_preview || ''
+                    };
                     return;
                 }
 
@@ -556,7 +559,6 @@
                 }
             }
             scheduleEmailListLoadCheck(80);
-            requestBodyRetentionForNewRows(newlySyncedRows, pending.options.folder);
             if (newlySyncedRows.length > 0) {
                 scheduleNewEmailHighlightClear();
             }
@@ -810,8 +812,6 @@
         let pendingReadEmailIds = new Set();
         let isBatchSelectMode = false;
         let highlightedNewEmailKeys = new Set();
-        const requestedBodyRetentionKeys = new Set();
-        const BODY_RETENTION_REQUEST_LIMIT = 5;
 
         function hideNewMailNotice() {
             const notice = document.getElementById('newMailNotice');
@@ -907,62 +907,6 @@
             }
 
             showNewMailNotice(visibleCount, syncKey);
-        }
-
-        function buildBodyRetentionItems(rows, fallbackFolder = currentFolder) {
-            const method = getRemoteMailboxMethodFallback();
-            return (rows || [])
-                .map(emailItem => ({
-                    id: String(emailItem?.id || '').trim(),
-                    folder: String(emailItem?.folder || fallbackFolder || 'inbox'),
-                    id_mode: String(emailItem?.id_mode || '').trim(),
-                    method
-                }))
-                .filter(item => item.id);
-        }
-
-        function getUnrequestedBodyRetentionItems(rows, fallbackFolder = currentFolder) {
-            const items = buildBodyRetentionItems(rows, fallbackFolder);
-            const unrequestedItems = items.filter(item => {
-                const key = getEmailMessageStableKey(item, fallbackFolder);
-                return key && !requestedBodyRetentionKeys.has(key);
-            });
-            return unrequestedItems.slice(0, BODY_RETENTION_REQUEST_LIMIT);
-        }
-
-        function requestBodyRetentionForNewRows(rows, fallbackFolder = currentFolder) {
-            const items = getUnrequestedBodyRetentionItems(rows, fallbackFolder);
-            if (!items.length || !currentAccount || isTempEmailGroup || !isNormalMailLocalRetentionEnabled()) {
-                return;
-            }
-
-            const requestedKeys = items
-                .map(item => getEmailMessageStableKey(item, fallbackFolder))
-                .filter(Boolean);
-            requestedKeys.forEach(key => requestedBodyRetentionKeys.add(key));
-
-            fetch('/api/emails/retain-bodies', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email: currentAccount,
-                    folder: fallbackFolder,
-                    method: getRemoteMailboxMethodFallback(),
-                    items
-                })
-            }).then(response => {
-                if (!response.ok) {
-                    throw new Error(`Retained body request failed with status ${response.status}`);
-                }
-                return response.json().catch(() => ({ success: true }));
-            }).then(data => {
-                if (data && data.success === false) {
-                    throw new Error(data.error || 'Retained body request failed');
-                }
-            }).catch(error => {
-                requestedKeys.forEach(key => requestedBodyRetentionKeys.delete(key));
-                console.warn('Retained mail body background fetch failed:', error);
-            });
         }
 
         function buildEmailDetailRequestUrl(messageId, folder, selectedEmail = {}) {
