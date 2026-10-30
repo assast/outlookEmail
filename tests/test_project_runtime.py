@@ -120,7 +120,7 @@ class ProjectRuntimeTests(unittest.TestCase):
             for key in before.keys() - {'status', 'updated_at'}:
                 self.assertEqual(after[key], before[key], key)
             self.assertEqual(web_outlook_app.query_refreshable_accounts()['total'], 1)
-            self.assertEqual(web_outlook_app.get_forwarding_enabled_accounts(), [])
+            self.assertEqual({a['id'] for a in web_outlook_app.get_forwarding_enabled_accounts()}, {unselected_id})
             claim = web_outlook_app.claim_project_account('batch-status', 'worker', 'unselected')
             self.assertEqual(claim['account_id'], unselected_id)
             self.assertTrue(web_outlook_app.complete_project_account_success(
@@ -138,7 +138,7 @@ class ProjectRuntimeTests(unittest.TestCase):
         self.assertEqual(restored['updated_count'], 2)
         with self.app.app_context():
             self.assertEqual(web_outlook_app.query_refreshable_accounts()['total'], 3)
-            self.assertEqual([a['id'] for a in web_outlook_app.get_forwarding_enabled_accounts()], [account_id])
+            self.assertEqual({a['id'] for a in web_outlook_app.get_forwarding_enabled_accounts()}, {account_id, inactive_id, unselected_id})
             claim = web_outlook_app.claim_project_account('batch-status', 'worker', 'task')
             self.assertIn(claim['account_id'], [account_id, inactive_id])
 
@@ -3057,8 +3057,8 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('id="refreshSelectedBtn"', settings_html)
         self.assertIn('id="refreshCopySelectedBtn"', settings_html)
         self.assertIn('id="refreshExportSelectedBtn"', settings_html)
-        self.assertIn('id="refreshEnableForwardingBtn"', settings_html)
-        self.assertIn('id="refreshDisableForwardingBtn"', settings_html)
+        self.assertNotIn('id="refreshEnableForwardingBtn"', settings_html)
+        self.assertNotIn('id="refreshDisableForwardingBtn"', settings_html)
         self.assertIn('id="refreshProxyBtn"', settings_html)
         self.assertIn('id="refreshAddTagBtn"', settings_html)
         self.assertIn('id="refreshRemoveTagBtn"', settings_html)

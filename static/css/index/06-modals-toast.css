@@ -2023,6 +2023,36 @@
             letter-spacing: 0.04em;
         }
 
+        .source-forwarding-console {
+            display: grid;
+            gap: 16px;
+            border-top: 1px solid var(--skin-border);
+            padding-top: 20px;
+        }
+
+        .source-forwarding-console [hidden] { display: none !important; }
+        .source-forwarding-console [data-forward-panel] { display: grid; gap: 16px; min-width: 0; }
+        .source-forwarding-console [role="tab"][aria-selected="true"] { border-color: var(--skin-primary); font-weight: 600; }
+        .source-forwarding-targets { display: flex; flex-wrap: wrap; gap: 12px 20px; }
+        .source-forwarding-row { padding: 14px; border: 1px solid var(--skin-border); border-radius: 8px; overflow-wrap: anywhere; }
+        .source-forwarding-row .settings-action-row { margin-top: 10px; }
+        .source-forwarding-console .settings-note:empty { display: none; }
+        .source-forwarding-console .settings-note, #forwardScanStatus { white-space: pre-line; }
+        #forwardPolicySourceField { min-width: 0; }
+        .forward-source-picker { position: relative; min-width: 0; }
+        .forward-source-picker > summary { display: flex; align-items: center; cursor: pointer; list-style: none; }
+        .forward-source-picker > summary::-webkit-details-marker { display: none; }
+        .forward-source-picker > summary span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .forward-source-picker > summary::after { content: '⌄'; margin-left: auto; padding-left: 10px; }
+        .forward-source-menu { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 20; display: grid; gap: 10px; padding: 12px; border: 1px solid var(--skin-border); border-radius: 8px; background: var(--skin-surface); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); }
+        .forward-source-menu .settings-action-row { margin: 0; gap: 8px; }
+        .forward-source-menu .btn { padding: 7px 10px; font-size: 12px; }
+        .forward-source-options { max-height: 210px; overflow-y: auto; overscroll-behavior: contain; }
+        .forward-source-option { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px; border-radius: 5px; cursor: pointer; }
+        .forward-source-option:has(input:checked), .forward-source-option:hover { background: var(--skin-surface-hover); }
+        .forward-source-option input { flex-shrink: 0; accent-color: var(--skin-primary); }
+        .forward-source-option span { min-width: 0; overflow-wrap: anywhere; }
+
         .forward-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));

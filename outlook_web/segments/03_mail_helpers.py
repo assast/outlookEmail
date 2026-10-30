@@ -294,16 +294,18 @@ def build_request_kwargs_for_proxy(kwargs: Dict[str, Any], proxy_candidate: str)
 
 
 def request_with_proxy_failover(method: str, url: str, *, proxy_url: str = None,
-                                fallback_proxy_urls: Optional[List[str]] = None, **kwargs):
+                                fallback_proxy_urls: Optional[List[str]] = None,
+                                sensitive_url: bool = False, **kwargs):
+    logged_url = '[通知地址已隐藏]' if sensitive_url else url
     candidates = get_proxy_failover_candidates(proxy_url or '', fallback_proxy_urls)
     if not candidates:
-        log_outbound_proxy_usage(f'{method.upper()} {url}', '')
+        log_outbound_proxy_usage(f'{method.upper()} {logged_url}', '')
         return requests.request(method, url, **kwargs)
 
     last_exc = None
     proxy_failures = []
     for index, (label, candidate) in enumerate(candidates):
-        log_outbound_proxy_usage(f'{method.upper()} {url}', candidate, label=label)
+        log_outbound_proxy_usage(f'{method.upper()} {logged_url}', candidate, label=label)
         request_kwargs = build_request_kwargs_for_proxy(kwargs, candidate)
         try:
             response = requests.request(method, url, **request_kwargs)
@@ -312,7 +314,7 @@ def request_with_proxy_failover(method: str, url: str, *, proxy_url: str = None,
                     "Proxy candidate %s succeeded for %s %s after previous failures",
                     label,
                     method.upper(),
-                    url,
+                    logged_url,
                 )
             return response
         except Exception as exc:
@@ -333,8 +335,8 @@ def request_with_proxy_failover(method: str, url: str, *, proxy_url: str = None,
                 "Proxy candidate %s failed for %s %s: %s",
                 label,
                 method.upper(),
-                url,
-                sanitize_error_details(str(exc)),
+                logged_url,
+                type(exc).__name__ if sensitive_url else sanitize_error_details(str(exc)),
             )
 
     if last_exc:

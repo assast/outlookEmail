@@ -44,7 +44,7 @@
                                 <li>
                                     <button type="button" class="settings-sidebar-link" data-target="forwardingSettingsSection" onclick="scrollSettingsSection('forwardingSettingsSection', this)">
                                         <strong>邮件转发</strong>
-                                        <span>SMTP、Telegram 渠道及历史记录</span>
+                                        <span>通知渠道、邮箱/分组/域名关联与历史</span>
                                     </button>
                                 </li>
                                 <li>
@@ -389,9 +389,13 @@
                     <div class="settings-section-head">
                         <span class="settings-section-kicker">Forwarding</span>
                         <h4>邮件转发设置</h4>
-                        <p>这里配置全局转发渠道；实际是否参与转发，仍以每个账号单独开启的状态为准。</p>
+                        <p>关联通知渠道即可按具体邮箱、分组或 CF 域名分别通知，未单独配置的子分组自动使用父级配置。</p>
                     </div>
                     <div class="settings-panel settings-panel-stack forwarding-console">
+                        {% include "partials/index/forwarding-console.html" %}
+                        <details>
+                            <summary>轮询与普通邮箱筛选设置</summary>
+                            <div class="settings-panel-stack">
                         <div class="forwarding-toolbar">
                             <div class="forwarding-toolbar__controls">
                                 <div class="forwarding-inline-control">
@@ -400,7 +404,7 @@
                                         <input type="number" class="form-input" id="forwardCheckIntervalSeconds" min="20" max="3600" value="300">
                                         <span>秒</span>
                                     </div>
-                                    <div class="form-hint">系统会按该频率扫描已开启转发的邮箱。</div>
+                                    <div class="form-hint">按该频率扫描有通知规则的活跃邮箱及 CF Worker。</div>
                                 </div>
                                 <div class="forwarding-inline-control">
                                     <label class="form-label">执行模式</label>
@@ -449,9 +453,11 @@
                         <div class="form-group">
                             <label class="form-label" for="forwardKeywords">转发关键词筛选</label>
                             <textarea class="form-input" id="forwardKeywords" rows="3" placeholder="Access deactivated&#10;账号已停用"></textarea>
-                            <div class="form-hint">每行一个关键词，主题或正文包含任意一个才转发，不区分大小写；留空转发全部邮件，对所有转发渠道生效。</div>
+                            <div class="form-hint">仅用于普通邮箱：每行一个关键词，主题或正文包含任意一个才转发，不区分大小写；留空转发全部。CF 按自己的来源关联通知。</div>
                             <div class="form-hint">修改后如需重新检查之前的邮件，请在账号转发日志中回退游标；已成功转发过的邮件仍会去重。</div>
                         </div>
+                            </div>
+                        </details>
                         <div class="form-group forwarding-channel-group">
                             <div class="forwarding-channel-group__head">
                                 <label class="form-label">转发渠道</label>
@@ -489,7 +495,7 @@
                             </div>
                         </div>
                         <div class="forward-channel-empty" id="forwardChannelEmptyState" hidden>
-                            当前未选择任何转发渠道。保存后，即使账号已开启转发，也不会向外发送通知。
+                            当前未选择任何转发渠道，不会向外发送通知。
                         </div>
                         <div class="forward-channel-panels" id="forwardChannelPanels">
                             <section class="forward-channel-panel forward-channel-panel--smtp" data-channel="smtp" hidden>
@@ -907,8 +913,6 @@
                                 <button class="batch-btn batch-btn-primary" type="button" id="refreshSelectedBtn" onclick="refreshSelectedRefreshAccounts()">刷新已选</button>
                                 <button class="batch-btn batch-btn-accent" type="button" id="refreshCopySelectedBtn" onclick="copySelectedRefreshAccountsWithAliases()">复制邮箱+别名</button>
                                 <button class="batch-btn batch-btn-accent" type="button" id="refreshExportSelectedBtn" onclick="exportSelectedRefreshAccounts()">导出</button>
-                                <button class="batch-btn batch-btn-accent" type="button" id="refreshEnableForwardingBtn" onclick="enableForwardingForSelectedRefreshAccounts()">开启转发</button>
-                                <button class="batch-btn batch-btn-accent" type="button" id="refreshDisableForwardingBtn" onclick="disableForwardingForSelectedRefreshAccounts()">取消转发</button>
                                 <button class="batch-btn batch-btn-accent" type="button" id="refreshProxyBtn" onclick="showRefreshBatchProxyModal()">代理</button>
                                 <button class="batch-btn batch-btn-accent" type="button" id="refreshAddTagBtn" onclick="showRefreshBatchTagModal('add')">标签+</button>
                                 <button class="batch-btn batch-btn-accent" type="button" id="refreshRemoveTagBtn" onclick="showRefreshBatchTagModal('remove')">标签-</button>

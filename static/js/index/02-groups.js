@@ -1399,12 +1399,6 @@
             }
         }
 
-        function showForwardStatusLabel(enabled) {
-            return enabled
-                ? '<span class="account-status-pill success" title="已开启转发">转</span>'
-                : '';
-        }
-
         function renderAccountTagSummary(tags, accountId) {
             const safeTags = Array.isArray(tags) ? tags : [];
             const visibleTags = safeTags.slice(0, 2);
@@ -1559,7 +1553,6 @@
                                 style="--pill-accent: ${acc.account_type === 'imap' ? '#0ea5e9' : '#2563eb'}">
                                 ${escapeHtml(getProviderLabel(acc.provider || (acc.account_type === 'imap' ? 'custom' : 'outlook')))}
                             </span>
-                            ${showForwardStatusLabel(!!acc.forward_enabled)}
                             ${acc.status === 'inactive' ? '<span class="account-status-pill muted">已停用</span>' : ''}
                             ${acc.last_refresh_status === 'failed' ? '<span class="account-status-pill danger">刷新失败</span>' : ''}
                         </div>

@@ -14,6 +14,9 @@
                     <label class="form-label">分组描述</label>
                     <input type="text" class="form-input" id="groupDescription" placeholder="可选">
                 </div>
+                <div class="settings-action-row">
+                    <button class="btn btn-secondary" type="button" onclick="editingGroupId ? openForwardingSource('group', editingGroupId) : showToast('请先保存分组，再设置通知', 'info')">通知渠道与继承设置</button>
+                </div>
                 <div class="form-group">
                     <label class="form-label">排序位置</label>
                     <select class="form-select" id="groupSortPosition"></select>
@@ -171,13 +174,6 @@
                                     <option value="inactive">停用</option>
                                 </select>
                             </div>
-                            <div class="form-group import-account-default-field" id="importForwardGroup">
-                                <label class="settings-toggle settings-toggle--inline">
-                                    <input type="checkbox" id="importForwardEnabled">
-                                    <span class="form-label">导入后启用邮件转发</span>
-                                </label>
-                                <div class="form-hint">开启后，新导入账号会立即参与转发轮询。</div>
-                            </div>
                         </div>
                     </section>
                     <section class="import-account-source">
@@ -209,6 +205,9 @@
             </div>
             <div class="modal-body edit-account-modal-body">
                 <input type="hidden" id="editAccountId">
+                <div class="settings-action-row">
+                    <button class="btn btn-secondary" type="button" onclick="openForwardingSource('account', Number(document.getElementById('editAccountId').value))">此邮箱的通知设置</button>
+                </div>
                 <div class="edit-account-shell">
                     <section class="edit-account-card edit-account-card--primary">
                         <div class="edit-account-card-head">
@@ -253,13 +252,6 @@
                                 <label class="form-label">排序值</label>
                                 <input type="number" class="form-input" id="editSortOrder" min="0" step="1" value="0">
                                 <div class="form-hint">值越小越靠前，填 0 表示不参与自定义排序。</div>
-                            </div>
-                            <div class="form-group edit-account-span-2">
-                                <label class="settings-toggle settings-toggle--inline">
-                                    <input type="checkbox" id="editForwardEnabled">
-                                    <span class="form-label">启用邮件转发</span>
-                                </label>
-                                <div class="form-hint">开启后会按系统设置转发到邮箱或 Telegram。</div>
                             </div>
                             <div class="form-group edit-account-span-2">
                                 <label class="form-label">标签</label>
