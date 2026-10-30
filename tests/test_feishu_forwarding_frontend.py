@@ -207,5 +207,5 @@ def test_feishu_panel_is_inside_the_channel_container():
             pass
 
     parser = Parser()
-    parser.feed((ROOT / 'templates/partials/index/dialogs-management.html').read_text())
+    parser.feed((ROOT / 'templates/partials/index/forwarding-runtime-settings.html').read_text())
     assert parser.found

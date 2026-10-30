@@ -283,7 +283,6 @@
             populateTimeZoneOptions(getAppTimeZone());
             await loadSettings();
             await loadSkinSettings();
-            if (typeof loadSourceForwarding === 'function') await loadSourceForwarding();
             scheduleSettingsSidebarSync();
         }
 
@@ -1787,6 +1786,7 @@
                     const retentionEnabled = parseSettingsBoolean(data.settings.normal_mail_local_retention_enabled);
                     document.getElementById('normalMailLocalRetentionEnabled').checked = retentionEnabled;
                     setNormalMailLocalRetentionEnabled(retentionEnabled);
+                    if (typeof isDedicatedForwardingUI !== 'function' || !isDedicatedForwardingUI()) {
                     const fallbackForwardSeconds = String((parseInt(data.settings.forward_check_interval_minutes || '5', 10) || 5) * 60);
                     document.getElementById('forwardCheckIntervalSeconds').value = data.settings.forward_check_interval_seconds || fallbackForwardSeconds;
                     document.getElementById('forwardExecutionMode').value = data.settings.forward_execution_mode === 'parallel' ? 'parallel' : 'serial';
@@ -1795,6 +1795,7 @@
                     document.getElementById('forwardEmailWindowMinutes').value = data.settings.forward_email_window_minutes || '0';
                     document.getElementById('forwardIncludeJunkemail').checked = String(data.settings.forward_include_junkemail) === 'true';
                     document.getElementById('forwardKeywords').value = data.settings.forward_keywords || '';
+                    }
                     document.getElementById('settingsEmailForwardRecipient').value = data.settings.email_forward_recipient || '';
                     document.getElementById('settingsSmtpHost').value = data.settings.smtp_host || '';
                     document.getElementById('settingsSmtpPort').value = data.settings.smtp_port || '465';
@@ -1928,6 +1929,7 @@
                 showToast('邮件获取超时必须在 30-300 秒之间', 'error');
                 return;
             }
+            if (typeof isDedicatedForwardingUI !== 'function' || !isDedicatedForwardingUI()) {
             if (Number.isNaN(forwardSeconds) || forwardSeconds < 20 || forwardSeconds > 3600) {
                 showToast('转发轮询间隔必须在 20-3600 秒之间', 'error');
                 return;
@@ -1947,6 +1949,7 @@
             if (Number.isNaN(forwardWindowMinutes) || forwardWindowMinutes < 0 || forwardWindowMinutes > 10080) {
                 showToast('转发邮件时间范围必须在 0-10080 分钟之间', 'error');
                 return;
+            }
             }
             if (forwardChannels.includes('smtp') && !smtpRecipient) {
                 showToast('启用 SMTP 转发时必须填写转发到邮箱', 'error');

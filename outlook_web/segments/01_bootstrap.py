@@ -743,6 +743,9 @@ INDEX_CSS_FILES = (
     'css/index/07-meta.css',
     'css/index/08-responsive.css',
     'css/index/09-icloud.css',
+    'css/index/forwarding/tokens.css',
+    'css/index/forwarding/base.css',
+    'css/index/10-forwarding.css',
 )
 INDEX_JS_FILES = (
     'js/index/01-core.js',

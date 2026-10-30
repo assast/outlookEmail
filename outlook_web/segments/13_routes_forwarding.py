@@ -1,6 +1,12 @@
 """Named notification channels and source routing endpoints."""
 
 
+@app.route('/forwarding')
+@login_required
+def forwarding_management_page():
+    return index()
+
+
 def sync_legacy_forwarding(db=None):
     db = db if db is not None else get_db()
     forwarding_store.sync_legacy(db, encrypt_data, decrypt_data)
@@ -91,7 +97,7 @@ def api_notification_channel_test():
         return forwarding_api_error(exc)
 
 
-@app.route('/api/forwarding/policies', methods=['GET', 'PUT', 'DELETE'])
+@app.route('/api/forwarding/policies', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @login_required
 def api_forwarding_policies():
     db = get_db()
@@ -109,10 +115,10 @@ def api_forwarding_policies():
             db.commit()
             reconcile_forwarding_deliveries()
             return jsonify({'success': True, 'count': len(scopes)})
-        if request.method == 'PUT':
+        if request.method in ('POST', 'PUT'):
             data = request.get_json(silent=True)
             scopes = forwarding_store.policy_scopes(db, data)
-            results = [forwarding_store.save_policy(db, {**data, 'scope_type': scope[0], 'scope_id': scope[1], 'match_value': scope[2]}) for scope in scopes]
+            results = [forwarding_store.save_policy(db, {**data, 'scope_type': scope[0], 'scope_id': scope[1], 'match_value': scope[2]}, create_only=request.method == 'POST') for scope in scopes]
             db.commit()
             reconcile_forwarding_deliveries()
             return jsonify({'success': True, 'policy': results[0], 'policies': results, 'count': len(results)})

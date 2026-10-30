@@ -1,16 +1,15 @@
 <div id="sourceForwardingConsole" class="source-forwarding-console">
-    <div class="settings-action-row" role="tablist" aria-label="邮件通知管理">
-        <button class="btn btn-secondary" type="button" role="tab" data-forward-tab="channels" onclick="showForwardingTab('channels')">通知渠道</button>
-        <button class="btn btn-secondary" type="button" role="tab" data-forward-tab="policies" onclick="showForwardingTab('policies')">来源关联</button>
-        <button class="btn btn-secondary" type="button" role="tab" data-forward-tab="history" onclick="showForwardingTab('history')">转发历史</button>
-        <button class="btn btn-secondary" type="button" onclick="loadSourceForwarding()">刷新</button>
+    <div class="forwarding-tabs" role="tablist" aria-label="邮件通知管理">
+        <button type="button" role="tab" data-forward-tab="policies" onclick="showForwardingTab('policies')">转发规则</button>
+        <button type="button" role="tab" data-forward-tab="channels" onclick="showForwardingTab('channels')">通知渠道</button>
+        <button type="button" role="tab" data-forward-tab="history" onclick="showForwardingTab('history')">投递历史</button>
+        <button type="button" role="tab" data-forward-tab="runtime" onclick="showForwardingTab('runtime')">运行设置</button>
     </div>
     <p id="sourceForwardingStatus" class="form-hint" role="status"></p>
-    <div data-forward-panel="channels">
-        <div class="settings-action-row"><button class="btn btn-primary" type="button" onclick="editNotificationChannel()">新建通知渠道</button></div>
-        <p class="form-hint">先配置通知目标，再关联邮箱、分组或 CF 域名。同类型可创建多个渠道。</p>
-        <div id="notificationChannelList" class="settings-log-list"></div>
-        <div id="notificationChannelEditor" class="settings-panel settings-panel-stack" hidden>
+    <section data-forward-panel="channels" hidden>
+        <div class="forwarding-section-head"><div><h2>通知渠道</h2><p>同类型可添加多个通知目标，供不同来源复用。</p></div><button class="btn btn-primary" type="button" onclick="editNotificationChannel()">新增渠道</button></div>
+        <div class="forwarding-table-wrap" tabindex="0" aria-label="通知渠道表格，可左右滚动"><table class="forwarding-table"><thead><tr><th scope="col">渠道名称</th><th scope="col">状态</th><th scope="col">引用与待处理</th><th scope="col">操作</th></tr></thead><tbody id="notificationChannelList"></tbody></table></div>
+        <div id="notificationChannelEditor" class="forwarding-editor" hidden>
             <div class="forward-grid">
                 <div class="form-group"><label class="form-label" for="notificationChannelName">渠道名称</label><input id="notificationChannelName" class="form-input" maxlength="100" placeholder="例如：工作飞书群"></div>
                 <div class="form-group"><label class="form-label" for="notificationChannelType">通知类型</label><select id="notificationChannelType" class="form-select" onchange="renderNotificationFields()"><option value="feishu">飞书</option><option value="telegram">Telegram</option><option value="wecom">企业微信</option><option value="smtp">SMTP 邮件</option></select></div>
@@ -23,9 +22,13 @@
                 <button class="btn btn-secondary" type="button" onclick="document.getElementById('notificationChannelEditor').hidden=true">取消</button>
             </div>
         </div>
-    </div>
-    <div data-forward-panel="policies" hidden>
-        <p class="form-hint">普通邮箱：账号 → 分组 → 默认。CF：完整地址 → 域名 → Worker 默认。最近的明确配置覆盖上层，未配置时继承。</p>
+    </section>
+    <section data-forward-panel="policies">
+        <div class="forwarding-section-head"><div><h2>转发规则</h2><p>按邮箱、分组或 CF 来源通知，未独立配置时自动使用上层。</p></div><button class="btn btn-primary" type="button" onclick="showForwardingPolicyEditor()">新增关联</button></div>
+        <div class="forwarding-table-wrap" tabindex="0" aria-label="转发规则表格，可左右滚动"><table class="forwarding-table forwarding-rules-table"><thead><tr><th scope="col">邮件来源</th><th scope="col">通知目标</th><th scope="col">操作</th></tr></thead><tbody id="forwardPolicyList"></tbody></table></div>
+        <p class="forwarding-table-note">关联只支持新增与删除。删除后使用上层配置；需停止通知时，新增“关闭通知”规则。</p>
+        <div id="forwardPolicyEditor" class="forwarding-editor" hidden>
+        <div class="forwarding-section-head"><h3>新增来源关联</h3><button class="btn btn-secondary" type="button" onclick="document.getElementById('forwardPolicyEditor').hidden=true">收起</button></div>
         <div class="forward-grid">
             <div class="form-group"><label class="form-label" for="forwardPolicyScope">来源范围</label><select id="forwardPolicyScope" class="form-select" onchange="changeForwardingScope()"><option value="normal_default">普通邮箱默认</option><option value="group">普通邮箱分组</option><option value="account">具体普通邮箱</option><option value="cloudflare_worker">CF Worker 默认</option><option value="cloudflare_domain">CF 完整域名</option><option value="cloudflare_address">CF 具体邮箱</option></select></div>
             <div id="forwardPolicySourceField" class="form-group">
@@ -49,8 +52,7 @@
         <p id="forwardPolicyAccountStatus" class="form-hint"></p>
         <div id="forwardPolicyTargets" class="source-forwarding-targets"></div>
         <div class="settings-action-row">
-            <button class="btn btn-secondary" type="button" onclick="loadForwardingPolicy()">加载配置</button>
-            <button class="btn btn-primary" type="button" onclick="saveForwardingPolicy(this)">保存关联</button>
+            <button class="btn btn-primary" type="button" onclick="saveForwardingPolicy(this)">新增关联</button>
         </div>
         <div class="forward-grid">
             <div id="forwardPreviewAccountField" class="form-group"><label class="form-label" for="forwardPreviewAccount">预览邮箱</label><select id="forwardPreviewAccount" class="form-select"></select></div>
@@ -59,11 +61,12 @@
         </div>
         <div class="settings-action-row"><button class="btn btn-secondary" type="button" onclick="previewForwardingPolicy(this)">预览已保存配置</button></div>
         <div id="forwardPolicyPreview" class="settings-note" role="status"></div>
-        <p class="form-hint">未单独配置的账号和子分组自动使用上层配置，无需额外开启转发。CF 地址无需导入本地；新增关联从后续新邮件生效，同一封邮件对同一渠道只投递一次。</p>
-        <p class="form-hint">删除转发规则后自动使用上层配置；删除默认规则后默认不通知。若要明确停止通知，请将通知方式设为“关闭通知”。</p>
-        <div id="forwardPolicyList" class="settings-log-list"></div>
-    </div>
-    <div data-forward-panel="history" hidden>
+        <p class="form-hint">普通邮箱依次匹配账号、分组和默认配置；CF 依次匹配完整地址、域名和 Worker 默认。指定渠道覆盖上层，关闭通知终止回退。</p>
+        <p class="form-hint">CF 地址无需导入本地。新增关联仅处理后续新邮件，同一封邮件对同一渠道只投递一次。</p>
+        </div>
+    </section>
+    <section data-forward-panel="history" hidden>
+        <div class="forwarding-section-head"><div><h2>投递历史</h2><p>查看每个来源和通知渠道的独立投递结果。</p></div></div>
         <div class="forward-grid">
             <div class="form-group"><label class="form-label" for="forwardHistorySource">邮件来源</label><select id="forwardHistorySource" class="form-select"><option value="">全部</option><option value="account">普通邮箱</option><option value="cloudflare">CF 邮箱</option></select></div>
             <div class="form-group"><label class="form-label" for="forwardHistoryChannel">通知渠道</label><select id="forwardHistoryChannel" class="form-select"></select></div>
@@ -72,6 +75,7 @@
         </div>
         <div class="settings-action-row"><button class="btn btn-secondary" type="button" onclick="loadForwardingHistory(0)">查询</button><button id="forwardHistoryPrevious" class="btn btn-secondary" type="button" onclick="changeForwardingHistoryPage(-1)">上一页</button><button id="forwardHistoryNext" class="btn btn-secondary" type="button" onclick="changeForwardingHistoryPage(1)">下一页</button></div>
         <div id="forwardScanStatus" class="form-hint" role="status"></div>
-        <div id="sourceForwardingHistory" class="settings-log-list"></div>
-    </div>
+        <div class="forwarding-table-wrap" tabindex="0" aria-label="投递历史表格，可左右滚动"><table class="forwarding-table"><thead><tr><th scope="col">时间</th><th scope="col">邮件来源</th><th scope="col">通知渠道</th><th scope="col">投递结果</th></tr></thead><tbody id="sourceForwardingHistory"></tbody></table></div>
+    </section>
+    <section data-forward-panel="runtime" hidden>{% include "partials/index/forwarding-runtime-settings.html" %}</section>
 </div>

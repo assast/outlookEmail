@@ -27,6 +27,23 @@ SCOPES = {'normal_default', 'group', 'account', 'cloudflare_worker', 'cloudflare
 UNFINISHED = ('pending', 'failed', 'blocked', 'sending')
 
 
+def normalize_channel_selection(raw_channels):
+    if isinstance(raw_channels, str):
+        values = raw_channels.split(',')
+    elif isinstance(raw_channels, (list, tuple, set)):
+        values = raw_channels
+    else:
+        values = []
+    aliases = {'email': 'smtp', 'smtp': 'smtp', 'tg': 'telegram', 'telegram': 'telegram',
+               'wecom': 'wecom', 'wechatwork': 'wecom', 'qywx': 'wecom', 'feishu': 'feishu'}
+    normalized = []
+    for value in values:
+        kind = aliases.get(str(value).strip().lower())
+        if kind and kind not in normalized:
+            normalized.append(kind)
+    return normalized
+
+
 def normalize_domain(value):
     raw = str(value or '').strip().lstrip('@').rstrip('.')
     try:
@@ -197,9 +214,16 @@ def init_schema(db, encrypt, decrypt):
         if not marker:
             sync_legacy(db, encrypt, decrypt, initial=True)
             db.execute("INSERT INTO settings(key,value) VALUES ('source_forwarding_migrated','1')")
-        if not db.execute("SELECT 1 FROM settings WHERE key='source_forwarding_account_switch_retired'").fetchone():
+        repaired_legacy_default = False
+        if not db.execute("SELECT 1 FROM settings WHERE key='source_forwarding_channel_selection_v2'").fetchone():
+            default = get_policy(db, 'normal_default')
+            if marker and default['id'] is not None and default['updated_at'] == 0:
+                sync_legacy(db, encrypt, decrypt, initial=True)
+                repaired_legacy_default = True
+            db.execute("INSERT INTO settings(key,value) VALUES ('source_forwarding_channel_selection_v2','1')")
+        if repaired_legacy_default or not db.execute("SELECT 1 FROM settings WHERE key='source_forwarding_account_switch_retired'").fetchone():
             retire_account_switch(db)
-            db.execute("INSERT INTO settings(key,value) VALUES ('source_forwarding_account_switch_retired','1')")
+            db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES ('source_forwarding_account_switch_retired','1')")
         db.execute('RELEASE forwarding_schema')
     except Exception:
         db.execute('ROLLBACK TO forwarding_schema')
@@ -305,8 +329,8 @@ def sync_legacy(db, encrypt, decrypt, initial=False):
                 if changed:
                     db.execute("UPDATE forwarding_deliveries SET status='cancelled', claim_token=NULL WHERE channel_id=? AND status IN ('pending','failed','blocked')", (row['id'],))
             by_type[kind] = row['id']
-    raw_selection = str(settings.get('forward_channels', 'auto')).lower()
-    selected = configured if raw_selection in ('auto', '') else [] if raw_selection == 'none' else raw_selection.split(',')
+    raw_selection = str(settings.get('forward_channels', 'auto')).strip().lower()
+    selected = configured if raw_selection in ('auto', '') else [] if raw_selection == 'none' else normalize_channel_selection(raw_selection)
     selected_ids = [by_type[k] for k in selected if k in by_type and k in configured]
     row = db.execute("SELECT * FROM forwarding_policies WHERE scope_type='normal_default'").fetchone()
     if not row:
@@ -358,12 +382,11 @@ def policy_scopes(db, data):
 
 
 def retire_account_switch(db):
-    """Preserve legacy opt-outs without retaining a second runtime gate."""
+    """Snapshot legacy opt-outs once while keeping the runtime policy-driven."""
     default = get_policy(db, 'normal_default')
-    if default['mode'] != 'custom' or default['updated_at'] != 0:
+    if default['id'] is None or default['updated_at'] != 0:
         return
-    channels = [get_channel(db, cid) for cid in default['channel_ids']]
-    if not channels or any(not row['legacy_key'] for row in channels):
+    if any(not get_channel(db, cid)['legacy_key'] for cid in default['channel_ids']):
         return
     for account in db.execute('SELECT id FROM accounts WHERE COALESCE(forward_enabled,0)=0').fetchall():
         if get_policy(db, 'account', account['id'])['id'] is not None:
@@ -384,13 +407,15 @@ def get_policy(db, scope_type, scope_id=0, match_value=''):
     return value
 
 
-def save_policy(db, data):
+def save_policy(db, data, *, create_only=False):
     if not isinstance(data, dict):
         raise ValueError('来源配置必须为对象')
     scope = normalize_scope(db, data.get('scope_type'), data.get('scope_id', 0), data.get('match_value', ''))
     mode = data.get('mode')
     if mode not in ('inherit', 'custom', 'off') or mode == 'inherit' and scope[0] in ('normal_default', 'cloudflare_worker'):
         raise ValueError('通知模式无效')
+    if create_only and mode == 'inherit':
+        raise ValueError('新增转发规则请选择指定渠道或关闭通知')
     ids = data.get('channel_ids', [])
     if not isinstance(ids, list) or any(not isinstance(v, int) or isinstance(v, bool) or v < 1 for v in ids):
         raise ValueError('渠道列表必须是渠道 ID 数组')
@@ -401,7 +426,10 @@ def save_policy(db, data):
         raise ValueError('通知渠道不存在')
     old = get_policy(db, *scope)
     now = time.time()
-    db.execute('INSERT INTO forwarding_policies(scope_type,scope_id,match_value,mode,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(scope_type,scope_id,match_value) DO UPDATE SET mode=excluded.mode,updated_at=excluded.updated_at', (*scope, mode, now))
+    conflict_condition = " WHERE forwarding_policies.mode='inherit'" if create_only else ''
+    result = db.execute('INSERT INTO forwarding_policies(scope_type,scope_id,match_value,mode,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(scope_type,scope_id,match_value) DO UPDATE SET mode=excluded.mode,updated_at=excluded.updated_at' + conflict_condition, (*scope, mode, now))
+    if result.rowcount == 0:
+        raise ValueError('该来源已有转发规则，请先删除后新增')
     pid = get_policy(db, *scope)['id']
     db.execute('DELETE FROM forwarding_policy_channels WHERE policy_id=?', (pid,))
     for cid in ids:

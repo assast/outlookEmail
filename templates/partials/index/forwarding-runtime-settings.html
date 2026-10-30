@@ -1,0 +1,238 @@
+<section id="forwardingSettingsSection" class="forwarding-runtime">
+    <h2>轮询与普通邮箱筛选</h2>
+    <p class="forwarding-muted">扫描频率适用于所有来源，关键词与时间窗口仅用于普通邮箱。</p>
+    <form id="forwardingRuntimeForm" onsubmit="event.preventDefault(); saveForwardingRuntimeSettings(document.getElementById('saveForwardingRuntimeBtn'))">
+        <div class="forward-grid">
+            <div class="form-group"><label class="form-label" for="forwardCheckIntervalSeconds">轮询间隔（秒）</label><input class="form-input" type="number" id="forwardCheckIntervalSeconds" min="20" max="3600" value="300" required></div>
+            <div class="form-group"><label class="form-label" for="forwardExecutionMode">执行模式</label><select class="form-select" id="forwardExecutionMode" onchange="syncForwardExecutionModeUI()"><option value="serial">串行</option><option value="parallel">并行</option></select></div>
+            <div class="form-group"><label class="form-label" for="forwardParallelWorkers">并行 Worker 数</label><input class="form-input" type="number" id="forwardParallelWorkers" min="1" max="10" value="4" required></div>
+            <div class="form-group"><label class="form-label" for="forwardAccountDelaySeconds">账号间隔（秒）</label><input class="form-input" type="number" id="forwardAccountDelaySeconds" min="0" max="60" value="0" required></div>
+            <div class="form-group"><label class="form-label" for="forwardEmailWindowMinutes">最近邮件范围（分钟）</label><input class="form-input" type="number" id="forwardEmailWindowMinutes" min="0" max="10080" value="0" required><p class="form-hint">0 表示不限制时间范围。</p></div>
+            <label class="forward-checkbox"><input type="checkbox" id="forwardIncludeJunkemail">包含垃圾箱新邮件</label>
+        </div>
+        <div class="form-group"><label class="form-label" for="forwardKeywords">关键词筛选</label><textarea class="form-input" id="forwardKeywords" rows="3" placeholder="Access deactivated"></textarea><p class="form-hint">每行一个，匹配主题或正文；留空转发全部。CF 来源不受此项限制。</p><p class="form-hint">若需补扫历史，请在账号转发日志中回退游标；已成功的投递仍会去重。</p></div>
+        <div class="settings-action-row"><button id="saveForwardingRuntimeBtn" class="btn btn-primary" type="submit">保存运行设置</button><button class="btn btn-secondary" type="button" id="triggerForwardingCheckBtn" onclick="triggerForwardingCheck()">立即检查</button></div>
+        <p id="forwardingRuntimeStatus" class="form-hint" role="status"></p>
+    </form>
+</section>
+<div hidden aria-hidden="true" class="forwarding-legacy-compat">
+                        <div class="form-group forwarding-channel-group">
+                            <div class="forwarding-channel-group__head">
+                                <label class="form-label">转发渠道</label>
+                                <div class="form-hint">支持多选；不选渠道时不会执行自动转发。</div>
+                            </div>
+                            <div class="forward-channel-picker" id="forwardChannelPicker">
+                                <label class="forward-channel-option">
+                                    <input type="checkbox" id="forwardChannelSmtp" onchange="syncForwardChannelUI()">
+                                    <span class="forward-channel-option__content">
+                                        <span class="forward-channel-option__title">SMTP</span>
+                                        <span class="forward-channel-option__meta">转发为邮件，适合归档或再次分发。</span>
+                                    </span>
+                                </label>
+                                <label class="forward-channel-option">
+                                    <input type="checkbox" id="forwardChannelTelegram" onchange="syncForwardChannelUI()">
+                                    <span class="forward-channel-option__content">
+                                        <span class="forward-channel-option__title">TG</span>
+                                        <span class="forward-channel-option__meta">转发到 Telegram，适合即时提醒。</span>
+                                    </span>
+                                </label>
+                                <label class="forward-channel-option">
+                                    <input type="checkbox" id="forwardChannelWecom" onchange="syncForwardChannelUI()">
+                                    <span class="forward-channel-option__content">
+                                        <span class="forward-channel-option__title">企业微信</span>
+                                        <span class="forward-channel-option__meta">通过群机器人 Webhook 推送到企业微信群。</span>
+                                    </span>
+                                </label>
+                                <label class="forward-channel-option">
+                                    <input type="checkbox" id="forwardChannelFeishu" onchange="syncForwardChannelUI()">
+                                    <span class="forward-channel-option__content">
+                                        <span class="forward-channel-option__title">飞书</span>
+                                        <span class="forward-channel-option__meta">通过群机器人 Webhook 推送邮件摘要。</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="forward-channel-empty" id="forwardChannelEmptyState" hidden>
+                            当前未选择任何转发渠道，不会向外发送通知。
+                        </div>
+                        <div class="forward-channel-panels" id="forwardChannelPanels">
+                            <section class="forward-channel-panel forward-channel-panel--smtp" data-channel="smtp" hidden>
+                                <div class="forward-channel-panel__header">
+                                    <div class="forward-channel-panel__heading">
+                                        <h5 class="forward-channel-panel__title">SMTP 转发</h5>
+                                        <p class="forward-channel-panel__desc">配置接收邮箱与 SMTP 服务器，用于邮件形式的二次转发。</p>
+                                    </div>
+                                    <div class="forward-channel-panel__actions">
+                                        <button class="btn btn-sm btn-secondary" type="button" id="testSmtpBtn" onclick="testForwardChannel('smtp')">发送测试消息</button>
+                                        <span class="forward-channel-panel__tag">SMTP</span>
+                                    </div>
+                                </div>
+                                <div class="forward-grid forward-grid--smtp">
+                                    <div class="form-group forward-field forward-field--wide">
+                                        <label class="form-label">转发到邮箱</label>
+                                        <input type="text" class="form-input" id="settingsEmailForwardRecipient" placeholder="main@example.com">
+                                    </div>
+                                    <div class="form-group forward-field">
+                                        <label class="form-label">邮箱类型</label>
+                                        <select class="form-select" id="settingsSmtpProvider" onchange="syncSmtpProviderUI(true)">
+                                            <option value="outlook">Outlook</option>
+                                            <option value="qq">QQ邮箱</option>
+                                            <option value="163">163邮箱</option>
+                                            <option value="126">126邮箱</option>
+                                            <option value="yahoo">Yahoo</option>
+                                            <option value="aliyun">阿里邮箱</option>
+                                            <option value="custom">自定义</option>
+                                        </select>
+                                        <div class="form-hint" id="settingsSmtpProviderHint">选择后会自动带出 SMTP 主机、端口和连接方式，你仍然可以继续手动修改。</div>
+                                    </div>
+                                    <div class="form-group forward-field forward-field--wide">
+                                        <label class="form-label">SMTP 主机</label>
+                                        <input type="text" class="form-input" id="settingsSmtpHost" placeholder="smtp.example.com">
+                                    </div>
+                                    <div class="form-group forward-field">
+                                        <label class="form-label">发件人邮箱</label>
+                                        <input type="text" class="form-input" id="settingsSmtpFromEmail" placeholder="noreply@example.com">
+                                        <div class="form-hint" id="settingsSmtpFromEmailHint">可选。留空时默认使用 SMTP 用户名作为发件人邮箱。</div>
+                                    </div>
+                                    <div class="form-group forward-field">
+                                        <label class="form-label">SMTP 用户名</label>
+                                        <input type="text" class="form-input" id="settingsSmtpUsername" placeholder="username">
+                                    </div>
+                                    <div class="form-group forward-field forward-field--port">
+                                        <label class="form-label">SMTP 端口</label>
+                                        <input type="number" class="form-input" id="settingsSmtpPort" value="465" min="1" max="65535">
+                                    </div>
+                                    <div class="form-group forward-field forward-field--password">
+                                        <label class="form-label">SMTP 密码</label>
+                                        <input type="password" class="form-input" id="settingsSmtpPassword" placeholder="密码或授权码">
+                                    </div>
+                                    <div class="form-group forward-field forward-field--toggles">
+                                        <label class="form-label">连接选项</label>
+                                        <div class="forward-toggle-list forward-toggle-list--inline">
+                                            <label class="forward-checkbox">
+                                                <input type="checkbox" id="settingsSmtpUseSsl" checked>
+                                                <span class="form-label">使用 SSL</span>
+                                            </label>
+                                            <label class="forward-checkbox">
+                                                <input type="checkbox" id="settingsSmtpUseTls">
+                                                <span class="form-label">使用 TLS / STARTTLS</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+                            <section class="forward-channel-panel forward-channel-panel--telegram" data-channel="telegram" hidden>
+                                <div class="forward-channel-panel__header">
+                                    <div class="forward-channel-panel__heading">
+                                        <h5 class="forward-channel-panel__title">Telegram 转发</h5>
+                                        <p class="forward-channel-panel__desc">使用 Bot Token 与 Chat ID，把新邮件摘要推送到指定 TG 会话。</p>
+                                    </div>
+                                    <div class="forward-channel-panel__actions">
+                                        <button class="btn btn-sm btn-secondary" type="button" id="testTelegramBtn" onclick="testForwardChannel('telegram')">发送测试消息</button>
+                                        <span class="forward-channel-panel__tag">TG</span>
+                                    </div>
+                                </div>
+                                <div class="forward-grid forward-grid--telegram">
+                                    <div class="form-group forward-field">
+                                        <label class="form-label">Telegram Bot Token</label>
+                                        <input type="password" class="form-input" id="settingsTelegramBotToken" placeholder="123456:ABCDEF...">
+                                    </div>
+                                    <div class="form-group forward-field">
+                                        <label class="form-label">Telegram Chat ID</label>
+                                        <input type="text" class="form-input" id="settingsTelegramChatId" placeholder="-1001234567890">
+                                    </div>
+                                    <div class="form-group forward-field">
+                                        <label class="form-label">Telegram Topic ID</label>
+                                        <input type="text" class="form-input" id="settingsTelegramTopicId" placeholder="123">
+                                        <div class="form-hint">可选。群组开启话题（Topics）后，填写话题 ID 可将消息发送到指定话题。</div>
+                                    </div>
+                                    <div class="form-group forward-field forward-field--full">
+                                        <label class="form-label">Telegram 代理</label>
+                                        <input type="text" class="form-input" id="settingsTelegramProxyUrl" placeholder="http://host:port、socks5://host:port 或 direct">
+                                        <div class="form-hint">可选。仅用于 Telegram 转发与测试发送，支持 `http://`、`socks5://`、`direct` / `直连`。</div>
+                                    </div>
+                                </div>
+                            </section>
+                            <section class="forward-channel-panel forward-channel-panel--wecom" data-channel="wecom" hidden>
+                                <div class="forward-channel-panel__header">
+                                    <div class="forward-channel-panel__heading">
+                                        <h5 class="forward-channel-panel__title">企业微信机器人转发</h5>
+                                        <p class="forward-channel-panel__desc">只填写群机器人的 Webhook 地址，系统会以文本消息推送新邮件摘要。</p>
+                                    </div>
+                                    <div class="forward-channel-panel__actions">
+                                        <button class="btn btn-sm btn-secondary" type="button" id="testWecomBtn" onclick="testForwardChannel('wecom')">发送测试消息</button>
+                                        <span class="forward-channel-panel__tag">企微</span>
+                                    </div>
+                                </div>
+                                <div class="forward-grid forward-grid--telegram">
+                                    <div class="form-group forward-field forward-field--full">
+                                        <label class="form-label">Webhook 地址</label>
+                                        <input type="text" class="form-input" id="settingsWecomWebhookUrl" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
+                                        <div class="form-hint">在企业微信群机器人里复制完整 Webhook 地址即可，无需额外配置 Bot Token 或 Chat ID。</div>
+                                    </div>
+                                </div>
+                            </section>
+                            <section class="forward-channel-panel forward-channel-panel--feishu" data-channel="feishu" hidden>
+                                <div class="forward-channel-panel__header">
+                                    <div class="forward-channel-panel__heading">
+                                        <h5 class="forward-channel-panel__title">飞书机器人转发</h5>
+                                        <p class="forward-channel-panel__desc">向飞书群推送邮件摘要，可选开启签名校验。</p>
+                                    </div>
+                                    <div class="forward-channel-panel__actions">
+                                        <button class="btn btn-sm btn-secondary" type="button" id="testFeishuBtn" onclick="testForwardChannel('feishu')">发送测试消息</button>
+                                        <span class="forward-channel-panel__tag">飞书</span>
+                                    </div>
+                                </div>
+                                <div class="forward-grid">
+                                    <div class="form-group forward-field forward-field--full">
+                                        <label class="form-label" for="settingsFeishuWebhookUrl">Webhook 地址</label>
+                                        <input type="password" class="form-input" id="settingsFeishuWebhookUrl" autocomplete="off" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+                                        <div class="form-hint">复制飞书群自定义机器人的 Webhook。保存后不回显，留空保留已有配置。</div>
+                                    </div>
+                                    <div class="form-group forward-field forward-field--full">
+                                        <label class="form-label" for="settingsFeishuSignSecret">签名密钥</label>
+                                        <input type="password" class="form-input" id="settingsFeishuSignSecret" autocomplete="new-password" placeholder="可选，填写机器人签名校验密钥">
+                                        <div class="form-hint">机器人开启签名校验时填写，留空保留已保存密钥。测试消息使用当前表单，不会自动保存。</div>
+                                    </div>
+                                    <label class="settings-toggle settings-toggle--inline forward-field--full">
+                                        <input type="checkbox" id="settingsFeishuClearSignSecret">
+                                        <span class="form-label">移除已保存的签名密钥（测试时也不使用签名）</span>
+                                    </label>
+                                    <div class="form-hint forward-field--full">使用关键词安全校验时，可在飞书机器人中配置“邮件转发”；测试和正式通知都包含该词。</div>
+                                </div>
+                            </section>
+                        </div>
+                        <div class="settings-log-drawers">
+                            <section class="settings-log-drawer" id="forwardingLogsDrawer">
+                                <div class="settings-log-drawer__summary">
+                                    <div class="settings-log-drawer__copy">
+                                        <span class="settings-log-title">
+                                            <span>📨</span>
+                                            <span>最近转发历史</span>
+                                        </span>
+                                        <p class="settings-log-drawer__meta">默认折叠，展开后显示最近 100 条转发记录。</p>
+                                    </div>
+                                    <button class="btn btn-sm btn-secondary" type="button" id="forwardingLogsToggleBtn" onclick="toggleForwardingLogsDrawer()">查看历史</button>
+                                </div>
+                                <div id="forwardingLogsContainer" class="settings-log-block" hidden>
+                                    <div id="forwardingLogsList" class="settings-log-list"></div>
+                                </div>
+                            </section>
+                            <section class="settings-log-drawer settings-log-drawer--danger" id="failedForwardingLogsDrawer">
+                                <div class="settings-log-drawer__summary">
+                                    <div class="settings-log-drawer__copy">
+                                        <span class="settings-log-title settings-log-title--danger">
+                                            <span>❌</span>
+                                            <span>最近转发失败</span>
+                                        </span>
+                                        <p class="settings-log-drawer__meta">默认折叠，展开后显示最近 100 条失败记录。</p>
+                                    </div>
+                                    <button class="btn btn-sm btn-secondary" type="button" id="failedForwardingLogsToggleBtn" onclick="toggleFailedForwardingLogsDrawer()">查看失败</button>
+                                </div>
+                                <div id="failedForwardingLogsContainer" class="settings-log-block" hidden>
+                                    <div id="failedForwardingLogsList" class="settings-log-list settings-log-list--danger"></div>
+                                </div>
+                            </section>
+                        </div>
+
+</div>

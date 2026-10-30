@@ -54,30 +54,7 @@ def get_bool_setting(key: str, default: bool = False) -> bool:
 
 
 def normalize_forward_channel_settings(raw_channels: Any) -> list[str]:
-    if isinstance(raw_channels, str):
-        values = raw_channels.split(',')
-    elif isinstance(raw_channels, (list, tuple, set)):
-        values = list(raw_channels)
-    else:
-        values = []
-
-    normalized = []
-    channel_aliases = {
-        'email': FORWARD_CHANNEL_SMTP_SETTING,
-        'smtp': FORWARD_CHANNEL_SMTP_SETTING,
-        'tg': FORWARD_CHANNEL_TG_SETTING,
-        'telegram': FORWARD_CHANNEL_TG_SETTING,
-        'wecom': FORWARD_CHANNEL_WECOM_SETTING,
-        'wechatwork': FORWARD_CHANNEL_WECOM_SETTING,
-        'qywx': FORWARD_CHANNEL_WECOM_SETTING,
-        'feishu': FORWARD_CHANNEL_FEISHU_SETTING,
-    }
-
-    for item in values:
-        channel = channel_aliases.get(str(item).strip().lower())
-        if channel and channel not in normalized:
-            normalized.append(channel)
-    return normalized
+    return forwarding_store.normalize_channel_selection(raw_channels)
 
 
 def normalize_smtp_forward_provider(value: str) -> str:

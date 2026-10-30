@@ -1,0 +1,7 @@
+html, body { overflow-x: clip; scrollbar-color: var(--color-muted) var(--color-paper); }
+.forwarding-management-view { font-family: var(--font-body); color: var(--color-ink); background: var(--color-paper); font-size: var(--text-md); line-height: 1.55; caret-color: var(--color-focus); }
+.forwarding-management-view [hidden] { display: none !important; }
+.forwarding-management-view :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.forwarding-management-view ::selection { background: var(--color-accent); color: var(--color-accent-ink); }
+.forwarding-management-view h1, .forwarding-management-view h2, .forwarding-management-view h3 { min-width: 0; overflow-wrap: break-word; text-wrap: balance; font-family: var(--font-display); letter-spacing: 0; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .forwarding-management-view *, .forwarding-management-view *::before, .forwarding-management-view *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
