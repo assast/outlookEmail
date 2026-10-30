@@ -233,12 +233,18 @@ function filteredForwardingSourceOptions() {
     return Array.from(document.getElementById('forwardPolicySource').options).filter(option => option.textContent.toLocaleLowerCase().includes(query));
 }
 
+function forwardingSourceName() {
+    const scope = document.getElementById('forwardPolicyScope').value;
+    return scope === 'account' ? '邮箱' : scope === 'group' ? '分组' : scope.startsWith('cloudflare_') ? 'Worker' : '来源';
+}
+
 function updateForwardingSourceSelection() {
     const options = Array.from(document.getElementById('forwardPolicySource').options);
     const selected = options.filter(option => option.selected);
     const ids = new Set(selected.map(option => option.value));
     document.getElementById('forwardPolicySourceSummary').textContent = selected.length
-        ? `已选 ${selected.length} 项：${selected.slice(0, 2).map(option => option.textContent).join('、')}${selected.length > 2 ? '…' : ''}` : '请选择来源';
+        ? `已选 ${selected.length} 项：${selected.slice(0, 2).map(option => option.textContent).join('、')}${selected.length > 2 ? '…' : ''}`
+        : forwardingSourceName() === 'Worker' ? '请选择 Worker' : '请选择' + forwardingSourceName();
     document.getElementById('forwardPolicySourceStatus').textContent = `显示 ${filteredForwardingSourceOptions().length} / ${options.length} 项 · 已选 ${selected.length} 项`;
     document.querySelectorAll('#forwardPolicySourceOptions input').forEach(input => { input.checked = ids.has(input.value); });
 }
@@ -279,6 +285,9 @@ async function changeForwardingScope(preserve = false) {
     const source = document.getElementById('forwardPolicySource');
     const selected = preserve ? selectedForwardingSources() : [];
     const isCf = scope.startsWith('cloudflare_');
+    const sourceName = forwardingSourceName();
+    document.getElementById('forwardPolicySourceLabel').textContent = `${sourceName}（可多选）`;
+    document.getElementById('forwardPolicySourceFilter').placeholder = {邮箱: '输入邮箱地址筛选', 分组: '输入分组名称筛选', Worker: '输入 Worker 名称筛选', 来源: '输入关键词筛选'}[sourceName];
     const rows = scope === 'group' ? sourceForwardingState.groups : scope === 'account' ? sourceForwardingState.accounts : isCf ? sourceForwardingState.workers : [];
     source.innerHTML = sourceForwardingOptions(rows, selected);
     if (!preserve) {

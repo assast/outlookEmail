@@ -39,12 +39,12 @@
         <div class="forward-grid">
             <div class="form-group"><label class="form-label" for="forwardPolicyScope">来源范围</label><select id="forwardPolicyScope" class="form-select" onchange="changeForwardingScope()"><option value="normal_default">普通邮箱默认</option><option value="group">普通邮箱分组</option><option value="account">具体普通邮箱</option><option value="cloudflare_worker">CF Worker 默认</option><option value="cloudflare_domain">CF 完整域名</option><option value="cloudflare_address">CF 具体邮箱</option></select></div>
             <div id="forwardPolicySourceField" class="form-group">
-                <div id="forwardPolicySourceLabel" class="form-label">邮箱 / 分组 / Worker（可多选）</div>
+                <div id="forwardPolicySourceLabel" class="form-label">来源（可多选）</div>
                 <select id="forwardPolicySource" multiple hidden aria-label="已选来源"></select>
                 <details id="forwardPolicySourcePicker" class="forward-source-picker">
                     <summary id="forwardPolicySourceToggle" class="form-select" aria-labelledby="forwardPolicySourceLabel forwardPolicySourceSummary"><span id="forwardPolicySourceSummary">请选择来源</span></summary>
                     <div class="forward-source-menu">
-                        <input id="forwardPolicySourceFilter" class="form-input" type="search" aria-label="筛选来源" placeholder="输入邮箱、分组或 Worker 名称筛选" autocomplete="off" oninput="renderForwardingSourcePicker()">
+                        <input id="forwardPolicySourceFilter" class="form-input" type="search" aria-label="筛选来源" placeholder="输入关键词筛选" autocomplete="off" oninput="renderForwardingSourcePicker()">
                         <div class="settings-action-row"><button class="btn btn-secondary" type="button" onclick="selectForwardingSources(true)">全选筛选结果</button><button class="btn btn-secondary" type="button" onclick="selectForwardingSources(false)">清空全部</button></div>
                         <div id="forwardPolicySourceStatus" class="form-hint" role="status"></div>
                         <div id="forwardPolicySourceOptions" class="forward-source-options" role="group" aria-label="可选来源"></div>
