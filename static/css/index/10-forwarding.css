@@ -32,9 +32,13 @@
 .forwarding-table-wrap { width: 100%; min-width: 0; overflow-x: auto; border-block: 1px solid var(--color-rule); scrollbar-color: var(--color-muted) var(--color-paper); }
 .forwarding-table { width: 100%; min-width: 650px; border-collapse: collapse; text-align: left; font-size: var(--text-sm); }
 .forwarding-rules-table { min-width: 600px; table-layout: fixed; }
-.forwarding-rules-table th:first-child { width: 48%; }
-.forwarding-rules-table th:nth-child(2) { width: 32%; }
+.forwarding-rules-table th:nth-child(2) { width: 44%; }
 .forwarding-table.forwarding-rules-table th:last-child { width: 20%; }
+.forwarding-rules-table .forwarding-selection-cell { width: 44px; padding: 0; text-align: center; }
+.forwarding-selection-control { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
+.forwarding-rule-filters { display: grid; grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); gap: var(--space-sm); }
+.forwarding-rule-selection-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); flex-wrap: wrap; }
+.forwarding-rule-selection-bar .form-hint { margin: 0; }
 .forwarding-table th { padding: var(--space-sm) var(--space-md); background: var(--color-paper-2); color: var(--color-muted); font-weight: 500; white-space: nowrap; }
 .forwarding-table td { padding: var(--space-xs) var(--space-md); border-top: 1px solid var(--color-rule); vertical-align: middle; overflow-wrap: anywhere; }
 .forwarding-table th:last-child, .forwarding-table td:last-child { text-align: right; width: 1%; white-space: nowrap; }
@@ -81,9 +85,11 @@
     .forwarding-management-view .form-input, .forwarding-management-view .form-select { min-height: 44px; }
     .forwarding-section-head { align-items: flex-start; }
     .forwarding-rules-table { min-width: 0; }
-    .forwarding-rules-table th:first-child { width: 44%; }
-    .forwarding-rules-table th:nth-child(2) { width: 26%; }
-    .forwarding-table.forwarding-rules-table th:last-child { width: 30%; }
+    .forwarding-rule-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .forwarding-rule-filters .form-group:first-child { grid-column: 1 / -1; }
+    .forwarding-rule-filters .form-group:last-child { grid-column: 1 / -1; }
+    .forwarding-rules-table th:nth-child(2) { width: 36%; }
+    .forwarding-table.forwarding-rules-table th:last-child { width: 28%; }
     .forwarding-rules-table td { padding: var(--space-sm) var(--space-xs); }
     .forwarding-rules-table .btn { font-size: var(--text-xs); padding-inline: var(--space-2xs); }
 }

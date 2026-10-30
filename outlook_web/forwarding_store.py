@@ -211,19 +211,12 @@ def init_schema(db, encrypt, decrypt):
         for statement in statements:
             db.execute(statement)
         marker = db.execute("SELECT value FROM settings WHERE key='source_forwarding_migrated'").fetchone()
-        if not marker:
+        account_rules = db.execute("SELECT 1 FROM settings WHERE key='source_forwarding_account_rules_v3'").fetchone()
+        if not marker or not account_rules:
             sync_legacy(db, encrypt, decrypt, initial=True)
-            db.execute("INSERT INTO settings(key,value) VALUES ('source_forwarding_migrated','1')")
-        repaired_legacy_default = False
-        if not db.execute("SELECT 1 FROM settings WHERE key='source_forwarding_channel_selection_v2'").fetchone():
-            default = get_policy(db, 'normal_default')
-            if marker and default['id'] is not None and default['updated_at'] == 0:
-                sync_legacy(db, encrypt, decrypt, initial=True)
-                repaired_legacy_default = True
-            db.execute("INSERT INTO settings(key,value) VALUES ('source_forwarding_channel_selection_v2','1')")
-        if repaired_legacy_default or not db.execute("SELECT 1 FROM settings WHERE key='source_forwarding_account_switch_retired'").fetchone():
-            retire_account_switch(db)
-            db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES ('source_forwarding_account_switch_retired','1')")
+            for key in ('source_forwarding_migrated', 'source_forwarding_channel_selection_v2',
+                        'source_forwarding_account_switch_retired', 'source_forwarding_account_rules_v3'):
+                db.execute('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)', (key, '1'))
         db.execute('RELEASE forwarding_schema')
     except Exception:
         db.execute('ROLLBACK TO forwarding_schema')
@@ -289,7 +282,7 @@ def save_channel(db, data, encrypt, decrypt, channel_id=None):
     return get_channel(db, channel_id)
 
 
-def sync_legacy(db, encrypt, decrypt, initial=False):
+def sync_legacy(db, encrypt, decrypt, initial=False, update_associations=True):
     settings = dict(db.execute('SELECT key,value FROM settings').fetchall())
     configured = []
     by_type = {}
@@ -329,20 +322,51 @@ def sync_legacy(db, encrypt, decrypt, initial=False):
                 if changed:
                     db.execute("UPDATE forwarding_deliveries SET status='cancelled', claim_token=NULL WHERE channel_id=? AND status IN ('pending','failed','blocked')", (row['id'],))
             by_type[kind] = row['id']
+    if not update_associations:
+        return
     raw_selection = str(settings.get('forward_channels', 'auto')).strip().lower()
     selected = configured if raw_selection in ('auto', '') else [] if raw_selection == 'none' else normalize_channel_selection(raw_selection)
-    selected_ids = [by_type[k] for k in selected if k in by_type and k in configured]
-    row = db.execute("SELECT * FROM forwarding_policies WHERE scope_type='normal_default'").fetchone()
-    if not row:
-        pid = db.execute("INSERT INTO forwarding_policies(scope_type,mode,updated_at) VALUES('normal_default','off',0)").lastrowid
-    else:
-        pid = row['id']
-    prior_since = {r['channel_id']: r['active_since'] for r in db.execute('SELECT channel_id,active_since FROM forwarding_policy_channels WHERE policy_id=?', (pid,))}
-    db.execute('DELETE FROM forwarding_policy_channels WHERE policy_id=? AND channel_id IN (SELECT id FROM notification_channels WHERE legacy_key IS NOT NULL)', (pid,))
-    for channel_id in selected_ids:
-        db.execute('INSERT OR IGNORE INTO forwarding_policy_channels VALUES(?,?,?)', (pid, channel_id, prior_since.get(channel_id, 0)))
-    has_targets = db.execute('SELECT 1 FROM forwarding_policy_channels WHERE policy_id=? LIMIT 1', (pid,)).fetchone()
-    db.execute('UPDATE forwarding_policies SET mode=? WHERE id=?', ('custom' if has_targets else 'off', pid))
+    selected_ids = sorted({by_type[k] for k in selected if k in by_type and k in configured})
+    default = get_policy(db, 'normal_default')
+    auto_default = is_legacy_default(db, default)
+    # A missing old default on an already migrated database means it was deleted.
+    seed_missing = not initial or not settings.get('source_forwarding_migrated') or auto_default
+    sync_legacy_account_policies(db, selected_ids, initial=initial, seed_missing=seed_missing)
+    if initial and auto_default:
+        db.execute('DELETE FROM forwarding_policies WHERE id=?', (default['id'],))
+
+
+def is_legacy_default(db, policy):
+    return (policy['id'] is not None and policy['updated_at'] == 0
+            and all(get_channel(db, cid)['legacy_key'] for cid in policy['channel_ids']))
+
+
+def sync_legacy_account_policies(db, channel_ids, *, initial, seed_missing):
+    default = get_policy(db, 'normal_default')
+    for account in db.execute('SELECT id,forward_enabled FROM accounts ORDER BY id').fetchall():
+        enabled = bool(account['forward_enabled'])
+        if not initial and not enabled:
+            continue
+        old = get_policy(db, 'account', account['id'])
+        if old['id'] is not None and (old['updated_at'] != 0 or old['mode'] == 'inherit'):
+            continue
+        route = resolve_policy(db, account_id=account['id'])
+        if old['id'] is None:
+            if not seed_missing or route['path'][-1]['scope_type'] != 'normal_default':
+                continue
+            if default['id'] is not None and not is_legacy_default(db, default):
+                continue
+        targets = channel_ids if enabled else []
+        mode = 'custom' if targets else 'off'
+        if old['id'] is not None and old['mode'] == mode and old['channel_ids'] == targets:
+            continue
+        since = {cid: old['active_since'].get(cid, route['active_since'].get(cid, 0)) for cid in targets}
+        migrated = save_policy(db, {'scope_type': 'account', 'scope_id': account['id'],
+                                    'mode': mode, 'channel_ids': targets})
+        db.execute('UPDATE forwarding_policies SET updated_at=0 WHERE id=?', (migrated['id'],))
+        for cid, active_since in since.items():
+            db.execute('UPDATE forwarding_policy_channels SET active_since=? WHERE policy_id=? AND channel_id=?',
+                       (active_since, migrated['id'], cid))
 
 
 def normalize_scope(db, scope_type, scope_id=0, match_value=''):
@@ -379,21 +403,6 @@ def policy_scopes(db, data):
     if data.get('scope_type') == 'normal_default' and ids != [0]:
         raise ValueError('普通默认配置只有一个来源')
     return [normalize_scope(db, data.get('scope_type'), source_id, data.get('match_value', '')) for source_id in ids]
-
-
-def retire_account_switch(db):
-    """Snapshot legacy opt-outs once while keeping the runtime policy-driven."""
-    default = get_policy(db, 'normal_default')
-    if default['id'] is None or default['updated_at'] != 0:
-        return
-    if any(not get_channel(db, cid)['legacy_key'] for cid in default['channel_ids']):
-        return
-    for account in db.execute('SELECT id FROM accounts WHERE COALESCE(forward_enabled,0)=0').fetchall():
-        if get_policy(db, 'account', account['id'])['id'] is not None:
-            continue
-        route = resolve_policy(db, account_id=account['id'])
-        if route['path'][-1]['scope_type'] == 'normal_default':
-            save_policy(db, {'scope_type': 'account', 'scope_id': account['id'], 'mode': 'off'})
 
 
 def get_policy(db, scope_type, scope_id=0, match_value=''):

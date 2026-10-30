@@ -642,7 +642,7 @@ def decrypt_forwarding_account_secrets(account: Dict[str, Any]) -> Dict[str, Any
 
 
 def build_forwarding_job_config() -> Dict[str, Any]:
-    sync_legacy_forwarding()
+    sync_legacy_forwarding(update_associations=False)
     forward_channels = set(get_forward_channels())
     execution_mode = normalize_forward_execution_mode()
     try:
