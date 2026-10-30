@@ -283,6 +283,7 @@
             populateTimeZoneOptions(getAppTimeZone());
             await loadSettings();
             await loadSkinSettings();
+            if (typeof loadSourceForwarding === 'function') await loadSourceForwarding();
             scheduleSettingsSidebarSync();
         }
 
@@ -1019,21 +1020,6 @@
             }
         }
 
-        function ensureEditForwardToggle() {
-            if (document.getElementById('editForwardEnabled')) return;
-            const statusGroup = document.getElementById('editStatus')?.closest('.form-group');
-            if (!statusGroup) return;
-            statusGroup.insertAdjacentHTML('afterend', `
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" id="editForwardEnabled">
-                        <span class="form-label" style="margin: 0;">启用邮件转发</span>
-                    </label>
-                    <div class="form-hint">开启后会按系统设置转发到邮箱或 Telegram。</div>
-                </div>
-            `);
-        }
-
         function renderImportTagOptions() {
             const container = document.getElementById('importTagFilterOptions');
             if (!container) return;
@@ -1077,12 +1063,10 @@
         function resetImportDefaults() {
             const remarkInput = document.getElementById('importRemark');
             const statusSelect = document.getElementById('importStatus');
-            const forwardInput = document.getElementById('importForwardEnabled');
             const tagDropdown = document.getElementById('importTagFilterDropdown');
 
             if (remarkInput) remarkInput.value = '';
             if (statusSelect) statusSelect.value = 'active';
-            if (forwardInput) forwardInput.checked = false;
             tagDropdown?.classList.remove('open');
             renderImportTagOptions();
         }
@@ -1196,7 +1180,6 @@
             const cloudflareChannelId = document.getElementById('importCloudflareChannelSelect')?.value || '';
             const imapHost = document.getElementById('importImapHost')?.value.trim() || '';
             const imapPort = parseInt(document.getElementById('importImapPort')?.value || '993', 10);
-            const forwardEnabled = !!document.getElementById('importForwardEnabled')?.checked;
             const remark = document.getElementById('importRemark')?.value.trim() || '';
             const status = document.getElementById('importStatus')?.value || 'active';
             const tagIds = getImportSelectedTagIds();
@@ -1323,7 +1306,6 @@
                             provider,
                             imap_host: imapHost,
                             imap_port: Number.isFinite(imapPort) ? imapPort : 993,
-                            forward_enabled: forwardEnabled,
                             remark,
                             status,
                             tag_ids: tagIds
@@ -1357,7 +1339,6 @@
 
         async function showEditAccountModal(accountId) {
             try {
-                ensureEditForwardToggle();
                 const response = await fetch(`/api/accounts/${accountId}`);
                 const data = await response.json();
 
@@ -1385,9 +1366,6 @@
                     document.getElementById('editManagedAliases').textContent = managedAliases.size
                         ? `iCloud 托管别名（只读，请前往 iCloud 管理）：${[...managedAliases].join('、')}` : '';
                     document.getElementById('editStatus').value = acc.status || 'active';
-                    if (document.getElementById('editForwardEnabled')) {
-                        document.getElementById('editForwardEnabled').checked = !!acc.forward_enabled;
-                    }
                     if (document.getElementById('editProviderSelect')) {
                         document.getElementById('editProviderSelect').value = acc.provider || (acc.account_type === 'imap' ? 'custom' : 'outlook');
                     }
@@ -1437,7 +1415,6 @@
                     .map(item => item.trim())
                     .filter(Boolean),
                 status: document.getElementById('editStatus').value,
-                forward_enabled: !!document.getElementById('editForwardEnabled')?.checked,
                 tag_ids: getEditSelectedTagIds()
             };
             if (shouldSubmitSecretInput(passwordInput)) {
@@ -1541,6 +1518,7 @@
                         </div>
                     </div>
                     <button class="btn btn-secondary" type="button" onclick="editCloudflareChannel(${Number(channel.id)})">编辑</button>
+                    <button class="btn btn-secondary" type="button" onclick="openForwardingSource('cloudflare_worker', ${Number(channel.id)})">通知设置</button>
                 </div>
             `).join('');
         }
@@ -1874,7 +1852,8 @@
             const showProjectManagement = !!document.getElementById('settingsShowProjectManagement')?.checked;
             const normalMailLocalRetentionEnabled = !!document.getElementById('normalMailLocalRetentionEnabled')?.checked;
             const settings = {};
-            const forwardChannels = getSelectedForwardChannels();
+            const namedForwardingUI = typeof usesNamedForwardingSettings === 'function' && usesNamedForwardingSettings();
+            const forwardChannels = namedForwardingUI ? [] : getSelectedForwardChannels();
 
             if (password) {
                 if (!currentPassword) {
@@ -1993,7 +1972,7 @@
                 showToast('启用 TG 转发时必须填写 Telegram Chat ID', 'error');
                 return;
             }
-            if (telegramTopicId && !/^\d+$/.test(telegramTopicId)) {
+            if (!namedForwardingUI && telegramTopicId && !/^\d+$/.test(telegramTopicId)) {
                 showToast('Telegram Topic ID 必须是纯数字', 'error');
                 return;
             }
@@ -2069,6 +2048,7 @@
             settings.feishu_webhook_url = feishuDraft.webhook_url;
             settings.feishu_sign_secret = feishuDraft.sign_secret;
             settings.feishu_clear_sign_secret = feishuDraft.clear_sign_secret;
+            if (namedForwardingUI) omitLegacyForwardingFields(settings);
 
             if (webdavBackupChanged) {
                 Object.assign(settings, webdavBackupSettings);

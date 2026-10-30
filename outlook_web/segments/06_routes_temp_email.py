@@ -1011,6 +1011,7 @@ def format_cloudflare_channel(row: Any, include_secret: bool = False) -> Dict[st
         'created_at': item.get('created_at', ''),
         'updated_at': item.get('updated_at', ''),
     }
+    formatted.update(forwarding_store.worker_references(get_db(), item.get('id')))
     if include_secret:
         formatted['admin_password'] = admin_password
     return formatted
@@ -1223,6 +1224,11 @@ def update_cloudflare_channel(channel_id: int, data: Dict[str, Any]) -> tuple[Op
             )
         )
         ensure_cloudflare_default_channel(db)
+        if not existing['enabled'] and payload['enabled'] or existing['worker_domain'] != payload['worker_domain']:
+            db.execute('UPDATE cloudflare_forward_scan_state SET checkpoint_id=0,active_since=?,upper_id=NULL,scan_next_id=NULL,next_offset=0,error_message=NULL,updated_at=? WHERE worker_id=?',
+                       (time.time(), time.time(), channel_id))
+        if existing['worker_domain'] != payload['worker_domain']:
+            db.execute("UPDATE forwarding_deliveries SET status='cancelled',claim_token=NULL,error_message='CF Worker 地址已修改' WHERE status IN ('pending','failed','blocked') AND event_id IN (SELECT id FROM forwarding_events WHERE source_type='cloudflare' AND source_id=?)", (channel_id,))
         db.commit()
         return get_cloudflare_channel_by_id(channel_id, include_disabled=True), None
     except sqlite3.IntegrityError:
@@ -1241,9 +1247,13 @@ def delete_cloudflare_channel(channel_id: int) -> tuple[bool, str]:
     reference_count = get_cloudflare_channel_reference_count(channel_id)
     if reference_count > 0:
         return False, f'该 Cloudflare 渠道仍被 {reference_count} 个临时邮箱引用，不能删除'
+    forwarding_refs = forwarding_store.worker_references(get_db(), channel_id)
+    if any(forwarding_refs.values()):
+        return False, f"该 Worker 仍有 {forwarding_refs['notification_reference_count']} 个通知配置和 {forwarding_refs['pending_delivery_count']} 项未完成投递，不能删除"
 
     db = get_db()
     try:
+        db.execute("DELETE FROM forwarding_policies WHERE scope_type LIKE 'cloudflare_%' AND scope_id=?", (channel_id,))
         db.execute('DELETE FROM cloudflare_channels WHERE id = ?', (channel_id,))
         ensure_cloudflare_default_channel(db)
         db.commit()

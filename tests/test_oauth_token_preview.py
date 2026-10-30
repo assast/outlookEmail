@@ -47,7 +47,7 @@ def test_reauthorize_entry_is_scoped_to_outlook_accounts():
     assert "reauthorizeGroup.style.display = isOutlook ? '' : 'none'" in groups_js
     assert 'id="oauthPasswordGroup"' in oauth_html
     assert 'id="oauthTargetGroup"' in oauth_html
-    assert 'id="oauthForwardGroup"' in oauth_html
+    assert 'id="oauthForwardGroup"' not in oauth_html
 
 
 def test_oauth_dialog_has_copy_email_and_password_reveal_buttons():

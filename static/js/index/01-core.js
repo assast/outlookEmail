@@ -2364,9 +2364,7 @@
                         : '未设置';
                 }
                 if (cursorHintEl) {
-                    cursorHintEl.textContent = account.forward_enabled
-                        ? '回退游标后，会按当前转发时间范围重新扫描最近邮件；已成功转发过的邮件仍会被去重。'
-                        : '该账号当前未开启转发，回退游标后仍需先开启账号转发。';
+                    cursorHintEl.textContent = '回退游标后，按当前通知来源规则与时间范围补扫最近邮件；已成功投递的邮件仍会去重。';
                 }
                 if (data.logs.length === 0) {
                     listEl.innerHTML = `<div style="padding: 20px; text-align: center; color: #666;">${failedOnly ? '该账号暂无失败转发日志' : '该账号暂无转发日志'}</div>`;

@@ -1488,7 +1488,7 @@ def build_account_insert_values(email_addr: str, password: str, client_id: str =
         normalized_imap_port,
         encrypted_imap_password,
         1 if forward_enabled else 0,
-        datetime.now(timezone.utc).isoformat() if forward_enabled else None,
+        datetime.now(timezone.utc).isoformat(),
         str(proxy_url or '').strip(),
         str(fallback_proxy_url_1 or '').strip(),
         str(fallback_proxy_url_2 or '').strip(),
@@ -3604,6 +3604,7 @@ def set_account_forward_cursor(account_id: int, cursor_value: Optional[str]) -> 
             ''',
             (cursor_value, account_id)
         )
+        db.execute('INSERT INTO forwarding_replay_requests(account_id,requested_at) VALUES(?,?) ON CONFLICT(account_id) DO UPDATE SET requested_at=excluded.requested_at', (account_id, time.time()))
         db.commit()
         return True
     except Exception:

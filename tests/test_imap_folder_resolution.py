@@ -4129,6 +4129,7 @@ class MultiChannelForwardingTests(unittest.TestCase):
                 with self.app.app_context():
                     db = web_outlook_app.get_db()
                     db.execute('DELETE FROM forward_logs')
+                    db.execute("DELETE FROM forwarding_events WHERE source_type='account' AND source_id=?", (self.account_id,))
                     db.execute('UPDATE accounts SET forward_last_checked_at = NULL WHERE id = ?', (self.account_id,))
                     db.commit()
                 details = {'failed': None if detail_fails else matching,
@@ -4137,6 +4138,12 @@ class MultiChannelForwardingTests(unittest.TestCase):
                 self.assertTrue(result['had_processing_failure'])
                 self.assertFalse(result['cursor_updated'])
                 details['failed'] = matching
+                with self.app.app_context():
+                    # Simulate the next eligible poll without waiting for the
+                    # persisted notification retry backoff in this unit test.
+                    db = web_outlook_app.get_db()
+                    db.execute("UPDATE forwarding_deliveries SET next_attempt_at=0 WHERE status='failed'")
+                    db.commit()
                 result, _, email_mock, tg_mock, wecom_mock = self._process_keyword_messages(items, details)
                 self.assertFalse(result['had_processing_failure'])
                 with self.app.app_context():
