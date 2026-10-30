@@ -89,6 +89,53 @@ def test_account_overrides_group_and_can_restore_inheritance(client):
     assert preview(client, account_id=source['id'])['channel_ids'] == [a]
 
 
+def test_forwarding_workspace_is_separate_from_system_settings(client):
+    from html.parser import HTMLParser
+
+    class Parents(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.stack, self.parents = [], {}
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if attrs.get('id'):
+                self.parents[attrs['id']] = [item[1] for item in self.stack]
+            if tag not in {'input', 'br', 'hr', 'img', 'meta', 'link'}:
+                self.stack.append((tag, attrs.get('id')))
+
+        def handle_endtag(self, tag):
+            for index in range(len(self.stack) - 1, -1, -1):
+                if self.stack[index][0] == tag:
+                    del self.stack[index:]
+                    break
+
+    response = client.get('/forwarding')
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    parser = Parents()
+    parser.feed(html)
+    for name in ['sourceForwardingConsole', 'forwardCheckIntervalSeconds', 'forwardPolicyList', 'notificationChannelList', 'sourceForwardingHistory']:
+        assert 'forwardingManagementView' in parser.parents[name]
+        assert 'settingsModal' not in parser.parents[name]
+    assert 'data-target="forwardingSettingsSection"' not in html
+    desktop_menu = html.split('id="desktopProjectManagementBtn"', 1)[1].split('</div>', 1)[0]
+    assert 'onclick="showForwardingManagement()"' in desktop_menu
+
+
+def test_runtime_settings_save_preserves_existing_notification_rules(client):
+    target = channel(client)
+    source = account()
+    policy(client, 'account', source['id'], targets=[target])
+    before = client.get('/api/forwarding/policies').get_json()['policies']
+    response = client.put('/api/settings', json={'forward_check_interval_seconds': 90, 'forward_keywords': 'important'})
+    assert response.status_code == 200 and response.get_json()['success']
+    assert client.get('/api/forwarding/policies').get_json()['policies'] == before
+    settings = client.get('/api/settings').get_json()['settings']
+    assert str(settings['forward_check_interval_seconds']) == '90'
+    assert settings['forward_keywords'] == 'important'
+
+
 def test_unimported_cf_address_overrides_domain_without_creating_mailbox(client):
     a, b = channel(client, '域名飞书'), channel(client, '地址飞书')
     source_id = worker()
@@ -677,7 +724,32 @@ def test_bulk_remove_override_restores_automatic_group_inheritance(client):
     assert all(preview(client, account_id=source_id)['channel_ids'] == [inherited] for source_id in ids)
 
 
-def test_switch_retirement_preserves_legacy_opt_out_without_overwriting_explicit_rule(client):
+@pytest.mark.parametrize('scope', ['account', 'group', 'cloudflare_worker'])
+def test_create_policy_rejects_existing_rule_atomically_until_deleted(client, scope):
+    original, replacement = channel(client, '原渠道'), channel(client, '新渠道')
+    db = web.get_db()
+    if scope == 'account':
+        ids = [account('create-one@example.com')['id'], account('create-two@example.com')['id']]
+    elif scope == 'group':
+        ids = [db.execute('INSERT INTO groups(name) VALUES(?)', (name,)).lastrowid for name in ('新增第一组', '新增第二组')]
+        db.commit()
+    else:
+        ids = [web.create_cloudflare_channel(name, 'worker.example.com', 'example.com', 'test-password')[0] for name in ('新增 Worker A', '新增 Worker B')]
+    data = {'scope_type': scope, 'scope_ids': [ids[0]], 'mode': 'custom', 'channel_ids': [original]}
+    created = client.post('/api/forwarding/policies', json=data)
+    assert created.status_code == 200, created.get_json()
+    before = web.forwarding_store.get_policy(db, scope, ids[0])
+    conflict = client.post('/api/forwarding/policies', json={**data, 'scope_ids': ids, 'channel_ids': [replacement]})
+    assert conflict.status_code == 400 and '先删除' in conflict.get_json()['error']
+    assert web.forwarding_store.get_policy(db, scope, ids[0]) == before
+    assert web.forwarding_store.get_policy(db, scope, ids[1])['id'] is None
+    assert client.delete('/api/forwarding/policies', json=data).status_code == 200
+    created = client.post('/api/forwarding/policies', json={**data, 'channel_ids': [replacement]})
+    assert created.status_code == 200, created.get_json()
+    assert web.forwarding_store.get_policy(db, scope, ids[0])['channel_ids'] == [replacement]
+
+
+def test_legacy_disabled_accounts_stay_off_without_overwriting_explicit_rules(client):
     db = web.get_db()
     for key, value in {'forward_channels': 'telegram', 'telegram_bot_token': 'old-token', 'telegram_chat_id': 'old-chat'}.items():
         db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', (key, value))
@@ -692,10 +764,86 @@ def test_switch_retirement_preserves_legacy_opt_out_without_overwriting_explicit
     db.commit()
     web.init_db()
     assert web.forwarding_store.get_policy(db, 'account', old_off['id'])['mode'] == 'off'
+    assert preview(client, account_id=old_off['id'])['channel_ids'] == []
     assert preview(client, account_id=configured['id'])['channel_ids'] == [target]
     policy(client, 'account', old_off['id'], mode='inherit')
     web.init_db()
     assert web.forwarding_store.get_policy(db, 'account', old_off['id'])['mode'] == 'inherit'
+
+
+@pytest.mark.parametrize('selection,expected', [
+    ('auto', {'smtp', 'telegram', 'feishu'}),
+    ('telegram', {'telegram'}),
+    ('email,tg', {'smtp', 'telegram'}),
+    (' Telegram , FEISHU ', {'telegram', 'feishu'}),
+    ('none', set()),
+])
+def test_legacy_migration_preserves_selected_channels_for_both_account_switch_states(client, selection, expected):
+    db = web.get_db()
+    sources = [account('legacy-on@example.com'), account('legacy-off@example.com')]
+    db.execute('UPDATE accounts SET forward_enabled=0 WHERE id=?', (sources[1]['id'],))
+    settings = {'forward_channels': selection, 'smtp_host': 'smtp.example.com', 'smtp_username': 'sender@example.com',
+                'email_forward_recipient': 'archive@example.com', 'telegram_bot_token': 'migration-test-token',
+                'telegram_chat_id': 'migration-test-chat', 'feishu_webhook_url': 'https://open.feishu.cn/open-apis/bot/v2/hook/migration-test'}
+    for key, value in settings.items():
+        db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', (key, value))
+    db.execute("DELETE FROM settings WHERE key IN ('source_forwarding_migrated','source_forwarding_account_switch_retired','source_forwarding_channel_selection_v2')")
+    db.commit()
+    web.init_db()
+    web.init_db()
+    default = web.forwarding_store.get_policy(db, 'normal_default')
+    assert default['mode'] == ('custom' if expected else 'off')
+    for source in sources:
+        result = preview(client, account_id=source['id'])
+        old_enabled = source['id'] == sources[0]['id']
+        assert {row['type'] for row in result['channels']} == (expected if old_enabled else set())
+        rule = web.forwarding_store.get_policy(db, 'account', source['id'])
+        if old_enabled:
+            assert rule['id'] is None
+        else:
+            assert rule['mode'] == 'off'
+        saved = db.execute('SELECT forward_last_checked_at FROM accounts WHERE id=?', (source['id'],)).fetchone()[0]
+        assert saved == source['forward_last_checked_at']
+    assert db.execute("SELECT COUNT(*) FROM notification_channels WHERE legacy_key IS NOT NULL").fetchone()[0] == 3
+
+
+def test_selection_upgrade_repairs_untouched_default_but_preserves_manual_rules(client):
+    db = web.get_db()
+    source = account()
+    policy(client, 'account', source['id'], mode='off')
+    for key, value in {'forward_channels': ' TG ', 'telegram_bot_token': 'old-token', 'telegram_chat_id': 'old-chat'}.items():
+        db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', (key, value))
+    db.execute("DELETE FROM settings WHERE key='source_forwarding_channel_selection_v2'")
+    db.commit()
+    web.init_db()
+    assert web.forwarding_store.get_policy(db, 'normal_default')['mode'] == 'custom'
+    assert preview(client, account_id=source['id'])['mode'] == 'off'
+    policy(client, 'normal_default', mode='off')
+    db.execute("DELETE FROM settings WHERE key='source_forwarding_channel_selection_v2'")
+    db.execute("UPDATE settings SET value='telegram' WHERE key='forward_channels'")
+    db.commit()
+    web.init_db()
+    assert web.forwarding_store.get_policy(db, 'normal_default')['mode'] == 'off'
+
+
+def test_selection_repair_keeps_previously_disabled_accounts_off_and_new_accounts_inherit(client):
+    db = web.get_db()
+    old_enabled = account('enabled-before-upgrade@example.com')
+    old_disabled = account('disabled-before-upgrade@example.com')
+    db.execute('UPDATE accounts SET forward_enabled=0 WHERE id=?', (old_disabled['id'],))
+    for key, value in {'forward_channels': ' TG ', 'telegram_bot_token': 'old-token', 'telegram_chat_id': 'old-chat'}.items():
+        db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', (key, value))
+    db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('source_forwarding_account_switch_retired','1')")
+    db.execute("DELETE FROM settings WHERE key='source_forwarding_channel_selection_v2'")
+    db.commit()
+    web.init_db()
+    assert {row['type'] for row in preview(client, account_id=old_enabled['id'])['channels']} == {'telegram'}
+    assert preview(client, account_id=old_disabled['id'])['mode'] == 'off'
+    assert web.add_account('new-after-upgrade@example.com', '', 'test-client', 'test-refresh', group_id=1)
+    added = web.get_account_by_email('new-after-upgrade@example.com')
+    web.init_db()
+    assert preview(client, account_id=added['id'])['mode'] == 'custom'
+    assert web.forwarding_store.get_policy(db, 'account', added['id'])['id'] is None
 
 
 def test_new_account_automatically_uses_group_without_backfilling_old_mail(client):

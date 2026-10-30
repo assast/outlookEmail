@@ -124,6 +124,35 @@ def test_main_settings_omit_legacy_credentials_but_keep_poll_and_filter_options(
     assert result == {'forward_keywords': 'normal only', 'forward_check_interval_seconds': 60, 'app_timezone': 'Asia/Shanghai'}
 
 
+def test_dedicated_workspace_omits_forwarding_fields_from_system_settings_save():
+    result = run_frontend('''(() => {
+        element('forwardingManagementView').dataset.forwardingWorkspace = 'true';
+        const settings = {forward_keywords:'draft', forward_check_interval_seconds:60,
+            forward_execution_mode:'parallel', forward_channels:['feishu'], app_timezone:'Asia/Shanghai'};
+        omitLegacyForwardingFields(settings); return settings;
+    })()''')
+    assert result == {'app_timezone': 'Asia/Shanghai'}
+
+
+def test_runtime_settings_save_only_submits_forwarding_fields():
+    result = run_frontend('''(async () => {
+        element('forwardingRuntimeForm').reportValidity = () => true;
+        element('forwardExecutionMode').value = 'parallel';
+        element('forwardAccountDelaySeconds').value = '20';
+        element('forwardCheckIntervalSeconds').value = '60';
+        element('forwardKeywords').value = 'important';
+        await saveForwardingRuntimeSettings(element('save'));
+        return {requests,status:element('forwardingRuntimeStatus').textContent};
+    })()''')
+    assert len(result['requests']) == 1
+    request = result['requests'][0]
+    assert request['url'] == '/api/settings' and request['method'] == 'PUT'
+    assert request['body']['forward_account_delay_seconds'] == 0
+    assert request['body']['forward_check_interval_seconds'] == 60
+    assert all(key.startswith('forward_') for key in request['body'])
+    assert result['status'] == '运行设置已保存。'
+
+
 def test_bulk_save_submits_every_selected_source_once_without_account_switch():
     result = run_frontend('''(async () => {
         element('forwardPolicyScope').value = 'account';
@@ -136,6 +165,7 @@ def test_bulk_save_submits_every_selected_source_once_without_account_switch():
     })()''')
     assert not result['disabled']
     assert len(result['requests']) == 1
+    assert result['requests'][0]['method'] == 'POST'
     body = result['requests'][0]['body']
     assert body['scope_ids'] == [3, 7] and body['channel_ids'] == [11]
     assert 'forward_enabled' not in body
