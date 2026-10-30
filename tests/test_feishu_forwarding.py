@@ -331,6 +331,7 @@ def test_feishu_only_job_honors_keywords_and_reports_success(client):
         "INSERT INTO accounts (email, account_type, forward_enabled) VALUES ('feishu@example.com', 'imap', 1)",
     )
     db.commit()
+    web.sync_legacy_forwarding()
     items = [
         {'id': 'match', 'folder': 'inbox', 'date': '2026-10-24T01:00:00Z'},
         {'id': 'filtered', 'folder': 'inbox', 'date': '2026-10-24T02:00:00Z'},

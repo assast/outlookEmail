@@ -71,6 +71,21 @@ def worker():
     return source_id
 
 
+def legacy_default(client):
+    """Construct the previous version's untouched global migration record."""
+    target = channel(client, '原有 Telegram', kind='telegram', bot_token='old-token', chat_id='old-chat')
+    db = web.get_db()
+    db.execute("UPDATE notification_channels SET legacy_key='telegram' WHERE id=?", (target,))
+    for key, value in {'forward_channels': 'telegram', 'telegram_bot_token': 'old-token', 'telegram_chat_id': 'old-chat'}.items():
+        db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', (key, value))
+    db.execute("DELETE FROM forwarding_policies WHERE scope_type='normal_default'")
+    pid = db.execute("INSERT INTO forwarding_policies(scope_type,mode,updated_at) VALUES('normal_default','custom',0)").lastrowid
+    db.execute('INSERT INTO forwarding_policy_channels VALUES(?,?,?)', (pid, target, time.time() - 3600))
+    db.execute("DELETE FROM settings WHERE key='source_forwarding_account_rules_v3'")
+    db.commit()
+    return target, web.forwarding_store.get_policy(db, 'normal_default')
+
+
 def preview(client, **params):
     response = client.get('/api/forwarding/preview', query_string=params)
     assert response.status_code == 200, response.get_json()
@@ -573,12 +588,14 @@ def test_tiered_groups_account_move_and_delete_cleanup(client):
 @pytest.mark.parametrize('selection,expected', [('auto', 1), ('none', 0), ('telegram', 1)])
 def test_legacy_selection_migration_and_new_boundary_survives_sync(client, selection, expected):
     db = web.get_db()
+    source = account()
     for key, value in {'forward_channels': selection, 'telegram_bot_token': 'test-token', 'telegram_chat_id': 'test-chat'}.items():
         db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', (key, value))
     db.commit()
     web.sync_legacy_forwarding()
-    default = web.forwarding_store.get_policy(db, 'normal_default')
-    assert len(default['channel_ids']) == expected
+    migrated = web.forwarding_store.get_policy(db, 'account', source['id'])
+    assert len(migrated['channel_ids']) == expected
+    assert web.forwarding_store.get_policy(db, 'normal_default')['id'] is None
     target = db.execute("SELECT id FROM notification_channels WHERE legacy_key='telegram'").fetchone()[0]
     policy(client, 'normal_default', mode='off')
     policy(client, 'normal_default', targets=[target])
@@ -724,6 +741,70 @@ def test_bulk_remove_override_restores_automatic_group_inheritance(client):
     assert all(preview(client, account_id=source_id)['channel_ids'] == [inherited] for source_id in ids)
 
 
+def test_batch_delete_policy_ids_handles_mixed_sources_and_preserves_unselected_rules(client):
+    target, other = channel(client, '上层目标'), channel(client, '独立目标')
+    first, unselected = account('batch@example.com'), account('keep@example.com')
+    worker_id = worker()
+    policy(client, 'normal_default', targets=[target])
+    policy(client, 'group', 1, targets=[target])
+    policy(client, 'account', first['id'], targets=[other])
+    policy(client, 'account', unselected['id'], targets=[other])
+    policy(client, 'cloudflare_worker', worker_id, targets=[target])
+    policy(client, 'cloudflare_address', worker_id, targets=[other], match='special@example.com')
+    db = web.get_db()
+    scopes = [('normal_default', 0, ''), ('group', 1, ''), ('account', first['id'], ''), ('cloudflare_address', worker_id, 'special@example.com')]
+    ids = [web.forwarding_store.get_policy(db, *scope)['id'] for scope in scopes]
+    response = client.delete('/api/forwarding/policies', json={'policy_ids': ids + ids[:1]})
+    assert response.status_code == 200 and response.get_json()['count'] == 4
+    assert web.forwarding_store.get_policy(db, 'normal_default')['id'] is None
+    assert all(web.forwarding_store.get_policy(db, *scope)['mode'] == 'inherit' for scope in scopes[1:])
+    assert preview(client, account_id=unselected['id'])['channel_ids'] == [other]
+    assert preview(client, worker_id=worker_id, address='special@example.com')['channel_ids'] == [target]
+
+
+@pytest.mark.parametrize('ids', [[], None, [True], [0], ['1'], [1.5]])
+def test_batch_delete_rejects_invalid_policy_ids_without_changes(client, ids):
+    before = client.get('/api/forwarding/policies').get_json()['policies']
+    response = client.delete('/api/forwarding/policies', json={'policy_ids': ids})
+    assert response.status_code == 400
+    assert client.get('/api/forwarding/policies').get_json()['policies'] == before
+
+
+@pytest.mark.parametrize('stale_kind', ['missing', 'removed'])
+def test_batch_delete_missing_rule_rejects_entire_batch(client, stale_kind):
+    target = channel(client)
+    source = account()
+    policy(client, 'account', source['id'], targets=[target])
+    db = web.get_db()
+    before = web.forwarding_store.get_policy(db, 'account', source['id'])
+    stale_id = 99999999
+    if stale_kind == 'removed':
+        removed = account('removed-rule@example.com')
+        policy(client, 'account', removed['id'], targets=[target])
+        stale_id = web.forwarding_store.get_policy(db, 'account', removed['id'])['id']
+        client.delete('/api/forwarding/policies', json={'scope_type': 'account', 'scope_id': removed['id']})
+    response = client.delete('/api/forwarding/policies', json={'policy_ids': [before['id'], stale_id]})
+    assert response.status_code == 400
+    assert web.forwarding_store.get_policy(db, 'account', source['id']) == before
+
+
+def test_batch_delete_rolls_back_earlier_removals_on_write_failure(client):
+    target = channel(client)
+    source = account()
+    db = web.get_db()
+    db.execute("UPDATE notification_channels SET legacy_key='feishu' WHERE id=?", (target,))
+    db.commit()
+    policy(client, 'normal_default', targets=[target])
+    policy(client, 'account', source['id'], targets=[target])
+    before = client.get('/api/forwarding/policies').get_json()['policies']
+    ids = [row['id'] for row in before]
+    with patch.object(web.forwarding_store, 'save_policy', side_effect=ValueError('模拟删除失败')):
+        response = client.delete('/api/forwarding/policies', json={'policy_ids': ids})
+    assert response.status_code == 400
+    assert client.get('/api/forwarding/policies').get_json()['policies'] == before
+    assert db.execute("SELECT value FROM settings WHERE key='forward_channels'").fetchone()[0] == 'feishu'
+
+
 @pytest.mark.parametrize('scope', ['account', 'group', 'cloudflare_worker'])
 def test_create_policy_rejects_existing_rule_atomically_until_deleted(client, scope):
     original, replacement = channel(client, '原渠道'), channel(client, '新渠道')
@@ -760,7 +841,7 @@ def test_legacy_disabled_accounts_stay_off_without_overwriting_explicit_rules(cl
     target = channel(client)
     policy(client, 'account', configured['id'], targets=[target])
     db.execute('UPDATE accounts SET forward_enabled=0')
-    db.execute("DELETE FROM settings WHERE key='source_forwarding_account_switch_retired'")
+    db.execute("DELETE FROM settings WHERE key IN ('source_forwarding_migrated','source_forwarding_account_rules_v3')")
     db.commit()
     web.init_db()
     assert web.forwarding_store.get_policy(db, 'account', old_off['id'])['mode'] == 'off'
@@ -792,14 +873,15 @@ def test_legacy_migration_preserves_selected_channels_for_both_account_switch_st
     web.init_db()
     web.init_db()
     default = web.forwarding_store.get_policy(db, 'normal_default')
-    assert default['mode'] == ('custom' if expected else 'off')
+    assert default['id'] is None
     for source in sources:
         result = preview(client, account_id=source['id'])
         old_enabled = source['id'] == sources[0]['id']
         assert {row['type'] for row in result['channels']} == (expected if old_enabled else set())
         rule = web.forwarding_store.get_policy(db, 'account', source['id'])
         if old_enabled:
-            assert rule['id'] is None
+            assert rule['mode'] == ('custom' if expected else 'off')
+            assert rule['updated_at'] == 0
         else:
             assert rule['mode'] == 'off'
         saved = db.execute('SELECT forward_last_checked_at FROM accounts WHERE id=?', (source['id'],)).fetchone()[0]
@@ -811,15 +893,14 @@ def test_selection_upgrade_repairs_untouched_default_but_preserves_manual_rules(
     db = web.get_db()
     source = account()
     policy(client, 'account', source['id'], mode='off')
-    for key, value in {'forward_channels': ' TG ', 'telegram_bot_token': 'old-token', 'telegram_chat_id': 'old-chat'}.items():
-        db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', (key, value))
-    db.execute("DELETE FROM settings WHERE key='source_forwarding_channel_selection_v2'")
+    legacy_default(client)
+    db.execute("UPDATE settings SET value=' TG ' WHERE key='forward_channels'")
     db.commit()
     web.init_db()
-    assert web.forwarding_store.get_policy(db, 'normal_default')['mode'] == 'custom'
+    assert web.forwarding_store.get_policy(db, 'normal_default')['id'] is None
     assert preview(client, account_id=source['id'])['mode'] == 'off'
     policy(client, 'normal_default', mode='off')
-    db.execute("DELETE FROM settings WHERE key='source_forwarding_channel_selection_v2'")
+    db.execute("DELETE FROM settings WHERE key='source_forwarding_account_rules_v3'")
     db.execute("UPDATE settings SET value='telegram' WHERE key='forward_channels'")
     db.commit()
     web.init_db()
@@ -831,19 +912,89 @@ def test_selection_repair_keeps_previously_disabled_accounts_off_and_new_account
     old_enabled = account('enabled-before-upgrade@example.com')
     old_disabled = account('disabled-before-upgrade@example.com')
     db.execute('UPDATE accounts SET forward_enabled=0 WHERE id=?', (old_disabled['id'],))
-    for key, value in {'forward_channels': ' TG ', 'telegram_bot_token': 'old-token', 'telegram_chat_id': 'old-chat'}.items():
-        db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', (key, value))
+    legacy_default(client)
     db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('source_forwarding_account_switch_retired','1')")
-    db.execute("DELETE FROM settings WHERE key='source_forwarding_channel_selection_v2'")
+    db.execute("DELETE FROM settings WHERE key='source_forwarding_account_rules_v3'")
     db.commit()
     web.init_db()
     assert {row['type'] for row in preview(client, account_id=old_enabled['id'])['channels']} == {'telegram'}
     assert preview(client, account_id=old_disabled['id'])['mode'] == 'off'
+    group_target = channel(client, '新分组目标')
+    policy(client, 'group', 1, targets=[group_target])
     assert web.add_account('new-after-upgrade@example.com', '', 'test-client', 'test-refresh', group_id=1)
     added = web.get_account_by_email('new-after-upgrade@example.com')
     web.init_db()
     assert preview(client, account_id=added['id'])['mode'] == 'custom'
+    assert preview(client, account_id=added['id'])['channel_ids'] == [group_target]
     assert web.forwarding_store.get_policy(db, 'account', added['id'])['id'] is None
+
+
+def test_legacy_default_becomes_per_account_rules_with_original_boundaries(client):
+    enabled, disabled, manual = account('old-on@example.com'), account('old-off@example.com'), account('manual@example.com')
+    target, default = legacy_default(client)
+    db = web.get_db()
+    db.execute('UPDATE accounts SET forward_enabled=0 WHERE id=?', (disabled['id'],))
+    db.commit()
+    manual_target = channel(client, '手工目标')
+    group_id = db.execute("INSERT INTO groups(name) VALUES('手工分组')").lastrowid
+    db.commit()
+    grouped = account('manual-group@example.com', group=group_id)
+    policy(client, 'group', group_id, targets=[manual_target])
+    policy(client, 'account', manual['id'], targets=[manual_target])
+    before_manual = web.forwarding_store.get_policy(db, 'account', manual['id'])
+    web.init_db()
+    web.init_db()
+    migrated = web.forwarding_store.get_policy(db, 'account', enabled['id'])
+    assert migrated['mode'] == 'custom' and migrated['channel_ids'] == [target]
+    assert migrated['active_since'] == default['active_since']
+    assert web.forwarding_store.get_policy(db, 'normal_default')['id'] is None
+    assert preview(client, account_id=disabled['id'])['mode'] == 'off'
+    assert web.forwarding_store.get_policy(db, 'account', manual['id']) == before_manual
+    assert web.forwarding_store.get_policy(db, 'account', grouped['id'])['id'] is None
+    assert preview(client, account_id=grouped['id'])['channel_ids'] == [manual_target]
+    policy(client, 'account', enabled['id'], mode='inherit')
+    web.init_db()
+    web.build_forwarding_job_config()
+    assert web.forwarding_store.get_policy(db, 'account', enabled['id'])['mode'] == 'inherit'
+    assert web.forwarding_store.get_policy(db, 'normal_default')['id'] is None
+
+
+def test_legacy_settings_update_account_rules_without_creating_default_or_overwriting_manual_rules(client):
+    db = web.get_db()
+    enabled, manual = account('compat-on@example.com'), account('compat-manual@example.com')
+    for key, value in {'forward_channels': 'telegram', 'telegram_bot_token': 'old-token', 'telegram_chat_id': 'old-chat'}.items():
+        db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', (key, value))
+    db.commit()
+    web.sync_legacy_forwarding()
+    manual_target = channel(client, '手工通知目标')
+    policy(client, 'account', manual['id'], targets=[manual_target])
+    before = web.forwarding_store.get_policy(db, 'account', manual['id'])
+    result = client.put('/api/settings', json={'forward_channels': []})
+    assert result.status_code == 200 and result.get_json()['success']
+    assert preview(client, account_id=enabled['id'])['mode'] == 'off'
+    assert web.forwarding_store.get_policy(db, 'account', manual['id']) == before
+    assert web.forwarding_store.get_policy(db, 'normal_default')['id'] is None
+
+
+def test_legacy_account_conversion_failure_rolls_back_default_and_all_accounts(client):
+    account('first-conversion@example.com')
+    account('second-conversion@example.com')
+    _, before = legacy_default(client)
+    db = web.get_db()
+    real_save = web.forwarding_store.save_policy
+    calls = []
+
+    def fail_second(db, data, **kwargs):
+        calls.append(data)
+        if len(calls) == 2:
+            raise ValueError('模拟第二个账号迁移失败')
+        return real_save(db, data, **kwargs)
+
+    with patch.object(web.forwarding_store, 'save_policy', side_effect=fail_second), pytest.raises(ValueError):
+        web.init_db()
+    assert web.forwarding_store.get_policy(db, 'normal_default') == before
+    assert db.execute("SELECT COUNT(*) FROM forwarding_policies WHERE scope_type='account'").fetchone()[0] == 0
+    assert db.execute("SELECT value FROM settings WHERE key='source_forwarding_account_rules_v3'").fetchone() is None
 
 
 def test_new_account_automatically_uses_group_without_backfilling_old_mail(client):

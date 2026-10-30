@@ -4012,6 +4012,8 @@ class MultiChannelForwardingTests(unittest.TestCase):
                 (self.account_id,),
             )
             db.commit()
+            # Legacy opt-ins are materialized before a job; polling only reads routes.
+            web_outlook_app.sync_legacy_forwarding()
 
     def tearDown(self):
         with self.app.app_context():
@@ -4085,6 +4087,7 @@ class MultiChannelForwardingTests(unittest.TestCase):
             web_outlook_app.set_setting('forward_keywords', 'Access deactivated')
             web_outlook_app.set_setting('forward_channels', 'smtp,telegram,wecom')
             web_outlook_app.set_setting_encrypted('wecom_webhook_url', 'https://example.com/robot')
+            web_outlook_app.sync_legacy_forwarding()
             config = web_outlook_app.build_forwarding_job_config()
             config.update(include_junkemail=False, forward_window_start=None)
             account = web_outlook_app.get_account_by_id(self.account_id)
@@ -4338,6 +4341,7 @@ class MultiChannelForwardingTests(unittest.TestCase):
                 ('second-forward@example.com',),
             )
             db.commit()
+            web_outlook_app.sync_legacy_forwarding()
 
         with patch.object(web_outlook_app, 'fetch_forward_candidates', return_value={'success': True, 'emails': [], 'error': ''}) as candidates_mock:
             with patch.object(web_outlook_app.time, 'sleep') as sleep_mock:
@@ -4376,6 +4380,7 @@ class MultiChannelForwardingTests(unittest.TestCase):
                 ('parallel-second@example.com',),
             )
             db.commit()
+            web_outlook_app.sync_legacy_forwarding()
 
         first_started = threading.Event()
         second_processed = threading.Event()
@@ -4418,6 +4423,7 @@ class MultiChannelForwardingTests(unittest.TestCase):
                 ('parallel-delay-second@example.com',),
             )
             db.commit()
+            web_outlook_app.sync_legacy_forwarding()
 
         with patch.object(web_outlook_app, 'fetch_forward_candidates', return_value={'success': True, 'emails': [], 'error': ''}) as candidates_mock:
             with patch.object(web_outlook_app.time, 'sleep') as sleep_mock:

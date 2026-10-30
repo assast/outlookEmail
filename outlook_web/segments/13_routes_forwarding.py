@@ -7,9 +7,9 @@ def forwarding_management_page():
     return index()
 
 
-def sync_legacy_forwarding(db=None):
+def sync_legacy_forwarding(db=None, *, update_associations=True):
     db = db if db is not None else get_db()
-    forwarding_store.sync_legacy(db, encrypt_data, decrypt_data)
+    forwarding_store.sync_legacy(db, encrypt_data, decrypt_data, update_associations=update_associations)
     db.commit()
 
 
@@ -104,7 +104,18 @@ def api_forwarding_policies():
     try:
         if request.method == 'DELETE':
             data = request.get_json(silent=True)
-            scopes = forwarding_store.policy_scopes(db, data)
+            if isinstance(data, dict) and 'policy_ids' in data:
+                ids = data['policy_ids']
+                if not isinstance(ids, list) or not ids or any(isinstance(value, bool) or not isinstance(value, int) or value < 1 for value in ids):
+                    raise ValueError('请至少选择一条有效的转发规则')
+                ids = sorted(set(ids))
+                db.execute('BEGIN IMMEDIATE')
+                rows = [db.execute('SELECT scope_type,scope_id,match_value,mode FROM forwarding_policies WHERE id=?', (policy_id,)).fetchone() for policy_id in ids]
+                if any(row is None or row['mode'] == 'inherit' for row in rows):
+                    raise ValueError('部分转发规则已不存在，请刷新后重试')
+                scopes = [(row['scope_type'], row['scope_id'], row['match_value']) for row in rows]
+            else:
+                scopes = forwarding_store.policy_scopes(db, data)
             for scope in scopes:
                 if scope[0] in ('normal_default', 'cloudflare_worker'):
                     db.execute('DELETE FROM forwarding_policies WHERE scope_type=? AND scope_id=? AND match_value=?', scope)

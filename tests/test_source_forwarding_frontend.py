@@ -23,11 +23,12 @@ function node(tag = 'div') {
 }
 function element(id) {if (!elements.has(id)) {const n = node(); n.id = id;} return elements.get(id);}
 const sandbox = {console, Set, Map, Date, JSON, Number, String, Object, Array, URLSearchParams,
-    requests, toasts, element, fail: false, historyRows: [], previewResult: {}, policyResults: [],
+    requests, toasts, element, fail: false, historyRows: [], previewResult: {}, policyResults: [], confirmResult:true,
     document: {getElementById: element, createElement: node, createTextNode: text => ({textContent: text}),
         addEventListener() {}, querySelector: () => node(), querySelectorAll: () => []},
     escapeHtml: value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
     showToast: (...args) => toasts.push(args), formatDateTime: value => value,
+    showConfirmModal: async () => sandbox.confirmResult,
     fetch: async (url, options = {}) => {
         requests.push({url, body: options.body && JSON.parse(options.body), method: options.method});
         return {json: async () => sandbox.fail ? {success: false, error: '模拟失败'} :
@@ -245,3 +246,69 @@ def test_source_picker_saves_selections_across_different_searches():
     })()''')
     assert len(result) == 1
     assert result[0]['body']['scope_ids'] == [12, 15]
+
+
+def test_rule_filters_combine_keyword_scope_channel_and_mode():
+    result = run_frontend('''(() => {
+        sourceForwardingState.channels = [{id:11,name:'工作通知'},{id:12,name:'注册提醒'}];
+        sourceForwardingState.accounts = [{id:3,email:'one@example.com'}];
+        sourceForwardingState.groups = [{id:4,name:'工作组'}];
+        sourceForwardingState.workers = [{id:5,name:'Edge Worker'}];
+        sourceForwardingState.policies = [
+            {id:101,scope_type:'account',scope_id:3,match_value:'',mode:'custom',channel_ids:[11]},
+            {id:102,scope_type:'group',scope_id:4,match_value:'',mode:'custom',channel_ids:[12]},
+            {id:103,scope_type:'cloudflare_address',scope_id:5,match_value:'special@example.com',mode:'custom',channel_ids:[11]},
+            {id:104,scope_type:'cloudflare_worker',scope_id:5,match_value:'',mode:'off',channel_ids:[]}];
+        element('forwardRuleSearch').value = ' EDGE ';
+        element('forwardRuleScopeFilter').value = 'cloudflare_address';
+        element('forwardRuleChannelFilter').value = '11';
+        element('forwardRuleModeFilter').value = 'custom';
+        return filteredForwardingPolicies().map(p=>p.id);
+    })()''')
+    assert result == [103]
+
+
+def test_rule_selection_only_selects_filtered_rows_and_clears_on_filter_change():
+    result = run_frontend('''(() => {
+        sourceForwardingState.policies = [
+            {id:101,scope_type:'account',scope_id:3,mode:'off',channel_ids:[]},
+            {id:102,scope_type:'group',scope_id:4,mode:'off',channel_ids:[]}];
+        element('forwardRuleScopeFilter').value = 'account';
+        selectForwardingPolicyRows(true);
+        const first = Array.from(sourceForwardingState.selectedPolicyIds);
+        element('forwardRuleScopeFilter').value = 'group';
+        changeForwardingPolicyFilters();
+        return {first,after:Array.from(sourceForwardingState.selectedPolicyIds),disabled:element('deleteSelectedForwardingPoliciesBtn').disabled};
+    })()''')
+    assert result['first'] == [101] and result['after'] == []
+    assert result['disabled']
+
+
+def test_batch_rule_delete_submits_stable_ids_once_and_clears_successful_selection():
+    result = run_frontend('''(async () => {
+        sourceForwardingState.policies = [
+            {id:40,scope_type:'group',scope_id:2,mode:'off',channel_ids:[]},
+            {id:18,scope_type:'account',scope_id:1,mode:'off',channel_ids:[]}];
+        sourceForwardingState.selectedPolicyIds = new Set([40,18]);
+        loadSourceForwarding = async () => {};
+        await deleteSelectedForwardingPolicies(element('deleteSelectedForwardingPoliciesBtn'));
+        return {requests,selected:Array.from(sourceForwardingState.selectedPolicyIds),disabled:element('deleteSelectedForwardingPoliciesBtn').disabled};
+    })()''')
+    assert len(result['requests']) == 1
+    assert result['requests'][0]['method'] == 'DELETE'
+    assert result['requests'][0]['body'] == {'policy_ids': [18, 40]}
+    assert result['selected'] == [] and result['disabled']
+
+
+def test_batch_rule_delete_cancel_and_failure_keep_selection():
+    for cancelled in (True, False):
+        result = run_frontend('''(async () => {
+            sourceForwardingState.policies = [{id:18,scope_type:'account',scope_id:1,mode:'off',channel_ids:[]}];
+            sourceForwardingState.selectedPolicyIds = new Set([18]);
+            confirmResult = CANCELLED ? false : true;
+            fail = true;
+            await deleteSelectedForwardingPolicies(element('deleteSelectedForwardingPoliciesBtn'));
+            return {requests,selected:Array.from(sourceForwardingState.selectedPolicyIds),disabled:element('deleteSelectedForwardingPoliciesBtn').disabled};
+        })()'''.replace('CANCELLED', 'true' if cancelled else 'false'))
+        assert len(result['requests']) == (0 if cancelled else 1)
+        assert result['selected'] == [18] and not result['disabled']
