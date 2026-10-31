@@ -27,6 +27,24 @@ SCOPES = {'normal_default', 'group', 'account', 'cloudflare_worker', 'cloudflare
 UNFINISHED = ('pending', 'failed', 'blocked', 'sending')
 
 
+def normalize_keywords(value):
+    if not isinstance(value, str):
+        raise ValueError('邮件关键词必须是文本')
+    lines, seen = [], set()
+    for line in value.splitlines():
+        line = line.strip()
+        if line and line.casefold() not in seen:
+            lines.append(line)
+            seen.add(line.casefold())
+    return '\n'.join(lines)
+
+
+def normalize_senders(value):
+    if not isinstance(value, str):
+        raise ValueError('发件人筛选必须是文本，每行填写一个完整邮箱地址')
+    return '\n'.join(dict.fromkeys(normalize_address(line) for line in value.splitlines() if line.strip()))
+
+
 def normalize_channel_selection(raw_channels):
     if isinstance(raw_channels, str):
         values = raw_channels.split(',')
@@ -210,6 +228,11 @@ def init_schema(db, encrypt, decrypt):
     try:
         for statement in statements:
             db.execute(statement)
+        columns = {row['name'] for row in db.execute('PRAGMA table_info(forwarding_policies)')}
+        if 'keywords' not in columns:
+            db.execute("ALTER TABLE forwarding_policies ADD COLUMN keywords TEXT NOT NULL DEFAULT ''")
+        if 'senders' not in columns:
+            db.execute("ALTER TABLE forwarding_policies ADD COLUMN senders TEXT NOT NULL DEFAULT ''")
         marker = db.execute("SELECT value FROM settings WHERE key='source_forwarding_migrated'").fetchone()
         account_rules = db.execute("SELECT 1 FROM settings WHERE key='source_forwarding_account_rules_v3'").fetchone()
         if not marker or not account_rules:
@@ -217,6 +240,12 @@ def init_schema(db, encrypt, decrypt):
             for key in ('source_forwarding_migrated', 'source_forwarding_channel_selection_v2',
                         'source_forwarding_account_switch_retired', 'source_forwarding_account_rules_v3'):
                 db.execute('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)', (key, '1'))
+        options = db.execute("SELECT 1 FROM settings WHERE key='source_forwarding_rule_options_v4'").fetchone()
+        if not options:
+            legacy_keywords = db.execute("SELECT value FROM settings WHERE key='forward_keywords'").fetchone()
+            keywords = normalize_keywords(legacy_keywords['value'] if legacy_keywords else '')
+            db.execute("UPDATE forwarding_policies SET keywords=? WHERE scope_type IN ('normal_default','group','account') AND mode='custom'", (keywords,))
+            db.execute("INSERT INTO settings(key,value) VALUES('source_forwarding_rule_options_v4','1')")
         db.execute('RELEASE forwarding_schema')
     except Exception:
         db.execute('ROLLBACK TO forwarding_schema')
@@ -343,6 +372,8 @@ def is_legacy_default(db, policy):
 
 def sync_legacy_account_policies(db, channel_ids, *, initial, seed_missing):
     default = get_policy(db, 'normal_default')
+    row = db.execute("SELECT value FROM settings WHERE key='forward_keywords'").fetchone()
+    keywords = normalize_keywords(row['value'] if row else '')
     for account in db.execute('SELECT id,forward_enabled FROM accounts ORDER BY id').fetchall():
         enabled = bool(account['forward_enabled'])
         if not initial and not enabled:
@@ -358,11 +389,11 @@ def sync_legacy_account_policies(db, channel_ids, *, initial, seed_missing):
                 continue
         targets = channel_ids if enabled else []
         mode = 'custom' if targets else 'off'
-        if old['id'] is not None and old['mode'] == mode and old['channel_ids'] == targets:
+        if old['id'] is not None and old['mode'] == mode and old['channel_ids'] == targets and old['keywords'] == (keywords if targets else ''):
             continue
         since = {cid: old['active_since'].get(cid, route['active_since'].get(cid, 0)) for cid in targets}
         migrated = save_policy(db, {'scope_type': 'account', 'scope_id': account['id'],
-                                    'mode': mode, 'channel_ids': targets})
+                                    'mode': mode, 'channel_ids': targets, 'keywords': keywords})
         db.execute('UPDATE forwarding_policies SET updated_at=0 WHERE id=?', (migrated['id'],))
         for cid, active_since in since.items():
             db.execute('UPDATE forwarding_policy_channels SET active_since=? WHERE policy_id=? AND channel_id=?',
@@ -409,11 +440,34 @@ def get_policy(db, scope_type, scope_id=0, match_value=''):
     row = db.execute('SELECT * FROM forwarding_policies WHERE scope_type=? AND scope_id=? AND match_value=?',
                      (scope_type, scope_id, match_value)).fetchone()
     value = dict(row) if row else {'id': None, 'scope_type': scope_type, 'scope_id': scope_id,
-                                 'match_value': match_value, 'mode': 'off' if scope_type in ('normal_default', 'cloudflare_worker') else 'inherit', 'updated_at': 0}
+                                 'match_value': match_value, 'mode': 'off' if scope_type in ('normal_default', 'cloudflare_worker') else 'inherit', 'updated_at': 0, 'keywords': '', 'senders': ''}
     links = db.execute('SELECT channel_id,active_since FROM forwarding_policy_channels WHERE policy_id=? ORDER BY channel_id', (value['id'],)).fetchall() if row else []
     value['channel_ids'] = [r['channel_id'] for r in links]
     value['active_since'] = {r['channel_id']: r['active_since'] for r in links}
     return value
+
+
+def selected_policies(db, ids):
+    if not isinstance(ids, list) or not ids or any(isinstance(value, bool) or not isinstance(value, int) or value < 1 for value in ids):
+        raise ValueError('请至少选择一条有效的转发规则')
+    rows = [db.execute('SELECT scope_type,scope_id,match_value,mode FROM forwarding_policies WHERE id=?', (pid,)).fetchone() for pid in sorted(set(ids))]
+    if any(row is None or row['mode'] == 'inherit' for row in rows):
+        raise ValueError('部分转发规则已不存在，请刷新后重试')
+    return [get_policy(db, row['scope_type'], row['scope_id'], row['match_value']) for row in rows]
+
+
+def update_policies(db, data):
+    if not isinstance(data, dict):
+        raise ValueError('规则编辑必须为对象')
+    changes = data.get('changes')
+    if not isinstance(changes, dict) or not changes or changes.keys() - {'mode', 'channel_ids', 'keywords', 'senders'}:
+        raise ValueError('请选择需要修改的通知方式、渠道或邮件条件，不能修改来源')
+    if 'mode' in changes and changes['mode'] not in ('custom', 'off'):
+        raise ValueError('编辑规则请选择指定渠道或关闭通知')
+    policies = selected_policies(db, data.get('policy_ids'))
+    if len({p['scope_type'] for p in policies}) != 1:
+        raise ValueError('批量编辑仅支持同一来源范围的转发规则')
+    return [save_policy(db, {**policy, **changes}) for policy in policies]
 
 
 def save_policy(db, data, *, create_only=False):
@@ -434,15 +488,18 @@ def save_policy(db, data, *, create_only=False):
     if any(not get_channel(db, cid) for cid in ids):
         raise ValueError('通知渠道不存在')
     old = get_policy(db, *scope)
+    keywords = normalize_keywords(data.get('keywords', old['keywords'])) if mode == 'custom' else ''
+    senders = normalize_senders(data.get('senders', old['senders'])) if mode == 'custom' else ''
     now = time.time()
     conflict_condition = " WHERE forwarding_policies.mode='inherit'" if create_only else ''
-    result = db.execute('INSERT INTO forwarding_policies(scope_type,scope_id,match_value,mode,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(scope_type,scope_id,match_value) DO UPDATE SET mode=excluded.mode,updated_at=excluded.updated_at' + conflict_condition, (*scope, mode, now))
+    result = db.execute('INSERT INTO forwarding_policies(scope_type,scope_id,match_value,mode,updated_at,keywords,senders) VALUES(?,?,?,?,?,?,?) ON CONFLICT(scope_type,scope_id,match_value) DO UPDATE SET mode=excluded.mode,updated_at=excluded.updated_at,keywords=excluded.keywords,senders=excluded.senders' + conflict_condition, (*scope, mode, now, keywords, senders))
     if result.rowcount == 0:
-        raise ValueError('该来源已有转发规则，请先删除后新增')
+        raise ValueError('该来源已有转发规则，请直接编辑；如需重新新增请先删除')
     pid = get_policy(db, *scope)['id']
     db.execute('DELETE FROM forwarding_policy_channels WHERE policy_id=?', (pid,))
+    unchanged_filters = old['keywords'] == keywords and old['senders'] == senders
     for cid in ids:
-        since = old['active_since'].get(cid, now) if old['mode'] == 'custom' else now
+        since = old['active_since'].get(cid, now) if old['mode'] == 'custom' and unchanged_filters else now
         db.execute('INSERT INTO forwarding_policy_channels VALUES(?,?,?)', (pid, cid, since))
     if scope[0] == 'normal_default':
         kinds = [r[0] for r in db.execute('SELECT legacy_key FROM notification_channels WHERE id IN (SELECT channel_id FROM forwarding_policy_channels WHERE policy_id=?) AND legacy_key IS NOT NULL', (pid,))]
@@ -501,6 +558,8 @@ def resolve_policy(db, *, account_id=None, worker_id=None, address=''):
     return {'source_type': 'account' if account else 'cloudflare', 'source_id': int(account_id if account else worker_id),
             'email_address': address, 'eligible': eligible, 'reason': reason,
             'mode': selected['mode'] if selected else 'off', 'channel_ids': ids,
+            'keywords': selected['keywords'] if selected else '',
+            'senders': selected['senders'] if selected else '',
             'replay_requested_at': replay_requested_at,
             'path': path, 'active_since': since, 'blocked': blocked,
             'channels': [{'id': c['id'], 'name': c['name'], 'type': c['type'], 'enabled': bool(c['enabled'])} for c in channels]}

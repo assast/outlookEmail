@@ -1794,7 +1794,6 @@
                     document.getElementById('forwardAccountDelaySeconds').value = data.settings.forward_account_delay_seconds || '0';
                     document.getElementById('forwardEmailWindowMinutes').value = data.settings.forward_email_window_minutes || '0';
                     document.getElementById('forwardIncludeJunkemail').checked = String(data.settings.forward_include_junkemail) === 'true';
-                    document.getElementById('forwardKeywords').value = data.settings.forward_keywords || '';
                     }
                     document.getElementById('settingsEmailForwardRecipient').value = data.settings.email_forward_recipient || '';
                     document.getElementById('settingsSmtpHost').value = data.settings.smtp_host || '';
@@ -2033,7 +2032,6 @@
             settings.forward_account_delay_seconds = forwardAccountDelaySeconds;
             settings.forward_email_window_minutes = forwardWindowMinutes;
             settings.forward_include_junkemail = forwardIncludeJunkemail;
-            settings.forward_keywords = document.getElementById('forwardKeywords').value;
             settings.email_forward_recipient = smtpRecipient;
             settings.smtp_host = smtpHost;
             settings.smtp_port = Number.isNaN(smtpPort) ? 465 : smtpPort;

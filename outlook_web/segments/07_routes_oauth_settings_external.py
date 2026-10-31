@@ -1260,7 +1260,7 @@ def api_update_settings():
     if errors:
         return jsonify({'success': False, 'error': '；'.join(errors)})
 
-    forwarding_keys = {'forward_channels', 'feishu_clear_sign_secret'} | {
+    forwarding_keys = {'forward_channels', 'forward_keywords', 'feishu_clear_sign_secret'} | {
         key for mapping in forwarding_store.LEGACY_FIELDS.values() for key in mapping.values()
     }
     if forwarding_keys.intersection(data):
