@@ -97,22 +97,22 @@ def api_notification_channel_test():
         return forwarding_api_error(exc)
 
 
-@app.route('/api/forwarding/policies', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@app.route('/api/forwarding/policies', methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @login_required
 def api_forwarding_policies():
     db = get_db()
     try:
+        if request.method == 'PATCH':
+            db.execute('BEGIN IMMEDIATE')
+            results = forwarding_store.update_policies(db, request.get_json(silent=True))
+            db.commit()
+            reconcile_forwarding_deliveries()
+            return jsonify({'success': True, 'policies': results, 'count': len(results)})
         if request.method == 'DELETE':
             data = request.get_json(silent=True)
             if isinstance(data, dict) and 'policy_ids' in data:
-                ids = data['policy_ids']
-                if not isinstance(ids, list) or not ids or any(isinstance(value, bool) or not isinstance(value, int) or value < 1 for value in ids):
-                    raise ValueError('请至少选择一条有效的转发规则')
-                ids = sorted(set(ids))
                 db.execute('BEGIN IMMEDIATE')
-                rows = [db.execute('SELECT scope_type,scope_id,match_value,mode FROM forwarding_policies WHERE id=?', (policy_id,)).fetchone() for policy_id in ids]
-                if any(row is None or row['mode'] == 'inherit' for row in rows):
-                    raise ValueError('部分转发规则已不存在，请刷新后重试')
+                rows = forwarding_store.selected_policies(db, data['policy_ids'])
                 scopes = [(row['scope_type'], row['scope_id'], row['match_value']) for row in rows]
             else:
                 scopes = forwarding_store.policy_scopes(db, data)
@@ -466,8 +466,10 @@ def process_cloudflare_forwarding_worker(worker, job_config=None):
                     break
                 route = forwarding_store.resolve_policy(db, worker_id=worker['id'], address=address)
                 # Account-like payload is presentation only; no fake account is stored.
-                payload = build_forward_payload({'email': address}, detail)
-                event_id = enqueue_forwarding_event(db, route, identity, received_at, payload, worker['name'])
+                event_id = None
+                if forward_email_matches_policy(detail, route):
+                    payload = build_forward_payload({'email': address}, detail)
+                    event_id = enqueue_forwarding_event(db, route, identity, received_at, payload, worker['name'])
                 if event_id is not None:
                     event_ids.add(event_id)
                 next_id -= 1

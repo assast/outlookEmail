@@ -7,7 +7,7 @@ import math
 
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from email.utils import parsedate_to_datetime
+from email.utils import getaddresses, parsedate_to_datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from werkzeug.exceptions import HTTPException
@@ -498,14 +498,7 @@ def send_forward_feishu_with_config(config: Dict[str, Any], text: str) -> bool:
 
 
 def normalize_forward_keywords(value: str) -> list[str]:
-    keywords = []
-    seen = set()
-    for line in value.splitlines():
-        keyword = line.strip()
-        if keyword and keyword.casefold() not in seen:
-            keywords.append(keyword)
-            seen.add(keyword.casefold())
-    return keywords
+    return forwarding_store.normalize_keywords(value).splitlines()
 
 
 def forward_email_matches_keywords(email_detail: Dict[str, Any], keywords: list[str]) -> bool:
@@ -517,6 +510,21 @@ def forward_email_matches_keywords(email_detail: Dict[str, Any], keywords: list[
         body = html.unescape(strip_html_content(body))
     body = ' '.join(body.split()).casefold()
     return any(keyword.casefold() in subject or keyword.casefold() in body for keyword in keywords)
+
+
+def forward_email_matches_policy(email_detail: Dict[str, Any], route: Dict[str, Any]) -> bool:
+    if not forward_email_matches_keywords(email_detail, normalize_forward_keywords(route.get('keywords', ''))):
+        return False
+    senders = set(route.get('senders', '').splitlines())
+    if not senders:
+        return True
+    for _, address in getaddresses([str(email_detail.get('from') or '')]):
+        try:
+            if forwarding_store.normalize_address(address) in senders:
+                return True
+        except ValueError:
+            continue
+    return False
 
 
 def build_forward_payload(account: Dict[str, Any], email_detail: Dict[str, Any]) -> tuple[str, str, str, str]:
@@ -894,9 +902,14 @@ def process_forwarding_account(account_row: Dict[str, Any], job_config: Dict[str
                     )
                     continue
 
-                if not forward_email_matches_keywords(detail, job_config.get('keywords', [])):
+                if job_config.get('source_routing'):
+                    route = forwarding_store.resolve_policy(conn, account_id=account['id'])
+                    matches = forward_email_matches_policy(detail, route)
+                else:
+                    matches = forward_email_matches_keywords(detail, job_config.get('keywords', []))
+                if not matches:
                     app.logger.info(
-                        '[forward] skip email not matching keywords: account=%s message_id=%s',
+                        '[forward] skip email not matching rule filters: account=%s message_id=%s',
                         account.get('email', ''), item.get('id', ''),
                     )
                     if item_time and (latest_success_time is None or item_time > latest_success_time):
@@ -908,7 +921,6 @@ def process_forwarding_account(account_row: Dict[str, Any], job_config: Dict[str
                 message_failed = False
 
                 if job_config.get('source_routing'):
-                    route = forwarding_store.resolve_policy(conn, account_id=account['id'])
                     event_id = enqueue_forwarding_event(
                         conn, route, detail['id'], item_time.timestamp() if item_time else time.time(),
                         (title, plain, html_body, telegram_text), account.get('email', ''), account.get('group_id'),

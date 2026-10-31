@@ -1,4 +1,4 @@
-const sourceForwardingState = {channels: [], accounts: [], groups: [], workers: [], policies: [], selectedPolicyIds: new Set(), editingId: null, tab: 'policies', offset: 0};
+const sourceForwardingState = {channels: [], accounts: [], groups: [], workers: [], policies: [], selectedPolicyIds: new Set(), editingPolicyIds: [], editingId: null, tab: 'policies', offset: 0};
 const notificationTypeLabels = {smtp: 'SMTP 邮件', telegram: 'Telegram', wecom: '企业微信', feishu: '飞书'};
 const notificationFieldDefinitions = {
     smtp: [['recipient', '转发到邮箱'], ['host', 'SMTP 主机'], ['port', '端口', 'number'], ['username', '用户名'], ['password', '密码', 'password'], ['from_email', '发件地址'], ['use_tls', '使用 STARTTLS', 'checkbox'], ['use_ssl', '使用 SSL', 'checkbox']],
@@ -89,12 +89,77 @@ function showForwardingTab(tab, updateLocation = true) {
 }
 
 function showForwardingPolicyEditor() {
+    setForwardingPolicyEditing([]);
+    document.getElementById('forwardPolicyMode').value = 'custom';
+    document.getElementById('forwardPolicyKeywords').value = '';
+    document.getElementById('forwardPolicySenders').value = '';
+    renderForwardingTargets();
     const editor = document.getElementById('forwardPolicyEditor');
     editor.hidden = false;
-    editor.scrollIntoView({block: 'nearest'});
-    document.getElementById('forwardPolicyScope').focus();
+    editor.scrollIntoView({block: 'start'});
+    document.getElementById('forwardPolicyScope').focus({preventScroll: true});
+    changeForwardingScope();
 }
 
+
+function setForwardingPolicyEditing(ids) {
+    sourceForwardingState.editingPolicyIds = ids;
+    const editing = ids.length > 0;
+    const bulk = ids.length > 1;
+    document.getElementById('forwardPolicyEditorTitle').textContent = bulk ? `批量编辑 ${ids.length} 条规则` : editing ? '编辑转发规则' : '新增来源关联';
+    document.getElementById('saveForwardingPolicyBtn').textContent = editing ? '保存修改' : '新增关联';
+    document.getElementById('forwardPolicyBulkFields').hidden = !bulk;
+    document.getElementById('forwardPolicyEditingSources').hidden = !editing;
+    document.getElementById('forwardPolicyScope').disabled = editing;
+    const scope = document.getElementById('forwardPolicyScope').value;
+    document.getElementById('forwardPolicySourceField').hidden = editing || scope === 'normal_default';
+    document.getElementById('forwardPolicyMatchField').hidden = editing || !['cloudflare_domain', 'cloudflare_address'].includes(scope);
+    for (const field of ['Notification', 'Keywords', 'Senders']) document.getElementById('forwardPolicyApply' + field).checked = !bulk;
+}
+
+function closeForwardingPolicyEditor() {
+    setForwardingPolicyEditing([]);
+    document.getElementById('forwardPolicyEditor').hidden = true;
+}
+
+function forwardingSourcesForScope(scope) {
+    return scope === 'group' ? sourceForwardingState.groups : scope === 'account' ? sourceForwardingState.accounts : scope.startsWith('cloudflare_') ? sourceForwardingState.workers : [];
+}
+
+function editForwardingPolicies(ids) {
+    ids = [...new Set(ids)].sort((a, b) => a - b);
+    const policies = ids.map(id => sourceForwardingState.policies.find(p => p.id === id && p.mode !== 'inherit'));
+    if (!ids.length || policies.some(p => !p)) return showToast('部分转发规则已不存在，请刷新后重试', 'error');
+    if (new Set(policies.map(p => p.scope_type)).size !== 1) return showToast('批量编辑仅支持同一来源范围的转发规则', 'error');
+    const first = policies[0];
+    const shared = key => policies.every(p => JSON.stringify(p[key]) === JSON.stringify(first[key]));
+    const scope = first.scope_type;
+    document.getElementById('forwardPolicyScope').value = scope;
+    document.getElementById('forwardPolicySource').innerHTML = sourceForwardingOptions(forwardingSourcesForScope(scope), policies.map(p => p.scope_id));
+    document.getElementById('forwardPolicyMatch').value = ids.length === 1 ? first.match_value || '' : '';
+    document.getElementById('forwardPolicyMode').value = shared('mode') ? first.mode : 'custom';
+    for (const [key, id] of [['keywords', 'forwardPolicyKeywords'], ['senders', 'forwardPolicySenders']]) {
+        document.getElementById(id).value = shared(key) ? first[key] || '' : '';
+    }
+    setForwardingPolicyEditing(ids);
+    renderForwardingTargets(shared('channel_ids') ? first.channel_ids : []);
+    document.getElementById('forwardPolicyEditingSources').textContent = `${forwardingScopeLabels[scope]}：` + policies.map(p => forwardingPolicyLabel(p) + (p.match_value ? `（${forwardingPolicySource(p)?.name || 'Worker'}）` : '')).join('、');
+    document.getElementById('forwardPolicyConfigurationHint').textContent = ids.length > 1 ? '仅保存勾选的字段；未勾选字段各自保留原值。勾选条件后留空表示清除，关闭通知的规则不使用邮件条件。' : '修改通知方式、渠道或邮件条件，邮件来源保持不变。';
+    document.getElementById('forwardPolicyPreview').textContent = '';
+    const isCf = scope.startsWith('cloudflare_');
+    document.getElementById('forwardPreviewAccountField').hidden = isCf;
+    document.getElementById('forwardPreviewWorkerField').hidden = !isCf;
+    document.getElementById('forwardPreviewAddressField').hidden = !isCf;
+    updateForwardingPreviewSources();
+    const editor = document.getElementById('forwardPolicyEditor');
+    editor.hidden = false;
+    editor.scrollIntoView({block: 'start'});
+    document.getElementById(ids.length > 1 ? 'forwardPolicyApplyNotification' : 'forwardPolicyMode').focus({preventScroll: true});
+}
+
+function editSelectedForwardingPolicies() {
+    editForwardingPolicies(Array.from(sourceForwardingState.selectedPolicyIds));
+}
 function forwardingEmptyRow(columns, message) {
     return `<tr><td colspan="${columns}" class="forwarding-empty">${message}</td></tr>`;
 }
@@ -118,7 +183,7 @@ async function loadSourceForwarding() {
     const status = document.getElementById('sourceForwardingStatus');
     status.textContent = '正在加载通知配置…';
     document.getElementById('notificationChannelList').innerHTML = forwardingLoadingRows(4);
-    document.getElementById('forwardPolicyList').innerHTML = forwardingLoadingRows(4);
+    document.getElementById('forwardPolicyList').innerHTML = forwardingLoadingRows(5);
     try {
         const [channels, sources, policies] = await Promise.all([
             forwardingRequest('/api/notification-channels'), forwardingRequest('/api/forwarding/sources'), forwardingRequest('/api/forwarding/policies'),
@@ -130,12 +195,12 @@ async function loadSourceForwarding() {
         const ruleChannel = document.getElementById('forwardRuleChannelFilter');
         ruleChannel.innerHTML = '<option value="">全部渠道</option>' + sourceForwardingOptions(channels.channels, ruleChannel.value);
         renderForwardingPolicies();
-        await changeForwardingScope(true);
+        if (!sourceForwardingState.editingPolicyIds.length) await changeForwardingScope(true);
         status.textContent = `${channels.channels.length} 个通知渠道，${policies.policies.filter(p => p.mode !== 'inherit').length} 条转发规则`;
         if (sourceForwardingState.tab === 'history') await loadForwardingHistory(sourceForwardingState.offset);
     } catch (error) {
         status.textContent = error.message || '加载失败，请刷新重试';
-        for (const [id, columns] of [['notificationChannelList', 4], ['forwardPolicyList', 4]]) document.getElementById(id).innerHTML = forwardingEmptyRow(columns, '加载失败，请点击页面右上角的刷新重试。');
+        for (const [id, columns] of [['notificationChannelList', 4], ['forwardPolicyList', 5]]) document.getElementById(id).innerHTML = forwardingEmptyRow(columns, '加载失败，请点击页面右上角的刷新重试。');
     }
 }
 
@@ -277,6 +342,8 @@ function forwardingPolicyDraft() {
         scope_id: ids[0] || 0, scope_ids: ids,
         match_value: document.getElementById('forwardPolicyMatch').value.trim(),
         mode: document.getElementById('forwardPolicyMode').value,
+        keywords: document.getElementById('forwardPolicyKeywords').value,
+        senders: document.getElementById('forwardPolicySenders').value,
         channel_ids: Array.from(document.querySelectorAll('#forwardPolicyTargets input:checked')).map(input => Number(input.value))};
 }
 
@@ -288,7 +355,7 @@ async function changeForwardingScope(preserve = false) {
     const sourceName = forwardingSourceName();
     document.getElementById('forwardPolicySourceLabel').textContent = `${sourceName}（可多选）`;
     document.getElementById('forwardPolicySourceFilter').placeholder = {邮箱: '输入邮箱地址筛选', 分组: '输入分组名称筛选', Worker: '输入 Worker 名称筛选', 来源: '输入关键词筛选'}[sourceName];
-    const rows = scope === 'group' ? sourceForwardingState.groups : scope === 'account' ? sourceForwardingState.accounts : isCf ? sourceForwardingState.workers : [];
+    const rows = forwardingSourcesForScope(scope);
     source.innerHTML = sourceForwardingOptions(rows, selected);
     if (!preserve) {
         document.getElementById('forwardPolicySourceFilter').value = '';
@@ -302,7 +369,11 @@ async function changeForwardingScope(preserve = false) {
     document.getElementById('forwardPolicyMatchField').hidden = !matchNeeded;
     document.getElementById('forwardPolicyMatchLabel').textContent = scope === 'cloudflare_address' ? '完整收件邮箱地址' : '完整收件域名';
     document.getElementById('forwardPolicyMatch').placeholder = scope === 'cloudflare_address' ? 'user@example.com（无需导入）' : 'example.com';
-    if (!preserve) document.getElementById('forwardPolicyMatch').value = '';
+    if (!preserve) {
+        document.getElementById('forwardPolicyMatch').value = '';
+        document.getElementById('forwardPolicyKeywords').value = '';
+        document.getElementById('forwardPolicySenders').value = '';
+    }
     document.getElementById('forwardPreviewAccountField').hidden = isCf;
     document.getElementById('forwardPreviewWorkerField').hidden = !isCf;
     document.getElementById('forwardPreviewAddressField').hidden = !isCf;
@@ -331,10 +402,21 @@ function renderForwardingTargets(ids = []) {
     syncForwardingPolicyMode();
 }
 
-function syncForwardingPolicyMode() { document.getElementById('forwardPolicyTargets').hidden = document.getElementById('forwardPolicyMode').value !== 'custom'; }
+function syncForwardingPolicyMode() {
+    const bulk = sourceForwardingState.editingPolicyIds.length > 1;
+    const applyNotification = !bulk || document.getElementById('forwardPolicyApplyNotification').checked;
+    const hidden = applyNotification && document.getElementById('forwardPolicyMode').value !== 'custom';
+    document.getElementById('forwardPolicyMode').disabled = !applyNotification;
+    document.getElementById('forwardPolicyTargets').hidden = hidden;
+    document.querySelectorAll('#forwardPolicyTargets input').forEach(input => { input.disabled = !applyNotification; });
+    document.getElementById('forwardPolicyFilters').hidden = hidden;
+    document.getElementById('forwardPolicyKeywords').disabled = hidden || bulk && !document.getElementById('forwardPolicyApplyKeywords').checked;
+    document.getElementById('forwardPolicySenders').disabled = hidden || bulk && !document.getElementById('forwardPolicyApplySenders').checked;
+}
 
 async function loadForwardingPolicy() {
     updateForwardingPreviewSources();
+    if (sourceForwardingState.editingPolicyIds.length) return;
     const draft = forwardingPolicyDraft();
     document.getElementById('forwardPolicyPreview').textContent = '';
     const hint = document.getElementById('forwardPolicyConfigurationHint');
@@ -347,11 +429,12 @@ async function loadForwardingPolicy() {
     try {
         const params = new URLSearchParams({scope_type: draft.scope_type, scope_ids: draft.scope_ids.join(','), match_value: draft.match_value});
         const data = await forwardingRequest('/api/forwarding/policies?' + params);
+        if (sourceForwardingState.editingPolicyIds.length) return;
         const current = forwardingPolicyDraft();
         if (key !== JSON.stringify([current.scope_type, current.scope_ids, current.match_value])) return;
         const policies = data.policies || [data.policy];
         const existing = policies.filter(policy => policy.id !== null && policy.mode !== 'inherit');
-        hint.textContent = existing.length ? `所选来源中有 ${existing.length} 项已有转发规则，请先在下方列表删除，再新增关联。`
+        hint.textContent = existing.length ? `所选来源中有 ${existing.length} 项已有转发规则，可在列表编辑；新增关联不会覆盖已有规则。`
             : '当前未设置独立规则，自动使用上层配置；可为所选来源新增转发规则。';
     } catch (error) { document.getElementById('forwardPolicyPreview').textContent = error.message; }
 }
@@ -359,10 +442,21 @@ async function loadForwardingPolicy() {
 async function saveForwardingPolicy(button) {
     await forwardingAction(button, async () => {
         const draft = forwardingPolicyDraft();
-        if (!draft.scope_ids.length) throw new Error('请至少选择一个来源');
-        await forwardingRequest('/api/forwarding/policies', {method: 'POST', body: JSON.stringify(draft)});
+        const ids = sourceForwardingState.editingPolicyIds;
+        if (ids.length) {
+            const bulk = ids.length > 1;
+            const changes = {};
+            if (!bulk || document.getElementById('forwardPolicyApplyNotification').checked) Object.assign(changes, {mode: draft.mode, channel_ids: draft.channel_ids});
+            if (!bulk || document.getElementById('forwardPolicyApplyKeywords').checked) changes.keywords = draft.keywords;
+            if (!bulk || document.getElementById('forwardPolicyApplySenders').checked) changes.senders = draft.senders;
+            if (!Object.keys(changes).length) throw new Error('请勾选至少一个需要修改的字段');
+            await forwardingRequest('/api/forwarding/policies', {method: 'PATCH', body: JSON.stringify({policy_ids: ids, changes})});
+        } else {
+            if (!draft.scope_ids.length) throw new Error('请至少选择一个来源');
+            await forwardingRequest('/api/forwarding/policies', {method: 'POST', body: JSON.stringify(draft)});
+        }
+        closeForwardingPolicyEditor();
         await loadSourceForwarding();
-        document.getElementById('forwardPolicyEditor').hidden = true;
     });
 }
 
@@ -386,7 +480,7 @@ function filteredForwardingPolicies() {
         if (!query) return true;
         const source = forwardingPolicySource(policy);
         const targets = policy.channel_ids.map(id => sourceForwardingState.channels.find(channel => channel.id === id)?.name || '');
-        return [source?.email, source?.name, policy.match_value, forwardingScopeLabels[policy.scope_type], ...targets].join(' ').toLocaleLowerCase().includes(query);
+        return [source?.email, source?.name, policy.match_value, policy.keywords, policy.senders, forwardingScopeLabels[policy.scope_type], ...targets].join(' ').toLocaleLowerCase().includes(query);
     });
 }
 
@@ -417,8 +511,12 @@ function updateForwardingPolicySelection(visible = filteredForwardingPolicies())
     checkbox.disabled = !visible.length;
     document.querySelectorAll('#forwardPolicyList input[data-policy-id]').forEach(input => { input.checked = sourceForwardingState.selectedPolicyIds.has(Number(input.value)); });
     document.getElementById('deleteSelectedForwardingPoliciesBtn').disabled = !count;
+    const selected = visible.filter(policy => sourceForwardingState.selectedPolicyIds.has(policy.id));
+    const mixed = new Set(selected.map(policy => policy.scope_type)).size > 1;
+    document.getElementById('editSelectedForwardingPoliciesBtn').disabled = !count || mixed;
+    document.getElementById('editSelectedForwardingPoliciesBtn').title = mixed ? '请选择同一来源范围的规则' : '批量修改所选规则';
     const total = sourceForwardingState.policies.filter(policy => policy.mode !== 'inherit').length;
-    document.getElementById('forwardRuleSelectionStatus').textContent = `显示 ${visible.length} / ${total} 条规则，已选 ${count} 条`;
+    document.getElementById('forwardRuleSelectionStatus').textContent = `显示 ${visible.length} / ${total} 条规则，已选 ${count} 条${mixed ? '；同一来源范围可批量编辑' : ''}`;
 }
 
 function selectForwardingPolicyRows(selected) {
@@ -447,11 +545,19 @@ function renderForwardingPolicies() {
         return `<tr><td class="forwarding-selection-cell"><label class="forwarding-selection-control"><input type="checkbox" data-policy-id="${Number(policy.id)}" value="${Number(policy.id)}" aria-label="选择规则：${escapeHtml(forwardingPolicyLabel(policy))}" onchange="toggleForwardingPolicyRow(this.value, this.checked)"></label></td>
             <td><strong>${forwardingCellLabel(forwardingPolicyLabel(policy))}</strong><span class="forwarding-cell-detail">${escapeHtml(detail)}</span></td>
             <td>${policy.mode === 'off' ? '<span class="forwarding-state is-muted">关闭通知</span>' : targets.map(name => `<span class="forwarding-target-name">${escapeHtml(name)}</span>`).join('')}</td>
-            <td><button class="btn btn-secondary forwarding-danger" type="button" data-policy-remove="${Number(policy.id)}">删除转发规则</button></td></tr>`;
-    }).join('') || forwardingEmptyRow(4, sourceForwardingState.policies.some(policy => policy.mode !== 'inherit') ? '没有符合条件的规则，请调整或清除筛选。' : '还没有转发规则。先添加通知渠道，再新增来源关联。');
+            <td class="forwarding-rule-conditions">${policy.mode === 'off' ? '—' : `<span>关键词：${escapeHtml(policy.keywords || '不限')}</span><span class="forwarding-cell-detail">发件人：${escapeHtml(policy.senders || '不限')}</span>`}</td>
+            <td>${forwardingPolicyActions(policy.id)}</td></tr>`;
+    }).join('') || forwardingEmptyRow(5, sourceForwardingState.policies.some(policy => policy.mode !== 'inherit') ? '没有符合条件的规则，请调整或清除筛选。' : '还没有转发规则。先添加通知渠道，再新增来源关联。');
     updateForwardingPolicySelection(visible);
 }
 
+
+function forwardingPolicyActions(id) {
+    return '<div class="forwarding-row-actions">' + [
+        ['edit', '编辑转发规则', '<path d="m16 3 5 5-12 12H4v-5Z"/><path d="m13 6 5 5"/>'],
+        ['remove', '删除转发规则', '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>'],
+    ].map(([action, label, paths]) => `<button class="btn btn-secondary forwarding-icon-button${action === 'remove' ? ' forwarding-danger' : ''}" type="button" data-policy-${action}="${Number(id)}" aria-label="${label}" title="${label}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg></button>`).join('') + '</div>';
+}
 async function deleteForwardingPolicies(ids, button) {
     if (button?.disabled) return;
     ids = [...new Set(ids)].sort((a, b) => a - b);
@@ -478,12 +584,14 @@ async function previewForwardingPolicy(button) {
         const {preview} = await forwardingRequest('/api/forwarding/preview?' + params);
         const path = preview.path.map(p => `${forwardingScopeLabels[p.scope_type]}（${forwardingModeLabels[p.mode]}）`).join(' → ');
         const targets = preview.channels.map(c => c.name + (c.enabled ? '' : '（已停用）')).join('、');
-        document.getElementById('forwardPolicyPreview').textContent = `${preview.email_address}\n${path}\n${preview.eligible ? (targets ? '通知目标：' + targets : '不发送通知') : preview.reason}`;
+        document.getElementById('forwardPolicyPreview').textContent = `${preview.email_address}\n${path}\n${preview.eligible ? (targets ? '通知目标：' + targets : '不发送通知') : preview.reason}\n邮件关键词：${preview.keywords || '不限'}\n来信发件人：${preview.senders || '不限'}`;
     });
 }
 
 async function openForwardingSource(scope, id, match = '') {
     await showForwardingManagement('policies');
+    const policy = sourceForwardingState.policies.find(p => p.scope_type === scope && p.scope_id === id && p.match_value === match && p.mode !== 'inherit');
+    if (policy) return editForwardingPolicies([policy.id]);
     showForwardingPolicyEditor();
     document.getElementById('forwardPolicyScope').value = scope;
     await changeForwardingScope();
@@ -542,7 +650,6 @@ async function loadForwardingRuntimeSettings() {
         for (const [key, [id, fallback]] of Object.entries(forwardingRuntimeFields)) document.getElementById(id).value = settings[key] ?? fallback;
         document.getElementById('forwardExecutionMode').value = settings.forward_execution_mode === 'parallel' ? 'parallel' : 'serial';
         document.getElementById('forwardIncludeJunkemail').checked = String(settings.forward_include_junkemail) === 'true';
-        document.getElementById('forwardKeywords').value = settings.forward_keywords || '';
         syncForwardExecutionModeUI();
         status.textContent = '';
     } catch (error) { status.textContent = error.message || '运行设置加载失败，请重新打开页面重试'; }
@@ -557,7 +664,6 @@ async function saveForwardingRuntimeSettings(button) {
         settings.forward_execution_mode = document.getElementById('forwardExecutionMode').value;
         if (settings.forward_execution_mode === 'parallel') settings.forward_account_delay_seconds = 0;
         settings.forward_include_junkemail = document.getElementById('forwardIncludeJunkemail').checked;
-        settings.forward_keywords = document.getElementById('forwardKeywords').value;
         await forwardingRequest('/api/settings', {method: 'PUT', body: JSON.stringify(settings)});
         document.getElementById('forwardingRuntimeStatus').textContent = '运行设置已保存。';
     });
@@ -568,6 +674,7 @@ function omitLegacyForwardingFields(settings) {
         for (const key of ['forward_check_interval_seconds', 'forward_check_interval_minutes', 'forward_execution_mode', 'forward_parallel_workers', 'forward_account_delay_seconds', 'forward_email_window_minutes', 'forward_include_junkemail', 'forward_keywords']) delete settings[key];
     }
     delete settings.forward_channels; delete settings.smtp_provider; delete settings.feishu_clear_sign_secret;
+    delete settings.forward_keywords;
     for (const [type, definitions] of Object.entries(notificationFieldDefinitions)) {
         for (const [field] of definitions) delete settings[type === 'smtp' && field === 'recipient' ? 'email_forward_recipient' : type + '_' + field];
     }
@@ -597,6 +704,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (channel) notificationChannelAction(channel.dataset.channelAction, Number(channel.dataset.channelId), channel);
         const remove = event.target.closest('[data-policy-remove]');
         if (remove) deleteForwardingPolicies([Number(remove.dataset.policyRemove)], remove);
+        const edit = event.target.closest('[data-policy-edit]');
+        if (edit) editForwardingPolicies([Number(edit.dataset.policyEdit)]);
     });
     console.querySelector('[role="tablist"]').addEventListener('keydown', event => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;

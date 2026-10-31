@@ -10,7 +10,7 @@
             <div class="form-group"><label class="form-label" for="forwardEmailWindowMinutes">最近邮件范围（分钟）</label><input class="form-input" type="number" id="forwardEmailWindowMinutes" min="0" max="10080" value="0" required><p class="form-hint">0 表示不限制时间范围。</p></div>
             <label class="forward-checkbox"><input type="checkbox" id="forwardIncludeJunkemail">包含垃圾箱新邮件</label>
         </div>
-        <div class="form-group"><label class="form-label" for="forwardKeywords">关键词筛选</label><textarea class="form-input" id="forwardKeywords" rows="3" placeholder="Access deactivated"></textarea><p class="form-hint">每行一个，匹配主题或正文；留空转发全部。CF 来源不受此项限制。</p><p class="form-hint">若需补扫历史，请在账号转发日志中回退游标；已成功的投递仍会去重。</p></div>
+        <p class="form-hint">邮件筛选条件请在各条转发规则中设置。若需补扫历史，请在账号转发日志中回退游标；已成功的投递仍会去重。</p>
         <div class="settings-action-row"><button id="saveForwardingRuntimeBtn" class="btn btn-primary" type="submit">保存运行设置</button><button class="btn btn-secondary" type="button" id="triggerForwardingCheckBtn" onclick="triggerForwardingCheck()">立即检查</button></div>
         <p id="forwardingRuntimeStatus" class="form-hint" role="status"></p>
     </form>

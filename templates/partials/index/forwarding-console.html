@@ -26,16 +26,22 @@
     <section data-forward-panel="policies">
         <div class="forwarding-section-head"><div><h2>转发规则</h2><p>按邮箱、分组或 CF 来源通知，未独立配置时自动使用上层。</p></div><button class="btn btn-primary" type="button" onclick="showForwardingPolicyEditor()">新增关联</button></div>
         <div class="forwarding-rule-filters" role="search" aria-label="筛选转发规则">
-            <div class="form-group"><label class="form-label" for="forwardRuleSearch">关键词</label><input id="forwardRuleSearch" class="form-input" type="search" placeholder="邮箱、分组、Worker 或域名" oninput="changeForwardingPolicyFilters()"></div>
+            <div class="form-group"><label class="form-label" for="forwardRuleSearch">搜索规则</label><input id="forwardRuleSearch" class="form-input" type="search" placeholder="邮箱、分组、域名或邮件条件" oninput="changeForwardingPolicyFilters()"></div>
             <div class="form-group"><label class="form-label" for="forwardRuleScopeFilter">来源范围</label><select id="forwardRuleScopeFilter" class="form-select" onchange="changeForwardingPolicyFilters()"><option value="">全部来源</option><option value="normal_default">普通邮箱默认</option><option value="group">普通邮箱分组</option><option value="account">具体普通邮箱</option><option value="cloudflare_worker">CF Worker 默认</option><option value="cloudflare_domain">CF 完整域名</option><option value="cloudflare_address">CF 具体邮箱</option></select></div>
             <div class="form-group"><label class="form-label" for="forwardRuleChannelFilter">通知渠道</label><select id="forwardRuleChannelFilter" class="form-select" onchange="changeForwardingPolicyFilters()"><option value="">全部渠道</option></select></div>
             <div class="form-group"><label class="form-label" for="forwardRuleModeFilter">通知方式</label><select id="forwardRuleModeFilter" class="form-select" onchange="changeForwardingPolicyFilters()"><option value="">全部方式</option><option value="custom">指定渠道</option><option value="off">关闭通知</option></select></div>
         </div>
-        <div class="forwarding-rule-selection-bar"><p id="forwardRuleSelectionStatus" class="form-hint" role="status"></p><div class="settings-action-row"><button class="btn btn-secondary" type="button" onclick="resetForwardingPolicyFilters()">清除筛选</button><button id="deleteSelectedForwardingPoliciesBtn" class="btn btn-secondary forwarding-danger" type="button" onclick="deleteSelectedForwardingPolicies(this)" disabled>批量删除</button></div></div>
-        <div class="forwarding-table-wrap" tabindex="0" aria-label="转发规则表格，可左右滚动"><table class="forwarding-table forwarding-rules-table"><thead><tr><th scope="col" class="forwarding-selection-cell"><label class="forwarding-selection-control"><input id="forwardRuleSelectAll" type="checkbox" aria-label="全选当前筛选结果" onchange="selectForwardingPolicyRows(this.checked)"></label></th><th scope="col">邮件来源</th><th scope="col">通知目标</th><th scope="col">操作</th></tr></thead><tbody id="forwardPolicyList"></tbody></table></div>
-        <p class="forwarding-table-note">关联只支持新增与删除。删除后使用上层配置；需停止通知时，新增“关闭通知”规则。</p>
+        <div class="forwarding-rule-selection-bar"><p id="forwardRuleSelectionStatus" class="form-hint" role="status"></p><div class="settings-action-row"><button class="btn btn-secondary" type="button" onclick="resetForwardingPolicyFilters()">清除筛选</button><button id="editSelectedForwardingPoliciesBtn" class="btn btn-secondary" type="button" onclick="editSelectedForwardingPolicies()" disabled>批量编辑</button><button id="deleteSelectedForwardingPoliciesBtn" class="btn btn-secondary forwarding-danger" type="button" onclick="deleteSelectedForwardingPolicies(this)" disabled>批量删除</button></div></div>
+        <div class="forwarding-table-wrap" tabindex="0" aria-label="转发规则表格，可左右滚动"><table class="forwarding-table forwarding-rules-table"><thead><tr><th scope="col" class="forwarding-selection-cell"><label class="forwarding-selection-control"><input id="forwardRuleSelectAll" type="checkbox" aria-label="全选当前筛选结果" onchange="selectForwardingPolicyRows(this.checked)"></label></th><th scope="col">邮件来源</th><th scope="col">通知目标</th><th scope="col">邮件条件</th><th scope="col">操作</th></tr></thead><tbody id="forwardPolicyList"></tbody></table></div>
+        <p class="forwarding-table-note">规则支持编辑；勾选同一来源范围可批量修改。删除后使用上层配置，关闭通知可在编辑中设置。</p>
         <div id="forwardPolicyEditor" class="forwarding-editor" hidden>
-        <div class="forwarding-section-head"><h3>新增来源关联</h3><button class="btn btn-secondary" type="button" onclick="document.getElementById('forwardPolicyEditor').hidden=true">收起</button></div>
+        <div class="forwarding-section-head"><h3 id="forwardPolicyEditorTitle">新增来源关联</h3><button class="btn btn-secondary" type="button" onclick="closeForwardingPolicyEditor()">收起</button></div>
+        <div id="forwardPolicyEditingSources" class="settings-note" hidden></div>
+        <div id="forwardPolicyBulkFields" class="settings-action-row" hidden>
+            <label class="forward-checkbox"><input id="forwardPolicyApplyNotification" type="checkbox" onchange="syncForwardingPolicyMode()">修改通知方式与渠道</label>
+            <label class="forward-checkbox"><input id="forwardPolicyApplyKeywords" type="checkbox" onchange="syncForwardingPolicyMode()">修改关键词</label>
+            <label class="forward-checkbox"><input id="forwardPolicyApplySenders" type="checkbox" onchange="syncForwardingPolicyMode()">修改发件人</label>
+        </div>
         <div class="forward-grid">
             <div class="form-group"><label class="form-label" for="forwardPolicyScope">来源范围</label><select id="forwardPolicyScope" class="form-select" onchange="changeForwardingScope()"><option value="normal_default">普通邮箱默认</option><option value="group">普通邮箱分组</option><option value="account">具体普通邮箱</option><option value="cloudflare_worker">CF Worker 默认</option><option value="cloudflare_domain">CF 完整域名</option><option value="cloudflare_address">CF 具体邮箱</option></select></div>
             <div id="forwardPolicySourceField" class="form-group">
@@ -58,8 +64,12 @@
         <p id="forwardPolicyConfigurationHint" class="form-hint" role="status"></p>
         <p id="forwardPolicyAccountStatus" class="form-hint"></p>
         <div id="forwardPolicyTargets" class="source-forwarding-targets"></div>
+        <div id="forwardPolicyFilters" class="forward-grid">
+            <div class="form-group"><label class="form-label" for="forwardPolicyKeywords">邮件关键词</label><textarea id="forwardPolicyKeywords" class="form-input" rows="3" placeholder="每行一个关键词，留空不限"></textarea><p class="form-hint">主题或完整正文包含任一关键词即匹配，不区分大小写。仅使用当前生效规则的条件。</p></div>
+            <div class="form-group"><label class="form-label" for="forwardPolicySenders">来信发件人</label><textarea id="forwardPolicySenders" class="form-input" rows="3" placeholder="每行一个完整邮箱地址，留空不限"></textarea><p class="form-hint">精确匹配任一发件邮箱，忽略大小写。与关键词同时填写时，两项都须命中；SMTP 发件地址仍使用渠道配置。</p></div>
+        </div>
         <div class="settings-action-row">
-            <button class="btn btn-primary" type="button" onclick="saveForwardingPolicy(this)">新增关联</button>
+            <button id="saveForwardingPolicyBtn" class="btn btn-primary" type="button" onclick="saveForwardingPolicy(this)">新增关联</button>
         </div>
         <div class="forward-grid">
             <div id="forwardPreviewAccountField" class="form-group"><label class="form-label" for="forwardPreviewAccount">预览邮箱</label><select id="forwardPreviewAccount" class="form-select"></select></div>
