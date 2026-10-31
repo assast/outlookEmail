@@ -32,8 +32,10 @@
 .forwarding-table-wrap { width: 100%; min-width: 0; overflow-x: auto; border-block: 1px solid var(--color-rule); scrollbar-color: var(--color-muted) var(--color-paper); }
 .forwarding-table { width: 100%; min-width: 650px; border-collapse: collapse; text-align: left; font-size: var(--text-sm); }
 .forwarding-rules-table { min-width: 600px; table-layout: fixed; }
-.forwarding-rules-table th:nth-child(2) { width: 44%; }
-.forwarding-table.forwarding-rules-table th:last-child { width: 20%; }
+.forwarding-rules-table th:nth-child(2) { width: 30%; }
+.forwarding-rule-conditions { white-space: pre-line; overflow-wrap: anywhere; }
+.forwarding-rule-conditions .forwarding-cell-detail { white-space: pre-line; }
+.forwarding-table.forwarding-rules-table th:last-child { width: 104px; }
 .forwarding-rules-table .forwarding-selection-cell { width: 44px; padding: 0; text-align: center; }
 .forwarding-selection-control { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
 .forwarding-rule-filters { display: grid; grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); gap: var(--space-sm); }
@@ -48,6 +50,10 @@
 .forwarding-numeric { font-variant-numeric: tabular-nums; }
 .forwarding-row-actions { justify-content: flex-end; flex-wrap: nowrap; }
 .forwarding-table .btn { border-color: transparent; padding-inline: var(--space-xs); }
+.forwarding-table .forwarding-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 36px; min-width: 36px; padding: 0; }
+.forwarding-icon-button svg { width: 17px; height: 17px; pointer-events: none; }
+.forwarding-management-view select:disabled, .forwarding-management-view textarea:disabled { opacity: 0.55; cursor: not-allowed; }
+#forwardPolicyEditingSources { overflow-wrap: anywhere; }
 .forwarding-state { display: inline-block; font-size: var(--text-xs); color: var(--color-ink); padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-rule); border-radius: var(--radius-card); white-space: nowrap; }
 .forwarding-state.is-muted { color: var(--color-muted); background: var(--color-paper-2); }
 .forwarding-state.is-error { color: var(--color-error); border-color: var(--color-error); }
@@ -56,7 +62,7 @@
 .forwarding-table-note, .forwarding-management-view .form-hint { color: var(--color-muted); font-size: var(--text-xs); line-height: 1.6; min-height: 1lh; }
 .forwarding-table-note { max-width: 75ch; }
 .forwarding-management-view #sourceForwardingStatus { margin: 0; }
-.forwarding-editor { padding: var(--space-lg); background: var(--color-paper-2); display: grid; gap: var(--space-md); min-width: 0; }
+.forwarding-editor { padding: var(--space-lg); background: var(--color-paper-2); display: grid; gap: var(--space-md); min-width: 0; scroll-margin-top: calc(64px + var(--space-md)); }
 .forwarding-management-view .forward-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-md); }
 .forwarding-management-view .form-group { margin: 0; min-width: 0; }
 .forwarding-management-view .form-label { display: block; font-size: var(--text-sm); color: var(--color-ink); font-weight: 500; margin-bottom: var(--space-xs); }
@@ -84,12 +90,13 @@
     .forwarding-management-view .btn { min-height: 44px; }
     .forwarding-management-view .form-input, .forwarding-management-view .form-select { min-height: 44px; }
     .forwarding-section-head { align-items: flex-start; }
-    .forwarding-rules-table { min-width: 0; }
+    .forwarding-rules-table { min-width: 660px; }
     .forwarding-rule-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .forwarding-rule-filters .form-group:first-child { grid-column: 1 / -1; }
     .forwarding-rule-filters .form-group:last-child { grid-column: 1 / -1; }
-    .forwarding-rules-table th:nth-child(2) { width: 36%; }
-    .forwarding-table.forwarding-rules-table th:last-child { width: 28%; }
+    .forwarding-rules-table th:nth-child(2) { width: 30%; }
+    .forwarding-table.forwarding-rules-table th:last-child { width: 104px; }
+    .forwarding-table .forwarding-icon-button { width: 44px; min-width: 44px; }
     .forwarding-rules-table td { padding: var(--space-sm) var(--space-xs); }
     .forwarding-rules-table .btn { font-size: var(--text-xs); padding-inline: var(--space-2xs); }
 }

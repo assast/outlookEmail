@@ -427,9 +427,11 @@ def test_new_endpoints_require_login_and_csrf(client, monkeypatch):
     anonymous = web.app.test_client()
     assert anonymous.get('/api/notification-channels').status_code == 401
     assert anonymous.get('/api/forwarding/preview?account_id=1').status_code == 401
+    assert anonymous.patch('/api/forwarding/policies', json={}).status_code == 401
     if web.CSRF_AVAILABLE:
         monkeypatch.setitem(web.app.config, 'WTF_CSRF_ENABLED', True)
         assert client.post('/api/notification-channels', json={}).status_code == 400
+        assert client.patch('/api/forwarding/policies', json={}).status_code == 400
         assert web.get_db().execute('SELECT COUNT(*) FROM notification_channels').fetchone()[0] == 0
 
 
@@ -1009,3 +1011,289 @@ def test_new_account_automatically_uses_group_without_backfilling_old_mail(clien
     ) as detail:
         web.process_forwarding_account(source, web.build_forwarding_job_config())
         detail.assert_not_called()
+
+
+def rule_options(client, scope, source_id, targets, keywords='', **extra):
+    response = client.put('/api/forwarding/policies', json={
+        'scope_type': scope, 'scope_id': source_id, 'mode': 'custom', 'channel_ids': targets,
+        'keywords': keywords, **extra,
+    })
+    assert response.status_code == 200, response.get_json()
+    return response.get_json()['policy']
+
+
+def test_rule_keywords_override_parent_and_ignore_old_global_setting(client):
+    target = channel(client)
+    first, second = account('first@example.com'), account('second@example.com')
+    rule_options(client, 'group', 1, [target], keywords='group-only')
+    saved = rule_options(client, 'account', first['id'], [target], keywords='Urgent\nurgent\n账单')
+    assert saved['keywords'] == 'Urgent\n账单'
+    assert preview(client, account_id=first['id'])['keywords'] == 'Urgent\n账单'
+    assert preview(client, account_id=second['id'])['keywords'] == 'group-only'
+    web.set_setting('forward_keywords', 'must-not-apply')
+    with patch.object(web, 'fetch_forward_candidates', return_value={'success': True, 'emails': [
+        {'id': 'rule-mail', 'date': '2090-01-01T00:00:00Z', 'folder': 'inbox'},
+    ]}), patch.object(web, 'fetch_forward_detail', return_value={
+        'id': 'rule-mail', 'subject': 'hello', 'body': '<p>URGENT</p>', 'body_type': 'html',
+    }), patch.object(web, 'send_forward_feishu', return_value=True) as send:
+        config = web.build_forwarding_job_config()
+        web.process_forwarding_account(first, config)
+        web.process_forwarding_account(second, config)
+        assert send.call_count == 1
+
+
+def test_rule_options_upgrade_preserves_legacy_values_and_runs_once(client):
+    a = channel(client, 'SMTP A', 'smtp', recipient='old-a@example.com', host='smtp.example.com', username='sender@example.com')
+    b = channel(client, 'SMTP B', 'smtp', recipient='old-b@example.com', host='smtp.example.com', username='sender@example.com')
+    source, wid = account(), worker()
+    policy(client, 'account', source['id'], targets=[a, b])
+    policy(client, 'cloudflare_worker', wid, targets=[a])
+    db = web.get_db()
+    db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('forward_keywords','legacy\nLegacy\n关键字')")
+    db.execute("DELETE FROM settings WHERE key='source_forwarding_rule_options_v4'")
+    before = web.forwarding_store.get_policy(db, 'account', source['id'])
+    db.execute('ALTER TABLE forwarding_policies DROP COLUMN keywords')
+    db.execute('ALTER TABLE forwarding_policies DROP COLUMN senders')
+    db.commit()
+    web.init_db()
+    migrated = web.forwarding_store.get_policy(db, 'account', source['id'])
+    assert migrated['keywords'] == 'legacy\n关键字'
+    assert migrated['senders'] == ''
+    assert [web.forwarding_store.decode_config(web.forwarding_store.get_channel(db, cid), web.decrypt_data)['recipient'] for cid in (a, b)] == ['old-a@example.com', 'old-b@example.com']
+    assert migrated['active_since'] == before['active_since']
+    assert migrated['updated_at'] == before['updated_at']
+    assert preview(client, worker_id=wid, address='any@example.com')['keywords'] == ''
+    rule_options(client, 'account', source['id'], [a], keywords='custom')
+    manual = web.forwarding_store.get_policy(db, 'account', source['id'])
+    web.init_db()
+    assert web.forwarding_store.get_policy(db, 'account', source['id']) == manual
+
+
+def test_cf_rule_keywords_filter_before_enqueue_and_advance_scan(client):
+    target, source = cf_setup(client)
+    rule_options(client, 'cloudflare_address', source['id'], [target], keywords='never-match', match_value='only@example.com')
+    with patch.object(web, 'cloudflare_get_admin_messages', return_value={'success': True, 'messages': [cf_mail(1)]}), patch.object(web, 'send_forward_feishu') as send:
+        result = web.process_cloudflare_forwarding_worker(source)
+    assert not result['error'], result
+    send.assert_not_called()
+    assert web.get_db().execute('SELECT COUNT(*) FROM forwarding_events').fetchone()[0] == 0
+    assert web.get_db().execute('SELECT checkpoint_id FROM cloudflare_forward_scan_state').fetchone()[0] == 1
+
+
+@pytest.mark.parametrize(('detail', 'expected'), [
+    ({'from': 'Alerts <ALERTS@example.com>', 'subject': 'URGENT'}, True),
+    ({'from': 'billing@example.com', 'body': '<p>urgent</p>', 'body_type': 'html'}, True),
+    ({'from': 'alerts@example.com', 'body': 'newsletter'}, False),
+    ({'from': 'other@example.com', 'subject': 'urgent'}, False),
+    ({'from': 'alerts@example.com.evil.test', 'subject': 'urgent'}, False),
+    ({'from': '"alerts@example.com" <other@example.com>', 'subject': 'urgent'}, False),
+    ({'subject': 'urgent'}, False),
+])
+def test_rule_sender_and_keywords_both_must_match(client, detail, expected):
+    target, source = channel(client), account()
+    saved = rule_options(client, 'account', source['id'], [target], keywords='urgent',
+                         senders=' Alerts@example.com\nalerts@EXAMPLE.com\n billing@example.com ')
+    assert saved['senders'] == 'alerts@example.com\nbilling@example.com'
+    route = web.forwarding_store.resolve_policy(web.get_db(), account_id=source['id'])
+    assert web.forward_email_matches_policy(detail, route) is expected
+
+
+@pytest.mark.parametrize('allowed', [False, True])
+def test_sender_filter_routes_normal_and_cf_mail_and_retains_smtp_configuration(client, allowed):
+    smtp = channel(client, 'SMTP', 'smtp', recipient='archive@example.com', host='smtp.example.com',
+                   username='shared@example.com', from_email='shared@example.com')
+    source, wid = account(), worker()
+    rule_options(client, 'account', source['id'], [smtp], senders='other@example.com' if allowed else 'allowed@example.com')
+    rule_options(client, 'cloudflare_worker', wid, [smtp], senders='sender@example.net' if allowed else 'allowed@example.com')
+    with patch.object(web, 'fetch_forward_candidates', return_value={'success': True, 'emails': [
+        {'id': 'blocked', 'date': '2090-01-01T00:00:00Z', 'folder': 'inbox'},
+    ]}), patch.object(web, 'fetch_forward_detail', return_value={'id': 'blocked', 'from': 'other@example.com'}), patch.object(
+        web, 'send_forward_email', return_value=True,
+    ) as send:
+        result = web.process_forwarding_account(source, web.build_forwarding_job_config())
+        assert result['cursor_updated'] and not result['had_processing_failure']
+        with patch.object(web, 'cloudflare_get_admin_messages', return_value={'success': True, 'messages': [cf_mail(1)]}):
+            result = web.process_cloudflare_forwarding_worker(web.get_cloudflare_channel_by_id(wid, include_secret=True))
+        assert not result['error']
+        assert send.call_count == (2 if allowed else 0)
+        for call in send.call_args_list:
+            assert call.kwargs['config']['from_email'] == 'shared@example.com'
+            assert call.kwargs['config']['recipient'] == 'archive@example.com'
+    assert web.forwarding_store.decode_config(web.forwarding_store.get_channel(web.get_db(), smtp), web.decrypt_data)['from_email'] == 'shared@example.com'
+
+
+@pytest.mark.parametrize('options', [{'keywords': None}, {'keywords': []}, {'senders': []},
+                                     {'senders': 'bad-address'}, {'senders': '*@example.com'}])
+def test_invalid_rule_conditions_do_not_partially_create_bulk_rules(client, options):
+    target = channel(client)
+    sources = [account('first@example.com')['id'], account('second@example.com')['id']]
+    response = client.post('/api/forwarding/policies', json={
+        'scope_type': 'account', 'scope_ids': sources, 'mode': 'custom', 'channel_ids': [target], **options,
+    })
+    assert response.status_code == 400
+    assert web.get_db().execute("SELECT COUNT(*) FROM forwarding_policies WHERE scope_type='account'").fetchone()[0] == 0
+
+
+def test_rule_options_schema_failure_rolls_back_and_can_retry(client):
+    target, source = channel(client), account()
+    policy(client, 'account', source['id'], targets=[target])
+    db = web.get_db()
+    db.execute("DELETE FROM settings WHERE key='source_forwarding_rule_options_v4'")
+    db.execute('ALTER TABLE forwarding_policies DROP COLUMN keywords')
+    db.execute('ALTER TABLE forwarding_policies DROP COLUMN senders')
+    db.commit()
+    with patch.object(web.forwarding_store, 'normalize_keywords', side_effect=ValueError('模拟规则条件迁移失败')):
+        with pytest.raises(ValueError):
+            web.init_db()
+    assert not db.execute("SELECT 1 FROM settings WHERE key='source_forwarding_rule_options_v4'").fetchone()
+    assert 'keywords' not in {row['name'] for row in db.execute('PRAGMA table_info(forwarding_policies)')}
+    web.init_db()
+    assert preview(client, account_id=source['id'])['senders'] == ''
+
+
+@pytest.mark.parametrize('cf', [False, True])
+def test_rule_conditions_inherit_together_and_restore_after_delete(client, cf):
+    target = channel(client)
+    sid = worker() if cf else account()['id']
+    rule_options(client, 'cloudflare_worker' if cf else 'group', sid if cf else 1, [target],
+                 keywords='parent', senders='parent@example.com')
+    params = {'worker_id': sid, 'address': 'only@example.com'} if cf else {'account_id': sid}
+    assert preview(client, **params)['senders'] == 'parent@example.com'
+    scope = 'cloudflare_address' if cf else 'account'
+    match = 'only@example.com' if cf else ''
+    rule_options(client, scope, sid, [target], match_value=match)
+    assert preview(client, **params)['keywords'] == preview(client, **params)['senders'] == ''
+    response = client.delete('/api/forwarding/policies', json={'scope_type': scope, 'scope_id': sid, 'match_value': match})
+    assert response.get_json()['success']
+    assert preview(client, **params)['keywords'] == 'parent'
+    assert preview(client, **params)['senders'] == 'parent@example.com'
+
+
+def test_failed_delivery_keeps_original_filter_acceptance_and_does_not_repeat_success(client):
+    target, source = channel(client), account()
+    rule_options(client, 'account', source['id'], [target], keywords='accepted', senders='old@example.com')
+    db = web.get_db()
+    event_id = web.enqueue_forwarding_event(db, web.forwarding_store.resolve_policy(db, account_id=source['id']),
+        'accepted-before-change', time.time() + 1, ('title', 'body', '', 'summary'))
+    db.commit()
+    with patch.object(web, 'send_forward_feishu', return_value=False):
+        web.process_forwarding_event(db, event_id, web.build_forwarding_account_result(source))
+    rule_options(client, 'account', source['id'], [target], keywords='changed', senders='new@example.com')
+    db.execute('UPDATE forwarding_deliveries SET next_attempt_at=0')
+    db.commit()
+    with patch.object(web, 'send_forward_feishu', return_value=True) as send:
+        web.retry_forwarding_deliveries()
+        web.retry_forwarding_deliveries()
+    assert send.call_count == 1
+    assert db.execute('SELECT status FROM forwarding_deliveries WHERE event_id=?', (event_id,)).fetchone()[0] == 'succeeded'
+
+
+def test_cf_filter_change_does_not_backfill_previously_filtered_checkpoint_mail(client):
+    target, source = cf_setup(client)
+    now = time.time()
+    rule_options(client, 'cloudflare_address', source['id'], [target], keywords='never-match', match_value='only@example.com')
+    mail = cf_mail(1, created_at=now + 1)
+    with patch.object(web, 'cloudflare_get_admin_messages', return_value={'success': True, 'messages': [mail]}), patch.object(
+        web, 'send_forward_feishu', return_value=True,
+    ) as send:
+        assert not web.process_cloudflare_forwarding_worker(source)['error']
+        with patch.object(web.time, 'time', return_value=now + 2):
+            rule_options(client, 'cloudflare_address', source['id'], [target], match_value='only@example.com')
+        assert not web.process_cloudflare_forwarding_worker(source)['error']
+    send.assert_not_called()
+
+
+@pytest.mark.parametrize('scope', ['normal_default', 'account', 'group', 'cloudflare_worker', 'cloudflare_domain', 'cloudflare_address'])
+def test_edit_rules_by_id_keeps_identity_and_only_changes_requested_fields(client, scope):
+    a, b = channel(client, '原渠道'), channel(client, '第二渠道')
+    db = web.get_db()
+    if scope == 'normal_default':
+        sources = [(0, '')]
+    elif scope == 'account':
+        sources = [(account('edit-one@example.com')['id'], ''), (account('edit-two@example.com')['id'], '')]
+    elif scope == 'group':
+        sources = [(db.execute('INSERT INTO groups(name) VALUES(?)', (name,)).lastrowid, '') for name in ('编辑组一', '编辑组二')]
+        db.commit()
+    elif scope == 'cloudflare_worker':
+        sources = [(worker(), '')]
+    else:
+        wid = worker()
+        sources = [(wid, name) for name in (('one.example.com', 'two.example.com') if scope == 'cloudflare_domain' else ('one@example.com', 'two@example.com'))]
+    before = [rule_options(client, scope, sid, [a if i == 0 else b], keywords='old',
+                           senders=f'sender{i}@example.com', match_value=match) for i, (sid, match) in enumerate(sources)]
+    response = client.patch('/api/forwarding/policies', json={
+        'policy_ids': [p['id'] for p in before] + [before[0]['id']], 'changes': {'keywords': 'urgent\nURGENT'},
+    })
+    assert response.status_code == 200, response.get_json()
+    after = response.get_json()['policies']
+    assert response.get_json()['count'] == len(before)
+    for old, new in zip(before, after):
+        assert new['keywords'] == 'urgent'
+        for key in ('id', 'scope_type', 'scope_id', 'match_value', 'channel_ids', 'senders', 'mode'):
+            assert new[key] == old[key]
+
+
+@pytest.mark.parametrize('invalid', [
+    {'policy_ids': []}, {'policy_ids': [True]}, {'policy_ids': ['1']},
+    {'changes': {}}, {'changes': {'scope_id': 3}}, {'changes': {'scope_type': 'group'}},
+    {'changes': {'match_value': 'elsewhere@example.com'}}, {'changes': {'mode': 'inherit'}},
+    {'changes': {'senders': []}}, {'changes': {'channel_ids': [999999]}},
+])
+def test_edit_rules_rejects_invalid_requests_without_changes(client, invalid):
+    target, source = channel(client), account()
+    current = rule_options(client, 'account', source['id'], [target], keywords='keep')
+    response = client.patch('/api/forwarding/policies', json={
+        'policy_ids': [current['id']], 'changes': {'keywords': 'new'}, **invalid,
+    })
+    assert response.status_code == 400
+    assert client.get('/api/forwarding/policies', query_string={'scope_type': 'account', 'scope_id': source['id']}).get_json()['policy'] == current
+
+
+@pytest.mark.parametrize('bad_selection', ['mixed', 'missing', 'removed'])
+def test_bulk_edit_rejects_mixed_or_stale_rules_atomically(client, bad_selection):
+    target, source = channel(client), account()
+    current = rule_options(client, 'account', source['id'], [target], keywords='keep')
+    second = 999999
+    if bad_selection == 'mixed':
+        second = rule_options(client, 'group', 1, [target])['id']
+    elif bad_selection == 'removed':
+        second_source = account('stale@example.com')
+        second = rule_options(client, 'account', second_source['id'], [target])['id']
+        client.delete('/api/forwarding/policies', json={'policy_ids': [second]})
+    before = client.get('/api/forwarding/policies').get_json()['policies']
+    response = client.patch('/api/forwarding/policies', json={'policy_ids': [current['id'], second], 'changes': {'keywords': 'new'}})
+    assert response.status_code == 400
+    assert client.get('/api/forwarding/policies').get_json()['policies'] == before
+
+
+def test_bulk_edit_write_failure_rolls_back_every_rule(client):
+    target = channel(client)
+    before = [rule_options(client, 'account', account(address)['id'], [target], keywords='old') for address in ('one@example.com', 'two@example.com')]
+    real_save = web.forwarding_store.save_policy
+    calls = []
+
+    def fail_second(db, data, **kwargs):
+        calls.append(data)
+        if len(calls) == 2:
+            raise ValueError('模拟第二条规则编辑失败')
+        return real_save(db, data, **kwargs)
+
+    with patch.object(web.forwarding_store, 'save_policy', side_effect=fail_second):
+        response = client.patch('/api/forwarding/policies', json={'policy_ids': [p['id'] for p in before], 'changes': {'mode': 'off'}})
+    assert response.status_code == 400
+    assert client.get('/api/forwarding/policies').get_json()['policies'] == before
+
+
+def test_edit_rule_cancels_removed_pending_target_without_resending_success(client):
+    a, b = channel(client, '成功目标'), channel(client, '移除目标')
+    source, eid, deliveries = queued_event(client, [a, b])
+    db = web.get_db()
+    with patch.object(web, 'send_forward_feishu', return_value=True):
+        web.process_notification_delivery(db, deliveries[0][0])
+    current = web.forwarding_store.get_policy(db, 'account', source['id'])
+    response = client.patch('/api/forwarding/policies', json={'policy_ids': [current['id']], 'changes': {'channel_ids': [a]}})
+    assert response.status_code == 200, response.get_json()
+    assert [row[0] for row in db.execute('SELECT status FROM forwarding_deliveries WHERE event_id=? ORDER BY channel_id', (eid,))] == ['succeeded', 'cancelled']
+    with patch.object(web, 'send_forward_feishu') as send:
+        web.process_forwarding_event(db, eid, web.build_forwarding_account_result(source))
+    send.assert_not_called()

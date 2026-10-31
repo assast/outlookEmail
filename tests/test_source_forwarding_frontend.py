@@ -19,7 +19,7 @@ function node(tag = 'div') {
         get selectedOptions() {return this.selection || (this.options.length ? this.options.filter(o=>o.selected) : (this.value ? [{value:this.value}] : []));},
         set selectedOptions(value) {this.selection = value;}, options: [],
         append(...items) {this.children.push(...items);}, replaceChildren() {this.children = [];},
-        setAttribute() {}, addEventListener() {}, closest() {return this;}};
+        setAttribute() {}, addEventListener() {}, scrollIntoView() {}, focus() {}, closest() {return this;}};
 }
 function element(id) {if (!elements.has(id)) {const n = node(); n.id = id;} return elements.get(id);}
 const sandbox = {console, Set, Map, Date, JSON, Number, String, Object, Array, URLSearchParams,
@@ -115,14 +115,14 @@ def test_history_escapes_text_and_keeps_address_and_channel_filters():
     assert result['previousDisabled']
 
 
-def test_main_settings_omit_legacy_credentials_but_keep_poll_and_filter_options():
+def test_main_settings_omit_legacy_credentials_and_global_keywords():
     result = run_frontend('''(() => {
         const settings = {forward_channels: ['feishu'], smtp_host: 'old', smtp_provider: 'custom',
             telegram_bot_token: 'old', feishu_webhook_url: 'old', feishu_clear_sign_secret: false,
             forward_keywords: 'normal only', forward_check_interval_seconds: 60, app_timezone: 'Asia/Shanghai'};
         omitLegacyForwardingFields(settings); return settings;
     })()''')
-    assert result == {'forward_keywords': 'normal only', 'forward_check_interval_seconds': 60, 'app_timezone': 'Asia/Shanghai'}
+    assert result == {'forward_check_interval_seconds': 60, 'app_timezone': 'Asia/Shanghai'}
 
 
 def test_dedicated_workspace_omits_forwarding_fields_from_system_settings_save():
@@ -150,6 +150,7 @@ def test_runtime_settings_save_only_submits_forwarding_fields():
     assert request['url'] == '/api/settings' and request['method'] == 'PUT'
     assert request['body']['forward_account_delay_seconds'] == 0
     assert request['body']['forward_check_interval_seconds'] == 60
+    assert 'forward_keywords' not in request['body']
     assert all(key.startswith('forward_') for key in request['body'])
     assert result['status'] == '运行设置已保存。'
 
@@ -170,6 +171,38 @@ def test_bulk_save_submits_every_selected_source_once_without_account_switch():
     body = result['requests'][0]['body']
     assert body['scope_ids'] == [3, 7] and body['channel_ids'] == [11]
     assert 'forward_enabled' not in body
+
+
+def test_rule_filters_are_saved_independently_and_hidden_for_off_rules():
+    result = run_frontend('''(async () => {
+        element('forwardPolicyScope').value = 'account';
+        element('forwardPolicySource').selectedOptions = [{value:'3'},{value:'7'}];
+        element('forwardPolicyMode').value = 'custom';
+        element('forwardPolicyKeywords').value = 'urgent\\nbilling';
+        element('forwardPolicySenders').value = 'alerts@example.com';
+        document.querySelectorAll = () => [{value:'11'}];
+        loadSourceForwarding = async () => {};
+        await saveForwardingPolicy(element('save'));
+        element('forwardPolicyMode').value = 'off'; syncForwardingPolicyMode();
+        return {requests, hidden:element('forwardPolicyFilters').hidden};
+    })()''')
+    assert result['requests'][0]['body']['keywords'] == 'urgent\nbilling'
+    assert result['requests'][0]['body']['senders'] == 'alerts@example.com'
+    assert result['hidden']
+
+
+def test_rule_conditions_render_escape_and_participate_in_table_search():
+    result = run_frontend('''(() => {
+        sourceForwardingState.channels = [{id:11,name:'SMTP'}];
+        sourceForwardingState.policies = [{id:3,scope_type:'account',scope_id:7,mode:'custom',
+            channel_ids:[11],keywords:'<img src=x onerror=bad>',senders:'alerts@example.com'}];
+        element('forwardRuleSearch').value = 'alerts@'; renderForwardingPolicies();
+        const html = element('forwardPolicyList').innerHTML;
+        element('forwardRuleSearch').value = 'not-found';
+        return {html,count:filteredForwardingPolicies().length};
+    })()''')
+    assert '<img' not in result['html'] and '&lt;img' in result['html']
+    assert 'alerts@example.com' in result['html'] and result['count'] == 0
 
 
 def test_source_picker_filters_case_insensitively_and_selects_only_matching_rows():
@@ -312,3 +345,75 @@ def test_batch_rule_delete_cancel_and_failure_keep_selection():
         })()'''.replace('CANCELLED', 'true' if cancelled else 'false'))
         assert len(result['requests']) == (0 if cancelled else 1)
         assert result['selected'] == [18] and not result['disabled']
+
+
+def test_single_rule_editor_prefills_fields_and_updates_stable_id():
+    result = run_frontend('''(async () => {
+        sourceForwardingState.policies = [{id:18,scope_type:'account',scope_id:3,match_value:'',mode:'custom',channel_ids:[11],keywords:'old',senders:'old@example.com'}];
+        sourceForwardingState.accounts = [{id:3,email:'source@example.com',status:'active'}];
+        editForwardingPolicies([18]);
+        const initial={keywords:element('forwardPolicyKeywords').value,senders:element('forwardPolicySenders').value,
+            scopeLocked:element('forwardPolicyScope').disabled,title:element('forwardPolicyEditorTitle').textContent};
+        element('forwardPolicyKeywords').value='new';
+        document.querySelectorAll = () => [{value:'11'}];
+        loadSourceForwarding=async()=>{};
+        await saveForwardingPolicy(element('save'));
+        return {initial,requests,editing:sourceForwardingState.editingPolicyIds,hidden:element('forwardPolicyEditor').hidden};
+    })()''')
+    assert result['initial'] == {'keywords': 'old', 'senders': 'old@example.com', 'scopeLocked': True, 'title': '编辑转发规则'}
+    assert result['requests'][0]['method'] == 'PATCH'
+    assert result['requests'][0]['body'] == {'policy_ids': [18], 'changes': {'mode': 'custom', 'channel_ids': [11], 'keywords': 'new', 'senders': 'old@example.com'}}
+    assert result['editing'] == [] and result['hidden']
+
+
+def test_bulk_editor_only_applies_checked_fields_and_can_clear_condition():
+    result = run_frontend('''(async () => {
+        sourceForwardingState.policies = [18,40].map((id,i)=>({id,scope_type:'account',scope_id:i+1,mode:'custom',channel_ids:[i+11],keywords:'old'+i,senders:'old'+i+'@example.com'}));
+        editForwardingPolicies([40,18]);
+        const initial={keywords:element('forwardPolicyApplyKeywords').checked,senders:element('forwardPolicyApplySenders').checked,
+            notification:element('forwardPolicyApplyNotification').checked};
+        element('forwardPolicyApplyKeywords').checked=true;
+        element('forwardPolicyKeywords').value='';
+        loadSourceForwarding=async()=>{};
+        await saveForwardingPolicy(element('save'));
+        return {initial,requests};
+    })()''')
+    assert result['initial'] == {'keywords': False, 'senders': False, 'notification': False}
+    assert result['requests'][0]['body'] == {'policy_ids': [18, 40], 'changes': {'keywords': ''}}
+
+
+def test_mixed_scope_selection_disables_bulk_edit_but_retains_delete():
+    result = run_frontend('''(() => {
+        sourceForwardingState.policies = [{id:18,scope_type:'account',channel_ids:[],mode:'off'}, {id:40,scope_type:'group',channel_ids:[],mode:'off'}];
+        sourceForwardingState.selectedPolicyIds=new Set([18,40]);updateForwardingPolicySelection();
+        editForwardingPolicies([18,40]);
+        return {editDisabled:element('editSelectedForwardingPoliciesBtn').disabled,deleteDisabled:element('deleteSelectedForwardingPoliciesBtn').disabled,
+            editing:sourceForwardingState.editingPolicyIds,toasts};
+    })()''')
+    assert result['editDisabled'] and not result['deleteDisabled']
+    assert result['editing'] == [] and '同一来源范围' in result['toasts'][0][0]
+
+
+def test_failed_edit_keeps_ids_and_unsaved_input_and_new_editor_resets_edit_mode():
+    result = run_frontend('''(async () => {
+        sourceForwardingState.policies=[{id:18,scope_type:'account',scope_id:3,mode:'custom',channel_ids:[11],keywords:'old',senders:''}];
+        editForwardingPolicies([18]);element('forwardPolicyKeywords').value='draft';fail=true;
+        document.querySelectorAll=()=>[{value:'11'}];
+        const button=element('save');await saveForwardingPolicy(button);
+        const failed={ids:[...sourceForwardingState.editingPolicyIds],draft:element('forwardPolicyKeywords').value,hidden:element('forwardPolicyEditor').hidden,disabled:button.disabled};
+        showForwardingPolicyEditor();
+        return {failed,editing:sourceForwardingState.editingPolicyIds,title:element('forwardPolicyEditorTitle').textContent,scopeLocked:element('forwardPolicyScope').disabled};
+    })()''')
+    assert result['failed'] == {'ids': [18], 'draft': 'draft', 'hidden': False, 'disabled': False}
+    assert result['editing'] == [] and not result['scopeLocked'] and result['title'] == '新增来源关联'
+
+
+def test_existing_account_group_and_worker_shortcuts_open_rule_editor():
+    result = run_frontend('''(async () => {
+        sourceForwardingState.policies=['account','group','cloudflare_worker'].map((scope_type,i)=>({id:18+i,scope_type,scope_id:3+i,match_value:'',mode:'custom'}));
+        showForwardingManagement=async()=>{};
+        const edited=[];editForwardingPolicies=ids=>edited.push(ids);
+        for(const p of sourceForwardingState.policies)await openForwardingSource(p.scope_type,p.scope_id);
+        return edited;
+    })()''')
+    assert result == [[18], [19], [20]]
