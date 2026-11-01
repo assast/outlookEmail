@@ -2855,6 +2855,25 @@ def fetch_imap_list_items(mail, message_ids: List[bytes], id_mode: str,
         return items
 
 
+def close_imap_list_connection(mail, timing: Dict[str, Any], discard: bool = False) -> None:
+    try:
+        if not discard:
+            sock = getattr(mail, 'sock', None)
+            if sock is not None:
+                timeout = sock.gettimeout()
+                sock.settimeout(min(timeout, 1) if timeout is not None else 1)
+            with imap_timed_stage(timing, 'logout'):
+                mail.logout()
+    except Exception:
+        pass
+    finally:
+        if hasattr(mail, 'shutdown'):
+            try:
+                mail.shutdown()
+            except Exception:
+                pass
+
+
 def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
                             imap_port: int = 993, folder: str = 'inbox',
                             provider: str = 'custom', skip: int = 0, top: int = 20,
@@ -2863,29 +2882,50 @@ def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
     mail = None
     imap_id_info = {}
     timing = new_imap_timing_context(email_addr, imap_host, folder, 'list')
+    is_gmail = str(imap_host or '').strip().lower().rstrip('.') in {'imap.gmail.com', 'imap.googlemail.com'}
     try:
         skip = max(0, int(skip or 0))
         top = max(1, int(top or 20))
-        with imap_timed_stage(timing, 'connect'):
-            mail = create_imap_connection(imap_host, imap_port, proxy_url)
-        try:
-            with imap_timed_stage(timing, 'login'):
-                mail.login(email_addr, imap_password)
-        except imaplib.IMAP4.error as exc:
-            return {
-                'success': False,
-                'error': build_error_payload(
-                    'IMAP_AUTH_FAILED',
-                    normalize_imap_auth_error(provider, imap_host, str(exc)),
-                    'IMAPAuthError',
-                    401,
-                    ''
-                ),
-                'error_code': 'IMAP_AUTH_FAILED'
-            }
+        for attempt in range(2 if is_gmail else 1):
+            with imap_timed_stage(timing, 'connect'):
+                mail = create_imap_connection(imap_host, imap_port, proxy_url)
+            login_socket = getattr(mail, 'sock', None) if is_gmail else None
+            if login_socket is not None:
+                login_timeout = login_socket.gettimeout()
+                login_socket.settimeout(min(login_timeout, 15) if login_timeout is not None else 15)
+            try:
+                with imap_timed_stage(timing, 'login'):
+                    mail.login(email_addr, imap_password)
+            except (TimeoutError, imaplib.IMAP4.abort) as exc:
+                # 超时后 imaplib 的读取缓冲区可能失步，必须丢弃会话再登录。
+                close_imap_list_connection(mail, timing, discard=True)
+                mail = None
+                if not is_gmail or attempt > 0:
+                    raise
+                app.logger.warning('[imap] request_id=%s login_retry=1 error_type=%s',
+                                   timing['request_id'], type(exc).__name__)
+                continue
+            except imaplib.IMAP4.error as exc:
+                return {
+                    'success': False,
+                    'error': build_error_payload(
+                        'IMAP_AUTH_FAILED',
+                        normalize_imap_auth_error(provider, imap_host, str(exc)),
+                        'IMAPAuthError',
+                        401,
+                        ''
+                    ),
+                    'error_code': 'IMAP_AUTH_FAILED'
+                }
+            if login_socket is not None:
+                login_socket.settimeout(login_timeout)
+            timing.pop('error_type', None)
+            break
 
         with imap_timed_stage(timing, 'identify'):
-            imap_id_info = send_imap_id(mail, provider, imap_host)
+            # Gmail 不要求 ID；126/163 等依赖客户端标识的服务仍保留原行为。
+            if not is_gmail:
+                imap_id_info = send_imap_id(mail, provider, imap_host)
         with imap_timed_stage(timing, 'select'):
             selected, folder_diagnostics = resolve_imap_folder(mail, provider, folder, readonly=True)
         if not selected:
@@ -3025,11 +3065,7 @@ def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
         }
     finally:
         if mail:
-            try:
-                with imap_timed_stage(timing, 'logout'):
-                    mail.logout()
-            except Exception:
-                pass
+            close_imap_list_connection(mail, timing)
         log_imap_stage(timing, 'total', timing['started_at'], timing.get('error_type', '-'))
 
 
