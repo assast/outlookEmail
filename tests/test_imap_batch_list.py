@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from email.message import EmailMessage
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -149,6 +149,101 @@ def test_list_does_not_trigger_detail_fetch():
     with patch.object(mail_app, 'get_email_detail_imap_generic_result') as detail:
         assert fetch_generic(BatchMail())['success']
     detail.assert_not_called()
+
+
+class SocketMail(BatchMail):
+    def __init__(self):
+        super().__init__()
+        self.sock = Mock()
+        self.sock.gettimeout.return_value = 45
+        self.shutdown = Mock()
+
+
+def test_gmail_list_skips_optional_id_and_bounds_logout():
+    mail = SocketMail()
+    with patch.object(mail, 'xatom') as identify, \
+         patch.object(mail_app, 'create_imap_connection', return_value=mail):
+        result = mail_app.get_emails_imap_generic(
+            'reader@gmail.com', 'app-password', 'imap.gmail.com', provider='gmail',
+        )
+    assert result['success']
+    identify.assert_not_called()
+    assert [call.args[0] for call in mail.sock.settimeout.call_args_list] == [15, 45, 1]
+    assert mail.logged_out
+    mail.shutdown.assert_called_once()
+
+
+def test_gmail_login_timeout_discards_connection_and_retries_once():
+    slow, healthy = SocketMail(), SocketMail()
+    with patch.object(slow, 'login', side_effect=TimeoutError('login timed out')), \
+         patch.object(mail_app, 'create_imap_connection', side_effect=[slow, healthy]) as connect:
+        result = mail_app.get_emails_imap_generic(
+            'reader@gmail.com', 'app-password', 'imap.gmail.com', provider='gmail',
+        )
+    assert result['success']
+    assert connect.call_count == 2
+    slow.shutdown.assert_called_once()
+    assert not slow.logged_out
+    assert healthy.logged_out
+    healthy.shutdown.assert_called_once()
+
+
+@pytest.mark.parametrize('failure', [TimeoutError('timed out'), mail_app.imaplib.IMAP4.abort('socket closed')])
+def test_gmail_login_transient_retry_is_bounded(failure):
+    first, second = SocketMail(), SocketMail()
+    with patch.object(first, 'login', side_effect=failure), \
+         patch.object(second, 'login', side_effect=failure), \
+         patch.object(mail_app, 'create_imap_connection', side_effect=[first, second]) as connect:
+        result = mail_app.get_emails_imap_generic(
+            'reader@gmail.com', 'app-password', 'imap.gmail.com', provider='gmail',
+        )
+    assert not result['success']
+    assert result['error_code'] == 'IMAP_CONNECT_FAILED'
+    assert connect.call_count == 2
+    first.shutdown.assert_called_once()
+    second.shutdown.assert_called_once()
+
+
+def test_gmail_auth_failure_does_not_retry():
+    mail = SocketMail()
+    with patch.object(mail, 'login', side_effect=mail_app.imaplib.IMAP4.error('Invalid credentials')), \
+         patch.object(mail_app, 'create_imap_connection', return_value=mail) as connect:
+        result = mail_app.get_emails_imap_generic(
+            'reader@gmail.com', 'bad-password', 'imap.gmail.com', provider='gmail',
+        )
+    assert result['error_code'] == 'IMAP_AUTH_FAILED'
+    connect.assert_called_once()
+    mail.shutdown.assert_called_once()
+
+
+def test_slow_logout_keeps_fetched_emails_and_closes_socket():
+    mail = SocketMail()
+    with patch.object(mail, 'logout', side_effect=TimeoutError('logout timed out')):
+        result = fetch_generic(mail)
+    assert result['success']
+    assert len(result['emails']) == 20
+    assert mail.sock.settimeout.call_args.args == (1,)
+    mail.shutdown.assert_called_once()
+
+
+def test_custom_imap_keeps_login_timeout_and_identity():
+    mail = SocketMail()
+    with patch.object(mail, 'xatom', return_value=('OK', [])) as identify:
+        result = fetch_generic(mail, provider='126')
+    assert result['success']
+    identify.assert_called_once()
+    assert [call.args[0] for call in mail.sock.settimeout.call_args_list] == [1]
+
+
+def test_gmail_login_respects_shorter_socket_timeout():
+    mail = SocketMail()
+    mail.sock.gettimeout.return_value = 5
+    with patch.object(mail_app, 'create_imap_connection', return_value=mail):
+        result = mail_app.get_emails_imap_generic(
+            'reader@gmail.com', 'app-password', 'imap.gmail.com', provider='gmail',
+        )
+    assert result['success']
+    assert [call.args[0] for call in mail.sock.settimeout.call_args_list] == [5, 5, 1]
 
 
 def test_body_is_available_when_detail_is_requested(caplog):
