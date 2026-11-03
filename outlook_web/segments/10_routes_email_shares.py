@@ -466,20 +466,26 @@ def collect_email_share_candidate_page(
 
 
 def resolve_email_share_visible_messages(
-    account: Dict[str, Any], max_email_count: int
+    account: Dict[str, Any], max_email_count: int, folder: Optional[str] = None
 ) -> Dict[str, Any]:
+    """解析受限分享可见的最新邮件。
+
+    传入 ``folder`` 时只抓取该文件夹，数量上限按文件夹分别生效，这样分享页
+    进入收件箱不必为垃圾邮件付出请求开销；不传时保持跨文件夹合并的旧行为。
+    """
+    folder_order = (folder,) if folder else EMAIL_SHARE_ALLOWED_FOLDER_ORDER
     candidates = []
     methods = []
     seen_candidates = set()
     folder_states = {
-        folder: {
+        folder_name: {
             'skip': 0,
             'fetched_count': 0,
             'has_more': False,
             'oldest_date': None,
             'request_method': None,
         }
-        for folder in EMAIL_SHARE_ALLOWED_FOLDER_ORDER
+        for folder_name in folder_order
     }
     missing_marker = object()
     previous_disable_record = account.get('_disable_authorization_type_record', missing_marker)
@@ -487,7 +493,7 @@ def resolve_email_share_visible_messages(
     stable_ids_context_token = email_share_stable_ids_context.set(True)
 
     try:
-        for folder in EMAIL_SHARE_ALLOWED_FOLDER_ORDER:
+        for folder in folder_order:
             result = fetch_account_emails(
                 account, folder, 0, EMAIL_SHARE_CANDIDATE_PAGE_SIZE
             )
@@ -520,7 +526,7 @@ def resolve_email_share_visible_messages(
             if len(sorted_candidates) >= max_email_count and cutoff_date is None:
                 return email_share_visible_messages_error()
             folders_to_fetch = [
-                folder for folder in EMAIL_SHARE_ALLOWED_FOLDER_ORDER
+                folder for folder in folder_order
                 if folder_states[folder]['has_more']
                 and (
                     cutoff_date is None
@@ -581,7 +587,7 @@ def fetch_limited_email_share_emails(
     if skip >= max_email_count:
         return {'success': True, 'emails': [], 'method': '', 'has_more': False}
 
-    visible_result = resolve_email_share_visible_messages(account, max_email_count)
+    visible_result = resolve_email_share_visible_messages(account, max_email_count, folder)
     if not visible_result.get('success'):
         return visible_result
 
@@ -886,7 +892,7 @@ def api_email_share_get_email_detail(token, message_id):
     id_mode = normalize_email_share_message_id_mode(request.args.get('id_mode'))
     max_email_count = get_email_share_max_email_count(share)
     if max_email_count is not None:
-        visible_result = resolve_email_share_visible_messages(account, max_email_count)
+        visible_result = resolve_email_share_visible_messages(account, max_email_count, folder)
         if not visible_result.get('success'):
             return jsonify(visible_result)
         visible_email = find_email_share_visible_message(

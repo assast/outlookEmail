@@ -87,7 +87,7 @@
         const count = Number(maxEmailCount);
         const isLimited = Number.isInteger(count) && count > 0;
         hint.hidden = !isLimited;
-        hint.textContent = isLimited ? `仅显示收件箱和垃圾邮件中当前最新 ${count} 封邮件` : '';
+        hint.textContent = isLimited ? `收件箱和垃圾邮件分别仅显示各自最新 ${count} 封邮件` : '';
     }
 
     async function requestJson(url, options = {}) {
