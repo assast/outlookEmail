@@ -357,6 +357,75 @@ def post_with_proxy_fallback(url: str, *, proxy_url: str = None,
 
 GRAPH_DEFAULT_TOKEN_SCOPE = "https://graph.microsoft.com/.default"
 
+# 每个账号最近一次成功的 token scope 缓存（进程内）。键为 client_id + refresh_token 的摘要，
+# 避免在内存中明文保存 refresh_token。显式配置的 scope 优先级高于自动回退。
+GRAPH_TOKEN_SCOPE_CACHE_LIMIT = 2048
+_graph_token_scope_preferences: Dict[str, str] = {}
+_graph_token_scope_last_success: Dict[str, str] = {}
+_graph_token_scope_cache_lock = threading.Lock()
+
+
+def _graph_token_scope_cache_key(client_id: str, refresh_token: str) -> str:
+    payload = f"{client_id or ''}\n{refresh_token or ''}".encode('utf-8')
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _trim_graph_token_scope_cache(cache: Dict[str, str]) -> None:
+    while len(cache) > GRAPH_TOKEN_SCOPE_CACHE_LIMIT:
+        cache.pop(next(iter(cache)), None)
+
+
+def register_graph_token_scope_preference(client_id: str, refresh_token: str, scope: str) -> None:
+    """登记账号显式选择的 scope；空字符串表示自动模式（清除旧选择）。"""
+    normalized = ' '.join(str(scope or '').split())
+    if not client_id or not refresh_token:
+        return
+    key = _graph_token_scope_cache_key(client_id, refresh_token)
+    with _graph_token_scope_cache_lock:
+        if normalized:
+            _graph_token_scope_preferences[key] = normalized
+            _trim_graph_token_scope_cache(_graph_token_scope_preferences)
+        else:
+            _graph_token_scope_preferences.pop(key, None)
+
+
+def remember_graph_token_scope(client_id: str, refresh_token: str, scope: str) -> None:
+    """记录一次实际成功的 scope，下次优先尝试。"""
+    normalized = ' '.join(str(scope or '').split())
+    if not client_id or not refresh_token or not normalized:
+        return
+    key = _graph_token_scope_cache_key(client_id, refresh_token)
+    with _graph_token_scope_cache_lock:
+        _graph_token_scope_last_success[key] = normalized
+        _trim_graph_token_scope_cache(_graph_token_scope_last_success)
+
+
+def reset_graph_token_scope_cache() -> None:
+    """清空进程内 scope 缓存（测试或配置变更后使用）。"""
+    with _graph_token_scope_cache_lock:
+        _graph_token_scope_preferences.clear()
+        _graph_token_scope_last_success.clear()
+
+
+def get_preferred_graph_token_scope(client_id: str, refresh_token: str) -> str:
+    """返回显式选择或最近一次成功的 scope，未命中返回空字符串。"""
+    if not client_id or not refresh_token:
+        return ''
+    key = _graph_token_scope_cache_key(client_id, refresh_token)
+    with _graph_token_scope_cache_lock:
+        return _graph_token_scope_preferences.get(key) or _graph_token_scope_last_success.get(key) or ''
+
+
+def prioritize_graph_token_scope_candidates(candidates: List[tuple[str, str]],
+                                            preferred_scope: str = '') -> List[tuple[str, str]]:
+    """把首选 scope 提到最前，其余候选保持原顺序。"""
+    preferred = ' '.join(str(preferred_scope or '').split())
+    if not preferred:
+        return candidates
+    ordered = [('preferred', preferred)]
+    ordered.extend((label, scope) for label, scope in candidates if scope != preferred)
+    return ordered
+
 
 def build_graph_refresh_scope(graph_scopes: List[str]) -> str:
     scopes = [scope for scope in graph_scopes if scope]
@@ -433,11 +502,17 @@ def extract_refresh_token_from_response(response) -> str:
 
 def request_graph_token_response(client_id: str, refresh_token: str, proxy_url: str = None,
                                  fallback_proxy_urls: Optional[List[str]] = None,
-                                 include_original_scope_fallback: bool = False):
+                                 include_original_scope_fallback: bool = False,
+                                 preferred_scope: Optional[str] = None):
     """拉信优先显式 scope；刷新优先 .default，缺少 refresh_token 时尝试原始 scope。"""
     last_response = None
     successful_response = None
     candidates = get_graph_token_scope_candidates(include_original_scope_fallback)
+    if not include_original_scope_fallback:
+        scope_hint = ' '.join(str(preferred_scope or '').split())
+        if not scope_hint:
+            scope_hint = get_preferred_graph_token_scope(client_id, refresh_token)
+        candidates = prioritize_graph_token_scope_candidates(candidates, scope_hint)
     for index, (_label, scope) in enumerate(candidates):
         data = {
             "client_id": client_id,
@@ -461,7 +536,13 @@ def request_graph_token_response(client_id: str, refresh_token: str, proxy_url: 
             raise
         last_response = response
         if response.status_code == 200:
-            if not include_original_scope_fallback or extract_refresh_token_from_response(response):
+            if not include_original_scope_fallback:
+                remember_graph_token_scope(client_id, refresh_token, scope)
+                rotated_refresh_token = extract_refresh_token_from_response(response)
+                if rotated_refresh_token and rotated_refresh_token != refresh_token:
+                    remember_graph_token_scope(client_id, rotated_refresh_token, scope)
+                return response
+            if extract_refresh_token_from_response(response):
                 return response
             if successful_response is None:
                 successful_response = response

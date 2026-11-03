@@ -2424,6 +2424,7 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
         return response
 
     def setUp(self):
+        web_outlook_app.reset_graph_token_scope_cache()
         self.app = web_outlook_app.app
         self.app.config['TESTING'] = True
         self.app.config['WTF_CSRF_ENABLED'] = False
