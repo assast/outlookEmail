@@ -243,18 +243,27 @@ class EmailShareLinkTests(unittest.TestCase):
             f'/api/share/email/{token}/verify', json={'access_code': 'Ab12'}
         ).status_code, 200)
         folder_emails = {
-            'inbox': [{'id': 'old', 'date': '2026-01-01T00:00:00Z', 'id_mode': 'graph'}],
-            'junkemail': [{'id': 'new', 'date': '2026-01-02T00:00:00Z', 'id_mode': 'graph'}],
+            'inbox': [
+                {'id': 'old', 'date': '2026-01-02T00:00:00Z', 'id_mode': 'graph'},
+                {'id': 'older', 'date': '2026-01-01T00:00:00Z', 'id_mode': 'graph'},
+            ],
+            'junkemail': [{'id': 'new', 'date': '2026-01-03T00:00:00Z', 'id_mode': 'graph'}],
         }
         with patch.object(web_outlook_app, 'fetch_account_emails', side_effect=self._make_share_folder_fetch(
             folder_emails, expected_top=web_outlook_app.EMAIL_SHARE_CANDIDATE_PAGE_SIZE
-        )), patch.object(web_outlook_app, 'fetch_email_detail_for_account') as detail_mock:
+        )), patch.object(web_outlook_app, 'fetch_email_detail_for_account', return_value={
+            'success': True, 'email': {'id': 'old'},
+        }) as detail_mock:
             inbox = anonymous.get(f'/api/share/email/{token}/emails?folder=inbox').get_json()
             junk = anonymous.get(f'/api/share/email/{token}/emails?folder=junkemail').get_json()
-            self.assertEqual(inbox['emails'], [])
+            self.assertEqual([email['id'] for email in inbox['emails']], ['old'])
             self.assertEqual([email['id'] for email in junk['emails']], ['new'])
-            response = anonymous.get(f'/api/share/email/{token}/email/old?folder=inbox&id_mode=graph')
-            self.assertEqual(response.status_code, 404)
+            allowed = anonymous.get(f'/api/share/email/{token}/email/old?folder=inbox&id_mode=graph')
+            self.assertEqual(allowed.status_code, 200)
+            detail_mock.assert_called_once()
+            detail_mock.reset_mock()
+            outside = anonymous.get(f'/api/share/email/{token}/email/older?folder=inbox&id_mode=graph')
+            self.assertEqual(outside.status_code, 404)
             detail_mock.assert_not_called()
 
     def test_access_code_verification_is_rate_limited_separately_from_admin_login(self):
@@ -340,7 +349,7 @@ class EmailShareLinkTests(unittest.TestCase):
             self.assertEqual(response.status_code, 400)
             self.assertFalse(response.get_json()['success'])
 
-    def test_limited_share_global_visibility_blocks_pagination_bypass(self):
+    def test_limited_share_per_folder_visibility_blocks_pagination_bypass(self):
         account_id = self._insert_account()
         share = self._create_share(account_id, max_email_count=2)
         token = self._token_from_share_url(share['share_url'])
@@ -378,12 +387,46 @@ class EmailShareLinkTests(unittest.TestCase):
         self.assertFalse(second_data['has_more'])
         self.assertEqual(overflow_data['emails'], [])
         self.assertFalse(overflow_data['has_more'])
-        self.assertEqual(list_mock.call_count, 4)
+        self.assertEqual(list_mock.call_count, 2)
         self.assertTrue(all(
-            call.args[2:] == (0, web_outlook_app.EMAIL_SHARE_CANDIDATE_PAGE_SIZE)
+            call.args[1] == 'inbox'
+            and call.args[2:] == (0, web_outlook_app.EMAIL_SHARE_CANDIDATE_PAGE_SIZE)
             for call in list_mock.call_args_list
         ))
         self.assertNotIn('_share_request_method', first_data['emails'][0])
+
+    def test_limited_share_lists_each_folder_without_fetching_the_other(self):
+        account_id = self._insert_account()
+        share = self._create_share(account_id, max_email_count=1)
+        token = self._token_from_share_url(share['share_url'])
+        folder_emails = {
+            'inbox': [
+                {'id': 'inbox-visible', 'date': '2026-01-02T12:01:00Z', 'id_mode': 'graph'},
+                {'id': 'inbox-older', 'date': '2026-01-02T12:00:00Z', 'id_mode': 'graph'},
+            ],
+            'junkemail': [
+                {'id': 'junk-visible', 'date': '2026-01-02T12:03:00Z', 'id_mode': 'graph'},
+                {'id': 'junk-older', 'date': '2026-01-02T12:02:00Z', 'id_mode': 'graph'},
+            ],
+        }
+        fetched_folders = []
+
+        def fetch(_account, folder, skip, top):
+            fetched_folders.append(folder)
+            self.assertEqual((skip, top), (0, web_outlook_app.EMAIL_SHARE_CANDIDATE_PAGE_SIZE))
+            return self._share_folder_result(folder_emails[folder])
+
+        with patch.object(web_outlook_app, 'fetch_account_emails', side_effect=fetch):
+            inbox_data = self.client.get(
+                f'/api/share/email/{token}/emails?folder=inbox'
+            ).get_json()
+            junk_data = self.client.get(
+                f'/api/share/email/{token}/emails?folder=junkemail'
+            ).get_json()
+
+        self.assertEqual([email['id'] for email in inbox_data['emails']], ['inbox-visible'])
+        self.assertEqual([email['id'] for email in junk_data['emails']], ['junk-visible'])
+        self.assertEqual(fetched_folders, ['inbox', 'junkemail'])
 
     def test_limited_share_detail_requires_visible_message_id_and_mode(self):
         account_id = self._insert_account()
@@ -394,6 +437,7 @@ class EmailShareLinkTests(unittest.TestCase):
                 {'id': 'allowed', 'date': '2026-01-02T12:02:00Z', 'id_mode': 'uid'},
             ],
             'junkemail': [
+                {'id': 'junk-visible', 'date': '2026-01-02T12:03:00Z', 'id_mode': 'uid'},
                 {'id': 'outside', 'date': '2026-01-02T12:01:00Z', 'id_mode': 'uid'},
             ],
         }
@@ -1153,7 +1197,7 @@ class EmailShareFrontendContractTests(unittest.TestCase):
         self.assertIn('shareVisibilityHint', template)
         self.assertIn('/api/share/email/', share_js)
         self.assertIn('renderShareVisibilityHint(status.max_email_count)', share_js)
-        self.assertIn('仅显示收件箱和垃圾邮件中当前最新 ${count} 封邮件', share_js)
+        self.assertIn('收件箱和垃圾邮件分别仅显示各自最新 ${count} 封邮件', share_js)
         self.assertIn('.overlay-screen[hidden]', share_css)
         self.assertNotIn("shareStatusAttr !== 'active'", share_js)
         self.assertNotIn('/api/emails/delete', share_js)
