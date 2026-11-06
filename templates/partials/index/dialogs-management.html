@@ -915,10 +915,10 @@
                             <span class="release-notice-badge">最新</span>
                         </div>
                         <ul>
-                            <li>Outlook/Hotmail 账号可独立选择 Token Scope，自动记住成功配置以减少取信等待。</li>
-                            <li>修复恢复自动模式后的旧缓存问题，后台转发同步应用账号 scope；发信和邮件管理按所需权限获取 Token。</li>
-                            <li>受限分享按文件夹懒加载，收件箱和垃圾邮件各显示最新 N 封。</li>
-                            <li>旧受限链接也会改为每个文件夹各 N 封，最多可访问 2N 封；不接受新范围时请在升级前撤销链接。</li>
+                            <li>修复 IMAP 删信后详情错配和旧序列号可能误删其他邮件的问题。</li>
+                            <li>Gmail、Outlook IMAP 等不支持 SORT 的邮箱现在可正常使用“仅最新 N 封”分享。</li>
+                            <li>分享继续按邮件时间验证可见范围，导入旧邮件不会因 UID 较大而被额外展示。</li>
+                            <li>升级后请刷新邮件列表；旧 IMAP 缓存会失效重建，API 客户端也需重新同步邮件 ID。</li>
                         </ul>
                     </div>
                 </div>
