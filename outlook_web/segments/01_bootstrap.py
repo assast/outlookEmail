@@ -1939,6 +1939,17 @@ def init_db():
     if 'received_at_sort' not in retained_normal_mail_columns:
         cursor.execute('ALTER TABLE retained_normal_mail_messages ADD COLUMN received_at_sort REAL DEFAULT 0')
 
+    if not cursor.execute("SELECT 1 FROM settings WHERE key = 'imap_uid_identity_cache_migrated'").fetchone():
+        # 旧 IMAP 缓存可能已错配：失效后重新同步，保留原始正文记录供恢复。
+        cursor.execute('''
+            UPDATE retained_normal_mail_messages
+            SET list_cached = 0, body_cached = 0, body_preview = ''
+            WHERE id_mode = 'sequence'
+               OR (id_mode = 'uid' AND provider_message_id NOT LIKE 'imap:%')
+               OR (id_mode = '' AND account_id IN (SELECT id FROM accounts WHERE account_type = 'imap'))
+        ''')
+        cursor.execute("INSERT INTO settings (key, value) VALUES ('imap_uid_identity_cache_migrated', '1')")
+
     cursor.execute("PRAGMA table_info(project_accounts)")
     project_account_columns = [col[1] for col in cursor.fetchall()]
     if project_account_columns:
