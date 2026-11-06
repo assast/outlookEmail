@@ -2301,25 +2301,108 @@ def reopen_imap_session_for_sequence_fetch(email_addr: str, imap_password: str, 
         return None, 0
 
 
+IMAP_SHARE_METADATA_BATCH_SIZE = 500
+
+
 def search_imap_message_uids_by_arrival(mail) -> tuple[Optional[List[bytes]], List[Dict[str, Any]]]:
+    """返回按 INTERNALDATE 倒序排列的 UID，不能用 UID 大小替代分享的时间边界。"""
     attempts: List[Dict[str, Any]] = []
+
+    def record(mode, status, response):
+        attempts.append({'mode': mode, 'status': str(status),
+                         'response': sanitize_error_details(str(response or ''))[:200]})
+
+    capabilities = getattr(mail, 'capabilities', None)
+    known_capabilities = isinstance(capabilities, (tuple, list, set)) and bool(capabilities)
+    supports_sort = not known_capabilities or 'SORT' in {
+        (item.decode('ascii', errors='ignore') if isinstance(item, bytes) else str(item)).upper()
+        for item in capabilities
+    }
+    if supports_sort:
+        try:
+            status, data = mail.uid('SORT', '(REVERSE ARRIVAL)', 'UTF-8', 'ALL')
+            record('uid-arrival-sort', status, data)
+            if status == 'OK':
+                payload = data[0] if data else b''
+                return (payload.split() if payload else []), attempts
+            if status not in {'NO', 'BAD'}:
+                return None, attempts
+        except Exception as exc:
+            record('uid-arrival-sort', type(exc).__name__, str(exc))
+            # 仅协议级“不支持”可复用连接；断线、超时和超长响应后不能继续发命令。
+            if (
+                isinstance(exc, (imaplib.IMAP4.abort, OSError))
+                or not isinstance(exc, imaplib.IMAP4.error)
+                or not any(marker in str(exc).lower() for marker in (
+                    'command error: bad', 'unsupported', 'unknown imap4 uid command',
+                ))
+            ):
+                return None, attempts
+    else:
+        record('uid-arrival-sort', 'UNSUPPORTED', 'SORT not advertised')
+
+    deadline = time.monotonic() + IMAP_TIMEOUT
+    sock = getattr(mail, 'sock', None)
+    original_timeout = sock.gettimeout() if sock is not None else None
+
+    def check_budget():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('IMAP share metadata scan exceeded its total time budget')
+        if sock is not None:
+            sock.settimeout(min(original_timeout, remaining) if original_timeout is not None else remaining)
+
+    mode = 'uid-search-all'
     try:
-        status, data = mail.uid('SORT', '(REVERSE ARRIVAL)', 'UTF-8', 'ALL')
-        attempts.append({
-            'mode': 'uid-arrival-sort',
-            'status': str(status),
-            'response': sanitize_error_details(str(data or ''))[:200],
-        })
-        if status == 'OK':
-            payload = data[0] if data else b''
-            return (payload.split() if payload else []), attempts
+        check_budget()
+        status, data = mail.uid('SEARCH', None, 'ALL')
+        record(mode, status, data)
+        if status != 'OK':
+            return None, attempts
+        payload = data[0] if data else b''
+        uids = payload.split() if payload else []
+        if len(set(uids)) != len(uids) or any(not re.fullmatch(rb'[1-9][0-9]*', uid) for uid in uids):
+            raise ValueError('Invalid UID SEARCH response')
+        check_budget()
+        dates = {}
+        mode = 'uid-arrival-metadata'
+        for offset in range(0, len(uids), IMAP_SHARE_METADATA_BATCH_SIZE):
+            check_budget()
+            batch = uids[offset:offset + IMAP_SHARE_METADATA_BATCH_SIZE]
+            expected = {uid.decode('ascii') for uid in batch}
+            status, data = mail.uid('FETCH', ','.join(uid.decode('ascii') for uid in batch), '(UID INTERNALDATE)')
+            record(mode, status, f'{len(batch)} requested UIDs')
+            if status != 'OK':
+                return None, attempts
+            found = {}
+            for item in data or []:
+                metadata = item[0] if isinstance(item, tuple) else item
+                if not isinstance(metadata, bytes):
+                    continue
+                match = re.search(rb'\bUID\s+([1-9][0-9]*)\b', metadata, re.IGNORECASE)
+                uid = match.group(1).decode('ascii') if match else ''
+                if uid not in expected:
+                    continue
+                received_at = parse_email_datetime(extract_imap_internaldate(metadata))
+                if received_at is not None:
+                    if uid in found and found[uid] != received_at:
+                        raise ValueError('Conflicting INTERNALDATE values')
+                    found[uid] = received_at
+            if found.keys() != expected:
+                raise ValueError('Incomplete UID/INTERNALDATE metadata')
+            dates.update(found)
+        check_budget()
+        ordered = sorted(dates, key=lambda uid: (dates[uid], int(uid)), reverse=True)
+        return [uid.encode('ascii') for uid in ordered], attempts
     except Exception as exc:
-        attempts.append({
-            'mode': 'uid-arrival-sort',
-            'status': type(exc).__name__,
-            'response': sanitize_error_details(str(exc))[:200],
-        })
-    return None, attempts
+        record(mode, type(exc).__name__, str(exc))
+        return None, attempts
+    finally:
+        if sock is not None:
+            try:
+                sock.settimeout(original_timeout)
+            except OSError:
+                pass
 
 
 def build_sequence_message_ids(total_messages: int) -> List[bytes]:
