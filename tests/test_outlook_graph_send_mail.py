@@ -120,6 +120,7 @@ class OutlookGraphSendMailTests(unittest.TestCase):
             'refresh-token',
             'http://primary-proxy:8080',
             ['http://fallback-proxy:8081'],
+            required_scope='https://graph.microsoft.com/Mail.Send',
         )
         self.assertTrue(result['success'])
         self.assertTrue(result['submitted'])
