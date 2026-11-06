@@ -1878,6 +1878,7 @@ def api_get_account(account_id):
             'account_type': account.get('account_type', 'outlook'),
             'provider': account.get('provider', 'outlook'),
             'authorization_type': get_account_authorization_type(account),
+            'graph_token_scope': account.get('graph_token_scope', '') or '',
             'imap_host': account.get('imap_host', ''),
             'imap_port': account.get('imap_port', 993),
             'has_imap_password': bool(account.get('imap_password')),
@@ -1974,7 +1975,9 @@ def api_add_account():
         imap_port = int(data.get('imap_port', 993) or 993)
     except (TypeError, ValueError):
         return jsonify({'success': False, 'error': 'IMAP 端口无效'})
-    
+
+    graph_token_scope = normalize_graph_token_scope(data.get('graph_token_scope', ''))
+
     if not account_str:
         return jsonify({'success': False, 'error': '请输入账号信息'})
     
@@ -2005,6 +2008,7 @@ def api_add_account():
         proxy_url,
         fallback_proxy_url_1,
         fallback_proxy_url_2,
+        graph_token_scope,
     )
     added = result.get('added_count', 0)
     skipped_count = result.get('skipped_count', 0)
@@ -2064,6 +2068,10 @@ def api_update_account(account_id):
             return jsonify({'success': False, 'error': str(exc)})
     else:
         authorization_type = get_account_authorization_type(current_account)
+    graph_token_scope = (
+        normalize_graph_token_scope(data.get('graph_token_scope'))
+        if 'graph_token_scope' in data else None
+    )
     imap_host = (data.get('imap_host', '') or '').strip()
     imap_port = data.get('imap_port', 993)
     imap_password = data['imap_password'] if 'imap_password' in data else current_account.get('imap_password', '')
@@ -2119,7 +2127,7 @@ def api_update_account(account_id):
         account_id, email_addr, password, client_id, refresh_token, group_id, sort_order, remark, status,
         account_type, provider, imap_host, imap_port, imap_password, forward_enabled,
         proxy_url, fallback_proxy_url_1, fallback_proxy_url_2,
-        authorization_type
+        authorization_type, graph_token_scope
     ):
         cleaned_aliases = get_account_aliases(account_id)
         db = get_db()

@@ -1066,8 +1066,43 @@
 
             if (remarkInput) remarkInput.value = '';
             if (statusSelect) statusSelect.value = 'active';
+            setGraphScopeFieldValue('importGraphScopeSelect', 'importGraphScopeCustom', '');
             tagDropdown?.classList.remove('open');
             renderImportTagOptions();
+        }
+
+        function syncGraphScopeCustomVisibility(selectId, customId) {
+            const select = document.getElementById(selectId);
+            const custom = document.getElementById(customId);
+            if (!select || !custom) return;
+            const isCustom = select.value === '__custom__';
+            custom.style.display = isCustom ? '' : 'none';
+            if (isCustom) custom.focus();
+        }
+
+        function resolveGraphScopeFieldValue(selectId, customId) {
+            const select = document.getElementById(selectId);
+            if (!select) return '';
+            if (select.value === '__custom__') {
+                return (document.getElementById(customId)?.value || '').trim();
+            }
+            return select.value;
+        }
+
+        function setGraphScopeFieldValue(selectId, customId, value) {
+            const select = document.getElementById(selectId);
+            const custom = document.getElementById(customId);
+            if (!select) return;
+            const normalized = String(value || '').trim();
+            const optionValues = Array.from(select.options).map(option => option.value);
+            if (normalized && !optionValues.includes(normalized)) {
+                select.value = '__custom__';
+                if (custom) custom.value = normalized;
+            } else {
+                select.value = normalized;
+                if (custom) custom.value = '';
+            }
+            if (custom) custom.style.display = select.value === '__custom__' ? '' : 'none';
         }
 
         function getImportSelectedTagIds() {
@@ -1307,7 +1342,10 @@
                             imap_port: Number.isFinite(imapPort) ? imapPort : 993,
                             remark,
                             status,
-                            tag_ids: tagIds
+                            tag_ids: tagIds,
+                            graph_token_scope: provider === 'outlook'
+                                ? resolveGraphScopeFieldValue('importGraphScopeSelect', 'importGraphScopeCustom')
+                                : ''
                         })
                     });
                 }
@@ -1350,6 +1388,7 @@
                     resetEditSecretInput('editPassword', 'revealEditPasswordBtn', !!acc.has_password, acc.password || '', '可选');
                     document.getElementById('editClientId').value = acc.client_id || '';
                     document.getElementById('editAuthorizationType').value = acc.authorization_type || '';
+                    setGraphScopeFieldValue('editGraphScopeSelect', 'editGraphScopeCustom', acc.graph_token_scope || '');
                     document.getElementById('editRefreshToken').value = acc.refresh_token || '';
                     resetEditSecretInput('editImapPassword', 'revealEditImapPasswordBtn', !!acc.has_imap_password, acc.imap_password || '', '');
                     document.getElementById('editImapHost').value = acc.imap_host || '';
@@ -1399,6 +1438,9 @@
                 client_id: document.getElementById('editClientId').value.trim(),
                 refresh_token: document.getElementById('editRefreshToken').value.trim(),
                 authorization_type: document.getElementById('editAuthorizationType')?.value || '',
+                graph_token_scope: isOutlook
+                    ? resolveGraphScopeFieldValue('editGraphScopeSelect', 'editGraphScopeCustom')
+                    : '',
                 account_type: isOutlook ? 'outlook' : 'imap',
                 provider,
                 imap_host: document.getElementById('editImapHost')?.value.trim() || '',

@@ -144,6 +144,18 @@
                                     <input type="number" class="form-input" id="importImapPort" value="993" min="1" max="65535">
                                 </div>
                             </div>
+                            <div class="form-group edit-account-span-2" id="importGraphScopeGroup">
+                                <label class="form-label">Token Scope</label>
+                                <select class="form-select" id="importGraphScopeSelect" onchange="syncGraphScopeCustomVisibility('importGraphScopeSelect', 'importGraphScopeCustom')">
+                                    <option value="">自动（依次回退并记住成功项）</option>
+                                    <option value="https://graph.microsoft.com/.default">.default（推荐）</option>
+                                    <option value="https://graph.microsoft.com/Mail.Read offline_access">Mail.Read + offline_access（只读）</option>
+                                    <option value="https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read offline_access">完整 Graph 权限（读 / 写 / 发信）</option>
+                                    <option value="__custom__">自定义…</option>
+                                </select>
+                                <input type="text" class="form-input" id="importGraphScopeCustom" placeholder="自定义 scope，例如 https://graph.microsoft.com/Mail.Read offline_access" style="display: none; margin-top: 8px;">
+                                <div class="form-hint">自动模式会按配置、只读、.default 顺序回退，并记住最近一次成功的 scope 加速后续请求。</div>
+                            </div>
                             <div class="form-group import-account-default-field">
                                 <label class="form-label">备注</label>
                                 <textarea class="form-textarea import-remark-textarea" id="importRemark"
@@ -304,6 +316,18 @@
                                     <option value="imap">IMAP</option>
                                 </select>
                                 <div class="form-hint">首选通道失败时会自动回退到另一通道，并记录实际成功通道。</div>
+                            </div>
+                            <div class="form-group edit-account-span-2" id="editGraphScopeGroup">
+                                <label class="form-label">Token Scope</label>
+                                <select class="form-select" id="editGraphScopeSelect" onchange="syncGraphScopeCustomVisibility('editGraphScopeSelect', 'editGraphScopeCustom')">
+                                    <option value="">自动（依次回退并记住成功项）</option>
+                                    <option value="https://graph.microsoft.com/.default">.default（推荐）</option>
+                                    <option value="https://graph.microsoft.com/Mail.Read offline_access">Mail.Read + offline_access（只读）</option>
+                                    <option value="https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read offline_access">完整 Graph 权限（读 / 写 / 发信）</option>
+                                    <option value="__custom__">自定义…</option>
+                                </select>
+                                <input type="text" class="form-input" id="editGraphScopeCustom" placeholder="自定义 scope，例如 https://graph.microsoft.com/Mail.Read offline_access" style="display: none; margin-top: 8px;">
+                                <div class="form-hint">自动模式会按配置、只读、.default 顺序回退，并记住最近一次成功的 scope 加速后续请求。</div>
                             </div>
                             <div class="form-group edit-account-span-2">
                                 <label class="form-label">Refresh Token</label>
