@@ -387,7 +387,7 @@ class ImapFolderResolutionTests(unittest.TestCase):
             def fetch(self, message_id, _query):
                 self.select_calls.append((f'FETCH:{message_id}', False))
                 return 'OK', [(
-                    b'7 (FLAGS (\\Seen) INTERNALDATE "14-Apr-2026 08:20:50 +0000" RFC822 {128}',
+                    b'7 (UID 107 FLAGS (\\Seen) INTERNALDATE "14-Apr-2026 08:20:50 +0000" RFC822 {128}',
                     raw_email,
                 )]
 
@@ -404,10 +404,11 @@ class ImapFolderResolutionTests(unittest.TestCase):
 
         self.assertTrue(result['success'])
         self.assertEqual(len(result['emails']), 1)
-        self.assertEqual(result['emails'][0]['id'], '7')
+        self.assertEqual(result['emails'][0]['id'], '107')
+        self.assertEqual(result['emails'][0]['id_mode'], 'uid')
         self.assertEqual(result['emails'][0]['subject'], 'inbox message')
 
-    def test_custom_imap_detail_falls_back_to_plain_fetch_when_uid_fetch_fails(self):
+    def test_custom_imap_detail_does_not_fall_back_when_uid_fetch_fails(self):
         raw_email = (
             b"Subject: detail message\r\n"
             b"From: sender@example.com\r\n"
@@ -431,7 +432,8 @@ class ImapFolderResolutionTests(unittest.TestCase):
 
         mail = FetchFallbackMail(selectable={'INBOX'}, list_entries=[b'(\\HasNoChildren) "." "INBOX"'])
 
-        with patch.object(web_outlook_app, 'create_imap_connection', return_value=mail):
+        with patch.object(web_outlook_app, 'create_imap_connection', return_value=mail), \
+                patch.object(mail, 'fetch', wraps=mail.fetch) as sequence_fetch:
             result = web_outlook_app.get_email_detail_imap_generic_result(
                 email_addr='user@example.com',
                 imap_password='secret',
@@ -441,12 +443,10 @@ class ImapFolderResolutionTests(unittest.TestCase):
                 provider='custom',
             )
 
-        self.assertTrue(result['success'])
-        self.assertEqual(result['email']['id'], '9')
-        self.assertEqual(result['email']['subject'], 'detail message')
-        self.assertIn('detail body', result['email']['body'])
+        self.assertFalse(result['success'])
+        sequence_fetch.assert_not_called()
 
-    def test_custom_imap_detail_falls_back_when_uid_fetch_returns_ok_without_payload(self):
+    def test_custom_imap_detail_does_not_fall_back_when_uid_fetch_has_no_payload(self):
         raw_email = (
             b"Subject: detail fallback payload\r\n"
             b"From: sender@example.com\r\n"
@@ -472,7 +472,8 @@ class ImapFolderResolutionTests(unittest.TestCase):
 
         mail = EmptyUidFetchMail(selectable={'INBOX'}, list_entries=[b'(\\HasNoChildren) "." "INBOX"'])
 
-        with patch.object(web_outlook_app, 'create_imap_connection', return_value=mail):
+        with patch.object(web_outlook_app, 'create_imap_connection', return_value=mail), \
+                patch.object(mail, 'fetch', wraps=mail.fetch) as sequence_fetch:
             result = web_outlook_app.get_email_detail_imap_generic_result(
                 email_addr='user@example.com',
                 imap_password='secret',
@@ -482,12 +483,10 @@ class ImapFolderResolutionTests(unittest.TestCase):
                 provider='custom',
             )
 
-        self.assertTrue(result['success'])
-        self.assertEqual(result['email']['id'], '9')
-        self.assertEqual(result['email']['subject'], 'detail fallback payload')
-        self.assertIn('detail body from sequence fetch', result['email']['body'])
+        self.assertFalse(result['success'])
+        sequence_fetch.assert_not_called()
 
-    def test_custom_imap_raw_fetch_uses_sequence_fallback_when_uid_fetch_has_no_payload(self):
+    def test_custom_imap_raw_fetch_does_not_fall_back_when_uid_fetch_has_no_payload(self):
         raw_email = (
             b"Subject: raw fallback payload\r\n"
             b"From: sender@example.com\r\n"
@@ -531,9 +530,9 @@ class ImapFolderResolutionTests(unittest.TestCase):
                 provider='custom',
             )
 
-        self.assertEqual(result, raw_email)
+        self.assertIsNone(result)
         self.assertEqual(mail.uid_fetch_calls, [('FETCH', ('9', '(RFC822)'))])
-        self.assertEqual(mail.sequence_fetch_calls, [('9', '(RFC822)')])
+        self.assertEqual(mail.sequence_fetch_calls, [])
         self.assertTrue(mail.logged_out)
 
     def test_custom_imap_uses_exists_count_when_search_returns_empty(self):
@@ -564,7 +563,7 @@ class ImapFolderResolutionTests(unittest.TestCase):
             def fetch(self, message_id, _query):
                 if str(message_id) == '1':
                     return 'OK', [(
-                        b'1 (FLAGS () INTERNALDATE "14-Apr-2026 08:20:50 +0000" RFC822 {128}',
+                        b'1 (UID 101 FLAGS () INTERNALDATE "14-Apr-2026 08:20:50 +0000" RFC822 {128}',
                         raw_email,
                     )]
                 return 'NO', [b'not found']
@@ -582,7 +581,8 @@ class ImapFolderResolutionTests(unittest.TestCase):
 
         self.assertTrue(result['success'])
         self.assertEqual(len(result['emails']), 1)
-        self.assertEqual(result['emails'][0]['id'], '1')
+        self.assertEqual(result['emails'][0]['id'], '101')
+        self.assertEqual(result['emails'][0]['id_mode'], 'uid')
         self.assertEqual(result['emails'][0]['subject'], 'exists fallback')
 
     def test_is_imap_search_protocol_rejection_classifies_attempts(self):
@@ -624,7 +624,7 @@ class ImapFolderResolutionTests(unittest.TestCase):
             def fetch(self, message_id, _query):
                 if str(message_id) == '1':
                     return 'OK', [(
-                        b'1 (FLAGS () INTERNALDATE "14-Apr-2026 08:20:50 +0000" RFC822 {128}',
+                        b'1 (UID 101 FLAGS () INTERNALDATE "14-Apr-2026 08:20:50 +0000" RFC822 {128}',
                         raw_email,
                     )]
                 return 'NO', [b'not found']
@@ -642,7 +642,8 @@ class ImapFolderResolutionTests(unittest.TestCase):
 
         self.assertTrue(result['success'])
         self.assertEqual(len(result['emails']), 1)
-        self.assertEqual(result['emails'][0]['id'], '1')
+        self.assertEqual(result['emails'][0]['id'], '101')
+        self.assertEqual(result['emails'][0]['id_mode'], 'uid')
         self.assertEqual(result['emails'][0]['subject'], 'search rejected fallback')
 
     def test_custom_imap_search_rejection_without_messages_still_fails(self):
@@ -761,7 +762,7 @@ class ImapFolderResolutionTests(unittest.TestCase):
                 data = []
                 for identifier in str(message_id).split(','):
                     data.extend([(
-                        f'{identifier} (FLAGS () INTERNALDATE "14-Apr-2026 08:20:50 +0000" BODY[HEADER] {{128}}'.encode(),
+                        f'{identifier} (UID {int(identifier) + 100} FLAGS () INTERNALDATE "14-Apr-2026 08:20:50 +0000" BODY[HEADER] {{128}}'.encode(),
                         raw_email,
                     ), b')'])
                 return 'OK', data
@@ -1048,7 +1049,7 @@ class ImapFolderResolutionTests(unittest.TestCase):
 
             def uid(self, command, message_id, query):
                 self.uid_calls.append((command, message_id, query))
-                return 'OK', [(b'7 (RFC822 {128}', raw_email)]
+                return 'OK', [(b'7 (UID 7 RFC822 {128}', raw_email)]
 
             def fetch(self, message_id, query):
                 self.fetch_calls.append((message_id, query))

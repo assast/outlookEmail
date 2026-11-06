@@ -6,6 +6,17 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.30] - 2026-11-06
+
+### Fixed
+- 修复 IMAP 邮件删除后列表主题与详情错配，以及旧序列号可能误删其他邮件的问题（#105）；列表统一返回 UID，服务器提供 UIDVALIDITY 时一并绑定，详情、原始邮件、附件、已读和删除操作不再将同一个数字在 UID 与序列号之间回退。
+- 旧序列号请求提示重新同步；首次启动一次性将旧 IMAP 缓存标记失效并重建，保留原始缓存正文记录，避免已错配的详情继续被展示。
+- 修复不支持 IMAP SORT 的 Gmail、Outlook IMAP 等邮箱无法访问“仅最新 N 封”分享的问题（#107）；回退为分批读取 UID 和 INTERNALDATE 元数据，按实际邮件时间排序，确保导入或复制的旧邮件不会因 UID 较大而进入错误的授权范围。
+
+### Important
+- IMAP 邮件 ID 在服务器提供 UIDVALIDITY 时为 `imap:<UIDVALIDITY>:<UID>`。API 客户端须重新获取列表并原样传回 ID，不能将旧序列号改标为 UID；账号、授权信息和远程邮件不受影响。
+- 不支持 SORT 的服务器需要额外扫描时间元数据，大邮箱的受限分享校验可能更慢；回退扫描共用当前 IMAP 超时预算，数据不完整、响应超限或超时时继续拒绝访问，不会自动改为不限量。
+
 ## [3.0.29] - 2026-11-06
 
 ### Added

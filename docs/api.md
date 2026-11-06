@@ -2200,7 +2200,9 @@ Web 端提供项目管理界面：在「设置 → 常规设置 → 项目管理
 | `has_attachments` | bool | 是否有附件 |
 | `body_preview` | string | 邮件预览 |
 | `folder` | string | 所属文件夹 |
-| `id_mode` | string | 消息 ID 模式：Graph 为 `graph`，OAuth IMAP 常见为 `uid` 或 `sequence`，用于详情、标记已读和附件下载复用同一种 ID 语义 |
+| `id_mode` | string | 消息 ID 模式：Graph 为 `graph`，标准 IMAP 和 OAuth IMAP 均为 `uid`；后续操作须原样传回 |
+
+IMAP 邮件 ID 是不透明字符串。服务器提供 UIDVALIDITY 时，格式为 `imap:<UIDVALIDITY>:<UID>`，同时绑定邮箱代次与 UID；旧的裸 UID 仍可按 UID 使用。请始终原样传回列表中的 `id` 和 `id_mode`，不要转成数字或自行解析后丢弃 UIDVALIDITY。`sequence` 只用于服务器连接内分页，旧序列号记录必须重新同步；将其改标为 `uid` 可能指向另一封邮件。
 
 ### GET `/api/email/<email_addr>/<message_id>`
 
@@ -2212,7 +2214,7 @@ Web 端提供项目管理界面：在「设置 → 常规设置 → 项目管理
 | --- | --- | --- | --- |
 | `folder` | string | 否 | 当前邮件所在文件夹，默认 `inbox` |
 | `method` | string | 否 | 优先取详情的方式。若账号已记录 `authorization_type`，按该通道优先并自动回退；未记录时 `graph` 优先、传 `imap` 只走 OAuth IMAP |
-| `id_mode` | string | 否 | OAuth IMAP 消息 ID 模式，支持 `uid`、`sequence`；缺省或非法值按 `uid` 处理 |
+| `id_mode` | string | 否 | IMAP 消息 ID 模式，使用 `uid`；旧 `sequence` 请求返回 `IMAP_MESSAGE_ID_EXPIRED`，须重新获取列表 |
 | `source` | string | 否 | 传 `local` 时优先返回已缓存的本地保留详情正文 |
 | `prefer_local` | bool | 否 | `1` / `true` / `yes` / `on` 等价于 `source=local` |
 
@@ -2254,7 +2256,7 @@ Web 端提供项目管理界面：在「设置 → 常规设置 → 项目管理
 | --- | --- | --- | --- |
 | `folder` | string | 否 | 当前邮件所在文件夹，默认 `inbox` |
 | `method` | string | 否 | Outlook 账号优先使用 `graph`，传 `imap` 时走 IMAP 下载 |
-| `id_mode` | string | 否 | OAuth IMAP 附件下载使用的消息 ID 模式，支持 `uid`、`sequence`；缺省按 `uid` 处理 |
+| `id_mode` | string | 否 | IMAP 附件下载使用 `uid`；旧 `sequence` 请求须先重新获取列表 |
 
 ### GET `/api/email/<email_addr>/<message_id>/attachments/download-all`
 
@@ -2268,7 +2270,7 @@ ZIP 内文件名使用附件原始文件名；如果多个附件同名，会自�
 | --- | --- | --- | --- |
 | `folder` | string | 否 | 当前邮件所在文件夹，默认 `inbox` |
 | `method` | string | 否 | Outlook 账号优先使用 `graph`，传 `imap` 时走 IMAP 下载 |
-| `id_mode` | string | 否 | OAuth IMAP 附件下载使用的消息 ID 模式，支持 `uid`、`sequence`；缺省按 `uid` 处理 |
+| `id_mode` | string | 否 | IMAP 附件下载使用 `uid`；旧 `sequence` 请求须先重新获取列表 |
 
 ### POST `/api/emails/mark-read`
 
@@ -2290,7 +2292,7 @@ ZIP 内文件名使用附件原始文件名；如果多个附件同名，会自�
 | --- | --- | --- |
 | `id` / `message_id` | string | 邮件 ID |
 | `folder` | string | `inbox`、`junkemail`、`deleteditems`、`all` |
-| `id_mode` | string | `graph`、`uid`、`sequence` |
+| `id_mode` | string | `graph`、`uid`；旧 `sequence` 操作会被拒绝，须重新获取列表 |
 
 #### 请求示例
 
@@ -2394,7 +2396,7 @@ ZIP 内文件名使用附件原始文件名；如果多个附件同名，会自�
 说明：
 
 - 推荐传 `items`（含 `id` / `folder` / `id_mode`）与 `method`，与 `/api/emails/mark-read` 一致
-- Outlook 账号按 `id_mode`/`method` 分流：`graph` 走 Graph API，`uid`/`sequence` 走 OAuth IMAP
+- Outlook 账号按 `id_mode`/`method` 分流：`graph` 走 Graph API，`uid` 走 OAuth IMAP；旧 `sequence` 操作会被拒绝，须重新获取列表
 - 标准 IMAP 账号通过 IMAP `STORE \\Deleted` + `EXPUNGE` 永久删除
 - 仍接受仅传 `ids` 的旧客户端；此时默认按 Graph 处理
 

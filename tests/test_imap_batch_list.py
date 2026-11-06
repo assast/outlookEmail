@@ -118,8 +118,9 @@ def test_outlook_sequence_list_uses_same_header_batch():
          patch.object(mail_app.imaplib, 'IMAP4_SSL', return_value=mail):
         result = mail_app.get_emails_imap_with_server('reader@outlook.com', 'client', 'refresh', top=3)
     assert result['success']
-    assert {item['id'] for item in result['emails']} == {'18', '19', '20'}
-    assert all(item['id_mode'] == 'sequence' for item in result['emails'])
+    assert {item['id'] for item in result['emails']} == {'118', '119', '120'}
+    assert all(item['id_mode'] == 'uid' for item in result['emails'])
+    assert mail.calls[0][0] == '20,19,18'
     assert len(mail.calls) == 1
     assert mail.calls[0][2] is False
     assert 'BODY.PEEK[HEADER]' in mail.calls[0][1]
