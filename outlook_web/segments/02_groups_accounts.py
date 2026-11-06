@@ -824,6 +824,16 @@ def normalize_graph_token_scope(scope: Any) -> str:
     return normalized
 
 
+def register_account_graph_token_scope_preference(account: Dict[str, Any]) -> None:
+    """为已解密的账号登记 scope，供页面请求和后台转发共用。"""
+    account['graph_token_scope'] = normalize_graph_token_scope(account.get('graph_token_scope'))
+    register_graph_token_scope_preference(
+        account.get('client_id', ''),
+        account.get('refresh_token', ''),
+        account['graph_token_scope'],
+    )
+
+
 # ==================== 标签管理 ====================
 
 def get_tags() -> List[Dict]:
@@ -1041,14 +1051,7 @@ def resolve_account_record(row: sqlite3.Row, matched_alias: str = '',
         except Exception:
             pass
     account['provider'] = normalize_provider(account.get('provider'), account.get('email', ''))
-    account['graph_token_scope'] = normalize_graph_token_scope(account.get('graph_token_scope'))
-    if account.get('client_id') and account.get('refresh_token'):
-        # 账号级 scope 优先于自动回退；token 交换时按该 scope 先请求。
-        register_graph_token_scope_preference(
-            account['client_id'],
-            account['refresh_token'],
-            account['graph_token_scope'],
-        )
+    register_account_graph_token_scope_preference(account)
     account['account_type'] = account.get('account_type') or get_provider_meta(
         account['provider'], account.get('email', '')
     ).get('account_type', 'outlook')
@@ -2172,6 +2175,8 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
                 normalized_proxy_url, normalized_fallback_proxy_url_1, normalized_fallback_proxy_url_2, account_id
             ))
         db.commit()
+        if normalized_graph_token_scope is not None:
+            register_graph_token_scope_preference(client_id, refresh_token, normalized_graph_token_scope)
         return True
     except Exception:
         return False
