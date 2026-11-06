@@ -46,7 +46,9 @@ When retention is enabled, opening a message detail should prefer a retained bod
 
 If a remote detail fetch fails but a retained body exists, the detail view should show the retained body as a fallback and indicate that the content is cached or may be stale. If no retained body exists and the remote fetch fails, the existing error path should remain visible.
 
-Outlook/Hotmail OAuth accounts that use IMAP fallback must keep the provider message identifier mode with the row. `id_mode=uid` is the default for missing or invalid detail and attachment requests; `id_mode=sequence` is accepted only when the caller is replaying a sequence-based list item. This keeps UID and sequence-number reads from being mixed accidentally.
+Standard IMAP and Outlook/Hotmail OAuth IMAP rows use `id_mode=uid`. When the server provides UIDVALIDITY, the opaque message ID includes both UIDVALIDITY and UID (`imap:<UIDVALIDITY>:<UID>`), keeping mailbox generations separate within the account and folder. Sequence numbers are used only for pagination inside the current connection; old sequence-based requests must refresh their lists. A missing UID never falls back to a sequence number.
+
+On the first startup after this change, legacy IMAP cache rows without the mailbox generation are marked unavailable for list and body reads. Their original body records remain in SQLite for recovery; subsequent synchronization rebuilds the active cache. Graph cache rows, account credentials, and remote messages are preserved. Old client records must be synchronized again rather than relabeled from `sequence` to `uid`.
 
 ## Retention statistics
 
