@@ -2288,6 +2288,7 @@ class ProjectRuntimeTests(unittest.TestCase):
             'inbox',
             'custom',
             '',
+            preferred_id_mode='uid',
         )
 
     def test_imap_attachment_detail_and_download_route(self):
@@ -2345,13 +2346,13 @@ class ProjectRuntimeTests(unittest.TestCase):
 
             def uid(self, command, *args, **_kwargs):
                 if command == 'FETCH':
-                    return 'OK', [(b'1 (RFC822 {256}', raw_email)]
+                    return 'OK', [(b'1 (UID 1 RFC822 {256}', raw_email)]
                 if command == 'SEARCH':
                     return 'OK', [b'1']
                 return 'OK', [b'']
 
             def fetch(self, *_args, **_kwargs):
-                return 'OK', [(b'1 (RFC822 {256}', raw_email)]
+                return 'OK', [(b'1 (UID 1 RFC822 {256}', raw_email)]
 
             def logout(self):
                 self.logged_out = True
@@ -2359,7 +2360,7 @@ class ProjectRuntimeTests(unittest.TestCase):
 
         mail = AttachmentMail()
         with patch.object(web_outlook_app, 'create_imap_connection', return_value=mail):
-            detail_response = self.client.get('/api/email/user@example.com/msg-1?method=imap&folder=inbox')
+            detail_response = self.client.get('/api/email/user@example.com/1?method=imap&folder=inbox')
             self.assertEqual(detail_response.status_code, 200)
             detail_payload = detail_response.get_json()
             self.assertTrue(detail_payload['success'])
@@ -2367,12 +2368,12 @@ class ProjectRuntimeTests(unittest.TestCase):
             self.assertEqual(detail_payload['email']['attachments'][0]['name'], 'report.txt')
             self.assertEqual(detail_payload['email']['body'], 'body line 1\nbody line 2\n')
 
-            download_response = self.client.get('/api/email/user@example.com/msg-1/attachments/attachment-1?method=imap&folder=inbox')
+            download_response = self.client.get('/api/email/user@example.com/1/attachments/attachment-1?method=imap&folder=inbox')
             self.assertEqual(download_response.status_code, 200)
             self.assertEqual(download_response.data, b'attachment body')
             self.assertIn("filename*=UTF-8''report.txt", download_response.headers.get('Content-Disposition', ''))
 
-            zip_response = self.client.get('/api/email/user@example.com/msg-1/attachments/download-all?method=imap&folder=inbox')
+            zip_response = self.client.get('/api/email/user@example.com/1/attachments/download-all?method=imap&folder=inbox')
             self.assertEqual(zip_response.status_code, 200)
             self.assertEqual(zip_response.mimetype, 'application/zip')
             self.assertIn("filename*=UTF-8''attachments.zip", zip_response.headers.get('Content-Disposition', ''))

@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Fixed
+- 修复 IMAP 邮件删除后列表主题与详情错配，以及旧序列号可能误删其他邮件的问题（#105）；列表统一返回 UID，服务器提供 UIDVALIDITY 时一并绑定，详情、原始邮件、附件、已读和删除操作不再将同一个数字在 UID 与序列号之间回退。
+- 旧序列号请求提示重新同步；首次启动一次性将旧 IMAP 缓存标记失效并重建，保留原始缓存正文记录，避免已错配的详情继续被展示。
+
 ## [3.0.29] - 2026-11-06
 
 ### Added
