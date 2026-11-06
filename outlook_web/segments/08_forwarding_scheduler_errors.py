@@ -646,6 +646,7 @@ def decrypt_forwarding_account_secrets(account: Dict[str, Any]) -> Dict[str, Any
             account[field_name] = decrypt_data(account[field_name])
         except Exception:
             pass
+    register_account_graph_token_scope_preference(account)
     return account
 
 
