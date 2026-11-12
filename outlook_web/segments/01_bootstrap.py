@@ -733,6 +733,7 @@ SKIN_BLOCKED_EXTRA_EXTENSIONS = {
     '.js', '.mjs', '.cjs', '.sh', '.bash', '.zsh', '.py',
     '.html', '.htm', '.exe', '.bat', '.cmd', '.ps1',
 }
+DOMPURIFY_JS_FILE = 'vendor/dompurify/purify.min.js'
 INDEX_CSS_FILES = (
     'css/index/01-base.css',
     'css/index/02-navbar.css',
@@ -2846,6 +2847,10 @@ def compute_static_assets_hash(relative_paths) -> str:
 
 def get_frontend_asset_hash() -> str:
     return compute_static_assets_hash(INDEX_CSS_FILES + INDEX_JS_FILES)
+
+
+def get_dompurify_asset_hash() -> str:
+    return compute_static_assets_hash((DOMPURIFY_JS_FILE,))
 
 
 def get_builtin_editorial_skin_css_path() -> Path:

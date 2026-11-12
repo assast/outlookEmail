@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.31] - 2026-11-12
+
+### Security
+- 将 DOMPurify 3.4.17 纳入本地静态资源，并用于主界面和邮件分享页，避免邮件正文净化脚本依赖 CDN（#108）。
+
 ## [3.0.30] - 2026-11-06
 
 ### Fixed
