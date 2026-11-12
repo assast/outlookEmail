@@ -7,7 +7,7 @@
     <title>Outlook 邮件管理</title>
     <link rel="icon" href="{{ url_for('favicon') }}" type="image/svg+xml">
     <!-- DOMPurify for XSS protection -->
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
+    <script src="{{ url_for('static', filename='vendor/dompurify/purify.min.js', v=dompurify_asset_hash) }}"></script>
     <link rel="stylesheet" href="{{ url_for('bundled_index_css', v=frontend_asset_hash) }}">
     <link rel="stylesheet" id="activeSkinStylesheet" href="{{ url_for('active_skin_css', v=skin_asset_hash) }}">
 </head>
