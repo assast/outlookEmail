@@ -311,6 +311,10 @@
                         <button class="sort-btn" data-sort="email" onclick="sortAccounts('email')">
                             邮箱名
                         </button>
+                        <button class="sort-btn" data-sort="manual" onclick="sortAccounts('manual')"
+                            title="长按邮箱名拖动排序，松开后自动保存">
+                            自定义
+                        </button>
                     </div>
                 </div>
                 <div id="accountListOptionsRow" class="toolbar-row account-list-options-row">
@@ -331,6 +335,9 @@
                     </div>
                 </div>
             </div>
+            <p id="accountManualSortHelp" class="account-manual-sort-help" role="status" hidden>
+                长按邮箱名拖动排序，松开后自动保存。
+            </p>
             <div class="account-list" id="accountList">
                 <div class="empty-state">
                     <div class="empty-state-icon">📁</div>

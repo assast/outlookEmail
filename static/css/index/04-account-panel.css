@@ -1354,3 +1354,56 @@
             color: #1e40af;
         }
 
+
+        /* 自定义排序：提示覆盖标签和分页选项行，不因三秒后隐藏而移动邮箱行。 */
+        .account-manual-sort-help {
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            top: 8px;
+            z-index: 21;
+            margin: 0;
+            padding: 10px 12px;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #1e40af;
+            background: #eff6ff;
+            border: 1px solid #93c5fd;
+            border-radius: 8px;
+            pointer-events: none;
+        }
+
+        .account-manual-sort-help[hidden] { display: none; }
+
+        .account-email[data-account-sort-name] {
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            border-radius: 2px;
+        }
+
+        .account-email[data-account-sort-name]:focus-visible {
+            outline: 2px solid var(--skin-primary);
+            outline-offset: 3px;
+        }
+
+        .account-email[data-account-sort-name][aria-disabled="true"] { cursor: wait; }
+        .account-item.account-sort-dragging { opacity: 0.45; }
+        .account-item.account-sort-dragging .account-email { cursor: grabbing; }
+        .account-item.account-sort-before,
+        .account-item.account-sort-after { z-index: 8; }
+        .account-item.account-sort-before::before,
+        .account-item.account-sort-after::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 3px;
+            border-radius: 2px;
+            background: #2563eb;
+            pointer-events: none;
+        }
+        .account-item.account-sort-before::before { top: -7px; }
+        .account-item.account-sort-after::after { bottom: -7px; }

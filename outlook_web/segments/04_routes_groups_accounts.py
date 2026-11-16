@@ -830,6 +830,30 @@ def api_get_accounts():
     ))
 
 
+@app.route('/api/accounts/reorder', methods=['POST'])
+@login_required
+def api_reorder_accounts():
+    """Persist a manual move independently of the existing account sort modes."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': '排序参数无效'}), 400
+    account_id, target_id = data.get('account_id'), data.get('target_id')
+    position = data.get('position')
+    if (type(account_id) is not int or type(target_id) is not int
+            or not 0 < account_id <= 9223372036854775807
+            or not 0 < target_id <= 9223372036854775807
+            or account_id == target_id or position not in ('before', 'after')):
+        return jsonify({'success': False, 'error': '排序参数无效'}), 400
+    try:
+        changes = reorder_account(account_id, target_id, position)
+        return jsonify({'success': True, 'manual_order': changes})
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except sqlite3.Error:
+        app.logger.exception('保存邮箱手动排序失败')
+        return jsonify({'success': False, 'error': '保存排序失败，请稍后重试'}), 500
+
+
 @app.route('/api/external/accounts', methods=['GET'])
 @csrf_exempt
 @api_key_required

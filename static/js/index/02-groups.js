@@ -961,6 +961,8 @@
                     </button>
                     ${renderAccountMoreDropdown()}
                 `;
+                const manualHelp = document.getElementById('accountManualSortHelp');
+                if (manualHelp) manualHelp.hidden = true;
                 // 显示渠道筛选、隐藏排序
                 document.getElementById('tempEmailProviderFilter').style.display = 'flex';
                 document.querySelector('.sort-control').style.display = 'none';
@@ -1296,6 +1298,7 @@
         }
 
         function maybeLoadMoreAccounts() {
+            if (accountDragState || accountSortSaving) return;
             const container = document.getElementById('accountList');
             if (!container || accountPaginationState.loading || !accountPaginationState.hasMore) {
                 return;
@@ -1314,6 +1317,7 @@
         }
 
         async function loadMoreAccounts() {
+            if (accountDragState || accountSortSaving) return;
             if (accountPaginationState.loading || !accountPaginationState.hasMore) {
                 return;
             }
@@ -1490,6 +1494,10 @@
         }
 
         function handleAccountItemClick(event, email, isTemp = false, accountId = 0) {
+            if (Date.now() < suppressAccountClickUntil) {
+                event?.preventDefault();
+                return;
+            }
             if (isAccountRowInteractiveTarget(event?.target)) {
                 return;
             }
@@ -1506,6 +1514,7 @@
 
         // 渲染邮箱列表
         function renderAccountList(accounts) {
+            cancelAccountDrag();
             const container = document.getElementById('accountList');
             const isSearchMode = !!(document.getElementById('globalSearch')?.value || '').trim();
             const hasTagFilters = hasAccountServerSideFilters();
@@ -1531,7 +1540,7 @@
                     .map(checkbox => String(checkbox.value))
             );
             container.innerHTML = accounts.map(acc => `
-                <div class="account-item ${currentAccount === acc.email ? 'active' : ''} ${acc.status === 'inactive' ? 'inactive' : ''}"
+                <div class="account-item ${currentSortBy === 'manual' ? 'account-manual-sort' : ''} ${currentAccount === acc.email ? 'active' : ''} ${acc.status === 'inactive' ? 'inactive' : ''}"
                      data-account-id="${acc.id}"
                      onclick="handleAccountItemClick(event, '${escapeJs(acc.email)}', false, ${Number(acc.id) || 0})">
                     <input type="checkbox" class="account-select-checkbox" value="${acc.id}" 
@@ -1543,7 +1552,7 @@
                     <div class="account-body">
                         <div class="account-title-row">
                             <div class="account-email-wrap">
-                                <div class="account-email" title="${escapeHtml(acc.email)}" style="${acc.last_refresh_status === 'failed' ? 'color: #b42318;' : ''}">
+                                <div class="account-email" ${renderAccountSortNameAttributes(acc)} title="${escapeHtml(acc.email)}" style="${acc.last_refresh_status === 'failed' ? 'color: #b42318;' : ''}">
                                     ${escapeHtml(acc.email)}
                                 </div>
                             </div>
@@ -1565,6 +1574,10 @@
                     <div class="account-menu-wrap">
                         <button class="account-menu-trigger" type="button" data-account-menu-toggle="true" title="更多操作">⋯</button>
                         <div class="account-menu-panel">
+                            ${currentSortBy === 'manual' ? `
+                                <button class="account-action-btn" type="button" onclick="event.stopPropagation(); moveAccountByOffset(${Number(acc.id)}, -1)">上移</button>
+                                <button class="account-action-btn" type="button" onclick="event.stopPropagation(); moveAccountByOffset(${Number(acc.id)}, 1)">下移</button>
+                            ` : ''}
                             <button class="account-action-btn" type="button" data-account-action="copy" data-account-email="${escapeHtml(acc.email)}">复制邮箱</button>
                             <button class="account-action-btn" type="button" data-account-action="share" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">分享邮箱</button>
                             <button class="account-action-btn" type="button" data-account-action="forwardingLogs" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">转发日志</button>
@@ -1589,6 +1602,7 @@
         const ACCOUNT_SORT_DEFAULT_BY = 'sort_order';
         const ACCOUNT_SORT_DEFAULT_ORDERS = {
             sort_order: 'asc',
+            manual: 'asc',
             created_at: 'desc',
             email: 'asc'
         };
@@ -1601,6 +1615,7 @@
         }
 
         function normalizeAccountSortOrder(value, sortBy = ACCOUNT_SORT_DEFAULT_BY) {
+            if (sortBy === 'manual') return 'asc';
             if (value === 'asc' || value === 'desc') {
                 return value;
             }
@@ -1633,6 +1648,11 @@
         }
 
         function syncAccountSortButtons() {
+            const manualHelp = document.getElementById('accountManualSortHelp');
+            if (manualHelp && (currentSortBy !== 'manual' || isTempEmailGroup)) {
+                clearTimeout(accountSortHelpTimer);
+                manualHelp.hidden = true;
+            }
             document.querySelectorAll('.sort-btn').forEach(btn => {
                 btn.classList.remove('active');
                 btn.style.backgroundColor = '#ffffff';
@@ -1717,10 +1737,235 @@
                 : emailB.localeCompare(emailA);
         }
 
+        let accountDragState = null;
+        let accountSortSaving = false;
+        let accountSortHelpTimer = null;
+        let suppressAccountClickUntil = 0;
+
+        function showAccountSortHelp() {
+            const help = document.getElementById('accountManualSortHelp');
+            if (!help || currentSortBy !== 'manual' || isTempEmailGroup) return;
+            clearTimeout(accountSortHelpTimer);
+            const optionsRow = document.getElementById('accountListOptionsRow');
+            const panel = help.closest('.account-panel');
+            help.hidden = false;
+            if (optionsRow && panel) {
+                const rowBounds = optionsRow.getBoundingClientRect();
+                help.style.top = `${rowBounds.top - panel.getBoundingClientRect().top + (rowBounds.height - help.offsetHeight) / 2}px`;
+            }
+            accountSortHelpTimer = setTimeout(() => { help.hidden = true; }, 3000);
+        }
+
+        function renderAccountSortNameAttributes(account) {
+            if (currentSortBy !== 'manual' || isTempEmailGroup) return '';
+            return `data-account-sort-name="true" tabindex="0" role="button"
+                aria-label="${escapeHtml(account.email)}，长按拖动排序，也可按上下方向键调整"
+                aria-disabled="${accountSortSaving}" aria-describedby="accountManualSortHelp"
+                onpointerdown="startAccountDrag(event, ${Number(account.id)})"
+                onkeydown="handleAccountSortKey(event, ${Number(account.id)})"
+                oncontextmenu="event.preventDefault()"`;
+        }
+
+        function cancelAccountDrag() {
+            const state = accountDragState;
+            if (!state) return;
+            accountDragState = null;
+            clearTimeout(state.pressTimer);
+            state.controller.abort();
+            cancelAnimationFrame(state.frame);
+            state.source.classList.remove('account-sort-dragging');
+            state.target?.classList.remove('account-sort-before', 'account-sort-after');
+            if (state.active) suppressAccountClickUntil = Date.now() + 400;
+            if (state.nameEl.hasPointerCapture(state.pointerId)) {
+                state.nameEl.releasePointerCapture(state.pointerId);
+            }
+        }
+
+        function updateAccountDropTarget() {
+            const state = accountDragState;
+            if (!state?.active || !state.moved) return;
+            state.target?.classList.remove('account-sort-before', 'account-sort-after');
+            state.target = null;
+            const bounds = state.container.getBoundingClientRect();
+            if (state.x < bounds.left || state.x > bounds.right
+                || state.y < Math.max(0, bounds.top) || state.y > Math.min(window.innerHeight, bounds.bottom)) return;
+            const rows = Array.from(state.container.querySelectorAll('.account-item[data-account-id]'))
+                .filter(row => row !== state.source);
+            const nextRow = rows.find(row => {
+                const rect = row.getBoundingClientRect();
+                return state.y < rect.top + rect.height / 2;
+            });
+            state.target = nextRow || rows[rows.length - 1];
+            if (!state.target) return;
+            state.position = nextRow ? 'before' : 'after';
+            state.target.classList.add(`account-sort-${state.position}`);
+        }
+
+        function scrollAccountDrag() {
+            const state = accountDragState;
+            if (!state?.active) return;
+            if (state.moved) {
+                const rect = state.container.getBoundingClientRect();
+                if (state.x >= rect.left && state.x <= rect.right) {
+                    const top = Math.max(0, rect.top);
+                    const bottom = Math.min(window.innerHeight, rect.bottom);
+                    let delta = 0;
+                    if (state.y >= top && state.y < top + 40) delta = -12;
+                    if (state.y <= bottom && state.y > bottom - 40) delta = 12;
+                    state.container.scrollTop += delta;
+                    updateAccountDropTarget();
+                }
+            }
+            state.frame = requestAnimationFrame(scrollAccountDrag);
+        }
+
+        function startAccountDrag(event, accountId) {
+            if (currentSortBy !== 'manual' || isTempEmailGroup || accountSortSaving
+                || accountPaginationState.loading || event.isPrimary === false
+                || (event.pointerType === 'mouse' && event.button !== 0)) return;
+            event.stopPropagation();
+            cancelAccountDrag();
+            const nameEl = event.currentTarget;
+            const source = nameEl.closest('.account-item');
+            const container = document.getElementById('accountList');
+            if (!source || !container) return;
+            const controller = new AbortController();
+            const state = {
+                accountId, nameEl, source, container, controller,
+                pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+                startX: event.clientX, startY: event.clientY, moved: false, active: false,
+                target: null, position: 'before', frame: 0, pressTimer: null
+            };
+            accountDragState = state;
+            state.pressTimer = setTimeout(() => {
+                if (accountDragState !== state || !nameEl.isConnected) return;
+                state.active = true;
+                nameEl.focus({ preventScroll: true });
+                nameEl.setPointerCapture(state.pointerId);
+                source.classList.add('account-sort-dragging');
+                state.frame = requestAnimationFrame(scrollAccountDrag);
+            }, 400);
+            const options = { signal: controller.signal };
+            document.addEventListener('pointermove', move => {
+                if (accountDragState !== state || move.pointerId !== state.pointerId) return;
+                state.x = move.clientX;
+                state.y = move.clientY;
+                const distance = Math.hypot(state.x - state.startX, state.y - state.startY);
+                if (!state.active) {
+                    if (distance >= 8) cancelAccountDrag();
+                    return;
+                }
+                move.preventDefault();
+                state.moved = state.moved || distance >= 5;
+                updateAccountDropTarget();
+            }, { ...options, passive: false });
+            document.addEventListener('pointerup', up => {
+                if (accountDragState !== state || up.pointerId !== state.pointerId) return;
+                state.x = up.clientX;
+                state.y = up.clientY;
+                updateAccountDropTarget();
+                const targetId = Number(state.target?.dataset.accountId);
+                const position = state.position;
+                cancelAccountDrag();
+                if (targetId) persistAccountMove(accountId, targetId, position);
+            }, options);
+            document.addEventListener('pointercancel', cancelled => {
+                if (cancelled.pointerId === accountDragState?.pointerId) cancelAccountDrag();
+            }, options);
+            document.addEventListener('keydown', key => {
+                if (key.key === 'Escape') cancelAccountDrag();
+            }, options);
+            window.addEventListener('blur', cancelAccountDrag, options);
+            nameEl.addEventListener('lostpointercapture', cancelAccountDrag, options);
+        }
+
+        function handleAccountSortKey(event, accountId) {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.currentTarget.click();
+                return;
+            }
+            if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (currentSortBy !== 'manual' || accountSortSaving || accountDragState) return;
+            moveAccountByOffset(accountId, event.key === 'ArrowUp' ? -1 : 1);
+        }
+
+        function moveAccountByOffset(accountId, offset) {
+            if (currentSortBy !== 'manual' || accountSortSaving || accountDragState) return;
+            const rows = Array.from(document.querySelectorAll('#accountList .account-item[data-account-id]'));
+            const index = rows.findIndex(row => Number(row.dataset.accountId) === accountId);
+            const target = index >= 0 ? rows[index + offset] : null;
+            if (target) persistAccountMove(accountId, Number(target.dataset.accountId),
+                offset < 0 ? 'before' : 'after', true);
+        }
+
+        async function persistAccountMove(accountId, targetId, position, keepInView = false) {
+            if (accountSortSaving || currentSortBy !== 'manual') return;
+            const container = document.getElementById('accountList');
+            const scrollTop = container.scrollTop;
+            const groupId = currentGroupId;
+            accountSortSaving = true;
+            container.setAttribute('aria-busy', 'true');
+            let saved = false;
+            const sourceRow = container.querySelector(`.account-item[data-account-id="${accountId}"]`);
+            const targetRow = container.querySelector(`.account-item[data-account-id="${targetId}"]`);
+            if (sourceRow && targetRow && sourceRow !== targetRow) {
+                container.insertBefore(sourceRow, position === 'before' ? targetRow : targetRow.nextSibling);
+                container.scrollTop = scrollTop;
+            }
+            container.querySelectorAll('[data-account-sort-name]').forEach(name => name.setAttribute('aria-disabled', 'true'));
+            try {
+                const response = await fetch('/api/accounts/reorder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ account_id: accountId, target_id: targetId, position })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    handleApiError(data, '保存自定义排序失败');
+                    return;
+                }
+                saved = true;
+                const order = new Map((data.manual_order || []).map(item => [Number(item.id), item.manual_sort_order]));
+                currentAccountListSource = currentAccountListSource.map(account => order.has(Number(account.id))
+                    ? { ...account, manual_sort_order: order.get(Number(account.id)) } : account);
+                invalidateAccountCaches();
+                renderFilteredAccountList(currentAccountListSource);
+                if (currentGroupId === groupId && currentSortBy === 'manual') {
+                    container.scrollTop = scrollTop;
+                }
+                showToast('自定义排序已保存', 'success');
+            } catch (error) {
+                showToast('保存自定义排序失败，请刷新确认后重试', 'error');
+            } finally {
+                accountSortSaving = false;
+                container.removeAttribute('aria-busy');
+                if (!saved && currentGroupId === groupId && currentSortBy === 'manual') {
+                    renderFilteredAccountList(currentAccountListSource);
+                    container.scrollTop = scrollTop;
+                }
+                container.querySelectorAll('[data-account-sort-name]').forEach(name => name.setAttribute('aria-disabled', 'false'));
+                if (currentGroupId === groupId && currentSortBy === 'manual') {
+                    const name = container.querySelector(`.account-item[data-account-id="${accountId}"] [data-account-sort-name]`);
+                    name?.focus({ preventScroll: true });
+                    if (keepInView) name?.scrollIntoView({ block: 'nearest' });
+                }
+                maybeLoadMoreAccounts();
+            }
+        }
+
         // 排序账号列表
         function sortAccounts(sortBy) {
             sortBy = normalizeAccountSortBy(sortBy);
             // 如果点击同一个排序按钮，切换排序顺序
+            if (accountSortSaving) return;
+            cancelAccountDrag();
+            if (currentSortBy === sortBy && sortBy === 'manual') {
+                showAccountSortHelp();
+                return;
+            }
             if (currentSortBy === sortBy) {
                 currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
             } else {
@@ -1730,6 +1975,7 @@
 
             saveAccountSortPreference();
             syncAccountSortButtons();
+            if (sortBy === 'manual') showAccountSortHelp();
 
             invalidateAccountCaches();
             if (isTempEmailGroup) {
@@ -1877,6 +2123,18 @@
 
             // 2. 排序
             return result.sort((a, b) => {
+                if (currentSortBy === 'manual') {
+                    const manualA = Number(a.manual_sort_order) || 0;
+                    const manualB = Number(b.manual_sort_order) || 0;
+                    if (!!manualA !== !!manualB) return manualA ? -1 : 1;
+                    if (manualA !== manualB) return manualA - manualB;
+                    const sortA = getAccountSortOrderValue(a);
+                    const sortB = getAccountSortOrderValue(b);
+                    if ((sortA !== null) !== (sortB !== null)) return sortA !== null ? -1 : 1;
+                    if (sortA !== null && sortB !== null && sortA !== sortB) return sortA - sortB;
+                    return compareAccountsByCreatedAt(a, b, 'desc')
+                        || compareAccountsByEmail(a, b, 'asc') || Number(b.id) - Number(a.id);
+                }
                 if (currentSortBy === 'sort_order') {
                     const sortA = getAccountSortOrderValue(a);
                     const sortB = getAccountSortOrderValue(b);
