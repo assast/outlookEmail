@@ -459,13 +459,15 @@ def normalize_account_pagination(limit: Any = None, offset: Any = 0) -> tuple[Op
 
 def normalize_account_sort(sort_by: Any = 'created_at', sort_order: Any = 'desc') -> tuple[str, str]:
     normalized_sort_by = str(sort_by or '').strip().lower()
-    if normalized_sort_by not in {'sort_order', 'created_at', 'email'}:
+    if normalized_sort_by not in {'sort_order', 'created_at', 'email', 'manual'}:
         normalized_sort_by = 'created_at'
 
     normalized_sort_order = str(sort_order or '').strip().lower()
     if normalized_sort_order not in {'asc', 'desc'}:
         normalized_sort_order = 'desc' if normalized_sort_by == 'created_at' else 'asc'
 
+    if normalized_sort_by == 'manual':
+        normalized_sort_order = 'asc'
     return normalized_sort_by, normalized_sort_order
 
 
@@ -473,6 +475,14 @@ def build_account_order_clause(sort_by: Any = 'created_at', sort_order: Any = 'd
     normalized_sort_by, normalized_sort_order = normalize_account_sort(sort_by, sort_order)
     direction = 'DESC' if normalized_sort_order == 'desc' else 'ASC'
 
+    if normalized_sort_by == 'manual':
+        return '''
+            ORDER BY
+                CASE WHEN COALESCE(a.manual_sort_order, 0) > 0 THEN 0 ELSE 1 END ASC,
+                a.manual_sort_order ASC,
+                CASE WHEN COALESCE(a.sort_order, 0) > 0 THEN 0 ELSE 1 END ASC,
+                a.sort_order ASC, a.created_at DESC, a.email COLLATE NOCASE ASC, a.id DESC
+        '''
     if normalized_sort_by == 'sort_order':
         return f'''
             ORDER BY
@@ -485,6 +495,33 @@ def build_account_order_clause(sort_by: Any = 'created_at', sort_order: Any = 'd
     if normalized_sort_by == 'email':
         return f'ORDER BY a.email COLLATE NOCASE {direction}, a.created_at DESC, a.id DESC'
     return f'ORDER BY a.created_at {direction}, a.email COLLATE NOCASE ASC, a.id DESC'
+
+
+def reorder_account(account_id: int, target_id: int, position: str) -> List[Dict[str, int]]:
+    """Move one account relative to another without changing numeric sort values.
+
+    Read and write under one lock so concurrent moves use the latest order. Moving
+    IDs, rather than replacing a visible page, preserves hidden accounts' order.
+    """
+    db = get_db()
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        rows = db.execute(f"SELECT a.id, a.manual_sort_order FROM accounts a {build_account_order_clause('manual')}").fetchall()
+        ids = [row['id'] for row in rows]
+        if account_id not in ids or target_id not in ids:
+            raise ValueError('邮箱不存在，请刷新列表后重试')
+        ids.remove(account_id)
+        target_index = ids.index(target_id) + (1 if position == 'after' else 0)
+        ids.insert(target_index, account_id)
+        previous = {row['id']: row['manual_sort_order'] for row in rows}
+        changes = [(index, account_id) for index, account_id in enumerate(ids, 1)
+                   if previous[account_id] != index]
+        db.executemany('UPDATE accounts SET manual_sort_order = ? WHERE id = ?', changes)
+        db.commit()
+        return [{'id': account_id, 'manual_sort_order': index} for index, account_id in changes]
+    except Exception:
+        db.rollback()
+        raise
 
 
 def normalize_tag_filter_values(tag_ids: Any = None) -> List[int]:
@@ -1434,6 +1471,7 @@ def serialize_account_summary(account: Dict[str, Any], last_refresh_log: Optiona
         'group_name': account.get('group_name', '默认分组'),
         'group_color': account.get('group_color', '#666666'),
         'sort_order': normalize_account_sort_order(account.get('sort_order', 0)),
+        'manual_sort_order': normalize_account_sort_order(account.get('manual_sort_order', 0)),
         'remark': account.get('remark', ''),
         'status': account.get('status', 'active'),
         'account_type': account.get('account_type', 'outlook'),
