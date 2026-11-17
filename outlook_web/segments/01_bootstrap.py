@@ -1371,6 +1371,7 @@ def init_db():
             refresh_token TEXT DEFAULT '',
             group_id INTEGER,
             sort_order INTEGER DEFAULT 0,
+            manual_sort_order INTEGER,
             remark TEXT,
             status TEXT DEFAULT 'active',
             account_type TEXT DEFAULT 'outlook',
@@ -1836,6 +1837,8 @@ def init_db():
         cursor.execute('ALTER TABLE accounts ADD COLUMN group_id INTEGER DEFAULT 1')
     if 'sort_order' not in columns:
         cursor.execute('ALTER TABLE accounts ADD COLUMN sort_order INTEGER DEFAULT 0')
+    if 'manual_sort_order' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN manual_sort_order INTEGER')
     if 'remark' not in columns:
         cursor.execute('ALTER TABLE accounts ADD COLUMN remark TEXT')
     if 'status' not in columns:
