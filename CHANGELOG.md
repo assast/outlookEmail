@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [3.0.32] - 2026-11-17
+
+### Added
+- 邮箱账号列表新增“自定义”排序，支持拖动、键盘方向键和菜单上移／下移；顺序独立保存，并兼容已有数据库自动迁移。
+
 ## [3.0.31] - 2026-11-12
 
 ### Security
