@@ -790,6 +790,9 @@
                 const [refreshTime, successTime, rotationTime] = [
                     'last_refresh_at', 'last_refresh_success_at', 'refresh_token_updated_at',
                 ].map(field => item[field] ? formatDateTime(item[field]) : '-');
+                const expiryTime = item.refresh_token_expires_at
+                    ? formatRefreshTokenExpiry(item.refresh_token_expires_at)
+                    : '未知';
                 const remarkHtml = item.remark
                     ? `<div class="refresh-account-remark">${escapeHtml(item.remark)}</div>`
                     : '';
@@ -799,8 +802,8 @@
                 const rotationText = item.last_refresh_token_rotated === true
                     ? 'Token 已更新'
                     : item.last_refresh_token_rotated === false ? 'Token 未轮换' : '轮换结果未记录';
-                const rotationHtml = item.last_refresh_status === 'success' && !isRunning
-                    ? `<div class="refresh-account-remark">${rotationText}</div>`
+                const rotationHtml = !isRunning
+                    ? `${item.last_refresh_status === 'success' ? `<div class="refresh-account-remark">${rotationText}</div>` : ''}${item.refresh_token_warning ? `<div class="refresh-account-error">${escapeHtml(item.refresh_token_warning)}</div>` : ''}`
                     : '';
                 const rowClassNames = [
                     isRunning ? 'is-refreshing' : '',
@@ -824,6 +827,7 @@
                         <td class="refresh-account-time">${escapeHtml(refreshTime)}</td>
                         <td class="refresh-account-time">${escapeHtml(successTime)}</td>
                         <td class="refresh-account-time">${escapeHtml(rotationTime)}</td>
+                        <td class="refresh-account-time" title="${escapeHtml(item.refresh_token_expires_at || '到期时间未知')}">${escapeHtml(expiryTime)}</td>
                         <td class="refresh-account-status-cell">${renderRefreshStatusBadge(item.last_refresh_status, isRunning)}${rotationHtml}</td>
                         <td class="refresh-account-action">
                             ${canRetry
@@ -846,6 +850,7 @@
                             <th>最近刷新</th>
                             <th>最近成功刷新</th>
                             <th>最近轮换</th>
+                            <th>RT 到期</th>
                             <th>状态</th>
                             <th>操作</th>
                         </tr>
@@ -1038,7 +1043,8 @@
             targetItem.last_refresh_status = data.status;
             targetItem.last_refresh_error = data.error_message || null;
             targetItem.last_refresh_token_rotated = data.token_rotated ?? null;
-            for (const field of ['last_refresh_at', 'last_refresh_success_at', 'refresh_token_updated_at']) {
+            targetItem.refresh_token_warning = data.warning || '';
+            for (const field of ['last_refresh_at', 'last_refresh_success_at', 'refresh_token_updated_at', 'refresh_token_expires_at']) {
                 if (Object.prototype.hasOwnProperty.call(data, field)) {
                     targetItem[field] = data[field];
                 }
@@ -1127,8 +1133,11 @@
                         setRefreshSnapshotCounts(totalCount, successCount, failedCount);
 
                         const delayText = Number(data.delay_seconds || 0) > 0 ? `，刷新间隔 ${data.delay_seconds} 秒` : '';
+                        const unknownText = Number(data.unknown_anchor_count || 0) > 0
+                            ? `，其中 ${data.unknown_anchor_count} 个 RT 到期时间未知`
+                            : '';
                         updateRefreshLogSummary(totalCount > 0 ? `任务运行中：0 / ${totalCount}` : '本次没有需要处理的账号');
-                        appendRefreshRuntimeLog('info', '任务开始', `本次共需处理 ${totalCount} 个账号${delayText}`);
+                        appendRefreshRuntimeLog('info', '任务开始', `本次共需处理 ${totalCount} 个账号${unknownText}${delayText}`);
                         return;
                     }
 
@@ -1715,6 +1724,18 @@
                 day: '2-digit',
                 hour: '2-digit',
                 minute: '2-digit'
+            });
+        }
+
+        function formatRefreshTokenExpiry(dateStr) {
+            const text = String(dateStr || '').trim();
+            if (!text) return '未知';
+            const date = new Date(text);
+            if (Number.isNaN(date.getTime())) return '未知';
+            return date.toLocaleString('zh-CN', {
+                timeZone: getAppTimeZone(),
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit',
             });
         }
 

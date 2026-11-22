@@ -76,6 +76,7 @@ class TokenRefreshFrontendTests(unittest.TestCase):
         html = run_frontend('''(() => {
             escapeHtml = value => String(value ?? '');
             formatDateTime = value => `formatted:${value}`;
+            formatRefreshTokenExpiry = value => `expiry:${value}`;
             syncRefreshPaginationControls = () => {};
             refreshModalState.items = [{
                 id: 1, email: 'user@example.com', last_refresh_status: 'success',
@@ -83,14 +84,17 @@ class TokenRefreshFrontendTests(unittest.TestCase):
                 last_refresh_at: '2026-10-21 03:00:00',
                 last_refresh_success_at: '2026-10-21 03:00:00',
                 refresh_token_updated_at: '2026-10-01 03:00:00',
+                refresh_token_expires_at: '2027-01-01T03:00:00+08:00',
             }, {id: 2, email: 'never@example.com', last_refresh_status: 'never'}];
             renderRefreshAccountList(refreshModalState.items, 2);
             return document.getElementById('refreshAccountList').innerHTML;
         })()''')
         self.assertIn('<th>最近成功刷新</th>', html)
         self.assertIn('<th>最近轮换</th>', html)
+        self.assertIn('<th>RT 到期</th>', html)
         self.assertEqual(html.count('formatted:2026-10-21 03:00:00'), 2)
         self.assertIn('formatted:2026-10-01 03:00:00', html)
+        self.assertIn('expiry:2027-01-01T03:00:00+08:00', html)
 
     def test_stream_uses_server_times_and_preserves_them_on_failure(self):
         result = run_frontend('''(() => {

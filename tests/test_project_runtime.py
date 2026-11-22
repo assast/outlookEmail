@@ -2117,7 +2117,9 @@ class ProjectRuntimeTests(unittest.TestCase):
             '',
             ['', ''],
             'uid',
+            account_record=download_mock.call_args.kwargs['account_record'],
         )
+        self.assertEqual(download_mock.call_args.kwargs['account_record']['id'], account_id)
 
     def test_graph_attachment_metadata_select_uses_base_attachment_fields(self):
         class GraphAttachmentsResponse:
@@ -2208,7 +2210,9 @@ class ProjectRuntimeTests(unittest.TestCase):
             '',
             ['', ''],
             'sequence',
+            account_record=download_mock.call_args.kwargs['account_record'],
         )
+        self.assertEqual(download_mock.call_args.kwargs['account_record']['id'], account_id)
 
     def test_graph_attachment_download_ignores_id_mode_contract(self):
         account_id = self._insert_account('user@example.com')
@@ -2246,7 +2250,9 @@ class ProjectRuntimeTests(unittest.TestCase):
             'graph-attachment',
             '',
             ['', ''],
+            account=graph_download_mock.call_args.kwargs['account'],
         )
+        self.assertEqual(graph_download_mock.call_args.kwargs['account']['id'], account_id)
         imap_download_mock.assert_not_called()
 
     def test_standard_imap_attachment_download_still_works_without_id_mode(self):

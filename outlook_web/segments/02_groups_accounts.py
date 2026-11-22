@@ -1483,6 +1483,15 @@ def serialize_account_summary(account: Dict[str, Any], last_refresh_log: Optiona
         'last_refresh_at': refresh_state['last_refresh_at'],
         'last_refresh_success_at': account.get('last_refresh_success_at'),
         'refresh_token_updated_at': account.get('refresh_token_updated_at'),
+        'refresh_token_expires_at': account.get('refresh_token_expires_at'),
+        'refresh_token_warning': get_refresh_token_rotation_warning(
+            account.get('refresh_token_expires_at'),
+            warning_window_days=get_refresh_token_expiry_window_days(),
+        ) if (
+            str(account.get('account_type') or 'outlook').strip().lower() == 'outlook'
+            and str(account.get('client_id') or '').strip()
+            and str(account.get('refresh_token') or '').strip()
+        ) else '',
         'last_refresh_status': refresh_state['last_refresh_status'],
         'last_refresh_error': refresh_state['last_refresh_error'],
         'last_refresh_token_rotated': (
@@ -1507,9 +1516,10 @@ ACCOUNT_INSERT_SQL = '''
     INSERT OR IGNORE INTO accounts (
         email, password, client_id, refresh_token, group_id, sort_order, remark,
         status, account_type, provider, graph_token_scope, imap_host, imap_port, imap_password, forward_enabled,
-        forward_last_checked_at, proxy_url, fallback_proxy_url_1, fallback_proxy_url_2
+        forward_last_checked_at, proxy_url, fallback_proxy_url_1, fallback_proxy_url_2,
+        refresh_token_updated_at, refresh_token_expires_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 '''
 
 
@@ -1530,6 +1540,15 @@ def build_account_insert_values(email_addr: str, password: str, client_id: str =
     normalized_imap_port = int(imap_port or provider_meta.get('imap_port', 993) or 993)
     normalized_sort_order = parse_account_sort_order_input(sort_order)
     normalized_status = normalize_account_status(status)
+    refresh_token_anchor_updated_at = None
+    refresh_token_anchor_expires_at = None
+    if normalized_account_type == 'outlook' and client_id and refresh_token:
+        anchor_now = datetime.now(timezone(timedelta(hours=8)))
+        refresh_token_anchor_updated_at = anchor_now.isoformat(timespec='seconds')
+        refresh_token_anchor_expires_at = build_refresh_token_expiry(
+            default_lifetime_days=get_refresh_token_default_lifetime_days(),
+            now=anchor_now,
+        )
 
     return (
         email_addr,
@@ -1551,6 +1570,8 @@ def build_account_insert_values(email_addr: str, password: str, client_id: str =
         str(proxy_url or '').strip(),
         str(fallback_proxy_url_1 or '').strip(),
         str(fallback_proxy_url_2 or '').strip(),
+        refresh_token_anchor_updated_at,
+        refresh_token_anchor_expires_at,
     )
 
 
@@ -2161,9 +2182,15 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
         )
 
         current_account = db.execute(
-            'SELECT forward_enabled, forward_last_checked_at, account_type, authorization_type FROM accounts WHERE id = ?',
+            'SELECT forward_enabled, forward_last_checked_at, account_type, authorization_type, refresh_token '
+            'FROM accounts WHERE id = ?',
             (account_id,)
         ).fetchone()
+        try:
+            existing_refresh_token = decrypt_data(current_account['refresh_token']) if current_account and current_account['refresh_token'] else ''
+        except Exception:
+            existing_refresh_token = str(current_account['refresh_token'] or '') if current_account else ''
+        refresh_token_changed = refresh_token != existing_refresh_token
         effective_authorization_type = (
             get_account_authorization_type(current_account)
             if authorization_type is None and current_account
@@ -2212,6 +2239,25 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
                 imap_host, imap_port, encrypted_imap_password, 1 if forward_enabled else 0,
                 normalized_proxy_url, normalized_fallback_proxy_url_1, normalized_fallback_proxy_url_2, account_id
             ))
+        if refresh_token_changed:
+            if str(account_type or '').strip().lower() == 'outlook' and client_id and refresh_token:
+                anchor_now = datetime.now(timezone(timedelta(hours=8)))
+                anchor_updated_at = anchor_now.isoformat(timespec='seconds')
+                anchor_expires_at = build_refresh_token_expiry(
+                    default_lifetime_days=get_refresh_token_default_lifetime_days(),
+                    now=anchor_now,
+                )
+            else:
+                anchor_updated_at = None
+                anchor_expires_at = None
+            db.execute(
+                '''
+                UPDATE accounts
+                SET refresh_token_updated_at = ?, refresh_token_expires_at = ?
+                WHERE id = ?
+                ''',
+                (anchor_updated_at, anchor_expires_at, account_id),
+            )
         db.commit()
         if normalized_graph_token_scope is not None:
             register_graph_token_scope_preference(client_id, refresh_token, normalized_graph_token_scope)

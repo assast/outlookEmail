@@ -143,6 +143,8 @@
 | GET | `/api/email/<email_addr>/<message_id>/attachments/<attachment_id>` | Session | 文件流 | 下载附件 |
 | GET | `/api/email/<email_addr>/<message_id>/attachments/download-all` | Session | ZIP 文件流 | 打包下载全部附件 |
 | POST | `/api/emails/retain-bodies` | Session + CSRF | JSON | 为已保留普通邮箱列表行补齐正文缓存 |
+| GET | `/api/refresh-strategy` | Session | JSON | 读取当前刷新模式、到期参数和旧策略摘要 |
+| PUT | `/api/refresh-strategy` | Session + CSRF | JSON | 保存刷新模式与到期策略参数，并立即更新 Token 定时任务 |
 | GET | `/api/settings/normal-mail-retention/status` | Session | JSON | 获取普通邮箱本地保留统计与清理状态 |
 | POST | `/api/settings/normal-mail-retention/clear` | Session + CSRF | JSON | 启动普通邮箱本地保留缓存清理 |
 | GET | `/api/temp-emails` | Session | JSON | 获取临时邮箱列表 |
@@ -1131,6 +1133,9 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 | `last_refresh_at` | 最近刷新时间 |
 | `last_refresh_status` | 最近刷新结果 |
 | `last_refresh_error` | 最近刷新错误 |
+| `refresh_token_updated_at` | 最近一次 Refresh Token 签发/轮换时间 |
+| `refresh_token_expires_at` | 预计 Refresh Token 到期时间，未知时为空 |
+| `refresh_token_warning` | RT 到期未知或未轮换且临近/达到预计到期时的提示 |
 | `tags` | 标签列表 |
 
 ### GET `/api/accounts/search`
@@ -2050,7 +2055,7 @@ Web 端提供项目管理界面：在「设置 → 常规设置 → 项目管理
 
 - `start`
 - `progress`
-- `account_result`：包含单账号的 `status`、`message` 和 `token_rotated`
+- `account_result`：包含单账号的 `status`、`message`、`token_rotated`、`refresh_token_expires_at` 和可能存在的 `warning`
 - `delay`
 - `complete`
 
@@ -2124,9 +2129,44 @@ Web 端提供项目管理界面：在「设置 → 常规设置 → 项目管理
 
 `GET /api/accounts/refresh-logs/failed` 返回的是“当前仍处于失败状态的邮箱快照”，不再是历史失败日志列表。
 
-全局与单账号刷新日志包含 `token_rotated`（`true` / `false` / `null`）和对应的 `message`。旧日志的轮换结果为 `null`，表示未记录，不能推断为未轮换。刷新管理列表通过 `last_refresh_token_rotated` 返回最近一次结果，并展示三个独立时间：`last_refresh_at` 表示最近一次请求，`last_refresh_success_at` 表示最近一次成功刷新（未轮换也算成功），`refresh_token_updated_at` 表示最近一次 Token 更新。失败不覆盖成功时间，未轮换不覆盖 Token 更新时间；未知时间返回 `null`，界面显示 `-`。
+全局与单账号刷新日志包含 `token_rotated`（`true` / `false` / `null`）和对应的 `message`。旧日志的轮换结果为 `null`，表示未记录，不能推断为未轮换。刷新管理列表通过 `last_refresh_token_rotated` 返回最近一次结果，并展示最近请求、最近成功、最近 RT 轮换和 `refresh_token_expires_at`。失败不覆盖成功时间；未轮换不覆盖 RT 更新时间或到期锚点。`refresh_token_warning` 会提示到期时间未知或仍未轮换且临近/达到预计到期。
 
-单账号刷新响应和 SSE 的 `account_result` 同时返回这三个数据库时间。旧账号首次迁移时会从成功日志和最近成功状态恢复可确认的成功时间，无记录的保持为空。
+自动刷新策略由 `/api/refresh-strategy` 单独管理，模式为 `expiry`、`legacy` 或 `disabled`。`expiry` 每天扫描到期窗口，默认提前 7 天；`legacy` 读取旧设置里的启停、Cron 和全量周期并执行全量刷新；`disabled` 不注册 Token 定时任务。未保存过新模式的存量实例按旧 `enable_scheduled_refresh` 推导：开启时默认 `expiry`，关闭时默认 `disabled`。选择 `expiry` 或 `disabled` 会关闭并永久退役旧策略；之后 API 会拒绝 `legacy` 模式和旧启停值 `true`。旧 Cron 与周期数值保留。旧开关已关闭的存量实例不能重新启用旧模式。
+
+读取返回示例：
+
+```json
+{
+  "success": true,
+  "strategy": {
+    "mode": "expiry",
+    "expiry_window_days": 7,
+    "default_lifetime_days": 90,
+    "include_missing_anchor": true,
+    "legacy_enabled": true,
+    "legacy_retired": false,
+    "legacy_available": true,
+    "legacy_use_cron": false,
+    "legacy_cron": "0 2 * * *",
+    "legacy_interval_days": "30"
+  }
+}
+```
+
+保存请求示例：
+
+```json
+{
+  "mode": "expiry",
+  "expiry_window_days": 7,
+  "default_lifetime_days": 90,
+  "include_missing_anchor": true
+}
+```
+
+刷新模式保存后立即更新 Token 定时任务，不会重启其他后台任务。旧周期/Cron 字段仅在未退役且处于 `legacy` 模式时控制自动刷新；退役后 API 拒绝重新启用旧策略。`/api/accounts/trigger-scheduled-refresh` 的手动触发与强制全量刷新接口行为保持原样。
+
+单账号刷新响应和 SSE 的 `account_result` 同时返回最近刷新、最近成功、RT 更新和 RT 到期时间。旧账号首次迁移时会从成功日志和最近成功状态恢复可确认的成功时间；RT 到期锚点仅使用可信的 RT 更新/轮换时间补算，无法确认时保持为空。
 
 `GET /api/accounts/refresh-status-list` 查询参数：
 
@@ -2715,11 +2755,14 @@ POST /api/cloudflare/channels
 | `login_password` | string | 新登录密码，至少 8 位；提交时必须同时提供 `current_login_password` |
 | `current_login_password` | string | 当前登录密码；修改 `login_password` 时必填，用于二次确认 |
 | `gptmail_api_key` | string | GPTMail API Key |
-| `refresh_interval_days` | int | 刷新周期，范围 `1-90` |
+| `refresh_interval_days` | int | 旧版全量刷新周期，范围 `1-90`；仅 `legacy` 模式使用 |
+| `refresh_token_expires_within_days` | int | 到期模式提前刷新窗口，范围 `1-3650`，默认 `7`；新设置界面使用 `/api/refresh-strategy` |
+| `refresh_token_default_lifetime_days` | int | 微软未返回 RT 有效期时采用的默认寿命，范围 `1-3650`，默认 `90`；新设置界面使用 `/api/refresh-strategy` |
+| `refresh_token_include_missing_anchor` | bool | 到期模式是否纳入无到期锚点的账号，默认 `true`；新设置界面使用 `/api/refresh-strategy` |
 | `refresh_delay_seconds` | int | 刷新间隔秒数，范围 `0-60` |
-| `refresh_cron` | string | Cron 表达式 |
-| `use_cron_schedule` | bool | 是否使用 Cron 调度 |
-| `enable_scheduled_refresh` | bool | 是否开启定时刷新 |
+| `refresh_cron` | string | 旧策略 Cron 表达式；仅 `legacy` 模式使用 |
+| `use_cron_schedule` | bool | 旧策略是否使用 Cron 调度；仅 `legacy` 模式使用 |
+| `enable_scheduled_refresh` | bool | 旧策略定时刷新开关；新模式缺省时用于推导存量默认模式。旧策略关闭或退役后不能重新开启 |
 | `app_timezone` | string | 系统时区，使用 IANA 时区名，例如 `Asia/Shanghai` |
 | `mail_fetch_timeout_seconds` | int | 普通 Outlook/IMAP 邮件列表整体获取超时，范围 `30-300`；未传则保留现有值。尚未保存该设置时回退环境变量 `MAIL_FETCH_OVERALL_TIMEOUT`，再回退 `120` |
 | `show_account_created_at` | bool | 是否在邮箱列表展示创建时间 |
