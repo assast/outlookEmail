@@ -115,7 +115,10 @@ docker-compose down
 
 - 应用在 `python web_outlook_app.py`、Docker、Docker Compose、Gunicorn 单 worker 模式下都会自动初始化定时任务。
 - 如需确认定时任务是否已启动，可执行 `docker-compose logs -f`，日志中应出现“定时任务已启动”。
-- 若使用 Cron 模式，请确认已在系统设置中开启 `use_cron_schedule`，并填写正确的 5 段 Cron 表达式。
+- 在独立页面 `/refresh-strategy` 选择按到期刷新、旧周期全量刷新或停用。到期模式每天凌晨 2 点检查 RT 到期窗口，默认只刷新预计 7 天内到期的账号；未轮换的 RT 保持原锚点并在下一次调度中继续尝试。
+- 旧周期模式继续读取通用设置中的 `enable_scheduled_refresh`、`use_cron_schedule`、`refresh_cron` 和 `refresh_interval_days`，每次 Cron 触发执行全量刷新；按天方式每天检查一次，到达全局周期后才执行。固定周期模式可能错过微软的令牌轮换窗口。
+- 新旧策略互斥。没有 `refresh_strategy_mode` 的存量实例沿用旧定时开关：开启时默认按到期刷新，关闭时保持停用。选择到期或停用模式后，旧开关会关闭并永久退役，不能再选择或启用旧模式；旧 Cron 和周期值保留。存量旧开关已关闭的实例也不能重新启用旧模式。刷新策略模式保存在应用的设置键值表中，不需要新增 SQL 升级脚本。
+- Docker 界面更新本身不会执行 `docs/sql` 脚本；新容器启动时应用会自动添加可空到期锚点列。若使用自定义启动流程而没有运行应用初始化，可备份数据库后手动执行 [2026-11-21-add-outlook-refresh-token-expiry.sql](sql/2026-11-21-add-outlook-refresh-token-expiry.sql)，不要在自动升级已添加该列后重复执行。应用会使用可信的 RT 更新时间或轮换日志补算；无法确认签发时间的账号保持未知，默认纳入每日刷新。
 
 ## 环境变量配置
 

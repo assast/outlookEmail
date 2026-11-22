@@ -43,6 +43,7 @@ async function showForwardingManagement(tab = 'policies', updateLocation = true)
     closeAllModals();
     if (typeof closeNavbarActionsMenu === 'function') closeNavbarActionsMenu();
     if (typeof closeMobilePanels === 'function') closeMobilePanels();
+    if (typeof hideRefreshStrategyManagement === 'function') hideRefreshStrategyManagement(false);
     document.getElementById('forwardingManagementView').hidden = false;
     document.documentElement.classList.add('forwarding-workspace-open');
     if (updateLocation) setForwardingLocation(tab, window.location.pathname === '/forwarding');

@@ -1689,7 +1689,7 @@ class NormalMailRetentionTests(unittest.TestCase):
             ))
             web_outlook_app.upsert_retained_normal_mail_list_items(self.account, 'inbox', items)
 
-        def graph_detail(client_id, refresh_token, message_id, proxy_url, fallback_proxy_urls):
+        def graph_detail(client_id, refresh_token, message_id, proxy_url, fallback_proxy_urls, **_kwargs):
             return {
                 'success': True,
                 'detail': {

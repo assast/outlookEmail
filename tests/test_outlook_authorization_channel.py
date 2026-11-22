@@ -238,7 +238,7 @@ class OutlookAuthorizationChannelTests(unittest.TestCase):
             )
 
         self.assertEqual(calls, ['graph', 'imap'])
-        self.assertEqual(result, (True, None, 'rotated', 'imap'))
+        self.assertEqual(result, (True, None, 'rotated', 'imap', None))
 
     def test_internal_authorization_saves_actual_validation_channel(self):
         with self.app.app_context():

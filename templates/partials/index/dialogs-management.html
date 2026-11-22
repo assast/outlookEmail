@@ -186,17 +186,22 @@
                 <section class="settings-section" id="settingsRefreshSection">
                     <div class="settings-section-head">
                         <span class="settings-section-kicker">Scheduler</span>
-                        <h4>Token 刷新设置</h4>
-                        <p>控制定时刷新任务的启停、执行策略与邮箱间请求节奏。</p>
+                        <h4>旧版 Token 刷新配置</h4>
+                        <p>旧周期参数仅在独立刷新策略页选择“旧周期全量刷新”时生效；邮箱间隔适用于各类刷新操作。</p>
                     </div>
                         <div class="settings-panel settings-panel-stack">
+                        <div class="settings-note" role="note">
+                            <strong>旧策略的限制：</strong>固定周期全量刷新可能刚好错过微软返回新 Refresh Token 的时间窗口，继续使用旧令牌可能导致账号失效。新策略会每日检查临近到期账号。选择到期或停用模式后旧策略会永久关闭，旧 Cron 和周期值保留但不能重新启用。
+                            <button class="btn btn-secondary" type="button" onclick="showRefreshStrategyManagement()">打开刷新策略设置</button>
+                        </div>
+                        <div id="legacyRefreshStrategyStatus" class="settings-note" role="status">当前生效模式由独立刷新策略页面管理。</div>
                         <div class="settings-panel-grid settings-panel-grid--compact">
                             <div class="form-group">
                                 <label class="settings-toggle settings-toggle--card">
                                     <input type="checkbox" id="enableScheduledRefresh" checked>
-                                    <span class="form-label">启用定时刷新</span>
+                                    <span class="form-label">启用旧版定时刷新</span>
                                 </label>
-                                <div class="form-hint">关闭后将不会自动执行定时刷新任务。</div>
+                                <div class="form-hint">旧模式下关闭此开关会永久退役旧策略，不能重新启用；保存到期或停用模式也会自动关闭它。</div>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">邮箱间刷新间隔</label>
@@ -209,20 +214,20 @@
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">刷新策略</label>
+                            <label class="form-label">旧版全量刷新触发方式</label>
                             <div class="settings-choice-row">
                                 <label class="settings-choice-card">
                                     <input type="radio" name="refreshStrategy" value="days" checked onchange="toggleRefreshStrategy()">
                                     <span class="settings-choice-card__content">
-                                        <span class="settings-choice-card__title">按天数</span>
-                                        <span class="settings-choice-card__meta">适合稳定周期刷新，例如每 30 天自动刷新一次。</span>
+                                        <span class="settings-choice-card__title">按周期全量刷新</span>
+                                        <span class="settings-choice-card__meta">每日检查周期，达到间隔后刷新全部 Outlook 账号。</span>
                                     </span>
                                 </label>
                                 <label class="settings-choice-card">
                                     <input type="radio" name="refreshStrategy" value="cron" onchange="toggleRefreshStrategy()">
                                     <span class="settings-choice-card__content">
-                                        <span class="settings-choice-card__title">Cron 表达式</span>
-                                        <span class="settings-choice-card__meta">适合需要精确控制时段、频率或周期间隔的场景。</span>
+                                        <span class="settings-choice-card__title">Cron 全量刷新</span>
+                                        <span class="settings-choice-card__meta">每次 Cron 触发时刷新全部 Outlook 账号。</span>
                                     </span>
                                 </label>
                             </div>
@@ -230,12 +235,12 @@
 
                         <div id="daysStrategyContainer" class="settings-subpanel">
                             <div class="form-group">
-                                <label class="form-label">定时刷新周期</label>
+                                <label class="form-label">旧版全量刷新周期（兼容保留）</label>
                                 <div class="input-inline">
                                     <input type="number" class="form-input" id="refreshIntervalDays" min="1" max="90" value="30" placeholder="30">
                                     <span>天</span>
                                 </div>
-                                <div class="form-hint">建议设置为 30 天，防止 Token 因 90 天未使用而过期。</div>
+                                <div class="form-hint">仅旧周期模式使用：每日检查是否已达到此全量刷新间隔；到期模式不会读取此值。</div>
                             </div>
                         </div>
 

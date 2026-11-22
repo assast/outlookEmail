@@ -354,7 +354,9 @@ class OutlookGraphSendMailTests(unittest.TestCase):
             '测试正文',
             proxy_url='',
             fallback_proxy_urls=['', ''],
+            account=send_mock.call_args.kwargs['account'],
         )
+        self.assertEqual(send_mock.call_args.kwargs['account']['id'], account_id)
 
     def test_route_rejects_unsupported_account_and_spoofed_sender_without_calling_graph(self):
         imap_channel_account_id = self._add_outlook_account('imap-channel@outlook.com', authorization_type='imap')

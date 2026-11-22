@@ -84,6 +84,7 @@
                 <button class="navbar-btn mobile-only-btn" id="outlookUploadAccountsBtn" type="button" onclick="showOutlookUploadAccountsModal()">Outlook 邮箱</button>
                 <button class="navbar-btn mobile-only-btn" id="projectManagementBtn" type="button" style="display: none;" onclick="showProjectManagementModal()">项目管理</button>
                 <button class="navbar-btn mobile-only-btn" type="button" onclick="showForwardingManagement()">邮件转发</button>
+                <button class="navbar-btn mobile-only-btn" type="button" onclick="showRefreshStrategyManagement()">Token 刷新策略</button>
                 <button class="navbar-btn mobile-only-btn" id="logoutBtn" type="button" onclick="logout()">退出登录</button>
                 
                 <button class="navbar-icon-btn desktop-only-btn" id="desktopSettingsBtn" type="button" onclick="showSettingsModal()" title="系统常规设置">
@@ -128,7 +129,8 @@
                         <button class="dropdown-item" type="button" onclick="showRefreshModal()">Token 刷新管理</button>
                         <button class="dropdown-item" type="button" onclick="showEmailShareManagementModal()">分享管理</button>
                         <button class="dropdown-item" id="desktopProjectManagementBtn" type="button" style="display: none;" onclick="showProjectManagementModal()">项目管理</button>
-                <button class="dropdown-item" type="button" onclick="showForwardingManagement()">邮件转发</button>
+                        <button class="dropdown-item" type="button" onclick="showForwardingManagement()">邮件转发</button>
+                        <button class="dropdown-item" type="button" onclick="showRefreshStrategyManagement()">Token 刷新策略</button>
                     </div>
                 </div>
                 
@@ -142,6 +144,7 @@
     </nav>
 
     {% include "partials/index/forwarding-management.html" %}
+    {% include "partials/index/refresh-strategy-management.html" %}
 
     <!-- 主容器 -->
     <div class="main-container">
