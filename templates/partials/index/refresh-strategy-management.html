@@ -1,0 +1,78 @@
+<main id="refreshStrategyManagementView" class="refresh-strategy-view" data-refresh-strategy-workspace="true" hidden tabindex="-1">
+    <header class="refresh-strategy-page-head">
+        <div>
+            <h1>Token 刷新策略</h1>
+            <p>选择自动刷新方式。保存到期或停用模式后，旧策略会关闭且不能重新启用；旧周期字段仍保留。</p>
+        </div>
+        <div class="settings-action-row">
+            <button class="btn btn-secondary" type="button" onclick="hideRefreshStrategyManagement()">返回邮箱</button>
+            <button class="btn btn-secondary" type="button" onclick="refreshRefreshStrategySettings()">刷新</button>
+        </div>
+    </header>
+
+    <section class="refresh-strategy-panel" aria-labelledby="refreshStrategyModeHeading">
+        <div class="refresh-strategy-section-head">
+            <h2 id="refreshStrategyModeHeading">自动刷新模式</h2>
+            <p>仅会启用下列一种模式。</p>
+        </div>
+        <div class="refresh-strategy-options" role="radiogroup" aria-labelledby="refreshStrategyModeHeading">
+            <label class="refresh-strategy-option">
+                <input type="radio" name="refreshStrategyMode" value="expiry" onchange="syncRefreshStrategyModeUI()">
+                <span><strong>按到期时间刷新</strong><span>每天扫描进入到期窗口的账号；微软未轮换时，次日继续检查。</span></span>
+            </label>
+            <label class="refresh-strategy-option">
+                <input type="radio" name="refreshStrategyMode" value="legacy" onchange="syncRefreshStrategyModeUI()">
+                <span><strong>旧周期全量刷新</strong><span id="refreshLegacyModeDescription">按通用设置中的旧 Cron 或周期配置刷新全部 Outlook 账号，可能错过微软的轮换窗口。</span></span>
+            </label>
+            <label class="refresh-strategy-option">
+                <input type="radio" name="refreshStrategyMode" value="disabled" onchange="syncRefreshStrategyModeUI()">
+                <span><strong>停用自动刷新</strong><span>保留手动刷新能力，不运行 Token 定时刷新任务。</span></span>
+            </label>
+        </div>
+
+        <div id="refreshExpirySettings" class="refresh-strategy-subpanel">
+            <div class="refresh-strategy-section-head">
+                <h2>到期策略参数</h2>
+                <p>按 Refresh Token 的预计到期时间筛选每日候选账号。</p>
+            </div>
+            <div class="refresh-strategy-grid">
+                <div class="form-group">
+                    <label class="form-label" for="refreshStrategyExpiryWindowDays">提前刷新天数</label>
+                    <div class="input-inline">
+                        <input class="form-input" type="number" id="refreshStrategyExpiryWindowDays" min="1" max="3650" value="7">
+                        <span>天</span>
+                    </div>
+                    <p class="form-hint">进入到期窗口后每日检查，直到返回不同的新 Refresh Token。</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="refreshStrategyDefaultLifetimeDays">默认 RT 寿命</label>
+                    <div class="input-inline">
+                        <input class="form-input" type="number" id="refreshStrategyDefaultLifetimeDays" min="1" max="3650" value="90">
+                        <span>天</span>
+                    </div>
+                    <p class="form-hint">微软未返回有效期时用于估算；如果微软提供有效期，则优先使用微软值。</p>
+                </div>
+                <div class="form-group refresh-strategy-grid-wide">
+                    <label class="settings-toggle settings-toggle--card">
+                        <input type="checkbox" id="refreshStrategyIncludeMissingAnchor" checked>
+                        <span class="form-label">每日纳入到期时间未知的账号</span>
+                    </label>
+                    <p class="form-hint">关闭后未知锚点账号不会自动刷新；系统不会用普通刷新时间推测 RT 签发时间。</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="refreshLegacySettingsSummary" class="refresh-strategy-subpanel" hidden>
+            <div class="refresh-strategy-section-head">
+                <h2>旧策略当前配置</h2>
+                <p id="refreshLegacySettingsDescription">旧启停、Cron 与周期参数保留在通用设置中。</p>
+            </div>
+            <button class="btn btn-secondary" type="button" onclick="openLegacyRefreshSettings()">查看旧策略配置</button>
+        </div>
+
+        <div class="settings-action-row refresh-strategy-actions">
+            <button id="saveRefreshStrategyBtn" class="btn btn-primary" type="button" onclick="saveRefreshStrategySettings(this)">保存刷新策略</button>
+            <span id="refreshStrategyStatus" class="form-hint" role="status"></span>
+        </div>
+    </section>
+</main>

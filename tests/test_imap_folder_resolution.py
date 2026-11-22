@@ -2730,6 +2730,11 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
                 self.assertIs(item['last_refresh_token_rotated'], rotated)
 
     def test_refresh_account_reports_failure_when_new_token_cannot_be_saved(self):
+        with self.app.app_context():
+            before = web_outlook_app.get_db().execute(
+                'SELECT refresh_token_updated_at, refresh_token_expires_at FROM accounts WHERE id = ?',
+                (self.account_id,),
+            ).fetchone()
         with patch.object(web_outlook_app, 'test_refresh_token',
                           return_value=(True, None, 'new-refresh-token', 'graph')), \
              patch.object(web_outlook_app, 'persist_rotated_refresh_token', return_value=False):
@@ -2742,11 +2747,12 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
         self.assertIs(log['token_rotated'], False)
         with self.app.app_context():
             row = web_outlook_app.get_db().execute(
-                'SELECT refresh_token, refresh_token_updated_at FROM accounts WHERE id = ?',
+                'SELECT refresh_token, refresh_token_updated_at, refresh_token_expires_at FROM accounts WHERE id = ?',
                 (self.account_id,),
             ).fetchone()
         self.assertEqual(web_outlook_app.decrypt_data(row['refresh_token']), '0.AXEA_refresh')
-        self.assertIsNone(row['refresh_token_updated_at'])
+        self.assertEqual(row['refresh_token_updated_at'], before['refresh_token_updated_at'])
+        self.assertEqual(row['refresh_token_expires_at'], before['refresh_token_expires_at'])
 
     def test_refresh_times_track_success_independently_of_rotation(self):
         old_success_at = '2025-01-01 10:00:00'
@@ -3017,7 +3023,7 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
                 self.assertEqual(request.call_count, 2)
                 self.assertIs(response, default_response)
 
-    def test_default_response_with_same_refresh_token_stops_without_rotation(self):
+    def test_default_response_with_same_refresh_token_retries_original_scope_without_rotation(self):
         token_response = self._token_response(200, {
             'access_token': 'access-token', 'refresh_token': '0.AXEA_refresh',
         })
@@ -3025,7 +3031,8 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
              patch.object(web_outlook_app, 'persist_rotated_refresh_token') as persist:
             response = self.client.post(f'/api/accounts/{self.account_id}/refresh')
         self.assertTrue(response.get_json()['success'])
-        request.assert_called_once()
+        self.assertEqual(request.call_count, 2)
+        self.assertNotIn('scope', request.call_args_list[1].kwargs['data'])
         persist.assert_not_called()
 
     def test_refresh_account_falls_back_to_imap_after_graph_refresh_fails(self):
@@ -3101,7 +3108,12 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
         with patch.object(web_outlook_app.requests, 'request',
                           side_effect=[rejected] * 3 + [access_only]) as request:
             result = web_outlook_app.get_access_token_graph_result('client-id', 'refresh-token')
-        self.assertEqual(result, {'success': True, 'access_token': 'access-token'})
+        self.assertEqual(result, {
+            'success': True,
+            'access_token': 'access-token',
+            'refresh_token': '',
+            'refresh_token_expires_in': 0,
+        })
         self.assertEqual(request.call_count, 4)
         self.assertTrue(all('scope' in call.kwargs['data'] for call in request.call_args_list))
         self.assertEqual(request.call_args.kwargs['data']['scope'], 'https://graph.microsoft.com/.default')
@@ -3142,6 +3154,12 @@ class RefreshTokenProxyFallbackTests(unittest.TestCase):
                 }
 
         default_response = self._token_response(200, {'access_token': 'access-token'})
+        with self.app.app_context():
+            web_outlook_app.get_db().execute(
+                'UPDATE accounts SET refresh_token_expires_at = ? WHERE id = ?',
+                ('2026-11-21T00:00:00+08:00', self.account_id),
+            )
+            web_outlook_app.get_db().commit()
         with patch.object(web_outlook_app.requests, 'request',
                           side_effect=[default_response, FakeResponse()]) as request:
             web_outlook_app.trigger_refresh_internal()

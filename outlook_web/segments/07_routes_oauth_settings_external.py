@@ -73,13 +73,15 @@ def exchange_oauth_code_for_tokens(redirected_url: str) -> Dict[str, Any]:
         'success': True,
         'refresh_token': refresh_token,
         'client_id': OAUTH_CLIENT_ID,
+        'refresh_token_expires_in': tokens.get('refresh_token_expires_in'),
         'token_type': tokens.get('token_type'),
         'expires_in': tokens.get('expires_in'),
         'scope': tokens.get('scope')
     }
 
 
-def update_account_authorization_for_reauth(account_id: int, client_id: str, refresh_token: str, db_conn=None) -> bool:
+def update_account_authorization_for_reauth(account_id: int, client_id: str, refresh_token: str,
+                                            db_conn=None, refresh_token_expires_in: Any = None) -> bool:
     """只更新已有 Outlook 账号的授权字段，并清理旧刷新失败状态。"""
     token_value = str(refresh_token or '').strip()
     client_id_value = str(client_id or '').strip()
@@ -89,18 +91,31 @@ def update_account_authorization_for_reauth(account_id: int, client_id: str, ref
     db = db_conn or get_db()
     should_commit = db_conn is None
     try:
+        now = datetime.now(OUTLOOK_REFRESH_TIMEZONE)
+        expiry = build_refresh_token_expiry(
+            refresh_token_expires_in=refresh_token_expires_in,
+            default_lifetime_days=get_refresh_token_default_lifetime_days(db),
+            now=now,
+        )
         db.execute(
             '''
             UPDATE accounts
             SET client_id = ?,
                 refresh_token = ?,
-                refresh_token_updated_at = CURRENT_TIMESTAMP,
+                refresh_token_updated_at = ?,
+                refresh_token_expires_at = ?,
                 last_refresh_status = 'never',
                 last_refresh_error = NULL,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             ''',
-            (client_id_value, encrypt_data(token_value), account_id)
+            (
+                client_id_value,
+                encrypt_data(token_value),
+                format_refresh_token_datetime(now),
+                expiry,
+                account_id,
+            )
         )
         if should_commit:
             db.commit()
@@ -206,7 +221,8 @@ def api_reauthorize_account(account_id):
         account_id,
         token_result.get('client_id', ''),
         token_result.get('refresh_token', ''),
-        db
+        db,
+        refresh_token_expires_in=token_result.get('refresh_token_expires_in'),
     ):
         db.rollback()
         return jsonify({
@@ -610,6 +626,11 @@ def api_get_settings():
     settings['cloudflare_ai_username_api_key_configured'] = bool(cloudflare_ai_api_key)
     settings['cloudflare_ai_username_api_key_masked'] = '********' if cloudflare_ai_api_key else ''
     settings['app_timezone'] = get_app_timezone()
+    settings['refresh_token_expires_within_days'] = get_setting('refresh_token_expires_within_days', '7')
+    settings['refresh_token_default_lifetime_days'] = get_setting('refresh_token_default_lifetime_days', '90')
+    settings['refresh_token_include_missing_anchor'] = get_setting(
+        'refresh_token_include_missing_anchor', 'true'
+    )
     settings['show_account_created_at'] = get_setting('show_account_created_at', 'true')
     settings['show_account_sort_order'] = get_setting('show_account_sort_order', 'false')
     settings['show_group_id'] = get_setting('show_group_id', 'true')
@@ -680,9 +701,21 @@ def api_get_settings():
 @login_required
 def api_update_settings():
     """更新设置"""
-    data = request.json or {}
+    data = dict(request.json or {})
     updated = []
     errors = []
+    requested_legacy_enabled = str(data.get('enable_scheduled_refresh', '')).lower()
+    enforce_legacy_refresh_retirement()
+    stored_refresh_mode = str(get_setting('refresh_strategy_mode', '') or '').strip().lower()
+    retire_legacy_after_save = False
+    if requested_legacy_enabled == 'true' and not is_legacy_refresh_strategy_available():
+        return jsonify({'success': False, 'error': '旧刷新策略已关闭，不能重新启用'}), 400
+    if stored_refresh_mode in ('expiry', 'disabled'):
+        data['enable_scheduled_refresh'] = 'false'
+        retire_legacy_after_save = True
+    elif 'enable_scheduled_refresh' in data:
+        if requested_legacy_enabled == 'false':
+            retire_legacy_after_save = True
 
     feishu_fields = {
         'feishu_webhook_url': 'webhook_url',
@@ -774,6 +807,34 @@ def api_update_settings():
                 errors.append('更新刷新周期失败')
         except ValueError:
             errors.append('刷新周期必须是数字')
+
+    for setting_key, label, default_value in (
+        ('refresh_token_expires_within_days', 'RT 提前刷新天数', 7),
+        ('refresh_token_default_lifetime_days', 'RT 默认寿命', 90),
+    ):
+        if setting_key not in data:
+            continue
+        try:
+            days = int(data[setting_key])
+        except (TypeError, ValueError):
+            errors.append(f'{label}必须是数字')
+            continue
+        if days < 1 or days > 3650:
+            errors.append(f'{label}必须在 1-3650 天之间')
+        elif set_setting(setting_key, str(days)):
+            updated.append(label)
+        else:
+            errors.append(f'更新{label}失败')
+
+    if 'refresh_token_include_missing_anchor' in data:
+        include_missing = str(data['refresh_token_include_missing_anchor']).lower()
+        if include_missing in ('true', 'false'):
+            if set_setting('refresh_token_include_missing_anchor', include_missing):
+                updated.append('未知 RT 到期账号纳入策略')
+            else:
+                errors.append('更新未知 RT 到期账号纳入策略失败')
+        else:
+            errors.append('未知 RT 到期账号纳入策略必须是 true 或 false')
 
     # 更新刷新间隔
     if 'refresh_delay_seconds' in data:
@@ -1260,11 +1321,29 @@ def api_update_settings():
     if errors:
         return jsonify({'success': False, 'error': '；'.join(errors)})
 
+    if retire_legacy_after_save:
+        legacy_retirement_updates = [
+            ('enable_scheduled_refresh', 'false'),
+            (REFRESH_LEGACY_RETIRED_SETTING, 'true'),
+        ]
+        if stored_refresh_mode == 'legacy':
+            legacy_retirement_updates.append(('refresh_strategy_mode', 'disabled'))
+        for key, value in legacy_retirement_updates:
+            if not set_setting(key, value):
+                return jsonify({'success': False, 'error': '关闭旧刷新策略失败'}), 500
+        updated.append('旧刷新策略已关闭')
+
     forwarding_keys = {'forward_channels', 'forward_keywords', 'feishu_clear_sign_secret'} | {
         key for mapping in forwarding_store.LEGACY_FIELDS.values() for key in mapping.values()
     }
     if forwarding_keys.intersection(data):
         sync_legacy_forwarding()
+
+    if {
+        'refresh_interval_days', 'refresh_cron', 'use_cron_schedule',
+        'enable_scheduled_refresh', 'app_timezone',
+    }.intersection(data):
+        reload_token_refresh_job()
 
     if updated:
         return jsonify({'success': True, 'message': f'已更新：{", ".join(updated)}'})
@@ -1403,6 +1482,7 @@ def api_external_get_emails():
         top,
         proxy_url,
         fallback_proxy_urls,
+        account=account,
     )
     if graph_result.get('success'):
         emails = graph_result.get('emails', [])
@@ -1422,7 +1502,8 @@ def api_external_get_emails():
     # 2. 尝试新版 IMAP
     imap_new_result = get_emails_imap_with_server(
         account['email'], account['client_id'], account['refresh_token'],
-        folder, skip, top, IMAP_SERVER_NEW, proxy_url, fallback_proxy_urls
+        folder, skip, top, IMAP_SERVER_NEW, proxy_url, fallback_proxy_urls,
+        account_record=account,
     )
     if imap_new_result.get('success'):
         return jsonify({
@@ -1437,7 +1518,8 @@ def api_external_get_emails():
     # 3. 尝试旧版 IMAP
     imap_old_result = get_emails_imap_with_server(
         account['email'], account['client_id'], account['refresh_token'],
-        folder, skip, top, IMAP_SERVER_OLD, proxy_url, fallback_proxy_urls
+        folder, skip, top, IMAP_SERVER_OLD, proxy_url, fallback_proxy_urls,
+        account_record=account,
     )
     if imap_old_result.get('success'):
         return jsonify({

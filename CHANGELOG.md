@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning (`MAJOR.MINOR.PATCH`).
 
+## [3.0.33] - 2026-11-22
+
+### Added
+- 新增独立 Token 刷新策略页面，支持按到期每日检查、旧周期全量刷新和停用三种模式；刷新策略从系统设置中分离。
+- 新模式关闭旧周期开关并永久退役旧策略；旧 Cron 和周期数值保留，但之后不能重新选择或启用旧模式。
+
+### Changed
+- 定时刷新每日筛选预计到期时间进入窗口的 Outlook 账号，默认提前 7 天检查；微软未返回不同的新 Refresh Token 时保留原令牌和到期锚点，次日继续尝试。
+- Graph 或 IMAP 取信时若微软返回不同的新 Refresh Token，会立即写回账号并更新预计到期时间。
+- 旧周期全量刷新仍可能错过微软返回新令牌的窗口；未配置新模式的存量实例按原定时开关默认到期模式或停用，不覆盖旧 Cron/周期数值。
+
+### Important
+- Microsoft 不保证每次刷新都返回新的 Refresh Token，应用也不能强制微软轮换。新版通过每日重复检查到期窗口、未轮换次日重试，以及在取信时保存轮换结果，增加及时获取并保存新令牌的机会，降低批量账号继续使用旧令牌而失效的风险。
+- 保存到期或停用模式后，旧策略永久退役；存量旧定时刷新开关已经关闭的实例也不能重新启用旧模式。到期刷新设置使用现有设置表，无需额外 SQL 脚本。
+
 ## [Unreleased]
 
 ## [3.0.32] - 2026-11-17

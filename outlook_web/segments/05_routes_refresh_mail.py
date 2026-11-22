@@ -2,6 +2,7 @@ from __future__ import annotations
 from outlook_web.icloud_mail import belongs_to, recipient_addresses
 
 from concurrent.futures import ThreadPoolExecutor, wait
+from datetime import datetime, timedelta, timezone
 import secrets
 import threading
 import time
@@ -23,6 +24,9 @@ TOKEN_REFRESH_STOPPED_MESSAGE = '已手动停止全量刷新任务'
 SELECTED_REFRESH_TASK_TTL_SECONDS = 300
 LOG_PAGINATION_DEFAULT_LIMIT = 100
 LOG_PAGINATION_MAX_LIMIT = 1000
+DEFAULT_REFRESH_TOKEN_LIFETIME_DAYS = 90
+DEFAULT_REFRESH_TOKEN_EXPIRY_WINDOW_DAYS = 7
+OUTLOOK_REFRESH_TIMEZONE = timezone(timedelta(hours=8))
 token_refresh_stop_event = threading.Event()
 selected_refresh_tasks: Dict[str, Dict[str, Any]] = {}
 selected_refresh_tasks_lock = threading.Lock()
@@ -573,10 +577,169 @@ def build_refresh_success_message(token_rotated: Optional[bool]) -> str:
     return '刷新成功（轮换结果未记录）'
 
 
+def normalize_refresh_token_days(value: Any, default: int, maximum: int = 3650) -> int:
+    try:
+        days = int(value)
+    except (TypeError, ValueError):
+        days = default
+    return max(1, min(maximum, days))
+
+
+def parse_refresh_token_datetime(value: Any) -> Optional[datetime]:
+    text = str(value or '').strip()
+    if not text:
+        return None
+    if text.endswith('Z'):
+        text = f'{text[:-1]}+00:00'
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(OUTLOOK_REFRESH_TIMEZONE)
+
+
+def format_refresh_token_datetime(value: datetime) -> str:
+    return value.astimezone(OUTLOOK_REFRESH_TIMEZONE).isoformat(timespec='seconds')
+
+
+def get_refresh_token_default_lifetime_days(db_conn=None) -> int:
+    if db_conn is None:
+        value = get_setting('refresh_token_default_lifetime_days', str(DEFAULT_REFRESH_TOKEN_LIFETIME_DAYS))
+    else:
+        row = db_conn.execute(
+            "SELECT value FROM settings WHERE key = 'refresh_token_default_lifetime_days'"
+        ).fetchone()
+        value = row['value'] if row else DEFAULT_REFRESH_TOKEN_LIFETIME_DAYS
+    return normalize_refresh_token_days(value, DEFAULT_REFRESH_TOKEN_LIFETIME_DAYS)
+
+
+def get_refresh_token_expiry_window_days(db_conn=None) -> int:
+    if db_conn is None:
+        value = get_setting('refresh_token_expires_within_days', str(DEFAULT_REFRESH_TOKEN_EXPIRY_WINDOW_DAYS))
+    else:
+        row = db_conn.execute(
+            "SELECT value FROM settings WHERE key = 'refresh_token_expires_within_days'"
+        ).fetchone()
+        value = row['value'] if row else DEFAULT_REFRESH_TOKEN_EXPIRY_WINDOW_DAYS
+    return normalize_refresh_token_days(value, DEFAULT_REFRESH_TOKEN_EXPIRY_WINDOW_DAYS)
+
+
+def get_refresh_token_include_missing_anchor(db_conn=None) -> bool:
+    if db_conn is None:
+        value = get_setting('refresh_token_include_missing_anchor', 'true')
+    else:
+        row = db_conn.execute(
+            "SELECT value FROM settings WHERE key = 'refresh_token_include_missing_anchor'"
+        ).fetchone()
+        value = row['value'] if row else 'true'
+    return str(value or '').strip().lower() not in {'false', '0', 'no', 'off'}
+
+
+def build_refresh_token_expiry(
+    *,
+    refresh_token_expires_in: Any = None,
+    default_lifetime_days: Optional[int] = None,
+    now: Optional[datetime] = None,
+) -> str:
+    try:
+        lifetime_seconds = int(refresh_token_expires_in or 0)
+    except (TypeError, ValueError):
+        lifetime_seconds = 0
+    lifetime = (
+        normalize_refresh_token_days(default_lifetime_days, DEFAULT_REFRESH_TOKEN_LIFETIME_DAYS)
+        if default_lifetime_days is not None
+        else DEFAULT_REFRESH_TOKEN_LIFETIME_DAYS
+    )
+    now_dt = (now or datetime.now(OUTLOOK_REFRESH_TIMEZONE)).astimezone(OUTLOOK_REFRESH_TIMEZONE)
+    expiry_dt = now_dt + (
+        timedelta(seconds=lifetime_seconds)
+        if lifetime_seconds > 0
+        else timedelta(days=lifetime)
+    )
+    return format_refresh_token_datetime(expiry_dt)
+
+
+def get_refresh_token_rotation_warning(
+    refresh_token_expires_at: Any,
+    *,
+    now: Optional[datetime] = None,
+    warning_window_days: Optional[int] = None,
+) -> str:
+    expires_at = parse_refresh_token_datetime(refresh_token_expires_at)
+    if expires_at is None:
+        return 'RT 未轮换，到期时间未知，请检查或重新授权'
+    remaining = expires_at - (now or datetime.now(OUTLOOK_REFRESH_TIMEZONE)).astimezone(
+        OUTLOOK_REFRESH_TIMEZONE
+    )
+    if remaining.total_seconds() <= 0:
+        return 'RT 未轮换且已达到预计到期时间，请重新授权'
+    warning_days = normalize_refresh_token_days(
+        warning_window_days or DEFAULT_REFRESH_TOKEN_EXPIRY_WINDOW_DAYS,
+        DEFAULT_REFRESH_TOKEN_EXPIRY_WINDOW_DAYS,
+    )
+    if remaining <= timedelta(days=warning_days):
+        days = max(1, int((remaining.total_seconds() + 86399) // 86400))
+        return f'RT 未轮换，距预计到期不足或等于 {days} 天，请重新授权'
+    return ''
+
+
+def backfill_refresh_token_expiry_anchors(
+    db_conn,
+    *,
+    default_lifetime_days: Optional[int] = None,
+) -> Dict[str, int]:
+    """从可信 RT 更新时间或轮换日志补算旧账号到期锚点，不推测未知账号。"""
+    lifetime_days = normalize_refresh_token_days(
+        default_lifetime_days or get_refresh_token_default_lifetime_days(db_conn),
+        DEFAULT_REFRESH_TOKEN_LIFETIME_DAYS,
+    )
+    stats = {'backfilled': 0, 'unknown': 0}
+    rows = db_conn.execute(
+        '''
+        SELECT a.id, a.refresh_token_updated_at, a.refresh_token_expires_at,
+               (SELECT MAX(l.created_at)
+                FROM account_refresh_logs l
+                WHERE l.account_id = a.id AND l.token_rotated = 1) AS last_rotated_at
+        FROM accounts a
+        WHERE COALESCE(a.account_type, 'outlook') = 'outlook'
+          AND COALESCE(TRIM(a.refresh_token), '') <> ''
+          AND COALESCE(TRIM(a.refresh_token_expires_at), '') = ''
+        '''
+    ).fetchall()
+    for row in rows:
+        issue_at = parse_refresh_token_datetime(row['refresh_token_updated_at'])
+        if issue_at is None:
+            issue_at = parse_refresh_token_datetime(row['last_rotated_at'])
+        if issue_at is None:
+            active_outlook = db_conn.execute(
+                '''
+                SELECT 1 FROM accounts
+                WHERE id = ? AND status = 'active'
+                  AND COALESCE(account_type, 'outlook') = 'outlook'
+                  AND COALESCE(TRIM(client_id), '') <> ''
+                ''',
+                (row['id'],),
+            ).fetchone()
+            stats['unknown'] += int(active_outlook is not None)
+            continue
+        expires_at = format_refresh_token_datetime(issue_at + timedelta(days=lifetime_days))
+        cursor = db_conn.execute(
+            '''
+            UPDATE accounts SET refresh_token_expires_at = ?
+            WHERE id = ? AND COALESCE(TRIM(refresh_token_expires_at), '') = ''
+            ''',
+            (expires_at, row['id']),
+        )
+        stats['backfilled'] += int(cursor.rowcount == 1)
+    return stats
+
+
 def get_account_refresh_timestamps(account_id: int, db_conn=None) -> Dict[str, Any]:
     db = db_conn or get_db()
     row = db.execute(
-        'SELECT last_refresh_at, last_refresh_success_at, refresh_token_updated_at '
+        'SELECT last_refresh_at, last_refresh_success_at, refresh_token_updated_at, refresh_token_expires_at '
         'FROM accounts WHERE id = ?', (account_id,),
     ).fetchone()
     return dict(row) if row is not None else {}
@@ -621,7 +784,7 @@ def log_refresh_result(account_id: int, account_email: str, refresh_type: str, s
             db.commit()
         return True
     except Exception as e:
-        if should_commit:
+        if should_commit or started_transaction:
             try:
                 db.rollback()
             except Exception:
@@ -630,28 +793,73 @@ def log_refresh_result(account_id: int, account_email: str, refresh_type: str, s
         return False
 
 
-def persist_rotated_refresh_token(account_id: int, refresh_token: str, db_conn=None) -> bool:
-    """保存微软返回的新 refresh_token。"""
+def persist_rotated_refresh_token(
+    account_id: int,
+    refresh_token: str,
+    db_conn=None,
+    *,
+    refresh_token_expires_in: Any = None,
+    default_lifetime_days: Optional[int] = None,
+    expected_refresh_token: Optional[str] = None,
+    now: Optional[datetime] = None,
+) -> bool:
+    """保存不同的新 RT 与到期锚点；可选使用旧 RT 条件写入防止并发覆盖。"""
     token_value = str(refresh_token or '').strip()
     if not token_value:
         return False
 
     db = db_conn or get_db()
     should_commit = db_conn is None
+    now_dt = (now or datetime.now(OUTLOOK_REFRESH_TIMEZONE)).astimezone(OUTLOOK_REFRESH_TIMEZONE)
+    updated_at = format_refresh_token_datetime(now_dt)
+    expiry_at = build_refresh_token_expiry(
+        refresh_token_expires_in=refresh_token_expires_in,
+        default_lifetime_days=(
+            default_lifetime_days
+            if default_lifetime_days is not None
+            else get_refresh_token_default_lifetime_days(db)
+        ),
+        now=now_dt,
+    )
+    started_transaction = False
     try:
+        if expected_refresh_token is not None:
+            expected = str(expected_refresh_token or '').strip()
+            if not getattr(db, 'in_transaction', False):
+                db.execute('BEGIN IMMEDIATE')
+                started_transaction = True
+            current_row = db.execute(
+                'SELECT refresh_token FROM accounts WHERE id = ?', (account_id,)
+            ).fetchone()
+            if not current_row:
+                if started_transaction:
+                    db.rollback()
+                return False
+            try:
+                current_token = decrypt_data(current_row['refresh_token'])
+            except Exception:
+                current_token = str(current_row['refresh_token'] or '')
+            if current_token == token_value:
+                if started_transaction and should_commit:
+                    db.commit()
+                return True
+            if current_token != expected:
+                if started_transaction:
+                    db.rollback()
+                return False
         cursor = db.execute(
             '''
             UPDATE accounts
-            SET refresh_token = ?, refresh_token_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            SET refresh_token = ?, refresh_token_updated_at = ?, refresh_token_expires_at = ?, updated_at = ?
             WHERE id = ?
             ''',
-            (encrypt_data(token_value), account_id)
+            (encrypt_data(token_value), updated_at, expiry_at, updated_at, account_id),
         )
         if should_commit:
             db.commit()
         return cursor.rowcount == 1
     except Exception as e:
-        if should_commit:
+        if should_commit or started_transaction:
             try:
                 db.rollback()
             except Exception:
@@ -666,6 +874,20 @@ def extract_token_response_error(response, fallback: str = '未知错误') -> st
     except Exception:
         return str(getattr(response, 'text', '') or getattr(response, 'reason', '') or fallback)
     return str(error_data.get('error_description', error_data.get('error', fallback)) or fallback)
+
+
+def extract_token_response_refresh_lifetime(response) -> Optional[int]:
+    try:
+        payload = response.json()
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        lifetime = int(payload.get('refresh_token_expires_in') or 0)
+    except (TypeError, ValueError):
+        return None
+    return lifetime if lifetime > 0 else None
 
 
 def log_forwarding_result(account_id: int, account_email: str, message_id: str, channel: str,
@@ -701,7 +923,7 @@ def log_forwarding_result(account_id: int, account_email: str, message_id: str, 
 def test_refresh_token(client_id: str, refresh_token: str, proxy_url: str = None,
                        fallback_proxy_urls: List[str] = None,
                        authorization_type: str = '') -> tuple:
-    """测试 refresh token，返回 (成功, 错误, 新 token, 实际通道)。"""
+    """测试 refresh token，返回成功、错误、新 RT、通道和 RT 有效秒数。"""
     preferred = normalize_outlook_authorization_type(authorization_type)
     channel_order = ('imap', 'graph') if preferred == 'imap' else ('graph', 'imap')
     errors = []
@@ -720,7 +942,10 @@ def test_refresh_token(client_id: str, refresh_token: str, proxy_url: str = None
                 errors.append(f'Graph 刷新请求异常: {str(exc)}')
                 continue
             if response.status_code == 200:
-                return True, None, extract_refresh_token_from_response(response), 'graph'
+                return (
+                    True, None, extract_refresh_token_from_response(response), 'graph',
+                    extract_token_response_refresh_lifetime(response),
+                )
             errors.append(f'Graph 刷新失败: {extract_token_response_error(response)}')
             continue
 
@@ -735,14 +960,37 @@ def test_refresh_token(client_id: str, refresh_token: str, proxy_url: str = None
             errors.append(f'IMAP 刷新请求异常: {str(exc)}')
             continue
         if response.status_code == 200:
-            return True, None, extract_refresh_token_from_response(response), 'imap'
+            return (
+                True, None, extract_refresh_token_from_response(response), 'imap',
+                extract_token_response_refresh_lifetime(response),
+            )
         errors.append(f'IMAP 刷新失败: {extract_token_response_error(response)}')
 
-    return False, '; '.join(errors) or 'Graph/IMAP 刷新失败', '', ''
+    return False, '; '.join(errors) or 'Graph/IMAP 刷新失败', '', '', None
 
 
 def refresh_outlook_account_token(account: sqlite3.Row, refresh_type: str = 'manual',
                                   db_conn=None) -> Dict[str, Any]:
+    account_id = account['id']
+    with get_outlook_account_token_lock(account_id):
+        db = db_conn or get_db()
+        latest = db.execute(
+            '''
+            SELECT id, email, client_id, refresh_token, group_id, status, account_type, provider,
+                   authorization_type, proxy_url, fallback_proxy_url_1, fallback_proxy_url_2,
+                   refresh_token_updated_at, refresh_token_expires_at
+            FROM accounts WHERE id = ?
+            ''',
+            (account_id,),
+        ).fetchone()
+        current_account = dict(account)
+        if latest:
+            current_account.update(dict(latest))
+        return _refresh_outlook_account_token_locked(current_account, refresh_type, db_conn=db_conn)
+
+
+def _refresh_outlook_account_token_locked(account: sqlite3.Row, refresh_type: str = 'manual',
+                                           db_conn=None) -> Dict[str, Any]:
     """刷新单个 Outlook 账号的 refresh token 并记录结果。"""
     account_id = account['id']
     account_email = account['email']
@@ -798,17 +1046,22 @@ def refresh_outlook_account_token(account: sqlite3.Row, refresh_type: str = 'man
         fallback_proxy_urls,
         authorization_type=get_account_authorization_type(account),
     )
-    try:
-        success, error_msg, rotated_refresh_token, actual_channel = refresh_result
-    except (TypeError, ValueError):
-        success, error_msg, rotated_refresh_token = refresh_result
-        actual_channel = ''
+    success, error_msg, rotated_refresh_token = refresh_result[:3]
+    actual_channel = refresh_result[3] if len(refresh_result) > 3 else ''
+    refresh_token_expires_in = refresh_result[4] if len(refresh_result) > 4 else None
     actual_channel = normalize_outlook_authorization_type(actual_channel)
     sanitized_error = sanitize_error_details(error_msg) if error_msg else ''
 
     token_rotated = False
     if success and rotated_refresh_token and rotated_refresh_token != refresh_token:
-        token_rotated = persist_rotated_refresh_token(account_id, rotated_refresh_token, db_conn)
+        token_rotated = persist_rotated_refresh_token(
+            account_id,
+            rotated_refresh_token,
+            db_conn,
+            refresh_token_expires_in=refresh_token_expires_in,
+            default_lifetime_days=get_refresh_token_default_lifetime_days(db_conn),
+            expected_refresh_token=refresh_token,
+        )
         if not token_rotated:
             success = False
             sanitized_error = '已获取新 Token，但保存失败，请重试'
@@ -829,12 +1082,17 @@ def refresh_outlook_account_token(account: sqlite3.Row, refresh_type: str = 'man
         token_rotated=token_rotated,
     )
     refresh_timestamps = get_account_refresh_timestamps(account_id, db_conn)
+    warning = '' if token_rotated else get_refresh_token_rotation_warning(
+        refresh_timestamps.get('refresh_token_expires_at'),
+        warning_window_days=get_refresh_token_expiry_window_days(db_conn),
+    )
 
     if success:
         return {
             'success': True,
             'message': build_refresh_success_message(token_rotated),
             'token_rotated': token_rotated,
+            'warning': warning,
             **refresh_timestamps,
             'authorization_type': actual_channel,
         }
@@ -842,6 +1100,7 @@ def refresh_outlook_account_token(account: sqlite3.Row, refresh_type: str = 'man
     return {
         'success': False,
         'token_rotated': token_rotated,
+        'warning': warning,
         **refresh_timestamps,
         'error_message': sanitized_error or '未知错误',
         'authorization_type': actual_channel,
@@ -886,9 +1145,11 @@ def api_refresh_account(account_id):
     payload = {
         'success': result['success'],
         'token_rotated': result.get('token_rotated'),
+        'warning': result.get('warning') or '',
         'last_refresh_at': result.get('last_refresh_at'),
         'last_refresh_success_at': result.get('last_refresh_success_at'),
         'refresh_token_updated_at': result.get('refresh_token_updated_at'),
+        'refresh_token_expires_at': result.get('refresh_token_expires_at'),
     }
     if result['success']:
         payload['message'] = result['message']
@@ -940,6 +1201,8 @@ def api_refresh_selected_accounts():
     unrotated_count = 0
     failed_count = 0
     skipped_count = 0
+    warning_count = 0
+    warnings = []
     failed_list = []
     skipped_list = []
 
@@ -969,6 +1232,10 @@ def api_refresh_selected_accounts():
                 rotated_count += 1
             elif result.get('token_rotated') is False:
                 unrotated_count += 1
+            if result.get('warning'):
+                warning_count += 1
+                if len(warnings) < 50:
+                    warnings.append({'email': account['email'], 'warning': result['warning']})
             continue
 
         failed_count += 1
@@ -996,6 +1263,8 @@ def api_refresh_selected_accounts():
         'unrotated_count': unrotated_count,
         'failed_count': failed_count,
         'skipped_count': skipped_count,
+        'warning_count': warning_count,
+        'warnings': warnings,
         'failed_list': failed_list,
         'skipped_list': skipped_list,
     })
@@ -1013,6 +1282,42 @@ def load_active_outlook_accounts_for_refresh(db_conn) -> List[sqlite3.Row]:
         '''
     )
     return cursor.fetchall()
+
+
+def load_due_outlook_accounts_for_refresh(
+    db_conn,
+    *,
+    now: Optional[datetime] = None,
+) -> tuple[List[sqlite3.Row], int]:
+    backfill_refresh_token_expiry_anchors(db_conn)
+    window_days = get_refresh_token_expiry_window_days(db_conn)
+    include_missing = get_refresh_token_include_missing_anchor(db_conn)
+    threshold = format_refresh_token_datetime(
+        (now or datetime.now(OUTLOOK_REFRESH_TIMEZONE)).astimezone(OUTLOOK_REFRESH_TIMEZONE)
+        + timedelta(days=window_days)
+    )
+    due_sql = (
+        "(COALESCE(TRIM(refresh_token_expires_at), '') = '' OR refresh_token_expires_at <= ?)"
+        if include_missing
+        else "(COALESCE(TRIM(refresh_token_expires_at), '') <> '' AND refresh_token_expires_at <= ?)"
+    )
+    rows = db_conn.execute(
+        f'''
+        SELECT id, email, client_id, refresh_token, group_id, status, account_type, provider,
+               authorization_type, proxy_url, fallback_proxy_url_1, fallback_proxy_url_2,
+               refresh_token_updated_at, refresh_token_expires_at
+        FROM accounts
+        WHERE status = 'active'
+          AND COALESCE(account_type, 'outlook') = 'outlook'
+          AND COALESCE(TRIM(client_id), '') <> ''
+          AND COALESCE(TRIM(refresh_token), '') <> ''
+          AND {due_sql}
+        ORDER BY email COLLATE NOCASE ASC
+        ''',
+        (threshold,),
+    ).fetchall()
+    unknown_count = sum(1 for row in rows if not str(row['refresh_token_expires_at'] or '').strip())
+    return rows, unknown_count
 
 
 def load_selected_outlook_accounts_for_refresh(db_conn, account_ids: List[int]) -> List[sqlite3.Row]:
@@ -1076,13 +1381,16 @@ def build_refresh_account_result_event(account, result: Dict[str, Any], current:
         'last_refresh_at': result.get('last_refresh_at'),
         'last_refresh_success_at': result.get('last_refresh_success_at'),
         'refresh_token_updated_at': result.get('refresh_token_updated_at'),
+        'refresh_token_expires_at': result.get('refresh_token_expires_at'),
+        'warning': result.get('warning') or '',
         'success_count': success_count,
         'failed_count': failed_count,
     }
 
 
 def run_full_refresh(snapshot_trigger_type: str, log_refresh_type: str,
-                     progress_callback=None, db_conn=None) -> Dict[str, Any]:
+                     progress_callback=None, db_conn=None, *,
+                     due_only: bool = False) -> Dict[str, Any]:
     lock_acquired = False
     owns_connection = db_conn is None
     conn = db_conn or sqlite3.connect(DATABASE)
@@ -1094,6 +1402,9 @@ def run_full_refresh(snapshot_trigger_type: str, log_refresh_type: str,
     success_count = 0
     failed_count = 0
     failed_list: List[Dict[str, Any]] = []
+    unknown_anchor_count = 0
+    warning_count = 0
+    warnings: List[Dict[str, str]] = []
     current_account = None
     current_account_counted = False
 
@@ -1104,7 +1415,10 @@ def run_full_refresh(snapshot_trigger_type: str, log_refresh_type: str,
         cleanup_refresh_logs(conn)
         conn.commit()
 
-        accounts = load_active_outlook_accounts_for_refresh(conn)
+        if due_only:
+            accounts, unknown_anchor_count = load_due_outlook_accounts_for_refresh(conn)
+        else:
+            accounts = load_active_outlook_accounts_for_refresh(conn)
         delay_seconds = get_refresh_delay_seconds(conn)
         total = len(accounts)
 
@@ -1117,6 +1431,8 @@ def run_full_refresh(snapshot_trigger_type: str, log_refresh_type: str,
                 'total': total,
                 'delay_seconds': delay_seconds,
                 'refresh_type': snapshot_trigger_type,
+                'due_only': due_only,
+                'unknown_anchor_count': unknown_anchor_count,
             })
 
         for index, account in enumerate(accounts, 1):
@@ -1159,6 +1475,10 @@ def run_full_refresh(snapshot_trigger_type: str, log_refresh_type: str,
                     'email': account['email'],
                     'error': result.get('error_message') or '未知错误',
                 })
+            if result.get('warning'):
+                warning_count += 1
+                if len(warnings) < 50:
+                    warnings.append({'email': account['email'], 'warning': result['warning']})
             current_account_counted = True
             if progress_callback:
                 progress_callback(build_refresh_account_result_event(
@@ -1216,6 +1536,10 @@ def run_full_refresh(snapshot_trigger_type: str, log_refresh_type: str,
             'failed_list': failed_list,
             'delay_seconds': delay_seconds,
             'refresh_type': snapshot_trigger_type,
+            'due_only': due_only,
+            'unknown_anchor_count': unknown_anchor_count,
+            'warning_count': warning_count,
+            'warnings': warnings,
         }
         if progress_callback:
             progress_callback(result_payload)
@@ -1245,7 +1569,7 @@ def run_full_refresh(snapshot_trigger_type: str, log_refresh_type: str,
         release_token_refresh_run_lock(lock_acquired)
 
 
-def stream_full_refresh_events(snapshot_trigger_type: str, log_refresh_type: str):
+def stream_full_refresh_events(snapshot_trigger_type: str, log_refresh_type: str, *, due_only: bool = False):
     import json
 
     conn = None
@@ -1256,6 +1580,9 @@ def stream_full_refresh_events(snapshot_trigger_type: str, log_refresh_type: str
     success_count = 0
     failed_count = 0
     failed_list: List[Dict[str, Any]] = []
+    unknown_anchor_count = 0
+    warning_count = 0
+    warnings: List[Dict[str, str]] = []
     current_account = None
     current_account_counted = False
 
@@ -1270,13 +1597,16 @@ def stream_full_refresh_events(snapshot_trigger_type: str, log_refresh_type: str
         cleanup_refresh_logs(conn)
         conn.commit()
 
-        accounts = load_active_outlook_accounts_for_refresh(conn)
+        if due_only:
+            accounts, unknown_anchor_count = load_due_outlook_accounts_for_refresh(conn)
+        else:
+            accounts = load_active_outlook_accounts_for_refresh(conn)
         delay_seconds = get_refresh_delay_seconds(conn)
         total = len(accounts)
 
         mark_token_refresh_snapshot_running(snapshot_trigger_type, total, conn)
         conn.commit()
-        yield f"data: {json.dumps({'type': 'start', 'total': total, 'delay_seconds': delay_seconds, 'refresh_type': snapshot_trigger_type})}\n\n"
+        yield f"data: {json.dumps({'type': 'start', 'total': total, 'delay_seconds': delay_seconds, 'refresh_type': snapshot_trigger_type, 'due_only': due_only, 'unknown_anchor_count': unknown_anchor_count})}\n\n"
 
         for index, account in enumerate(accounts, 1):
             if is_token_refresh_stop_requested():
@@ -1308,6 +1638,10 @@ def stream_full_refresh_events(snapshot_trigger_type: str, log_refresh_type: str
                     'email': account['email'],
                     'error': result.get('error_message') or '未知错误',
                 })
+            if result.get('warning'):
+                warning_count += 1
+                if len(warnings) < 50:
+                    warnings.append({'email': account['email'], 'warning': result['warning']})
             current_account_counted = True
             event = build_refresh_account_result_event(account, result, index, total, success_count, failed_count)
             yield f"data: {json.dumps(event)}\n\n"
@@ -1351,7 +1685,7 @@ def stream_full_refresh_events(snapshot_trigger_type: str, log_refresh_type: str
             conn
         )
         conn.commit()
-        yield f"data: {json.dumps({'type': 'complete', 'total': total, 'success_count': success_count, 'failed_count': failed_count, 'failed_list': failed_list, 'delay_seconds': delay_seconds, 'refresh_type': snapshot_trigger_type})}\n\n"
+        yield f"data: {json.dumps({'type': 'complete', 'total': total, 'success_count': success_count, 'failed_count': failed_count, 'failed_list': failed_list, 'delay_seconds': delay_seconds, 'refresh_type': snapshot_trigger_type, 'due_only': due_only, 'unknown_anchor_count': unknown_anchor_count, 'warning_count': warning_count, 'warnings': warnings})}\n\n"
     except TokenRefreshInProgressError as exc:
         yield f"data: {json.dumps({'type': 'conflict', 'message': str(exc), 'refresh_type': snapshot_trigger_type})}\n\n"
     except Exception as exc:
@@ -1753,31 +2087,15 @@ def api_refresh_failed_accounts():
 def api_trigger_scheduled_refresh():
     """手动触发定时刷新（支持强制刷新）"""
     import json
-    from datetime import datetime, timedelta
 
     force = request.args.get('force', 'false').lower() == 'true'
 
-    # 获取配置
-    refresh_interval_days = int(get_setting('refresh_interval_days', '30'))
-
-    last_refresh = build_refresh_stats(get_db()).get('last_refresh_time')
-
-    # 判断是否需要刷新（force=true 时跳过检查）
-    if not force and last_refresh:
-        last_refresh_time = datetime.fromisoformat(last_refresh)
-        next_refresh_time = last_refresh_time + timedelta(days=refresh_interval_days)
-        if datetime.now() < next_refresh_time:
-            return jsonify({
-                'success': False,
-                'message': f'距离上次刷新未满 {refresh_interval_days} 天，下次刷新时间：{next_refresh_time.strftime("%Y-%m-%d %H:%M:%S")}',
-                'last_refresh': last_refresh,
-                'next_refresh': next_refresh_time.isoformat()
-            })
-
-    # 执行刷新（使用流式响应）
     snapshot_type = 'manual_all' if force else 'scheduled'
     log_type = 'manual' if force else 'scheduled'
-    return Response(stream_full_refresh_events(snapshot_type, log_type), mimetype='text/event-stream')
+    return Response(
+        stream_full_refresh_events(snapshot_type, log_type, due_only=not force),
+        mimetype='text/event-stream',
+    )
 
 
 @app.route('/api/accounts/stop-full-refresh', methods=['POST'])
@@ -1802,7 +2120,7 @@ def api_stop_full_refresh():
 def serialize_refresh_log_row(row):
     account_email = row['current_account_email'] or row['log_account_email']
     token_rotated = bool(row['token_rotated']) if row['token_rotated'] is not None else None
-    return {
+    payload = {
         'id': row['id'],
         'account_id': row['account_id'],
         'account_email': account_email,
@@ -1814,6 +2132,16 @@ def serialize_refresh_log_row(row):
         'error_message': row['error_message'],
         'created_at': row['created_at']
     }
+    if 'refresh_token_expires_at' in row.keys():
+        payload['refresh_token_expires_at'] = row['refresh_token_expires_at']
+        payload['refresh_token_warning'] = (
+            get_refresh_token_rotation_warning(
+                row['refresh_token_expires_at'],
+                warning_window_days=get_refresh_token_expiry_window_days(),
+            )
+            if row['has_refresh_token'] else ''
+        )
+    return payload
 
 
 @app.route('/api/accounts/refresh-logs', methods=['GET'])
@@ -1836,7 +2164,9 @@ def api_get_refresh_logs():
             l.status,
             l.token_rotated,
             l.error_message,
-            l.created_at
+            l.created_at,
+            a.refresh_token_expires_at,
+            CASE WHEN COALESCE(TRIM(a.refresh_token), '') <> '' THEN 1 ELSE 0 END AS has_refresh_token
         FROM account_refresh_logs l
         LEFT JOIN accounts a ON l.account_id = a.id
         WHERE l.refresh_type IN ('manual', 'scheduled')
@@ -1873,7 +2203,9 @@ def api_get_account_refresh_logs(account_id):
             l.status,
             l.token_rotated,
             l.error_message,
-            l.created_at
+            l.created_at,
+            a.refresh_token_expires_at,
+            CASE WHEN COALESCE(TRIM(a.refresh_token), '') <> '' THEN 1 ELSE 0 END AS has_refresh_token
         FROM account_refresh_logs l
         LEFT JOIN accounts a ON l.account_id = a.id
         WHERE l.account_id = ?
@@ -2107,11 +2439,13 @@ def is_graph_delete_reauthorization_error(status_code: Any, error_body: Any) -> 
 
 
 def delete_emails_graph(client_id: str, refresh_token: str, message_ids: List[str], proxy_url: str = None,
-                        fallback_proxy_urls: List[str] = None) -> Dict[str, Any]:
+                        fallback_proxy_urls: List[str] = None,
+                        account: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """通过 Graph API 批量删除邮件（永久删除）"""
     access_token = get_access_token_graph(
         client_id, refresh_token, proxy_url, fallback_proxy_urls,
         required_scope='https://graph.microsoft.com/Mail.ReadWrite',
+        account=account,
     )
     if not access_token:
         return {
@@ -2497,6 +2831,7 @@ def mark_graph_items_read(account: Dict[str, Any], items: List[Dict[str, str]],
         [item['id'] for item in items],
         proxy_url,
         fallback_proxy_urls,
+        account=account,
     )
     mark_retained_normal_mail_rows_read(account, items, result, fallback_id_mode='graph')
     return result
@@ -2507,11 +2842,13 @@ def mark_oauth_imap_items_read(account: Dict[str, Any], items: List[Dict[str, st
     result = mark_emails_read_imap_batch(
         account['email'], account['client_id'], account['refresh_token'],
         items, IMAP_SERVER_NEW, proxy_url, fallback_proxy_urls,
+        account_record=account,
     )
     if not result.get('success') and result.get('success_count', 0) == 0:
         result = mark_emails_read_imap_batch(
             account['email'], account['client_id'], account['refresh_token'],
             items, IMAP_SERVER_OLD, proxy_url, fallback_proxy_urls,
+            account_record=account,
         )
     mark_retained_normal_mail_rows_read(account, items, result, fallback_id_mode='uid')
     return result
@@ -2545,6 +2882,7 @@ def delete_graph_items(account: Dict[str, Any], items: List[Dict[str, str]],
         [item['id'] for item in items],
         proxy_url,
         fallback_proxy_urls,
+        account=account,
     )
     delete_retained_normal_mail_rows(
         account,
@@ -3106,7 +3444,8 @@ def fetch_graph_detail_response(account: Dict[str, Any], folder: str,
                                 message_id: str, method: str, id_mode: str,
                                 proxy_url: str, fallback_proxy_urls: List[str]) -> Dict[str, Any]:
     detail_result = get_email_detail_graph_result(
-        account['client_id'], account['refresh_token'], message_id, proxy_url, fallback_proxy_urls
+        account['client_id'], account['refresh_token'], message_id, proxy_url, fallback_proxy_urls,
+        account=account,
     )
     if not detail_result.get('success'):
         return {
@@ -3126,7 +3465,8 @@ def fetch_graph_detail_response(account: Dict[str, Any], folder: str,
     attachments = []
     if detail.get('hasAttachments'):
         attachments = get_email_attachments_graph(
-            account['client_id'], account['refresh_token'], message_id, proxy_url, fallback_proxy_urls
+            account['client_id'], account['refresh_token'], message_id, proxy_url, fallback_proxy_urls,
+            account=account,
         ) or []
     email_detail = format_graph_email_detail(detail, attachments)
     return build_retained_detail_success_response(
@@ -3150,6 +3490,7 @@ def fetch_oauth_imap_detail_response(account: Dict[str, Any], folder: str,
         fallback_proxy_urls,
         preferred_id_mode,
         strict_id_mode,
+        account_record=account,
     )
     if not detail_result.get('success'):
         return {
@@ -3818,6 +4159,7 @@ def fetch_account_folder_emails(account: Dict[str, Any], folder: str, skip: int,
             top,
             proxy_url,
             fallback_proxy_urls,
+            account=account,
         )
         if graph_result.get('success'):
             record_outlook_mail_channel(account, 'graph')
@@ -3856,6 +4198,7 @@ def fetch_account_folder_emails(account: Dict[str, Any], folder: str, skip: int,
                 server,
                 proxy_url,
                 fallback_proxy_urls,
+                account_record=account,
             )
             if imap_result.get('success'):
                 record_outlook_mail_channel(account, 'imap')
@@ -4086,6 +4429,7 @@ def api_send_outlook_graph_mail():
         data.get('body'),
         proxy_url=get_account_proxy_url(account),
         fallback_proxy_urls=get_account_proxy_failover_urls(account),
+        account=account,
     )
     if result.get('success'):
         return jsonify(result), 202
@@ -4240,6 +4584,7 @@ def api_get_raw_email(email_addr, message_id):
             message_id,
             proxy_url,
             fallback_proxy_urls,
+            account=account,
         )
         if raw_content is None:
             raw_content = get_raw_email_imap(
@@ -4250,6 +4595,7 @@ def api_get_raw_email(email_addr, message_id):
                 folder,
                 proxy_url,
                 fallback_proxy_urls,
+                account_record=account,
             )
     else:
         raw_content = get_raw_email_imap(
@@ -4260,6 +4606,7 @@ def api_get_raw_email(email_addr, message_id):
             folder,
             proxy_url,
             fallback_proxy_urls,
+            account_record=account,
         )
 
     if raw_content is None:
@@ -4432,6 +4779,7 @@ def download_email_attachment_for_account(account, method, message_id, attachmen
             attachment_id,
             proxy_url,
             fallback_proxy_urls,
+            account=account,
         )
 
     return download_email_attachment_imap_result(
@@ -4444,6 +4792,7 @@ def download_email_attachment_for_account(account, method, message_id, attachmen
         proxy_url,
         fallback_proxy_urls,
         id_mode,
+        account_record=account,
     )
 
 

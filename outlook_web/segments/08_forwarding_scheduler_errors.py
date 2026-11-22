@@ -1509,6 +1509,142 @@ def build_forwarding_poll_trigger(interval_trigger_cls, interval_seconds: Any, t
     return interval_trigger_cls(seconds=normalized_interval, timezone=timezone)
 
 
+REFRESH_STRATEGY_MODES = ('expiry', 'legacy', 'disabled')
+REFRESH_LEGACY_RETIRED_SETTING = 'refresh_legacy_strategy_retired'
+
+
+def is_legacy_refresh_strategy_available():
+    retired = get_setting(REFRESH_LEGACY_RETIRED_SETTING, 'false').lower() == 'true'
+    legacy_enabled = get_setting('enable_scheduled_refresh', 'true').lower() == 'true'
+    return not retired and legacy_enabled
+
+
+def enforce_legacy_refresh_retirement():
+    """Make an already selected new/disabled strategy permanently retire legacy refresh."""
+    mode = str(get_setting('refresh_strategy_mode', '') or '').strip().lower()
+    legacy_enabled = get_setting('enable_scheduled_refresh', 'true').lower() == 'true'
+    retired = get_setting(REFRESH_LEGACY_RETIRED_SETTING, 'false').lower() == 'true'
+    if not (retired or mode in ('expiry', 'disabled') or not legacy_enabled):
+        return False
+
+    db = get_db()
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        for key, value in (
+            ('enable_scheduled_refresh', 'false'),
+            (REFRESH_LEGACY_RETIRED_SETTING, 'true'),
+        ):
+            db.execute(
+                'INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+                (key, value),
+            )
+        if mode == 'legacy':
+            db.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('refresh_strategy_mode', 'disabled', CURRENT_TIMESTAMP)"
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return True
+
+
+def get_refresh_strategy_mode():
+    """读取新刷新模式；未配置时保留存量的启停状态并默认使用到期筛选。"""
+    mode = str(get_setting('refresh_strategy_mode', '') or '').strip().lower()
+    if mode in REFRESH_STRATEGY_MODES:
+        if mode == 'legacy' and not is_legacy_refresh_strategy_available():
+            return 'disabled'
+        return mode
+    scheduled_enabled = get_setting('enable_scheduled_refresh', 'true').lower() == 'true'
+    return 'expiry' if scheduled_enabled else 'disabled'
+
+
+def register_token_refresh_job(scheduler, CronTrigger, app_tzinfo):
+    """按唯一生效模式注册 Token 定时任务。"""
+    mode = get_refresh_strategy_mode()
+    if mode == 'disabled':
+        safe_console_print("✓ Token 定时刷新已停用")
+        return False
+
+    if mode == 'legacy':
+        if not is_legacy_refresh_strategy_available():
+            safe_console_print("✓ 旧版 Token 刷新策略已关闭且不可重新启用")
+            return False
+
+        use_cron = get_setting('use_cron_schedule', 'false').lower() == 'true'
+        if use_cron:
+            cron_expr = get_setting('refresh_cron', '0 2 * * *')
+            try:
+                from croniter import croniter
+                from datetime import datetime
+                croniter(cron_expr, datetime.now(app_tzinfo))
+                parts = cron_expr.split()
+                if len(parts) == 5:
+                    minute, hour, day, month, day_of_week = parts
+                    trigger = CronTrigger(
+                        minute=minute,
+                        hour=hour,
+                        day=day,
+                        month=month,
+                        day_of_week=day_of_week,
+                        timezone=app_tzinfo,
+                    )
+                    scheduler.add_job(
+                        func=scheduled_refresh_task,
+                        trigger=trigger,
+                        id='token_refresh',
+                        name='Token 定时刷新（旧周期）',
+                        replace_existing=True,
+                    )
+                    safe_console_print(f"✓ 旧版 Token 刷新任务已启动：Cron 表达式 '{cron_expr}'")
+                    return True
+                safe_console_print("⚠ 旧版 Cron 表达式格式错误，回退到每日检查")
+            except Exception as e:
+                safe_console_print(f"⚠ 旧版 Cron 表达式解析失败: {str(e)}，回退到每日检查")
+
+        scheduler.add_job(
+            func=scheduled_refresh_task,
+            trigger=CronTrigger(hour=2, minute=0, timezone=app_tzinfo),
+            id='token_refresh',
+            name='Token 定时刷新（旧周期）',
+            replace_existing=True,
+        )
+        safe_console_print(
+            f"✓ 旧版 Token 刷新任务已启动：每日检查（全量周期：{get_setting('refresh_interval_days', '30')} 天）"
+        )
+        return True
+
+    scheduler.add_job(
+        func=scheduled_refresh_task,
+        trigger=CronTrigger(hour=2, minute=0, timezone=app_tzinfo),
+        id='token_refresh',
+        name='Token 到期检查',
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    safe_console_print("✓ Token 到期检查已启动：每天凌晨 2:00 扫描到期窗口")
+    return True
+
+
+def reload_token_refresh_job():
+    """仅重载 Token 刷新 job，保留转发、备份和 iCloud 等其他任务。"""
+    scheduler = scheduler_instance
+    if scheduler is None:
+        return ensure_scheduler_started()
+
+    try:
+        from apscheduler.triggers.cron import CronTrigger
+        with app.app_context():
+            if scheduler.get_job('token_refresh') is not None:
+                scheduler.remove_job('token_refresh')
+            return register_token_refresh_job(scheduler, CronTrigger, get_app_timezone_info())
+    except Exception as e:
+        safe_console_print(f"⚠ Token 刷新任务更新失败：{str(e)}")
+        return False
+
+
 def init_scheduler():
     """初始化定时任务调度器"""
     global scheduler_instance
@@ -1524,74 +1660,24 @@ def init_scheduler():
             import atexit
 
             with app.app_context():
+                enforce_legacy_refresh_retirement()
                 app_timezone = get_app_timezone()
                 app_tzinfo = get_app_timezone_info()
                 scheduler = BackgroundScheduler(timezone=app_tzinfo)
-                enable_scheduled = get_setting('enable_scheduled_refresh', 'true').lower() == 'true'
                 jobs_added = False
+                jobs_added = register_token_refresh_job(scheduler, CronTrigger, app_tzinfo) or jobs_added
 
-                if enable_scheduled:
-                    use_cron = get_setting('use_cron_schedule', 'false').lower() == 'true'
-                    token_job_added = False
-
-                    if use_cron:
-                        cron_expr = get_setting('refresh_cron', '0 2 * * *')
-                        try:
-                            from croniter import croniter
-                            from datetime import datetime
-                            croniter(cron_expr, datetime.now(app_tzinfo))
-
-                            parts = cron_expr.split()
-                            if len(parts) == 5:
-                                minute, hour, day, month, day_of_week = parts
-                                trigger = CronTrigger(
-                                    minute=minute,
-                                    hour=hour,
-                                    day=day,
-                                    month=month,
-                                    day_of_week=day_of_week,
-                                    timezone=app_tzinfo
-                                )
-                                scheduler.add_job(
-                                    func=scheduled_refresh_task,
-                                    trigger=trigger,
-                                    id='token_refresh',
-                                    name='Token 定时刷新',
-                                    replace_existing=True
-                                )
-                                token_job_added = True
-                                jobs_added = True
-                                safe_console_print(f"✓ 定时刷新任务已启动：Cron 表达式 '{cron_expr}'")
-                            else:
-                                safe_console_print("⚠ Cron 表达式格式错误，回退到默认配置")
-                        except Exception as e:
-                            safe_console_print(f"⚠ Cron 表达式解析失败: {str(e)}，回退到默认配置")
-
-                    if not token_job_added:
-                        refresh_interval_days = int(get_setting('refresh_interval_days', '30'))
-                        scheduler.add_job(
-                            func=scheduled_refresh_task,
-                            trigger=CronTrigger(hour=2, minute=0, timezone=app_tzinfo),
-                            id='token_refresh',
-                            name='Token 定时刷新',
-                            replace_existing=True
-                        )
-                        jobs_added = True
-                        safe_console_print(f"✓ 定时刷新任务已启动：每天凌晨 2:00 检查刷新（周期：{refresh_interval_days} 天）")
-
-                    forward_interval_seconds = normalize_forward_check_interval_seconds()
-                    scheduler.add_job(
-                        func=process_forwarding_job,
-                        trigger=build_forwarding_poll_trigger(IntervalTrigger, forward_interval_seconds, app_tzinfo),
-                        id='forward_mail',
-                        name='邮件转发轮询',
-                        replace_existing=True,
-                        max_instances=1,
-                        coalesce=True
-                    )
-                    jobs_added = True
-                else:
-                    safe_console_print("✓ 定时刷新已禁用")
+                forward_interval_seconds = normalize_forward_check_interval_seconds()
+                scheduler.add_job(
+                    func=process_forwarding_job,
+                    trigger=build_forwarding_poll_trigger(IntervalTrigger, forward_interval_seconds, app_tzinfo),
+                    id='forward_mail',
+                    name='邮件转发轮询',
+                    replace_existing=True,
+                    max_instances=1,
+                    coalesce=True
+                )
+                jobs_added = True
 
                 jobs_added = add_webdav_backup_job(scheduler, CronTrigger, app_tzinfo) or jobs_added
 
@@ -1648,33 +1734,37 @@ def scheduled_refresh_task():
 
     try:
         with app.app_context():
-            enable_scheduled = get_setting('enable_scheduled_refresh', 'true').lower() == 'true'
-
-            if not enable_scheduled:
-                safe_console_print(f"[定时任务] 定时刷新已禁用，跳过执行")
+            mode = get_refresh_strategy_mode()
+            if mode == 'disabled':
+                safe_console_print("[定时任务] 自动刷新已停用，跳过执行")
                 return
 
-            use_cron = get_setting('use_cron_schedule', 'false').lower() == 'true'
+            if mode == 'legacy':
+                if not is_legacy_refresh_strategy_available():
+                    safe_console_print("[定时任务] 旧版刷新策略已关闭且不可重新启用，跳过执行")
+                    return
 
-            if use_cron:
-                safe_console_print(f"[定时任务] 使用 Cron 调度，直接执行刷新...")
-                trigger_refresh_internal()
-                safe_console_print(f"[定时任务] Token 刷新完成")
+                use_cron = get_setting('use_cron_schedule', 'false').lower() == 'true'
+                if not use_cron:
+                    refresh_interval_days = int(get_setting('refresh_interval_days', '30'))
+                    last_refresh = build_refresh_stats().get('last_refresh_time')
+                    if last_refresh:
+                        last_refresh_time = datetime.fromisoformat(last_refresh)
+                        next_refresh_time = last_refresh_time + timedelta(days=refresh_interval_days)
+                        if datetime.now() < next_refresh_time:
+                            safe_console_print(
+                                f"[定时任务] 距离上次全量刷新未满 {refresh_interval_days} 天，跳过本次刷新"
+                            )
+                            return
+
+                safe_console_print("[定时任务] 使用旧周期策略，开始全量刷新...")
+                trigger_refresh_internal(due_only=False)
+                safe_console_print("[定时任务] Token 全量刷新完成")
                 return
 
-            refresh_interval_days = int(get_setting('refresh_interval_days', '30'))
-            last_refresh = build_refresh_stats().get('last_refresh_time')
-
-        if last_refresh:
-            last_refresh_time = datetime.fromisoformat(last_refresh)
-            next_refresh_time = last_refresh_time + timedelta(days=refresh_interval_days)
-            if datetime.now() < next_refresh_time:
-                safe_console_print(f"[定时任务] 距离上次刷新未满 {refresh_interval_days} 天，跳过本次刷新")
-                return
-
-        safe_console_print(f"[定时任务] 开始执行 Token 刷新...")
-        trigger_refresh_internal()
-        safe_console_print(f"[定时任务] Token 刷新完成")
+        safe_console_print("[定时任务] 开始执行到期窗口刷新...")
+        trigger_refresh_internal(due_only=True)
+        safe_console_print("[定时任务] 到期窗口刷新完成")
 
     except Exception as e:
         safe_console_print(f"[定时任务] 执行失败：{str(e)}")
@@ -1683,10 +1773,10 @@ def scheduled_refresh_task():
 ensure_scheduler_started()
 
 
-def trigger_refresh_internal():
+def trigger_refresh_internal(*, due_only: bool = True):
     """内部触发刷新（不通过 HTTP）"""
     try:
-        result = run_full_refresh('scheduled', 'scheduled')
+        result = run_full_refresh('scheduled', 'scheduled', due_only=due_only)
     except TokenRefreshInProgressError as exc:
         safe_console_print(f"[定时任务] 跳过执行：{str(exc)}")
         return {
@@ -1696,7 +1786,10 @@ def trigger_refresh_internal():
             'failed_count': 0,
             'message': str(exc),
         }
-    safe_console_print(f"[定时任务] 刷新结果：总计 {result['total']}，成功 {result['success_count']}，失败 {result['failed_count']}")
+    safe_console_print(
+        f"[定时任务] 刷新结果：候选 {result['total']}，成功 {result['success_count']}，"
+        f"失败 {result['failed_count']}，到期时间未知 {result.get('unknown_anchor_count', 0)}"
+    )
     return result
 
 
