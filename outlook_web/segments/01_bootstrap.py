@@ -747,6 +747,7 @@ INDEX_CSS_FILES = (
     'css/index/forwarding/tokens.css',
     'css/index/forwarding/base.css',
     'css/index/10-forwarding.css',
+    'css/index/16-refresh-strategy.css',
 )
 INDEX_JS_FILES = (
     'js/index/01-core.js',
@@ -764,6 +765,7 @@ INDEX_JS_FILES = (
     'js/index/13-projects.js',
     'js/index/14-icloud.js',
     'js/index/15-forwarding.js',
+    'js/index/16-refresh-strategy.js',
 )
 
 # GPTMail API 配置
@@ -1392,6 +1394,7 @@ def init_db():
             last_refresh_error TEXT,
             last_refresh_token_rotated INTEGER,
             refresh_token_updated_at TIMESTAMP,
+            refresh_token_expires_at TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (group_id) REFERENCES groups (id)
@@ -1871,6 +1874,8 @@ def init_db():
         ''')
     if 'refresh_token_updated_at' not in columns:
         cursor.execute('ALTER TABLE accounts ADD COLUMN refresh_token_updated_at TIMESTAMP')
+    if 'refresh_token_expires_at' not in columns:
+        cursor.execute('ALTER TABLE accounts ADD COLUMN refresh_token_expires_at TEXT')
     if 'account_type' not in columns:
         cursor.execute("ALTER TABLE accounts ADD COLUMN account_type TEXT DEFAULT 'outlook'")
     if 'provider' not in columns:
@@ -2170,6 +2175,21 @@ def init_db():
     cursor.execute('''
         INSERT OR IGNORE INTO settings (key, value)
         VALUES ('refresh_interval_days', '30')
+    ''')
+
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('refresh_token_expires_within_days', '7')
+    ''')
+
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('refresh_token_default_lifetime_days', '90')
+    ''')
+
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('refresh_token_include_missing_anchor', 'true')
     ''')
 
     cursor.execute('''

@@ -1869,6 +1869,9 @@
                     syncForwardExecutionModeUI();
                     await loadCloudflareChannelsForSettings();
                     await loadNormalMailRetentionStatus();
+                    if (typeof loadLegacyRefreshStrategyStatus === 'function') {
+                        await loadLegacyRefreshStrategyStatus();
+                    }
                 }
             } catch (error) {
                 showToast('加载设置失败', 'error');

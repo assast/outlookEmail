@@ -2,6 +2,7 @@ from __future__ import annotations
 from outlook_web.icloud_mail import message_recipient_headers
 
 import secrets
+import threading
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
 
 
 DIRECT_PROXY_SENTINEL = "__DIRECT__"
+_outlook_account_token_locks_guard = threading.Lock()
+_outlook_account_token_locks: Dict[str, threading.Lock] = {}
 # PySocks 仅在 username 与 password 均为真值时启用 SOCKS5 UserPass。
 # 密码为空时会退化为 NO AUTH，Resin 收不到 Platform.Account，粘性租约不会创建。
 # 用非空占位密码强制走 UserPass；Resin 在 RESIN_PROXY_TOKEN="" 时接受任意密码。
@@ -31,6 +34,72 @@ def resolve_socks_proxy_auth(
     if password:
         return username, password
     return username, SOCKS_EMPTY_PASSWORD_PLACEHOLDER
+
+
+def get_outlook_account_token_lock(account: Any) -> threading.Lock:
+    """同一 Outlook 账号的邮件与主动刷新共用一把进程内令牌锁。"""
+    if isinstance(account, dict):
+        account_id = str(account.get('id') or '').strip()
+        email_addr = str(account.get('email') or '').strip().lower()
+        key = account_id or email_addr or str(id(account))
+    else:
+        key = str(account or '').strip() or str(id(account))
+    with _outlook_account_token_locks_guard:
+        return _outlook_account_token_locks.setdefault(key, threading.Lock())
+
+
+def _get_access_token_for_account(
+    token_getter: Any,
+    client_id: str,
+    refresh_token: str,
+    proxy_url: str,
+    fallback_proxy_urls: Optional[List[str]],
+    account: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    if account is None:
+        return token_getter(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+
+    with get_outlook_account_token_lock(account):
+        account_id = int(account.get('id') or 0)
+        current_refresh_token = str(account.get('refresh_token') or refresh_token).strip()
+        if account_id > 0:
+            try:
+                stored = get_db().execute(
+                    'SELECT refresh_token FROM accounts WHERE id = ?', (account_id,)
+                ).fetchone()
+                if stored and stored['refresh_token']:
+                    current_refresh_token = decrypt_data(stored['refresh_token'])
+                    account['refresh_token'] = current_refresh_token
+            except Exception:
+                pass
+
+        result = token_getter(client_id, current_refresh_token, proxy_url, fallback_proxy_urls)
+        new_refresh_token = str(result.get('refresh_token') or '').strip()
+        if result.get('success') and account_id > 0 and new_refresh_token and new_refresh_token != current_refresh_token:
+            try:
+                saved = persist_rotated_refresh_token(
+                    account_id,
+                    new_refresh_token,
+                    refresh_token_expires_in=result.get('refresh_token_expires_in'),
+                    expected_refresh_token=current_refresh_token,
+                )
+                if not saved:
+                    raise RuntimeError('Refresh Token 写回未成功')
+                account['refresh_token'] = new_refresh_token
+                account['refresh_token_updated_at'] = format_refresh_token_datetime(
+                    datetime.now(OUTLOOK_REFRESH_TIMEZONE)
+                )
+                account['refresh_token_expires_at'] = build_refresh_token_expiry(
+                    refresh_token_expires_in=result.get('refresh_token_expires_in'),
+                    default_lifetime_days=get_refresh_token_default_lifetime_days(),
+                )
+            except Exception as exc:
+                app.logger.warning(
+                    '取信后保存轮换 Refresh Token 失败：account_id=%s error=%s',
+                    account_id,
+                    sanitize_error_details(str(exc)),
+                )
+        return result
 
 
 def prepare_proxy_url_for_transport(proxy_url: str) -> str:
@@ -554,7 +623,8 @@ def request_graph_token_response(client_id: str, refresh_token: str, proxy_url: 
                 if rotated_refresh_token and rotated_refresh_token != refresh_token:
                     remember_graph_token_scope(client_id, rotated_refresh_token, scope)
                 return response
-            if extract_refresh_token_from_response(response):
+            rotated_refresh_token = extract_refresh_token_from_response(response)
+            if rotated_refresh_token and rotated_refresh_token != refresh_token:
                 return response
             if successful_response is None:
                 successful_response = response
@@ -627,9 +697,9 @@ def proxy_socket_context(proxy_url: str):
             socks.set_default_proxy()
 
 
-def get_access_token_graph_result(client_id: str, refresh_token: str, proxy_url: str = None,
-                                  fallback_proxy_urls: Optional[List[str]] = None, *,
-                                  required_scope: str = '') -> Dict[str, Any]:
+def _get_access_token_graph_result_core(client_id: str, refresh_token: str, proxy_url: str = None,
+                                        fallback_proxy_urls: Optional[List[str]] = None, *,
+                                        required_scope: str = '') -> Dict[str, Any]:
     """获取 Graph API access_token（包含错误详情）"""
     try:
         res = request_graph_token_response(
@@ -667,7 +737,16 @@ def get_access_token_graph_result(client_id: str, refresh_token: str, proxy_url:
                 )
             }
 
-        return {"success": True, "access_token": access_token}
+        try:
+            refresh_token_expires_in = int(payload.get('refresh_token_expires_in') or 0)
+        except (TypeError, ValueError):
+            refresh_token_expires_in = 0
+        return {
+            "success": True,
+            "access_token": access_token,
+            "refresh_token": str(payload.get('refresh_token') or '').strip(),
+            "refresh_token_expires_in": max(0, refresh_token_expires_in),
+        }
     except Exception as exc:
         return {
             "success": False,
@@ -682,13 +761,35 @@ def get_access_token_graph_result(client_id: str, refresh_token: str, proxy_url:
         }
 
 
+def get_access_token_graph_result(client_id: str, refresh_token: str, proxy_url: str = None,
+                                  fallback_proxy_urls: Optional[List[str]] = None, *,
+                                  required_scope: str = '',
+                                  account: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    token_getter = lambda cid, token, proxy, fallbacks: _get_access_token_graph_result_core(
+        cid, token, proxy, fallbacks, required_scope=required_scope,
+    )
+    if account is None:
+        return token_getter(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    return _get_access_token_for_account(
+        token_getter, client_id, refresh_token, proxy_url or '', fallback_proxy_urls, account,
+    )
+
+
 def get_access_token_graph(client_id: str, refresh_token: str, proxy_url: str = None,
                            fallback_proxy_urls: Optional[List[str]] = None, *,
-                           required_scope: str = '') -> Optional[str]:
+                           required_scope: str = '',
+                           account: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """获取 Graph API access_token"""
-    result = get_access_token_graph_result(
-        client_id, refresh_token, proxy_url, fallback_proxy_urls, required_scope=required_scope,
-    )
+    if account is None:
+        result = get_access_token_graph_result(
+            client_id, refresh_token, proxy_url, fallback_proxy_urls,
+            required_scope=required_scope,
+        )
+    else:
+        result = get_access_token_graph_result(
+            client_id, refresh_token, proxy_url, fallback_proxy_urls,
+            required_scope=required_scope, account=account,
+        )
     if result.get("success"):
         return result.get("access_token")
     return None
@@ -789,6 +890,34 @@ def build_graph_send_error_result(code: str, message: str, status: int, details:
     return result
 
 
+def _get_access_token_imap_for_optional_account(
+    client_id: str,
+    refresh_token: str,
+    proxy_url: str,
+    fallback_proxy_urls: Optional[List[str]],
+    account_record: Optional[Dict[str, Any]],
+) -> Optional[str]:
+    if account_record is None:
+        return get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    return get_access_token_imap(
+        client_id, refresh_token, proxy_url, fallback_proxy_urls, account=account_record,
+    )
+
+
+def _get_access_token_imap_result_for_optional_account(
+    client_id: str,
+    refresh_token: str,
+    proxy_url: str,
+    fallback_proxy_urls: Optional[List[str]],
+    account_record: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    if account_record is None:
+        return get_access_token_imap_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    return get_access_token_imap_result(
+        client_id, refresh_token, proxy_url, fallback_proxy_urls, account=account_record,
+    )
+
+
 def get_graph_send_retry_after(response) -> Optional[int]:
     """读取 Graph 429 响应中的秒级 Retry-After；非秒值交给用户稍后重试。"""
     try:
@@ -801,7 +930,8 @@ def get_graph_send_retry_after(response) -> Optional[int]:
 
 def send_graph_mail_result(client_id: str, refresh_token: str, recipients: Any, subject: Any, body: Any,
                            proxy_url: str = None,
-                           fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+                           fallback_proxy_urls: Optional[List[str]] = None,
+                           account: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """以当前 Graph 委托账号单次提交一封基础纯文本邮件。"""
     payload, validation_error = normalize_graph_send_mail_payload(recipients, subject, body)
     if validation_error:
@@ -811,12 +941,11 @@ def send_graph_mail_result(client_id: str, refresh_token: str, recipients: Any, 
             400,
         )
 
+    token_kwargs = {'required_scope': 'https://graph.microsoft.com/Mail.Send'}
+    if account is not None:
+        token_kwargs['account'] = account
     token_result = get_access_token_graph_result(
-        client_id,
-        refresh_token,
-        proxy_url,
-        fallback_proxy_urls,
-        required_scope='https://graph.microsoft.com/Mail.Send',
+        client_id, refresh_token, proxy_url, fallback_proxy_urls, **token_kwargs,
     )
     if not token_result.get('success'):
         token_error = token_result.get('error') or {}
@@ -916,9 +1045,15 @@ def send_graph_mail_result(client_id: str, refresh_token: str, recipients: Any, 
 
 def get_emails_graph(client_id: str, refresh_token: str, folder: str = 'inbox', skip: int = 0,
                      top: int = 20, proxy_url: str = None,
-                     fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+                     fallback_proxy_urls: Optional[List[str]] = None,
+                     account: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """使用 Graph API 获取邮件列表（支持分页和文件夹选择）"""
-    token_result = get_access_token_graph_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    token_result = (
+        get_access_token_graph_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+        if account is None else get_access_token_graph_result(
+            client_id, refresh_token, proxy_url, fallback_proxy_urls, account=account,
+        )
+    )
     if not token_result.get("success"):
         return {"success": False, "error": token_result.get("error")}
 
@@ -985,9 +1120,12 @@ def get_emails_graph(client_id: str, refresh_token: str, folder: str = 'inbox', 
 
 
 def get_raw_email_graph(client_id: str, refresh_token: str, message_id: str, proxy_url: str = None,
-                        fallback_proxy_urls: Optional[List[str]] = None) -> Optional[bytes]:
+                        fallback_proxy_urls: Optional[List[str]] = None,
+                        account: Optional[Dict[str, Any]] = None) -> Optional[bytes]:
     """使用 Graph API 获取原始 MIME 邮件源码。"""
-    access_token = get_access_token_graph(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    access_token = get_access_token_graph(
+        client_id, refresh_token, proxy_url, fallback_proxy_urls, account=account,
+    )
     if not access_token:
         return None
 
@@ -1011,9 +1149,15 @@ def get_raw_email_graph(client_id: str, refresh_token: str, message_id: str, pro
 
 
 def get_email_detail_graph_result(client_id: str, refresh_token: str, message_id: str, proxy_url: str = None,
-                                  fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+                                  fallback_proxy_urls: Optional[List[str]] = None,
+                                  account: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """使用 Graph API 获取邮件详情（包含结构化错误）"""
-    token_result = get_access_token_graph_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    token_result = (
+        get_access_token_graph_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+        if account is None else get_access_token_graph_result(
+            client_id, refresh_token, proxy_url, fallback_proxy_urls, account=account,
+        )
+    )
     if not token_result.get('success'):
         return {'success': False, 'error': token_result.get('error')}
 
@@ -1066,11 +1210,17 @@ def get_email_detail_graph_result(client_id: str, refresh_token: str, message_id
 
 
 def get_email_detail_graph(client_id: str, refresh_token: str, message_id: str, proxy_url: str = None,
-                           fallback_proxy_urls: Optional[List[str]] = None) -> Optional[Dict]:
+                           fallback_proxy_urls: Optional[List[str]] = None,
+                           account: Optional[Dict[str, Any]] = None) -> Optional[Dict]:
     """使用 Graph API 获取邮件详情"""
-    result = get_email_detail_graph_result(
-        client_id, refresh_token, message_id, proxy_url, fallback_proxy_urls
-    )
+    if account is None:
+        result = get_email_detail_graph_result(
+            client_id, refresh_token, message_id, proxy_url, fallback_proxy_urls,
+        )
+    else:
+        result = get_email_detail_graph_result(
+            client_id, refresh_token, message_id, proxy_url, fallback_proxy_urls, account=account,
+        )
     if result.get('success'):
         return result.get('detail')
     return None
@@ -1078,7 +1228,8 @@ def get_email_detail_graph(client_id: str, refresh_token: str, message_id: str, 
 
 def mark_emails_read_graph_result(client_id: str, refresh_token: str, message_ids: List[str],
                                   proxy_url: str = None,
-                                  fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+                                  fallback_proxy_urls: Optional[List[str]] = None,
+                                  account: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """使用 Graph API 批量标记邮件为已读"""
     normalized_ids = [str(message_id or '').strip() for message_id in (message_ids or []) if str(message_id or '').strip()]
     if not normalized_ids:
@@ -1090,9 +1241,11 @@ def mark_emails_read_graph_result(client_id: str, refresh_token: str, message_id
             'errors': ['message_ids 不能为空'],
         }
 
+    token_kwargs = {'required_scope': 'https://graph.microsoft.com/Mail.ReadWrite'}
+    if account is not None:
+        token_kwargs['account'] = account
     token_result = get_access_token_graph_result(
-        client_id, refresh_token, proxy_url, fallback_proxy_urls,
-        required_scope='https://graph.microsoft.com/Mail.ReadWrite',
+        client_id, refresh_token, proxy_url, fallback_proxy_urls, **token_kwargs,
     )
     if not token_result.get('success'):
         return {
@@ -1197,9 +1350,12 @@ def mark_emails_read_graph_result(client_id: str, refresh_token: str, message_id
 
 
 def get_email_attachments_graph(client_id: str, refresh_token: str, message_id: str, proxy_url: str = None,
-                                fallback_proxy_urls: Optional[List[str]] = None) -> Optional[List[Dict[str, Any]]]:
+                                fallback_proxy_urls: Optional[List[str]] = None,
+                                account: Optional[Dict[str, Any]] = None) -> Optional[List[Dict[str, Any]]]:
     """使用 Graph API 获取邮件附件列表"""
-    access_token = get_access_token_graph(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    access_token = get_access_token_graph(
+        client_id, refresh_token, proxy_url, fallback_proxy_urls, account=account,
+    )
     if not access_token:
         return None
 
@@ -1242,9 +1398,15 @@ def get_email_attachments_graph(client_id: str, refresh_token: str, message_id: 
 
 def download_email_attachment_graph_result(client_id: str, refresh_token: str, message_id: str, attachment_id: str,
                                            proxy_url: str = None,
-                                           fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+                                           fallback_proxy_urls: Optional[List[str]] = None,
+                                           account: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """使用 Graph API 下载邮件附件"""
-    token_result = get_access_token_graph_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    if account is None:
+        token_result = get_access_token_graph_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    else:
+        token_result = get_access_token_graph_result(
+            client_id, refresh_token, proxy_url, fallback_proxy_urls, account=account,
+        )
     if not token_result.get("success"):
         return {"success": False, "error": token_result.get("error")}
 
@@ -1352,8 +1514,8 @@ def request_imap_token_response(client_id: str, refresh_token: str, proxy_url: s
     )
 
 
-def get_access_token_imap_result(client_id: str, refresh_token: str, proxy_url: str = None,
-                                 fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+def _get_access_token_imap_result_core(client_id: str, refresh_token: str, proxy_url: str = None,
+                                       fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
     """获取 IMAP access_token（包含错误详情）"""
     try:
         res = request_imap_token_response(client_id, refresh_token, proxy_url, fallback_proxy_urls)
@@ -1385,7 +1547,16 @@ def get_access_token_imap_result(client_id: str, refresh_token: str, proxy_url: 
                 )
             }
 
-        return {"success": True, "access_token": access_token}
+        try:
+            refresh_token_expires_in = int(payload.get('refresh_token_expires_in') or 0)
+        except (TypeError, ValueError):
+            refresh_token_expires_in = 0
+        return {
+            "success": True,
+            "access_token": access_token,
+            "refresh_token": str(payload.get('refresh_token') or '').strip(),
+            "refresh_token_expires_in": max(0, refresh_token_expires_in),
+        }
     except Exception as exc:
         return {
             "success": False,
@@ -1400,10 +1571,35 @@ def get_access_token_imap_result(client_id: str, refresh_token: str, proxy_url: 
         }
 
 
+def get_access_token_imap_result(client_id: str, refresh_token: str, proxy_url: str = None,
+                                 fallback_proxy_urls: Optional[List[str]] = None,
+                                 account: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    if account is None:
+        return _get_access_token_imap_result_core(
+            client_id, refresh_token, proxy_url, fallback_proxy_urls,
+        )
+    return _get_access_token_for_account(
+        _get_access_token_imap_result_core,
+        client_id,
+        refresh_token,
+        proxy_url or '',
+        fallback_proxy_urls,
+        account,
+    )
+
+
+
+
 def get_access_token_imap(client_id: str, refresh_token: str, proxy_url: str = None,
-                          fallback_proxy_urls: Optional[List[str]] = None) -> Optional[str]:
+                          fallback_proxy_urls: Optional[List[str]] = None,
+                          account: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """获取 IMAP access_token"""
-    result = get_access_token_imap_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    if account is None:
+        result = get_access_token_imap_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    else:
+        result = get_access_token_imap_result(
+            client_id, refresh_token, proxy_url, fallback_proxy_urls, account=account,
+        )
     if result.get("success"):
         return result.get("access_token")
     return None
@@ -1429,14 +1625,17 @@ def get_emails_imap(account: str, client_id: str, refresh_token: str, folder: st
 def get_emails_imap_with_server(account: str, client_id: str, refresh_token: str, folder: str = 'inbox',
                                 skip: int = 0, top: int = 20, server: str = IMAP_SERVER_NEW,
                                 proxy_url: str = None,
-                                fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+                                fallback_proxy_urls: Optional[List[str]] = None,
+                                account_record: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """使用 IMAP 获取邮件列表（支持分页、文件夹选择和服务器选择）"""
     require_stable_ids = email_share_stable_ids_context.get()
     timing = new_imap_timing_context(account, server, folder, 'list')
     connection = None
     try:
         with imap_timed_stage(timing, 'token'):
-            token_result = get_access_token_imap_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+            token_result = _get_access_token_imap_result_for_optional_account(
+                client_id, refresh_token, proxy_url, fallback_proxy_urls, account_record,
+            )
         if not token_result.get("success"):
             return {"success": False, "error": token_result.get("error")}
         access_token = token_result.get("access_token")
@@ -1541,9 +1740,12 @@ def get_emails_imap_with_server(account: str, client_id: str, refresh_token: str
 
 def get_raw_email_imap(account: str, client_id: str, refresh_token: str, message_id: str,
                        folder: str = 'inbox', proxy_url: str = None,
-                       fallback_proxy_urls: Optional[List[str]] = None) -> Optional[bytes]:
+                       fallback_proxy_urls: Optional[List[str]] = None,
+                       account_record: Optional[Dict[str, Any]] = None) -> Optional[bytes]:
     """使用 Outlook IMAP 获取原始 MIME 邮件源码。"""
-    access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    access_token = _get_access_token_imap_for_optional_account(
+        client_id, refresh_token, proxy_url, fallback_proxy_urls, account_record,
+    )
     if not access_token:
         return None
 
@@ -1626,9 +1828,12 @@ def _get_email_detail_imap_result_once(account: str, client_id: str, refresh_tok
                                        folder: str = 'inbox', proxy_url: str = None,
                                        fallback_proxy_urls: Optional[List[str]] = None,
                                        preferred_id_mode: str = 'uid',
-                                       strict_id_mode: bool = False) -> Dict[str, Any]:
+                                       strict_id_mode: bool = False,
+                                       account_record: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """单次 IMAP 详情获取（不含重试）。"""
-    token_result = get_access_token_imap_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    token_result = _get_access_token_imap_result_for_optional_account(
+        client_id, refresh_token, proxy_url, fallback_proxy_urls, account_record,
+    )
     if not token_result.get('success'):
         return {'success': False, 'error': token_result.get('error')}
 
@@ -1747,7 +1952,8 @@ def get_email_detail_imap_result(account: str, client_id: str, refresh_token: st
                                  folder: str = 'inbox', proxy_url: str = None,
                                  fallback_proxy_urls: Optional[List[str]] = None,
                                  preferred_id_mode: str = 'uid',
-                                 strict_id_mode: bool = False) -> Dict[str, Any]:
+                                 strict_id_mode: bool = False,
+                                 account_record: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """使用 IMAP 获取邮件详情（包含结构化错误；传输类失败会有限重试一次）。"""
     max_attempts = max(1, int(EMAIL_DETAIL_IMAP_MAX_ATTEMPTS or 1))
     last_result: Dict[str, Any] = {'success': False, 'error': '获取邮件详情失败'}
@@ -1764,6 +1970,7 @@ def get_email_detail_imap_result(account: str, client_id: str, refresh_token: st
             fallback_proxy_urls,
             preferred_id_mode,
             strict_id_mode,
+            account_record,
         )
         if result.get('success'):
             if attempt > 1:
@@ -2669,8 +2876,11 @@ def mark_email_items_seen_imap(mail, items: List[Dict[str, Any]], provider: str,
 def mark_emails_read_imap_batch(email_addr: str, client_id: str, refresh_token: str,
                                 items: List[Dict[str, Any]], server: str = IMAP_SERVER_NEW,
                                 proxy_url: str = None,
-                                fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
-    access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+                                fallback_proxy_urls: Optional[List[str]] = None,
+                                account_record: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    access_token = _get_access_token_imap_for_optional_account(
+        client_id, refresh_token, proxy_url, fallback_proxy_urls, account_record,
+    )
     if not access_token:
         return {
             'success': False,
@@ -2861,8 +3071,11 @@ def delete_email_items_imap(mail, items: List[Dict[str, Any]], provider: str,
 def delete_emails_imap_batch(email_addr: str, client_id: str, refresh_token: str,
                              items: List[Dict[str, Any]], server: str = IMAP_SERVER_NEW,
                              proxy_url: str = None,
-                             fallback_proxy_urls: Optional[List[str]] = None) -> Dict[str, Any]:
-    access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+                             fallback_proxy_urls: Optional[List[str]] = None,
+                             account_record: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    access_token = _get_access_token_imap_for_optional_account(
+        client_id, refresh_token, proxy_url, fallback_proxy_urls, account_record,
+    )
     if not access_token:
         return {
             'success': False,
@@ -3437,9 +3650,12 @@ def get_email_detail_imap_generic_result(email_addr: str, imap_password: str, im
 def download_email_attachment_imap_result(account: str, client_id: str, refresh_token: str, message_id: str,
                                           attachment_id: str, folder: str = 'inbox', proxy_url: str = None,
                                           fallback_proxy_urls: Optional[List[str]] = None,
-                                          preferred_id_mode: str = 'uid') -> Dict[str, Any]:
+                                          preferred_id_mode: str = 'uid',
+                                          account_record: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """使用 Outlook IMAP 下载邮件附件"""
-    access_token = get_access_token_imap(client_id, refresh_token, proxy_url, fallback_proxy_urls)
+    access_token = _get_access_token_imap_for_optional_account(
+        client_id, refresh_token, proxy_url, fallback_proxy_urls, account_record,
+    )
     if not access_token:
         return {
             'success': False,
