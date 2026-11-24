@@ -3153,6 +3153,317 @@ def delete_emails_imap_generic_result(email_addr: str, imap_password: str, imap_
                 pass
 
 
+MOVE_IMAP_MAX_MESSAGE_BYTES = 25 * 1024 * 1024
+
+
+def _imap_fetch_message_bytes(data: Any) -> bytes:
+    for part in data or []:
+        if isinstance(part, tuple) and len(part) > 1 and isinstance(part[1], bytes):
+            return part[1]
+    return b''
+
+
+def _imap_fetch_internal_date(data: Any) -> str:
+    """读取 INTERNALDATE，搬到收件箱后保留原收信时间。"""
+    for part in data or []:
+        metadata = part[0] if isinstance(part, tuple) else part
+        if isinstance(metadata, bytes):
+            match = re.search(rb'INTERNALDATE "([^"]+)"', metadata)
+            if match:
+                return '"%s"' % match.group(1).decode('ascii', 'ignore')
+    return ''
+
+
+def _imap_fetch_message_size(data: Any) -> int:
+    for part in data or []:
+        metadata = part[0] if isinstance(part, tuple) else part
+        if isinstance(metadata, bytes):
+            match = re.search(rb'RFC822\.SIZE\s+(\d+)', metadata, re.IGNORECASE)
+            if match:
+                return int(match.group(1))
+    return 0
+
+
+def resolve_imap_item_uid(mail, item: Dict[str, Any]) -> str:
+    """把列表里的邮件标识解析成当前连接可用的 UID（兼容 uid / sequence 两种 id_mode）。"""
+    message_id = str(item.get('id') or '').strip()
+    id_mode = str(item.get('id_mode') or '').strip().lower()
+    if not message_id:
+        raise ImapMessageIdentityError('邮件标识不能为空', 'EMAIL_NOT_FOUND')
+    if id_mode in {'', 'uid'}:
+        return resolve_imap_message_uid(mail, message_id, 'uid')
+
+    # 序列号只在当前会话有效：先用 MSN 反查 UID，后续命令统一走 UID。
+    status, data = mail.fetch(message_id, '(UID)')
+    if status != 'OK':
+        raise ImapMessageIdentityError('邮件已不存在，请刷新列表后重试', 'EMAIL_NOT_FOUND')
+    uids = imap_response_uids(data)
+    if len(uids) != 1:
+        raise ImapMessageIdentityError('无法定位邮件 UID，请刷新邮件列表后重试')
+    return next(iter(uids))
+
+
+def move_email_items_imap(mail, items: List[Dict[str, Any]], destination: str = 'inbox',
+                          provider: str = 'outlook', default_mode: str = 'uid') -> Dict[str, Any]:
+    """通过 APPEND + 删除源邮件的方式把邮件搬到目标文件夹。
+
+    不用 IMAP COPY：部分服务商（如阿里云企业邮）的 COPY 语义异常，会删除源邮件却不产生副本。
+    APPEND 成功后再标记删除，最坏情况只会重复、不会丢信。
+    """
+    normalized_items: List[Dict[str, Any]] = []
+    errors: List[Any] = []
+    for raw_item in items or []:
+        message_id = str((raw_item or {}).get('id') or '').strip()
+        if not message_id:
+            errors.append({
+                'id': '',
+                'error': build_error_payload(
+                    'EMAIL_MOVE_INVALID', 'message_id 不能为空', 'ValidationError', 400, raw_item
+                )
+            })
+            continue
+        normalized_items.append({
+            'id': message_id,
+            'folder': str((raw_item or {}).get('folder') or 'junkemail').strip().lower() or 'junkemail',
+            'id_mode': str((raw_item or {}).get('id_mode') or default_mode or '').strip().lower(),
+        })
+
+    destination_folder, destination_diagnostics = resolve_imap_folder(
+        mail, provider, destination, readonly=True
+    )
+    if not destination_folder:
+        folder_error = build_error_payload(
+            'IMAP_FOLDER_NOT_FOUND',
+            'IMAP 目标文件夹不存在或无权访问',
+            'IMAPFolderError',
+            400,
+            {'provider': provider, 'folder': destination, **destination_diagnostics},
+        )
+        return {
+            'success': False,
+            'success_count': 0,
+            'failed_count': len(normalized_items) + len(errors),
+            'moved_ids': [],
+            'new_message_ids': [],
+            'errors': errors + [{'id': item['id'], 'error': folder_error} for item in normalized_items],
+            'error': folder_error,
+        }
+
+    grouped_items: Dict[str, List[Dict[str, Any]]] = {}
+    for item in normalized_items:
+        grouped_items.setdefault(item['folder'], []).append(item)
+
+    success_count = 0
+    moved_ids: List[str] = []
+    for source_folder, folder_items in grouped_items.items():
+        selected_folder, folder_diagnostics = resolve_imap_folder(
+            mail, provider, source_folder, readonly=False
+        )
+        if not selected_folder:
+            folder_error = build_error_payload(
+                'IMAP_FOLDER_NOT_FOUND',
+                'IMAP 源文件夹不存在或无权访问',
+                'IMAPFolderError',
+                400,
+                {'provider': provider, 'folder': source_folder, **folder_diagnostics},
+            )
+            errors.extend({'id': item['id'], 'error': folder_error} for item in folder_items)
+            continue
+
+        expunged_uids: List[str] = []
+        for item in folder_items:
+            try:
+                uid = resolve_imap_item_uid(mail, item)
+            except ImapMessageIdentityError as exc:
+                errors.append({'id': item['id'], 'error': imap_identity_error_result(exc)['error']})
+                continue
+            except Exception as exc:
+                errors.append({'id': item['id'], 'error': build_error_payload(
+                    'EMAIL_MOVE_FAILED', '定位邮件失败', type(exc).__name__, 502,
+                    sanitize_error_details(str(exc))[:200],
+                )})
+                continue
+
+            size_status, size_data = ('OK', [])
+            try:
+                size_status, size_data = mail.uid('FETCH', uid, '(RFC822.SIZE)')
+            except Exception:
+                size_status = 'NO'
+            message_size = _imap_fetch_message_size(size_data) if size_status == 'OK' else 0
+            if message_size > MOVE_IMAP_MAX_MESSAGE_BYTES:
+                errors.append({'id': item['id'], 'error': build_error_payload(
+                    'EMAIL_MOVE_TOO_LARGE',
+                    '邮件过大（%.1f MB），超过搬移上限，请在邮箱网页版处理'
+                    % (message_size / 1024.0 / 1024.0),
+                    'EmailTooLargeError', 413, {'size': message_size},
+                )})
+                continue
+
+            try:
+                fetch_status, fetch_data = mail.uid('FETCH', uid, '(INTERNALDATE RFC822)')
+            except Exception as exc:
+                errors.append({'id': item['id'], 'error': build_error_payload(
+                    'EMAIL_MOVE_FAILED', '读取原邮件失败', type(exc).__name__, 502,
+                    sanitize_error_details(str(exc))[:200],
+                )})
+                continue
+            raw_message = _imap_fetch_message_bytes(fetch_data) if fetch_status == 'OK' else b''
+            if not raw_message:
+                errors.append({'id': item['id'], 'error': build_error_payload(
+                    'EMAIL_MOVE_FAILED', '读取原邮件失败，请刷新后重试', 'IMAPFetchError', 502, '',
+                )})
+                continue
+
+            internal_date = _imap_fetch_internal_date(fetch_data)
+            try:
+                append_status, append_response = mail.append(
+                    destination_folder, None, internal_date or None, raw_message
+                )
+            except Exception as exc:
+                errors.append({'id': item['id'], 'error': build_error_payload(
+                    'EMAIL_MOVE_FAILED', '写入目标文件夹失败', type(exc).__name__, 502,
+                    sanitize_error_details(str(exc))[:200],
+                )})
+                continue
+            if append_status != 'OK':
+                errors.append({'id': item['id'], 'error': build_error_payload(
+                    'EMAIL_MOVE_FAILED', '写入目标文件夹失败', 'IMAPAppendError', 502,
+                    sanitize_error_details(str(append_response))[:200],
+                )})
+                continue
+
+            flagged, _mode, attempts = store_imap_message_flags(
+                mail, uid, action='+FLAGS.SILENT', flags=r'(\Deleted)', preferred_mode='uid'
+            )
+            if not flagged:
+                errors.append({'id': item['id'], 'error': build_error_payload(
+                    'EMAIL_MOVE_SOURCE_NOT_DELETED',
+                    '邮件已放入收件箱，但从垃圾箱删除失败，可能产生重复，请稍后重试',
+                    'IMAPStoreError', 502, {'store_attempts': attempts[:3]},
+                )})
+                continue
+
+            success_count += 1
+            moved_ids.append(item['id'])
+            expunged_uids.append(uid)
+
+        if expunged_uids:
+            try:
+                expunge_status, expunge_data = mail.expunge()
+                if expunge_status != 'OK':
+                    raise imaplib.IMAP4.error(str(expunge_data or expunge_status))
+            except Exception as exc:
+                app.logger.warning('[imap] move expunge failed folder=%s: %s', selected_folder, exc)
+
+    failed_count = len(normalized_items) - success_count + sum(1 for item in errors if not item.get('id'))
+    return {
+        'success': failed_count == 0 and success_count > 0,
+        'success_count': success_count,
+        'failed_count': max(0, failed_count),
+        'moved_ids': moved_ids,
+        'new_message_ids': [],
+        'errors': errors,
+        'error': errors[0]['error'] if errors else None,
+    }
+
+
+def move_emails_imap_batch(email_addr: str, client_id: str, refresh_token: str,
+                           items: List[Dict[str, Any]], destination: str = 'inbox',
+                           server: str = IMAP_SERVER_NEW, proxy_url: str = None,
+                           fallback_proxy_urls: Optional[List[str]] = None,
+                           account_record: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """通过 OAuth IMAP 搬移邮件（Outlook 账号 IMAP 回退场景）。"""
+    access_token = _get_access_token_imap_for_optional_account(
+        client_id, refresh_token, proxy_url, fallback_proxy_urls, account_record,
+    )
+    if not access_token:
+        return {
+            'success': False,
+            'success_count': 0,
+            'failed_count': len(items or []),
+            'moved_ids': [],
+            'new_message_ids': [],
+            'errors': [build_error_payload('IMAP_TOKEN_FAILED', '获取访问令牌失败', 'IMAPError', 401, '')],
+        }
+
+    connection = None
+    try:
+        with proxy_socket_context(proxy_url):
+            connection = imaplib.IMAP4_SSL(server, IMAP_PORT, timeout=IMAP_TIMEOUT)
+        auth_string = f"user={email_addr}\1auth=Bearer {access_token}\1\1".encode('utf-8')
+        connection.authenticate('XOAUTH2', lambda x: auth_string)
+        return move_email_items_imap(
+            connection, items, destination=destination, provider='outlook', default_mode='sequence'
+        )
+    except Exception as exc:
+        return {
+            'success': False,
+            'success_count': 0,
+            'failed_count': len(items or []),
+            'moved_ids': [],
+            'new_message_ids': [],
+            'errors': [build_error_payload(
+                'IMAP_CONNECT_FAILED', 'IMAP 连接失败', type(exc).__name__, 502,
+                sanitize_error_details(str(exc))[:200],
+            )],
+        }
+    finally:
+        if connection:
+            try:
+                connection.logout()
+            except Exception:
+                pass
+
+
+def move_emails_imap_generic_result(email_addr: str, imap_password: str, imap_host: str,
+                                    items: List[Dict[str, Any]], destination: str = 'inbox',
+                                    imap_port: int = 993, provider: str = 'custom',
+                                    proxy_url: str = '') -> Dict[str, Any]:
+    """通过账号密码 IMAP 搬移邮件（GMX / 阿里云企业邮等自建账号）。"""
+    mail = None
+    try:
+        mail = create_imap_connection(imap_host, imap_port, proxy_url)
+        try:
+            mail.login(email_addr, imap_password)
+        except imaplib.IMAP4.error as exc:
+            return {
+                'success': False,
+                'success_count': 0,
+                'failed_count': len(items or []),
+                'moved_ids': [],
+                'new_message_ids': [],
+                'errors': [build_error_payload(
+                    'IMAP_AUTH_FAILED',
+                    normalize_imap_auth_error(provider, imap_host, str(exc)),
+                    'IMAPAuthError',
+                    401,
+                    '',
+                )],
+            }
+        send_imap_id(mail, provider, imap_host)
+        return move_email_items_imap(
+            mail, items, destination=destination, provider=provider, default_mode='uid'
+        )
+    except Exception as exc:
+        return {
+            'success': False,
+            'success_count': 0,
+            'failed_count': len(items or []),
+            'moved_ids': [],
+            'new_message_ids': [],
+            'errors': [build_error_payload(
+                'IMAP_CONNECT_FAILED', 'IMAP 连接失败', type(exc).__name__, 502,
+                sanitize_error_details(str(exc))[:200],
+            )],
+        }
+    finally:
+        if mail:
+            try:
+                mail.logout()
+            except Exception:
+                pass
+
+
 def new_imap_timing_context(account: str, host: str, folder: str, operation: str) -> Dict[str, Any]:
     return {
         'request_id': generate_trace_id(), 'account': account, 'host': host,

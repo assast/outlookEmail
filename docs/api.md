@@ -139,6 +139,7 @@
 | GET | `/api/emails/<email_addr>` | Session | JSON | 获取内部邮件列表 |
 | POST | `/api/emails/mark-read` | Session + CSRF | JSON | 批量标记邮件为已读 |
 | POST | `/api/emails/delete` | Session + CSRF | JSON | 批量删除邮件 |
+| POST | `/api/emails/not-junk` | Session + CSRF | JSON | 把垃圾邮件标记为非垃圾（移回收件箱） |
 | GET | `/api/email/<email_addr>/<message_id>` | Session | JSON | 获取邮件详情 |
 | GET | `/api/email/<email_addr>/<message_id>/attachments/<attachment_id>` | Session | 文件流 | 下载附件 |
 | GET | `/api/email/<email_addr>/<message_id>/attachments/download-all` | Session | ZIP 文件流 | 打包下载全部附件 |
