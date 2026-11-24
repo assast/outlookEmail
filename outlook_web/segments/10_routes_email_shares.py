@@ -912,3 +912,45 @@ def api_email_share_get_email_detail(token, message_id):
         strict_id_mode=max_email_count is not None,
         force_method=max_email_count is not None,
     ))
+@app.route('/api/share/email/<token>/not-junk', methods=['POST'])
+def api_email_share_not_junk(token):
+    """分享链接里把垃圾邮件标记为非垃圾（移回收件箱）。"""
+    share, account, status = resolve_active_email_share(token)
+    if status != EMAIL_SHARE_STATUS_ACTIVE:
+        return email_share_error_response(status)
+
+    mismatch_response = reject_share_if_account_mismatch(account)
+    if mismatch_response:
+        return mismatch_response
+
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
+    raw_items = data.get('items') if data.get('items') is not None else data.get('ids', [])
+    items = normalize_email_action_items(raw_items, 'junkemail')
+    if not items:
+        return jsonify({'success': False, 'error': '缺少要移动的邮件'}), 400
+    if any(item['folder'] != 'junkemail' for item in items):
+        return jsonify({'success': False, 'error': '只支持把垃圾邮件移回收件箱'}), 400
+
+    # 限量分享：只允许操作可见范围内的邮件，避免通过接口绕过分享的可见条数限制。
+    max_email_count = get_email_share_max_email_count(share)
+    if max_email_count is not None:
+        visible_result = resolve_email_share_visible_messages(account, max_email_count, 'junkemail')
+        if not visible_result.get('success'):
+            return jsonify({'success': False, 'error': '暂时无法校验邮件范围，请稍后重试'}), 502
+        visible_emails = visible_result.get('emails') or []
+        for item in items:
+            if not find_email_share_visible_message(
+                visible_emails, item['id'], 'junkemail', item.get('id_mode') or ''
+            ):
+                return jsonify({'success': False, 'error': '邮件不在分享范围内'}), 404
+
+    result = move_account_emails_to_folder(account, items, 'inbox')
+    result['cached_rows_deleted'] = delete_retained_normal_mail_rows_after_move(account, items, result)
+    status_code = 200
+    if not result.get('success'):
+        first_error = result.get('error')
+        upstream_status = first_error.get('status') if isinstance(first_error, dict) else None
+        status_code = int(upstream_status) if upstream_status in (401, 403, 404) else 502
+    return jsonify(result), status_code

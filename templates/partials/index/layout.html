@@ -504,6 +504,14 @@
                         </svg>
                         <span style="user-select: none;">信任此邮件</span>
                     </label>
+                    <button class="batch-btn email-detail-action-btn" id="markNotJunkBtn" type="button"
+                        title="把该邮件移回收件箱" aria-label="标为非垃圾邮件" onclick="markCurrentEmailNotJunk()" style="display: none; padding: 4px 8px; font-size: 12px;">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                            <path d="M4 4h16v16H4z"></path>
+                            <polyline points="4 7 12 13 20 7"></polyline>
+                        </svg>
+                        <span class="email-detail-action-btn__text">非垃圾邮件</span>
+                    </button>
                     <div class="email-detail-toolbar-spacer"></div>
                     <button class="batch-btn danger email-detail-action-btn email-detail-action-btn--delete" type="button"
                         title="删除邮件" aria-label="删除邮件" onclick="confirmDeleteCurrentEmail()" style="padding: 4px 8px; font-size: 12px;">

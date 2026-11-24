@@ -87,6 +87,16 @@
 
             <!-- Middle Panel: Email List -->
             <section class="email-list-panel" id="emailListPanel">
+                <div class="folder-tabs" id="shareFolderTabs" role="tablist" aria-label="邮件文件夹">
+                    <button class="folder-btn folder-tab active" type="button" data-folder="inbox" role="tab" aria-selected="true">
+                        <i data-lucide="inbox"></i>
+                        <span>收件箱</span>
+                    </button>
+                    <button class="folder-btn folder-tab" type="button" data-folder="junkemail" role="tab" aria-selected="false">
+                        <i data-lucide="shield-alert"></i>
+                        <span>垃圾邮件</span>
+                    </button>
+                </div>
                 <div class="list-search-container">
                     <div class="search-wrapper">
                         <i data-lucide="search" class="search-icon"></i>
