@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Added
+- 手动 OAuth 授权并保存新 Outlook 账号时可填写备注，备注会随账号一起保存。
+- 系统设置可指定分享链接公网地址；留空时继续按当前请求地址生成。
+
 ## [3.0.34] - 2026-11-26
 
 ### Added

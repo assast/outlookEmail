@@ -80,7 +80,7 @@
             if (sectionHintEl) {
                 sectionHintEl.textContent = reauthMode
                     ? '请确认当前账号邮箱，并粘贴授权后的回调 URL。系统会保存新授权并自动执行一次 Token 刷新验证。'
-                    : '换取并预览只需要粘贴授权后的回调 URL。邮箱、密码和目标分组仅在保存账号时使用，可稍后补充。';
+                    : '换取并预览只需要粘贴授权后的回调 URL。邮箱、密码、备注和目标分组仅在保存账号时使用，可稍后补充。';
             }
             if (emailLabelEl) emailLabelEl.textContent = reauthMode ? '当前邮箱账号' : '邮箱账号（保存时可选）';
             if (emailInput) {
@@ -132,6 +132,7 @@
             setOAuthElementDisplay('copyOauthEmailBtn', reauthMode);
 
             setOAuthElementDisplay('oauthTargetGroup', !reauthMode);
+            setOAuthElementDisplay('oauthRemarkGroup', !reauthMode);
             setOAuthElementDisplay('oauthPreviewPasswordGroup', !reauthMode);
             setOAuthElementDisplay('oauthPreviewGroupGroup', !reauthMode);
 
@@ -239,6 +240,8 @@
             // 重置表单
             document.getElementById('oauthEmailInput').value = oauthReauthorizeAccount?.email || '';
             document.getElementById('oauthPasswordInput').value = '';
+            const remarkInput = document.getElementById('oauthRemarkInput');
+            if (remarkInput) remarkInput.value = '';
             document.getElementById('redirectUrlInput').value = '';
             invalidateRefreshTokenPreview();
             applyOAuthModalModeUI();
@@ -502,6 +505,8 @@
                 return reauthorizeExistingAccount();
             }
 
+            const remark = document.getElementById('oauthRemarkInput')?.value.trim() || '';
+
             if (!oauthPreviewAccount) {
                 const exchanged = await exchangeToken({ silentSuccess: true, keepSavingState: true });
                 if (!exchanged || !oauthPreviewAccount) {
@@ -540,6 +545,7 @@
                         account_string: accountString,
                         group_id: oauthPreviewAccount.group_id,
                         provider: 'outlook',
+                        remark,
                     })
                 });
 

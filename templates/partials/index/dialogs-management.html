@@ -14,7 +14,7 @@
                                 <li>
                                     <button type="button" class="settings-sidebar-link is-active" data-target="settingsGeneralSection" onclick="scrollSettingsSection('settingsGeneralSection', this)">
                                         <strong>常规设置</strong>
-                                        <span>登录密码、对外 API Key、时区、邮件获取超时与列表展示</span>
+                                        <span>登录密码、对外 API Key、分享链接域名、时区、邮件获取超时与列表展示</span>
                                     </button>
                                 </li>
                                 <li>
@@ -102,6 +102,12 @@
                                     <label class="form-label" for="settingsAppTimezone">时区</label>
                                     <select class="form-select" id="settingsAppTimezone"></select>
                                     <div class="form-hint">影响时间展示与 Cron 调度。</div>
+                                </div>
+                                <div class="form-group settings-form-span-full">
+                                    <label class="form-label" for="settingsEmailSharePublicBaseUrl">分享链接公网地址（可选）</label>
+                                    <input type="text" class="form-input" id="settingsEmailSharePublicBaseUrl"
+                                        placeholder="https://mail.example.com">
+                                    <div class="form-hint">填写外部访问的 http(s) 域名根地址，不含路径；留空时按当前访问地址自动生成。</div>
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">邮件获取超时</label>

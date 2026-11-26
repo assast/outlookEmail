@@ -36,6 +36,7 @@ class EmailShareLinkTests(unittest.TestCase):
             db = web_outlook_app.get_db()
             db.execute('DELETE FROM email_share_links')
             db.execute('DELETE FROM accounts')
+            db.execute("DELETE FROM settings WHERE key = 'email_share_public_base_url'")
             db.commit()
 
     def _insert_account(self, email_addr='shared@example.com'):
@@ -67,6 +68,52 @@ class EmailShareLinkTests(unittest.TestCase):
 
     def _token_from_share_url(self, share_url):
         return urlparse(share_url).path.rstrip('/').split('/')[-1]
+
+    def test_share_url_uses_request_host_by_default_and_configured_base_when_set(self):
+        account_id = self._insert_account()
+
+        default_response = self.client.post(
+            '/api/email-shares',
+            json={'account_id': account_id, 'duration_minutes': 60},
+        )
+        self.assertEqual(default_response.status_code, 200)
+        default_url = urlparse(default_response.get_json()['share']['share_url'])
+        self.assertEqual(default_url.scheme, 'http')
+        self.assertEqual(default_url.netloc, 'localhost')
+
+        settings_response = self.client.put('/api/settings', json={
+            'email_share_public_base_url': 'https://mail.example.test/',
+        })
+        self.assertTrue(settings_response.get_json()['success'])
+        settings = self.client.get('/api/settings').get_json()['settings']
+        self.assertEqual(settings['email_share_public_base_url'], 'https://mail.example.test')
+
+        configured_response = self.client.post(
+            '/api/email-shares',
+            json={'account_id': account_id, 'duration_minutes': 60},
+        )
+        self.assertEqual(configured_response.status_code, 200)
+        configured_url = urlparse(configured_response.get_json()['share']['share_url'])
+        self.assertEqual(configured_url.scheme, 'https')
+        self.assertEqual(configured_url.netloc, 'mail.example.test')
+
+    def test_share_public_base_url_rejects_non_origin_urls(self):
+        invalid_urls = (
+            'ftp://mail.example.test',
+            'https://mail.example.test/share',
+            'https://user:password@mail.example.test',
+            'https://mail.example.test?query=1',
+            'not-a-url',
+        )
+        for value in invalid_urls:
+            with self.subTest(value=value):
+                response = self.client.put('/api/settings', json={
+                    'email_share_public_base_url': value,
+                })
+                self.assertFalse(response.get_json()['success'])
+
+        settings = self.client.get('/api/settings').get_json()['settings']
+        self.assertEqual(settings['email_share_public_base_url'], '')
 
     @staticmethod
     def _share_folder_result(emails, method='Graph API', request_method='graph', has_more=False):
@@ -1214,6 +1261,18 @@ class EmailShareFrontendContractTests(unittest.TestCase):
         self.assertIn('emailShareAllowActions', dialogs)
         self.assertIn('allow_actions: allowActions', shares_js)
         self.assertIn('toggleEmailShareActions', shares_js)
+
+    def test_settings_ui_contains_optional_share_public_base_url(self):
+        dialogs = pathlib.Path(
+            ROOT_DIR, 'templates', 'partials', 'index', 'dialogs-management.html'
+        ).read_text(encoding='utf-8')
+        settings_js = pathlib.Path(
+            ROOT_DIR, 'static', 'js', 'index', '07-settings.js'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('id="settingsEmailSharePublicBaseUrl"', dialogs)
+        self.assertIn('email_share_public_base_url', settings_js)
+        self.assertIn('留空时按当前访问地址自动生成', dialogs)
 
     def test_admin_ui_formats_share_times_in_app_timezone(self):
         # 后端 expires_at/created_at 均为无时区标记的 UTC 字符串，

@@ -243,6 +243,8 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
+如果生成的邮件分享链接仍使用容器或本地地址，可在 Web「系统设置 → 常规设置」中填写分享链接公网地址，例如 `https://your-domain.com`。留空时，应用会按当前请求的 Host 和协议生成链接；配置值只包含根域名，不包含路径。
+
 **4. 配置 HTTPS**
 ```bash
 sudo certbot --nginx -d your-domain.com
