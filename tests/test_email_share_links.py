@@ -90,7 +90,7 @@ class EmailShareLinkTests(unittest.TestCase):
 
         return fetch
 
-    def test_email_share_schema_migrates_max_email_count_and_preserves_legacy_rows(self):
+    def test_email_share_schema_migrates_share_settings_and_preserves_legacy_rows(self):
         account_id = self._insert_account()
         legacy_token = 'legacy-share-token'
         with self.app.app_context():
@@ -138,13 +138,16 @@ class EmailShareLinkTests(unittest.TestCase):
                 for row in db.execute('PRAGMA table_info(email_share_links)').fetchall()
             }
             migrated_row = db.execute(
-                'SELECT max_email_count, access_code_hash FROM email_share_links WHERE token_hash = ?',
+                'SELECT max_email_count, access_code_hash, allow_actions '
+                'FROM email_share_links WHERE token_hash = ?',
                 (web_outlook_app.hash_email_share_token(legacy_token),)
             ).fetchone()
             self.assertIn('max_email_count', columns)
             self.assertIn('access_code_hash', columns)
+            self.assertIn('allow_actions', columns)
             self.assertIsNone(migrated_row['max_email_count'])
             self.assertIsNone(migrated_row['access_code_hash'])
+            self.assertEqual(migrated_row['allow_actions'], 0)
 
             web_outlook_app.init_db()
 
@@ -170,6 +173,7 @@ class EmailShareLinkTests(unittest.TestCase):
         for code in (None, ''):
             share = self._create_share(account_id, access_code=code)
             self.assertFalse(share['requires_access_code'])
+            self.assertFalse(share['allow_actions'])
         for code in ('a', 'abc', 'a' * 33, 'ab 12', '中文代码', 1234, True, [], {}):
             with self.subTest(code=code):
                 response = self.client.post('/api/email-shares', json={
@@ -178,6 +182,37 @@ class EmailShareLinkTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertFalse(response.get_json()['success'])
         self._create_share(account_id, access_code='a' * 32)
+
+    def test_create_share_can_explicitly_allow_actions(self):
+        account_id = self._insert_account()
+
+        share = self._create_share(account_id, allow_actions=True)
+
+        self.assertTrue(share['allow_actions'])
+        listed = self.client.get('/api/email-shares').get_json()['shares'][0]
+        self.assertTrue(listed['allow_actions'])
+
+    def test_share_action_permission_can_be_toggled(self):
+        account_id = self._insert_account()
+        share = self._create_share(account_id)
+
+        enabled = self.client.post(
+            f"/api/email-shares/{share['id']}/allow-actions",
+            json={'allow_actions': True},
+        )
+        self.assertEqual(enabled.status_code, 200)
+        self.assertTrue(enabled.get_json()['share']['allow_actions'])
+
+        token = self._token_from_share_url(share['share_url'])
+        status = self.app.test_client().get(f'/api/share/email/{token}/status')
+        self.assertTrue(status.get_json()['allow_actions'])
+
+        disabled = self.client.post(
+            f"/api/email-shares/{share['id']}/allow-actions",
+            json={'allow_actions': False},
+        )
+        self.assertEqual(disabled.status_code, 200)
+        self.assertFalse(disabled.get_json()['share']['allow_actions'])
 
     def test_access_code_blocks_all_anonymous_read_routes_without_leaking_email(self):
         account_id = self._insert_account()
@@ -1176,6 +1211,9 @@ class EmailShareFrontendContractTests(unittest.TestCase):
         self.assertIn('emailShareRollingWarning', dialogs)
         self.assertIn('max_email_count: maxEmailCount', shares_js)
         self.assertIn('formatEmailShareVisibility', shares_js)
+        self.assertIn('emailShareAllowActions', dialogs)
+        self.assertIn('allow_actions: allowActions', shares_js)
+        self.assertIn('toggleEmailShareActions', shares_js)
 
     def test_admin_ui_formats_share_times_in_app_timezone(self):
         # 后端 expires_at/created_at 均为无时区标记的 UTC 字符串，

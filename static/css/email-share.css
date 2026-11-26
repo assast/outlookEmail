@@ -1154,6 +1154,43 @@ button {
     color: var(--danger);
 }
 
+/* Mobile folder tabs (desktop keeps using the sidebar) */
+.folder-tabs {
+    display: none;
+}
+
+/* 详情页：标为非垃圾邮件 */
+.detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.not-junk-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 38px;
+    padding: 8px 16px;
+    border: 1px solid var(--primary-border);
+    border-radius: 999px;
+    background-color: var(--primary-light);
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 600;
+    transition: var(--transition-fast);
+}
+
+.not-junk-btn:hover {
+    border-color: var(--primary);
+}
+
+.not-junk-btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
 /* Responsive Rules */
 @media (max-width: 1024px) {
     :root {
@@ -1162,6 +1199,49 @@ button {
     
     .app-sidebar {
         display: none; /* Hide folders sidebar */
+    }
+
+    /* 手机端：用列表顶部的按钮切换文件夹（侧边栏已隐藏） */
+    .folder-tabs {
+        display: flex;
+        flex: 0 0 auto;
+        gap: 8px;
+        padding: 10px 14px;
+        background-color: var(--bg-card);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .folder-tabs .folder-btn {
+        flex: 1 1 0;
+        width: auto;
+        min-height: 40px;
+        justify-content: center;
+        gap: 6px;
+        padding: 8px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 999px;
+        background-color: var(--bg-app);
+        color: var(--text-secondary);
+        font-size: 14px;
+        font-weight: 500;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .folder-tabs .folder-btn i {
+        width: 16px;
+        height: 16px;
+    }
+
+    .folder-tabs .folder-btn:hover {
+        background-color: var(--bg-hover);
+        color: var(--text-primary);
+    }
+
+    .folder-tabs .folder-btn.active {
+        background-color: var(--primary);
+        border-color: var(--primary);
+        color: #ffffff;
+        font-weight: 600;
     }
 }
 

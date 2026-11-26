@@ -530,6 +530,13 @@
                     <div class="form-hint">4–32 位英文字母或数字，区分大小写。设置后，访客需输入访问码才能查看邮箱。</div>
                 </div>
                 <div class="form-group">
+                    <label class="settings-toggle settings-toggle--inline">
+                        <input type="checkbox" id="emailShareAllowActions">
+                        <span class="form-label">允许访客操作邮箱</span>
+                    </label>
+                    <div class="form-hint">开启后，访客可将垃圾邮件移回收件箱；关闭时，分享链接仅供查看。</div>
+                </div>
+                <div class="form-group">
                     <label class="form-label">有效期</label>
                     <select class="form-select" id="emailShareDurationPreset" onchange="syncEmailShareDurationPreset()">
                         <option value="60">1 小时</option>

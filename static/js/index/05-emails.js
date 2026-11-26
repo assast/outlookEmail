@@ -1803,6 +1803,78 @@
                     iframe.srcdoc = htmlContent;
                 }
             }
+            updateNotJunkButton(email);
+        }
+
+        function updateNotJunkButton(email = currentEmailDetail) {
+            const button = document.getElementById('markNotJunkBtn');
+            if (!button) return;
+            const folder = String((email && email.folder) || currentFolder || '').toLowerCase();
+            button.style.display = folder === 'junkemail' ? '' : 'none';
+        }
+
+        async function markCurrentEmailNotJunk() {
+            if (!currentAccount || !currentEmailId) return;
+            const email = currentEmails.find(item => String(item.id) === String(currentEmailId))
+                || (currentEmailDetail && String(currentEmailDetail.id) === String(currentEmailId) ? currentEmailDetail : null);
+            if (!email) return;
+            const folder = String(email.folder || currentFolder || 'junkemail').toLowerCase();
+            if (folder !== 'junkemail') {
+                showToast('当前邮件不在垃圾箱', 'warning');
+                return;
+            }
+            const button = document.getElementById('markNotJunkBtn');
+            if (button && button.disabled) return;
+            if (button) button.disabled = true;
+            showToast('正在移回收件箱...', 'info');
+            try {
+                const response = await fetch('/api/emails/not-junk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: currentAccount,
+                        method: getRemoteMailboxMethodFallback(),
+                        folder: 'junkemail',
+                        items: [{
+                            id: email.id,
+                            folder: 'junkemail',
+                            id_mode: email.id_mode || ''
+                        }]
+                    })
+                });
+                const result = await response.json();
+                const movedIds = new Set(
+                    (result.moved_ids || (result.success ? [email.id] : [])).map(id => String(id))
+                );
+                if (result.success || movedIds.size > 0) {
+                    showToast(movedIds.size > 1 ? `已移回收件箱（${movedIds.size} 封）` : '已移回收件箱');
+                    currentEmails = currentEmails.filter(item => !movedIds.has(String(item.id)));
+                    removeDeletedEmailsFromCachedLists(movedIds);
+                    selectedEmailIds.clear();
+                    renderEmailList(currentEmails);
+                    currentEmailId = null;
+                    currentEmailDetail = null;
+                    document.getElementById('emailDetail').innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📥</div>
+                            <div class="empty-state-text">邮件已移回收件箱</div>
+                        </div>
+                    `;
+                    document.getElementById('emailDetailToolbar').style.display = 'none';
+                    invalidateEmailListCache(currentAccount, 'junkemail');
+                    invalidateEmailListCache(currentAccount, 'all');
+                } else {
+                    const errorMessage = result.error && result.error.message
+                        ? result.error.message
+                        : (result.error || '未知错误');
+                    showToast('移动失败: ' + errorMessage, 'error');
+                }
+            } catch (error) {
+                console.error(error);
+                showToast('网络错误', 'error');
+            } finally {
+                if (button) button.disabled = false;
+            }
         }
 
         // 动态调整 iframe 高度

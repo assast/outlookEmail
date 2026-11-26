@@ -23,6 +23,10 @@
                 : '不限量';
         }
 
+        function formatEmailShareActionPermission(share) {
+            return share?.allow_actions ? '允许操作' : '仅查看';
+        }
+
         function hideCreateEmailShareModal() {
             hideModal('createEmailShareModal');
         }
@@ -49,6 +53,8 @@
             if (maxEmailCount) maxEmailCount.value = '1';
             const never = document.getElementById('emailShareNeverExpires');
             if (never) never.checked = false;
+            const allowActions = document.getElementById('emailShareAllowActions');
+            if (allowActions) allowActions.checked = false;
             syncEmailShareDurationPreset();
             toggleEmailShareNeverExpires();
             toggleEmailShareVisibilityMode();
@@ -133,6 +139,7 @@
                 ${accessCode ? `<div class="form-hint">访问码：${escapeHtml(accessCode)}（请保存，关闭后无法再次查看）</div>` : ''}
                 <div class="form-hint">有效期：${escapeHtml(formatEmailShareExpiry(share))}</div>
                 <div class="form-hint">可见范围：${escapeHtml(formatEmailShareVisibility(share))}</div>
+                <div class="form-hint">操作权限：${escapeHtml(formatEmailShareActionPermission(share))}</div>
             `;
         }
 
@@ -142,6 +149,7 @@
             const durationMinutes = getEmailShareDurationMinutes();
             const maxEmailCount = getEmailShareMaxEmailCount();
             const accessCode = document.getElementById('emailShareAccessCode')?.value || '';
+            const allowActions = !!document.getElementById('emailShareAllowActions')?.checked;
             if (!accountId) {
                 showToast('缺少邮箱账号', 'error');
                 return;
@@ -170,7 +178,8 @@
                         duration_minutes: durationMinutes,
                         never_expires: neverExpires,
                         max_email_count: maxEmailCount,
-                        access_code: accessCode
+                        access_code: accessCode,
+                        allow_actions: allowActions
                     })
                 });
                 const data = await response.json();
@@ -247,10 +256,11 @@
                                 <input type="text" class="form-input share-url-input" readonly value="${escapeHtml(share.share_url || '')}">
                                 <button class="btn btn-secondary btn-sm-action" type="button" onclick="copyEmailShareUrl('${escapeHtml(share.share_url || '')}')">复制</button>
                             </div>
-                            <div class="form-hint">${share.requires_access_code ? '需访问码' : '无需访问码'}</div>
+                            <div class="form-hint">${share.requires_access_code ? '需访问码' : '无需访问码'} · ${formatEmailShareActionPermission(share)}</div>
                         </td>
                         <td style="text-align: right;">
-                            <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                            <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end;">
+                                <button class="btn btn-secondary btn-sm-action" type="button" onclick="toggleEmailShareActions(${Number(share.id)}, ${!share.allow_actions})" ${share.status !== 'active' ? 'disabled' : ''}>${share.allow_actions ? '关闭操作' : '允许操作'}</button>
                                 <button class="btn btn-secondary btn-sm-action" type="button" onclick="cancelEmailShare(${Number(share.id)})" ${share.status === 'revoked' ? 'disabled' : ''}>取消</button>
                                 <button class="btn btn-danger btn-sm-action" type="button" onclick="deleteEmailShare(${Number(share.id)})">删除</button>
                             </div>
@@ -439,6 +449,31 @@
                 }
             } catch (error) {
                 showToast('取消分享失败: ' + error.message, 'error');
+            }
+        }
+
+        async function toggleEmailShareActions(shareId, allowActions) {
+            if (allowActions && !(await showConfirmModal(
+                '开启后，持有该分享链接的人可以把垃圾邮件移回收件箱。确定开启吗？',
+                { title: '允许访客操作', confirmText: '确认开启' }
+            ))) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/email-shares/${encodeURIComponent(shareId)}/allow-actions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ allow_actions: !!allowActions })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast(allowActions ? '已允许访客操作' : '已关闭访客操作', 'success');
+                    loadEmailShares();
+                } else {
+                    handleApiError(data, '更新分享权限失败');
+                }
+            } catch (error) {
+                showToast('更新分享权限失败: ' + error.message, 'error');
             }
         }
 

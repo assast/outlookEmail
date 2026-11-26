@@ -8,6 +8,7 @@
     let currentMethod = 'graph';
     let selectedEmailId = null;
     let isShareReady = false;
+    let allowActions = false;
 
     // --- Utility Functions ---
     function createLucideIcons() {
@@ -27,6 +28,11 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    }
+
+    function getCsrfToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.content : '';
     }
 
     function setStatus(statusText, statusCode) {
@@ -499,7 +505,59 @@
                     ${renderAttachments(email.attachments)}
                 </div>
             `;
+            renderNotJunkAction(email);
             createLucideIcons();
+        }
+    }
+
+    function renderNotJunkAction(email) {
+        if (!allowActions || currentFolder !== 'junkemail') return;
+        const detailPanel = document.getElementById('shareEmailDetail');
+        const card = detailPanel ? detailPanel.querySelector('.detail-card') : null;
+        if (!card) return;
+        const actions = document.createElement('div');
+        actions.className = 'detail-actions';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'not-junk-btn';
+        button.textContent = '标为非垃圾邮件';
+        button.title = '把该邮件移回收件箱';
+        button.addEventListener('click', () => markEmailNotJunk(selectedEmailId, button));
+        actions.appendChild(button);
+        card.appendChild(actions);
+    }
+
+    async function markEmailNotJunk(emailId, button) {
+        if (!emailId || (button && button.disabled)) return;
+        const email = currentEmails.find(item => item.id === emailId);
+        if (!email) return;
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = '处理中...';
+        try {
+            await requestJson(`/api/share/email/${encodeURIComponent(token)}/not-junk`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({
+                    items: [{
+                        id: email.id,
+                        folder: 'junkemail',
+                        id_mode: email.id_mode || ''
+                    }],
+                    sender: email.from || ''
+                })
+            });
+            showToast('已移回收件箱');
+            const inboxButton = document.querySelector('#shareFolderTabs .folder-btn[data-folder="inbox"]')
+                || document.querySelector('.folder-btn[data-folder="inbox"]');
+            if (inboxButton) inboxButton.click();
+        } catch (error) {
+            showToast((error && error.message) || '操作失败，请稍后重试');
+            button.disabled = false;
+            button.textContent = originalText;
         }
     }
 
@@ -717,6 +775,7 @@
     async function loadShareContent() {
         try {
             const status = await requestJson(`/api/share/email/${encodeURIComponent(token)}/status`);
+            allowActions = !!status.allow_actions;
             
             const titleElement = document.getElementById('shareEmailTitle');
             if (titleElement) titleElement.textContent = status.email || '邮箱分享';
@@ -792,7 +851,9 @@
         if (folderBtn) {
             currentFolder = folderBtn.dataset.folder || 'inbox';
             document.querySelectorAll('.folder-btn').forEach(btn => {
-                btn.classList.toggle('active', btn === folderBtn);
+                const isCurrentFolder = btn.dataset.folder === currentFolder;
+                btn.classList.toggle('active', isCurrentFolder);
+                btn.setAttribute('aria-selected', isCurrentFolder ? 'true' : 'false');
             });
             loadEmails();
             
