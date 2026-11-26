@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, Optional
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     # These segmented files are executed into the shared `web_outlook_app`
@@ -115,7 +116,39 @@ def is_email_share_active(share: Dict[str, Any]) -> bool:
 def build_email_share_url(token: str) -> str:
     if not token:
         return ''
+    public_base_url, error = normalize_email_share_public_base_url(
+        get_setting('email_share_public_base_url', '')
+    )
+    if public_base_url and not error:
+        path = url_for('view_email_share', token=token, _external=False)
+        return f'{public_base_url}{path if path.startswith("/") else "/" + path}'
     return url_for('view_email_share', token=token, _external=True)
+
+
+def normalize_email_share_public_base_url(value: Any) -> tuple[str, Optional[str]]:
+    raw = str(value or '').strip()
+    if not raw:
+        return '', None
+    if any(char.isspace() for char in raw):
+        return '', '分享链接公网地址无效'
+    try:
+        parsed = urlsplit(raw)
+        parsed.port  # 访问 port 属性以校验端口格式与范围。
+    except ValueError:
+        return '', '分享链接公网地址无效'
+    if (
+        parsed.scheme.lower() not in {'http', 'https'}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {'', '/'}
+        or parsed.query
+        or parsed.fragment
+        or '?' in raw
+        or '#' in raw
+    ):
+        return '', '分享链接公网地址须为不含路径的 http(s) 域名地址'
+    return f'{parsed.scheme.lower()}://{parsed.netloc}', None
 
 
 def decrypt_email_share_token(share: Dict[str, Any]) -> str:

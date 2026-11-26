@@ -626,6 +626,7 @@ def api_get_settings():
     settings['cloudflare_ai_username_api_key_configured'] = bool(cloudflare_ai_api_key)
     settings['cloudflare_ai_username_api_key_masked'] = '********' if cloudflare_ai_api_key else ''
     settings['app_timezone'] = get_app_timezone()
+    settings['email_share_public_base_url'] = get_setting('email_share_public_base_url', '')
     settings['refresh_token_expires_within_days'] = get_setting('refresh_token_expires_within_days', '7')
     settings['refresh_token_default_lifetime_days'] = get_setting('refresh_token_default_lifetime_days', '90')
     settings['refresh_token_include_missing_anchor'] = get_setting(
@@ -896,6 +897,17 @@ def api_update_settings():
             updated.append('Time zone')
         else:
             errors.append('Failed to save time zone')
+
+    if 'email_share_public_base_url' in data:
+        public_base_url, error = normalize_email_share_public_base_url(
+            data['email_share_public_base_url']
+        )
+        if error:
+            errors.append(error)
+        elif set_setting('email_share_public_base_url', public_base_url):
+            updated.append('分享链接公网地址')
+        else:
+            errors.append('保存分享链接公网地址失败')
 
     if 'show_account_created_at' in data:
         show_created_at = str(data['show_account_created_at']).lower()

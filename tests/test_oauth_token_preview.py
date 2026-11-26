@@ -26,6 +26,19 @@ def test_oauth_preview_labels_account_fields_optional():
     assert '换取并预览只需要粘贴授权后的回调 URL' in html
 
 
+def test_oauth_save_new_account_accepts_optional_remark():
+    html = OAUTH_DIALOG_PATH.read_text(encoding='utf-8')
+    source = OAUTH_JS_PATH.read_text(encoding='utf-8')
+    save_start = source.index('async function saveTokenAccount')
+    save_source = source[save_start:]
+
+    assert 'id="oauthRemarkGroup"' in html
+    assert 'id="oauthRemarkInput"' in html
+    assert "setOAuthElementDisplay('oauthRemarkGroup', !reauthMode)" in source
+    assert "const remark = document.getElementById('oauthRemarkInput')?.value.trim() || '';" in save_source
+    assert 'remark,' in save_source
+
+
 def test_reauthorize_mode_posts_to_account_endpoint_without_saving_new_account():
     source = OAUTH_JS_PATH.read_text(encoding='utf-8')
     save_start = source.index('async function saveTokenAccount')

@@ -1810,6 +1810,8 @@
                     document.getElementById('settingsCloudflareAiPrompt').value = data.settings.cloudflare_ai_username_prompt || '';
                     document.getElementById('settingsCloudflareAiTestResult').textContent = '未测试';
                     document.getElementById('settingsAppTimezone').value = appTimeZone;
+                    document.getElementById('settingsEmailSharePublicBaseUrl').value =
+                        data.settings.email_share_public_base_url || '';
                     document.getElementById('settingsPassword').value = '';
                     const currentPasswordInput = document.getElementById('settingsCurrentPassword');
                     if (currentPasswordInput) currentPasswordInput.value = '';
@@ -1888,6 +1890,7 @@
             const refreshDelay = document.getElementById('refreshDelaySeconds').value;
             const refreshCron = document.getElementById('refreshCron').value.trim();
             const appTimeZone = document.getElementById('settingsAppTimezone').value.trim();
+            const rawSharePublicBaseUrl = document.getElementById('settingsEmailSharePublicBaseUrl')?.value.trim() || '';
             const strategy = document.querySelector('input[name="refreshStrategy"]:checked').value;
             const enableScheduled = document.getElementById('enableScheduledRefresh').checked;
             const mailFetchTimeoutSeconds = parseInt(document.getElementById('mailFetchTimeoutSeconds').value || '120', 10);
@@ -1968,6 +1971,25 @@
             if (!isValidAppTimeZone(appTimeZone)) {
                 showToast('Invalid time zone', 'error');
                 return;
+            }
+            let emailSharePublicBaseUrl = '';
+            if (rawSharePublicBaseUrl) {
+                try {
+                    const parsedUrl = new URL(rawSharePublicBaseUrl);
+                    if (!['http:', 'https:'].includes(parsedUrl.protocol)
+                        || !parsedUrl.hostname
+                        || parsedUrl.username
+                        || parsedUrl.password
+                        || parsedUrl.pathname !== '/'
+                        || parsedUrl.search
+                        || parsedUrl.hash) {
+                        throw new Error('invalid public base url');
+                    }
+                    emailSharePublicBaseUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
+                } catch (error) {
+                    showToast('分享链接公网地址须为不含路径的 http(s) 域名地址', 'error');
+                    return;
+                }
             }
             if (Number.isNaN(mailFetchTimeoutSeconds) || mailFetchTimeoutSeconds < 30 || mailFetchTimeoutSeconds > 300) {
                 showToast('邮件获取超时必须在 30-300 秒之间', 'error');
@@ -2063,6 +2085,7 @@
             settings.use_cron_schedule = strategy === 'cron';
             settings.enable_scheduled_refresh = enableScheduled;
             settings.app_timezone = appTimeZone;
+            settings.email_share_public_base_url = emailSharePublicBaseUrl;
             settings.mail_fetch_timeout_seconds = mailFetchTimeoutSeconds;
             settings.show_account_created_at = showAccountCreatedAt;
             settings.show_account_sort_order = showAccountSortOrder;

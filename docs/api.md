@@ -2718,6 +2718,7 @@ POST /api/cloudflare/channels
 | `cloudflare_ai_username_api_key_configured` | 是否已保存 Cloudflare AI API Key |
 | `cloudflare_ai_username_api_key_masked` | Cloudflare AI API Key 掩码，不返回明文 |
 | `app_timezone` | 当前系统时区，IANA 时区名，例如 `Asia/Shanghai` |
+| `email_share_public_base_url` | 分享链接公网根地址；留空时使用当前请求地址生成，支持 `http(s)`，不包含路径 |
 | `mail_fetch_timeout_seconds` | 普通 Outlook/IMAP 读取邮件列表的整体超时秒数，范围 `30-300`，默认 `120` |
 | `show_account_created_at` | 是否在邮箱列表展示创建时间 |
 | `show_account_sort_order` | 是否在邮箱列表展示自定义排序值 |
@@ -2769,6 +2770,7 @@ POST /api/cloudflare/channels
 | `use_cron_schedule` | bool | 旧策略是否使用 Cron 调度；仅 `legacy` 模式使用 |
 | `enable_scheduled_refresh` | bool | 旧策略定时刷新开关；新模式缺省时用于推导存量默认模式。旧策略关闭或退役后不能重新开启 |
 | `app_timezone` | string | 系统时区，使用 IANA 时区名，例如 `Asia/Shanghai` |
+| `email_share_public_base_url` | string | 分享链接公网根地址，支持 `http(s)` 且不能包含路径；留空时使用当前请求地址 |
 | `mail_fetch_timeout_seconds` | int | 普通 Outlook/IMAP 邮件列表整体获取超时，范围 `30-300`；未传则保留现有值。尚未保存该设置时回退环境变量 `MAIL_FETCH_OVERALL_TIMEOUT`，再回退 `120` |
 | `show_account_created_at` | bool | 是否在邮箱列表展示创建时间 |
 | `show_account_sort_order` | bool | 是否在邮箱列表展示自定义排序值 |
