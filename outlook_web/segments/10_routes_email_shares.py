@@ -181,6 +181,7 @@ def serialize_email_share_row(row: Any) -> Dict[str, Any]:
         'expires_at': share.get('expires_at'),
         'never_expires': bool(share.get('never_expires')),
         'max_email_count': get_email_share_max_email_count(share),
+        'allow_actions': bool(share.get('allow_actions')),
         'revoked_at': share.get('revoked_at'),
         'last_accessed_at': share.get('last_accessed_at'),
         'created_at': share.get('created_at'),
@@ -635,6 +636,10 @@ def api_create_email_share():
     if access_code_error:
         return jsonify({'success': False, 'error': access_code_error}), 400
 
+    allow_actions, allow_actions_error = normalize_email_share_bool(data.get('allow_actions'))
+    if allow_actions_error:
+        return jsonify({'success': False, 'error': 'allow_actions 参数无效'}), 400
+
     token = generate_email_share_token()
     expires_at = None if never_expires else utc_timestamp(duration_minutes)
     db = get_db()
@@ -642,9 +647,9 @@ def api_create_email_share():
         '''
         INSERT INTO email_share_links (
             account_id, token_hash, token_encrypted, expires_at, never_expires, max_email_count,
-            access_code_hash
+            access_code_hash, allow_actions
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''',
         (
             int(account['id']),
@@ -654,6 +659,7 @@ def api_create_email_share():
             1 if never_expires else 0,
             max_email_count,
             hash_password(access_code) if access_code else None,
+            1 if allow_actions else 0,
         )
     )
     db.commit()
@@ -678,6 +684,30 @@ def api_list_email_shares():
         if normalized_account_id <= 0:
             return jsonify({'success': False, 'error': 'account_id 参数无效'}), 400
     return jsonify({'success': True, 'shares': query_email_share_rows(normalized_account_id)})
+
+
+@app.route('/api/email-shares/<int:share_id>/allow-actions', methods=['POST'])
+@login_required
+def api_set_email_share_allow_actions(share_id):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or 'allow_actions' not in data:
+        return jsonify({'success': False, 'error': '缺少 allow_actions 参数'}), 400
+    allow_actions, error = normalize_email_share_bool(data.get('allow_actions'))
+    if error:
+        return jsonify({'success': False, 'error': 'allow_actions 参数无效'}), 400
+
+    share = get_email_share_row_by_id(share_id)
+    if not share:
+        return jsonify({'success': False, 'error': '分享记录不存在'}), 404
+
+    db = get_db()
+    db.execute(
+        'UPDATE email_share_links SET allow_actions = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        (1 if allow_actions else 0, int(share_id)),
+    )
+    db.commit()
+    updated = get_email_share_row_by_id(share_id)
+    return jsonify({'success': True, 'share': serialize_email_share_row(updated)})
 
 
 @app.route('/api/email-shares/<int:share_id>/cancel', methods=['POST'])
@@ -848,6 +878,7 @@ def api_email_share_status(token):
         'never_expires': bool(share.get('never_expires')),
         'expires_at': share.get('expires_at'),
         'max_email_count': get_email_share_max_email_count(share),
+        'allow_actions': bool(share.get('allow_actions')),
     })
 
 
@@ -922,6 +953,9 @@ def api_email_share_not_junk(token):
     mismatch_response = reject_share_if_account_mismatch(account)
     if mismatch_response:
         return mismatch_response
+
+    if not bool(share.get('allow_actions')):
+        return jsonify({'success': False, 'error': '此分享链接未允许访客执行操作'}), 403
 
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):

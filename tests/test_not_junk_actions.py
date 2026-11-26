@@ -105,6 +105,8 @@ class NotJunkActionTests(unittest.TestCase):
         self.assertIn('@media (max-width: 1024px)', css)
         self.assertIn('markEmailNotJunk', share_js)
         self.assertIn('/not-junk', share_js)
+        self.assertIn('btn.dataset.folder === currentFolder', share_js)
+        self.assertIn('#shareFolderTabs .folder-btn[data-folder="inbox"]', share_js)
 
     def test_admin_toolbar_has_not_junk_button(self):
         layout = pathlib.Path(
@@ -138,7 +140,7 @@ class NotJunkActionTests(unittest.TestCase):
     # ---------- 分享页接口 ----------
     def test_share_not_junk_moves_message_and_clears_cached_row(self):
         account_id = self._insert_account()
-        token = self._create_share(account_id)
+        token = self._create_share(account_id, allow_actions=True)
         self._insert_cached_row(account_id, 'junkemail', 'msg-1')
         move_result = {
             'success': True, 'success_count': 1, 'failed_count': 0,
@@ -159,9 +161,22 @@ class NotJunkActionTests(unittest.TestCase):
         move_mock.assert_called_once()
         self.assertEqual(self._cached_rows(account_id), [])
 
-    def test_share_not_junk_rejects_non_junk_folder(self):
+    def test_share_not_junk_is_denied_when_actions_are_disabled(self):
         account_id = self._insert_account()
         token = self._create_share(account_id)
+        with patch.object(web_outlook_app, 'move_account_emails_to_folder') as move_mock:
+            response = self.client.post(
+                '/api/share/email/%s/not-junk' % token,
+                json={'items': [{'id': 'msg-1', 'folder': 'junkemail', 'id_mode': 'graph'}]},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.get_json()['success'])
+        move_mock.assert_not_called()
+
+    def test_share_not_junk_rejects_non_junk_folder(self):
+        account_id = self._insert_account()
+        token = self._create_share(account_id, allow_actions=True)
         response = self.client.post(
             '/api/share/email/%s/not-junk' % token,
             json={'items': [{'id': 'msg-1', 'folder': 'inbox'}]},
@@ -178,7 +193,7 @@ class NotJunkActionTests(unittest.TestCase):
 
     def test_limited_share_rejects_message_outside_visible_window(self):
         account_id = self._insert_account()
-        token = self._create_share(account_id, max_email_count=5)
+        token = self._create_share(account_id, max_email_count=5, allow_actions=True)
         with patch.object(
             web_outlook_app, 'resolve_email_share_visible_messages',
             return_value={'success': True, 'emails': [
@@ -341,6 +356,50 @@ class NotJunkActionTests(unittest.TestCase):
         self.assertFalse(result['success'])
         store_mock.assert_not_called()
         self.assertNotIn(('EXPUNGE', ()), calls)
+
+    def test_imap_move_reports_expunge_failure_and_does_not_report_moved(self):
+        calls = []
+
+        class FakeMail:
+            def uid(self, command, *args):
+                if command == 'FETCH' and args[1] == '(RFC822.SIZE)':
+                    return 'OK', [b'1 (RFC822.SIZE 2048)']
+                return 'OK', [(
+                    b'1 (INTERNALDATE "24-Nov-2026 01:42:56 +0000" RFC822 {11}',
+                    b'Subject: x',
+                )]
+
+            def append(self, mailbox, flags, date_time, message):
+                return 'OK', [b'[APPENDUID 1 100]']
+
+            def expunge(self):
+                return 'NO', [b'expunge rejected']
+
+        def store_flags(_mail, _uid, **kwargs):
+            calls.append(kwargs['action'])
+            return True, 'uid', []
+
+        with patch.object(
+            web_outlook_app, 'resolve_imap_folder',
+            side_effect=lambda _mail, _provider, folder, readonly=True: (
+                '"INBOX"' if folder == 'inbox' else '"Spam"', {}
+            ),
+        ), patch.object(
+            web_outlook_app, 'resolve_imap_message_uid', return_value='7'
+        ), patch.object(
+            web_outlook_app, 'store_imap_message_flags', side_effect=store_flags
+        ):
+            result = web_outlook_app.move_email_items_imap(
+                FakeMail(), [{'id': '7', 'folder': 'junkemail', 'id_mode': 'uid'}],
+                destination='inbox', provider='aliyun',
+            )
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['success_count'], 0)
+        self.assertEqual(result['failed_count'], 1)
+        self.assertEqual(result['moved_ids'], [])
+        self.assertEqual(result['errors'][0]['error']['code'], 'EMAIL_MOVE_EXPUNGE_FAILED')
+        self.assertEqual(calls, ['+FLAGS.SILENT', '-FLAGS.SILENT'])
 
     def test_resolve_imap_item_uid_converts_sequence_number(self):
         class FakeMail:

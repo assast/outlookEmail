@@ -8,6 +8,7 @@
     let currentMethod = 'graph';
     let selectedEmailId = null;
     let isShareReady = false;
+    let allowActions = false;
 
     // --- Utility Functions ---
     function createLucideIcons() {
@@ -510,7 +511,7 @@
     }
 
     function renderNotJunkAction(email) {
-        if (currentFolder !== 'junkemail') return;
+        if (!allowActions || currentFolder !== 'junkemail') return;
         const detailPanel = document.getElementById('shareEmailDetail');
         const card = detailPanel ? detailPanel.querySelector('.detail-card') : null;
         if (!card) return;
@@ -550,7 +551,8 @@
                 })
             });
             showToast('已移回收件箱');
-            const inboxButton = document.querySelector('.folder-btn[data-folder="inbox"]');
+            const inboxButton = document.querySelector('#shareFolderTabs .folder-btn[data-folder="inbox"]')
+                || document.querySelector('.folder-btn[data-folder="inbox"]');
             if (inboxButton) inboxButton.click();
         } catch (error) {
             showToast((error && error.message) || '操作失败，请稍后重试');
@@ -773,6 +775,7 @@
     async function loadShareContent() {
         try {
             const status = await requestJson(`/api/share/email/${encodeURIComponent(token)}/status`);
+            allowActions = !!status.allow_actions;
             
             const titleElement = document.getElementById('shareEmailTitle');
             if (titleElement) titleElement.textContent = status.email || '邮箱分享';
@@ -848,8 +851,9 @@
         if (folderBtn) {
             currentFolder = folderBtn.dataset.folder || 'inbox';
             document.querySelectorAll('.folder-btn').forEach(btn => {
-                btn.classList.toggle('active', btn === folderBtn);
-                btn.setAttribute('aria-selected', btn === folderBtn ? 'true' : 'false');
+                const isCurrentFolder = btn.dataset.folder === currentFolder;
+                btn.classList.toggle('active', isCurrentFolder);
+                btn.setAttribute('aria-selected', isCurrentFolder ? 'true' : 'false');
             });
             loadEmails();
             

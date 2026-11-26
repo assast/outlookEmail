@@ -3270,7 +3270,7 @@ def move_email_items_imap(mail, items: List[Dict[str, Any]], destination: str = 
             errors.extend({'id': item['id'], 'error': folder_error} for item in folder_items)
             continue
 
-        expunged_uids: List[str] = []
+        pending_moves: List[Dict[str, str]] = []
         for item in folder_items:
             try:
                 uid = resolve_imap_item_uid(mail, item)
@@ -3343,17 +3343,35 @@ def move_email_items_imap(mail, items: List[Dict[str, Any]], destination: str = 
                 )})
                 continue
 
-            success_count += 1
-            moved_ids.append(item['id'])
-            expunged_uids.append(uid)
+            pending_moves.append({'id': item['id'], 'uid': uid})
 
-        if expunged_uids:
+        if pending_moves:
             try:
                 expunge_status, expunge_data = mail.expunge()
                 if expunge_status != 'OK':
                     raise imaplib.IMAP4.error(str(expunge_data or expunge_status))
+                success_count += len(pending_moves)
+                moved_ids.extend(item['id'] for item in pending_moves)
             except Exception as exc:
                 app.logger.warning('[imap] move expunge failed folder=%s: %s', selected_folder, exc)
+                for item in pending_moves:
+                    restored, _mode, attempts = store_imap_message_flags(
+                        mail,
+                        item['uid'],
+                        action='-FLAGS.SILENT',
+                        flags=r'(\Deleted)',
+                        preferred_mode='uid',
+                    )
+                    details = {
+                        'expunge_error': sanitize_error_details(str(exc))[:200],
+                        'source_delete_flag_restored': bool(restored),
+                        'store_attempts': attempts[:3],
+                    }
+                    errors.append({'id': item['id'], 'error': build_error_payload(
+                        'EMAIL_MOVE_EXPUNGE_FAILED',
+                        '邮件已放入收件箱，但垃圾箱源邮件未能完成删除，请检查两边文件夹后重试',
+                        'IMAPExpungeError', 502, details,
+                    )})
 
     failed_count = len(normalized_items) - success_count + sum(1 for item in errors if not item.get('id'))
     return {

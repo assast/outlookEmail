@@ -140,6 +140,10 @@
 | POST | `/api/emails/mark-read` | Session + CSRF | JSON | 批量标记邮件为已读 |
 | POST | `/api/emails/delete` | Session + CSRF | JSON | 批量删除邮件 |
 | POST | `/api/emails/not-junk` | Session + CSRF | JSON | 把垃圾邮件标记为非垃圾（移回收件箱） |
+| POST | `/api/email-shares` | Session + CSRF | JSON | 创建分享链接；`allow_actions` 默认 `false` |
+| POST | `/api/email-shares/<share_id>/allow-actions` | Session + CSRF | JSON | 设置分享链接是否允许访客操作，请求体为 `{"allow_actions": true}` 或 `{"allow_actions": false}` |
+| GET | `/api/share/email/<token>/status` | 分享 token + 访问码（若设置） | JSON | 获取分享状态、可见范围和操作权限 |
+| POST | `/api/share/email/<token>/not-junk` | 分享 token + 访问码（若设置） | JSON | 仅在分享允许操作时，将可见范围内的垃圾邮件移回收件箱 |
 | GET | `/api/email/<email_addr>/<message_id>` | Session | JSON | 获取邮件详情 |
 | GET | `/api/email/<email_addr>/<message_id>/attachments/<attachment_id>` | Session | 文件流 | 下载附件 |
 | GET | `/api/email/<email_addr>/<message_id>/attachments/download-all` | Session | ZIP 文件流 | 打包下载全部附件 |
