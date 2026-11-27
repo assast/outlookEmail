@@ -66,10 +66,11 @@ def get_temp_emails_from_api(email_addr: str) -> Optional[List[Dict]]:
     return None
 
 
-def get_temp_email_detail_from_api(message_id: str) -> Optional[Dict]:
+def get_temp_email_detail_from_api(message_id: str, email_addr: str = None) -> Optional[Dict]:
     """从 GPTMail API 获取邮件详情"""
-    result = gptmail_request('GET', f'/api/email/{message_id}')
-    
+    params = {'email': email_addr} if email_addr else None
+    result = gptmail_request('GET', f'/api/email/{message_id}', params=params)
+
     if result and result.get('success'):
         return result.get('data')
     return None
@@ -1556,6 +1557,20 @@ def get_temp_email_message_by_id(message_id: str) -> Optional[Dict]:
     return dict(row) if row else None
 
 
+def update_temp_email_html_content(message_id: str, html_content: str) -> None:
+    """更新临时邮件的 HTML 正文缓存（GPTMail 列表接口不含 html_content，需从详情接口补全）"""
+    db = get_db()
+    try:
+        db.execute('''
+            UPDATE temp_email_messages
+            SET has_html = ?, html_content = ?
+            WHERE message_id = ?
+        ''', (1 if html_content else 0, html_content or '', message_id))
+        db.commit()
+    except Exception:
+        pass
+
+
 def delete_temp_email_message(message_id: str) -> bool:
     """删除临时邮件"""
     db = get_db()
@@ -2732,13 +2747,16 @@ def api_get_temp_email_message_detail(email_addr, message_id):
             })
         return jsonify({'success': False, 'error': '邮件不存在'})
     else:
-        # GPTMail: 保持原有逻辑
+        # GPTMail: 列表接口 has_html=true 但 html_content 恒为空串，缓存不完整时回源详情 API 补全
         msg = get_temp_email_message_by_id(message_id)
 
-        if not msg:
-            api_msg = get_temp_email_detail_from_api(message_id)
+        if not (msg and (not msg.get('has_html') or msg.get('html_content'))):
+            api_msg = get_temp_email_detail_from_api(message_id, email_addr)
             if api_msg:
-                save_temp_email_messages(email_addr, [api_msg])
+                if msg:
+                    update_temp_email_html_content(message_id, api_msg.get('html_content', ''))
+                else:
+                    save_temp_email_messages(email_addr, [api_msg])
                 msg = get_temp_email_message_by_id(message_id)
 
         if msg:
@@ -2749,8 +2767,8 @@ def api_get_temp_email_message_detail(email_addr, message_id):
                     'from': msg.get('from_address', '未知'),
                     'to': email_addr,
                     'subject': msg.get('subject', '无主题'),
-                    'body': msg.get('html_content') if msg.get('has_html') else msg.get('content', ''),
-                    'body_type': 'html' if msg.get('has_html') else 'text',
+                    'body': msg.get('html_content') or msg.get('content', ''),
+                    'body_type': 'html' if msg.get('html_content') else 'text',
                     'date': msg.get('created_at', ''),
                     'timestamp': msg.get('timestamp', 0)
                 }

@@ -6,6 +6,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Fixed
+- GPTMail 临时邮箱邮件正文显示空白：上游列表接口恒不返回 `html_content`，详情接口现回源补全 HTML 正文并缓存；回源失败时回退显示纯文本正文（issue #115）。
+
 ## [3.0.35] - 2026-11-26
 
 ### Added
